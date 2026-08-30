@@ -1,0 +1,26 @@
+---
+const stack = [
+  { name: 'Astro', desc: '内容优先的框架' },
+  { name: 'Tailwind', desc: '原子化样式' },
+  { name: 'Motion', desc: '克制的动效' },
+  { name: 'Hanzi Writer', desc: '笔顺书写动画' },
+  { name: 'Vercel', desc: '部署与托管' },
+];
+---
+
+<div class="glass-card p-5">
+  <div class="flex items-center gap-2 text-sm text-ink/60">
+    <span>🛠</span>
+    <span class="uppercase tracking-wide">网站技术栈</span>
+  </div>
+  <ul class="mt-3 space-y-2">
+    {
+      stack.map((item) => (
+        <li class="flex items-center justify-between border-b border-rose/15 pb-2 text-sm last:border-0 last:pb-0">
+          <span class="font-medium text-ink">{item.name}</span>
+          <span class="text-xs text-ink/50">{item.desc}</span>
+        </li>
+      ))
+    }
+  </ul>
+</div>

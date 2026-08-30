@@ -49,3 +49,14 @@
     font-weight: 400;
   }
 }
+
+@layer components {
+  .glass-card {
+    border-radius: var(--radius-card);
+    background: rgba(255, 255, 255, 0.55);
+    border: 1px solid rgba(255, 255, 255, 0.7);
+    backdrop-filter: blur(16px) saturate(160%);
+    -webkit-backdrop-filter: blur(16px) saturate(160%);
+    box-shadow: 0 10px 30px rgba(246, 165, 184, 0.16);
+  }
+}
