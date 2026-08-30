@@ -1,0 +1,51 @@
+@import "tailwindcss";
+
+/*
+ * 清吾博客 · 设计 tokens
+ * 取自主题形象「爱弥斯」的暖色系统(见 项目设计.md 第 6 节)
+ * 形状: 统一圆润(圆角卡片/胶囊按钮)
+ * 主题: 仅暖色,不做深浅切换
+ */
+
+@theme {
+  /* —— 配色(取自爱弥斯) —— */
+  --color-rose: #f6a5b8;    /* 主色 · 玫瑰粉(发色/裙) */
+  --color-crimson: #e0526b; /* 强调色 · 绯红(蝴蝶结) */
+  --color-cream: #fdf6f0;   /* 底色 · 奶油白(衬衫/背景) */
+  --color-amber: #e8b04b;   /* 点睛 · 琥珀金(眼睛) */
+  --color-brown: #8b5a3c;   /* 暖棕 · 皮质(包/鞋) */
+  --color-ink: #4a3728;     /* 文字 · 深暖棕(正文) */
+
+  /* —— 字体 —— */
+  --font-display: "ZCOOL XiaoWei", "Noto Serif SC", "Songti SC", serif;
+  --font-hand: "Ma Shan Zheng", "STKaiti", "KaiTi", cursive;
+  --font-body: "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Noto Sans SC", sans-serif;
+
+  /* —— 形状 —— */
+  --radius-card: 1.25rem;
+  --radius-pill: 9999px;
+
+  /* —— 动效(克制的、有目的的动效) —— */
+  --ease-soft: cubic-bezier(0.22, 0.61, 0.36, 1);
+}
+
+@layer base {
+  html {
+    scroll-behavior: smooth;
+  }
+
+  body {
+    font-family: var(--font-body);
+    background-color: var(--color-cream);
+    color: var(--color-ink);
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+
+  h1,
+  h2,
+  h3 {
+    font-family: var(--font-display);
+    font-weight: 400;
+  }
+}
