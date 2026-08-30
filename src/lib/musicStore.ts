@@ -21,6 +21,7 @@ let isMuted = false;
 let playMode: PlayMode = 'order';
 let audio: HTMLAudioElement | null = null;
 let loadedIndex: number | null = null;
+let initialized = false; // 整页加载只恢复一次;客户端路由跨页不重复恢复
 const listeners = new Set<Listener>();
 
 const currentSong = () => playlist[currentIndex] || null;
@@ -222,7 +223,10 @@ function getState() {
 }
 
 export function initMusic() {
-  restore();
+  if (!initialized) {
+    restore();
+    initialized = true;
+  }
   emit();
 }
 

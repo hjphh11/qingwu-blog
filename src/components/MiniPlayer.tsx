@@ -13,9 +13,15 @@ export default function MiniPlayer() {
   const [pathname, setPathname] = useState(() => window.location.pathname);
 
   useEffect(() => {
+    const onPageLoad = () => setPathname(window.location.pathname);
+    document.addEventListener('astro:page-load', onPageLoad);
     setPathname(window.location.pathname);
     initMusic();
-    return subscribe(() => setState(getMusicState()));
+    const unsub = subscribe(() => setState(getMusicState()));
+    return () => {
+      document.removeEventListener('astro:page-load', onPageLoad);
+      unsub();
+    };
   }, []);
 
   const { currentSong, isPlaying, currentLyric } = state;
