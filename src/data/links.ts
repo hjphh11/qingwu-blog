@@ -5,5 +5,12 @@ export interface Friend {
   url: string;
 }
 
-// 真实好友列表:把朋友加进来即可。头像放 public/images/,url 填真实链接。
-export const friends: Friend[] = [];
+// 好友列表:把朋友加进来即可。头像可用链接,url 填真实链接。
+export const friends: Friend[] = [
+  {
+    name: '朝朝听雨',
+    avatar: 'https://rainzt.cn/zzty.png',
+    intro: '物物而不物于物，念念而不念于念',
+    url: 'http://rainzt.cn',
+  },
+];
