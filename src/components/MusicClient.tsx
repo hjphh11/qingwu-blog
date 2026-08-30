@@ -209,11 +209,11 @@ export default function MusicClient() {
           </div>
 
           {tab === 'lrc' ? (
-            <div className="relative mt-4 flex min-h-0 flex-1">
+            <div className="relative mt-4 w-full flex min-h-0 flex-1">
               {lrcLines.length ? (
                 <div
                   ref={lyricsRef}
-                  className="no-scrollbar h-full overflow-y-auto text-center"
+                  className="no-scrollbar h-full w-full overflow-y-auto text-center"
                 >
                   {lrcLines.map((ln, i) => (
                     <button
@@ -223,7 +223,7 @@ export default function MusicClient() {
                       onClick={() => music.handleSeek(ln.time)}
                       className={`block w-full py-2.5 text-center transition-all ${
                         i === activeLyricIndex
-                          ? 'scale-105 font-display text-xl text-crimson'
+                          ? 'scale-105 rounded-xl bg-rose/10 font-display text-xl text-crimson'
                           : 'text-sm text-ink/50 hover:text-ink/80'
                       }`}
                     >
