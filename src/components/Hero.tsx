@@ -100,15 +100,18 @@ export default function Hero() {
           style={{ scale, opacity }}
           className="order-1 flex shrink-0 justify-center md:order-2 md:self-center"
         >
-          <img
-            src="/images/emis/full.png"
-            alt="爱弥斯"
-            width={480}
-            height={760}
-            fetchPriority="high"
-            decoding="async"
-            className="h-[75svh] w-auto max-w-[44vw] object-contain drop-shadow-[0_18px_40px_rgba(246,165,184,0.35)]"
-          />
+          <picture>
+            <source srcSet="/images/emis/full.webp" type="image/webp" />
+            <img
+              src="/images/emis/full.png"
+              alt="爱弥斯"
+              width={480}
+              height={760}
+              fetchPriority="high"
+              decoding="async"
+              className="h-[75svh] w-auto max-w-[44vw] object-contain drop-shadow-[0_18px_40px_rgba(246,165,184,0.35)]"
+            />
+          </picture>
         </motion.div>
       </div>
     </section>
