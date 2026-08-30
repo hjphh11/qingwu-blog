@@ -25,9 +25,9 @@ export default function UptimeCard() {
 
   return (
     <div className="glass-card p-5">
-      <div className="flex items-center gap-2 text-sm text-ink/60">
+      <div className="flex items-center gap-2 text-sm text-ink/70">
         <span>⏳</span>
-        <span className="uppercase tracking-wide">本站已运行</span>
+        <span className="font-medium">这里陪你多久啦 ✨</span>
       </div>
       <p className="mt-2 font-display text-2xl text-crimson tabular-nums">
         {u.days} 天 {u.hours}:{String(u.mins).padStart(2, '0')}:

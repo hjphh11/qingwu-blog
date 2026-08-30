@@ -3,7 +3,7 @@ import HanziWriter from 'hanzi-writer';
 import { motion, useScroll, useTransform } from 'motion/react';
 
 const GREETING = '欢迎来到清吾的小屋';
-const CELL = 76;
+const CELL = 92;
 
 // 首页 Hero:左=Hanzi Writer 笔顺问候,右=爱弥斯(随滚动缩小)。
 export default function Hero() {
@@ -14,8 +14,8 @@ export default function Hero() {
     target: heroRef,
     offset: ['start start', 'end start'],
   });
-  const scale = useTransform(scrollYProgress, [0, 1], [1, 0.75]);
-  const opacity = useTransform(scrollYProgress, [0, 0.7], [1, 0.15]);
+  const scale = useTransform(scrollYProgress, [0, 1], [1, 0.6]);
+  const opacity = useTransform(scrollYProgress, [0, 0.85], [1, 0]);
 
   useEffect(() => {
     const container = greetingRef.current;
@@ -40,12 +40,12 @@ export default function Hero() {
       const cell = document.createElement('div');
       cell.className = 'char-cell';
       cell.style.width = `${CELL}px`;
-      cell.style.height = `${CELL + 8}px`;
+      cell.style.height = `${CELL + 12}px`;
       container.appendChild(cell);
 
       if (reduce) {
         const span = document.createElement('span');
-        span.className = 'font-hand text-[64px] leading-none text-ink';
+        span.className = 'font-hand text-[88px] leading-none text-ink';
         span.textContent = chars[index];
         cell.appendChild(span);
         startNext(index + 1);
@@ -54,11 +54,14 @@ export default function Hero() {
 
       const writer = HanziWriter.create(cell, chars[index], {
         width: CELL,
-        height: CELL + 8,
+        height: CELL + 12,
         padding: 4,
-        delayBetweenStrokes: 110,
+        delayBetweenStrokes: 30,
+        strokeAnimationSpeed: 3,
+        strokeFadeDuration: 150,
+        strokeWidth: 4,
         showCharacter: false,
-        showOutline: true,
+        showOutline: false,
         strokeColor: '#4a3728',
         outlineColor: 'rgba(74, 55, 40, 0.25)',
         charDataLoader: loadData,
@@ -76,34 +79,36 @@ export default function Hero() {
   return (
     <section
       ref={heroRef}
-      className="relative flex min-h-[92svh] flex-col items-center justify-center gap-8 px-6 py-16 md:flex-row md:justify-between md:gap-12"
+      className="relative flex min-h-svh items-stretch px-6 pb-16 pt-28"
     >
-      {/* 左:笔顺问候 */}
-      <div className="order-2 flex w-full max-w-[640px] flex-1 flex-col md:order-1">
-        <div
-          ref={greetingRef}
-          className="flex flex-wrap gap-2"
-          aria-label={GREETING}
-          role="text"
-        />
-        <p className="mt-8 text-base text-ink/70">
-          写技术 · 记生活 · 一个温馨二次元的小角落
-        </p>
-      </div>
+      <div className="flex w-full flex-col items-center gap-10 md:flex-row md:items-start md:justify-between md:gap-12">
+        {/* 左:大号笔顺问候,顶到左上角 */}
+        <div className="order-2 flex w-full max-w-[680px] flex-1 flex-col md:order-1 md:self-start">
+          <div
+            ref={greetingRef}
+            className="flex flex-wrap gap-2"
+            aria-label={GREETING}
+            role="text"
+          />
+          <p className="mt-8 text-base text-ink/70">
+            写技术 · 记生活 · 一个温馨二次元的小角落
+          </p>
+        </div>
 
-      {/* 右:爱弥斯(随滚动缩小并淡出) */}
-      <motion.div
-        style={{ scale, opacity }}
-        className="order-1 flex justify-center md:order-2"
-      >
-        <img
-          src="/images/emis/full.png"
-          alt="爱弥斯"
-          width={480}
-          height={760}
-          className="h-[56svh] w-auto max-w-full object-contain drop-shadow-[0_18px_40px_rgba(246,165,184,0.35)]"
-        />
-      </motion.div>
+        {/* 右:爱弥斯(偏大、垂直居中,随滚动缩小并淡出) */}
+        <motion.div
+          style={{ scale, opacity }}
+          className="order-1 flex shrink-0 justify-center md:order-2 md:self-center"
+        >
+          <img
+            src="/images/emis/full.png"
+            alt="爱弥斯"
+            width={480}
+            height={760}
+            className="h-[75svh] w-auto max-w-[44vw] object-contain drop-shadow-[0_18px_40px_rgba(246,165,184,0.35)]"
+          />
+        </motion.div>
+      </div>
     </section>
   );
 }

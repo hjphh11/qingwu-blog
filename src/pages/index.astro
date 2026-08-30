@@ -15,7 +15,7 @@ const posts = (await getCollection('blog'))
 <Layout title="清吾 · qingwu.ink">
   <Hero client:load />
 
-  <div class="mx-auto grid max-w-5xl gap-8 px-6 pb-20 md:grid-cols-[1fr_300px]">
+  <div class="mx-auto grid max-w-5xl gap-10 px-6 pb-20 md:grid-cols-[1fr_300px]">
     {/* 中央:文章流 */}
     <section>
       <h2 class="mb-6 flex items-center gap-2 font-display text-2xl text-ink">
@@ -23,13 +23,16 @@ const posts = (await getCollection('blog'))
         最近文章
       </h2>
 
-      <div class="space-y-5">
+      <div class="flex flex-col gap-6">
         {
           posts.map((post) => (
             <a
               href={`/blog/${post.id}`}
-              class="glass-card block p-6 transition-all hover:-translate-y-1 hover:shadow-xl"
+              class="glass-card relative block p-6 transition-all hover:-translate-y-1 hover:shadow-xl"
             >
+              <span class="absolute right-4 top-4 text-lg" aria-hidden="true">
+                {post.data.category === 'tech' ? '✦' : '🌸'}
+              </span>
               <div class="flex items-center gap-2 text-xs text-ink/50">
                 <span class="rounded-full bg-rose/25 px-2.5 py-0.5 text-crimson">
                   {post.data.category === 'tech' ? '技术' : '记录'}
@@ -52,7 +55,7 @@ const posts = (await getCollection('blog'))
     </section>
 
     {/* 右栏卡片 */}
-    <aside class="space-y-5 md:sticky md:top-24 md:self-start">
+    <aside class="flex flex-col gap-8 md:sticky md:top-24 md:self-start">
       <CurrentTime client:only="react" />
       <VisitorCity client:only="react" />
       <StatsCard articleCount={posts.length} client:only="react" />
