@@ -1,93 +1,224 @@
-import { SONGS, type Song } from '../data/music';
+import { playlist } from '../data/music';
 
 type Listener = () => void;
+type PlayMode = 'order' | 'one' | 'random';
 
-const TRACK_KEY = 'qingwu:track';
-const PLAYING_KEY = 'qingwu:playing';
+const S = {
+  index: 'qingwu:index',
+  playing: 'qingwu:playing',
+  time: 'qingwu:time',
+  volume: 'qingwu:volume',
+  muted: 'qingwu:muted',
+  mode: 'qingwu:mode',
+};
 
-let currentTrack: Song | null = null;
-let playing = false;
-let loadedId: string | null = null;
+let currentIndex = 0;
+let isPlaying = false;
+let currentTime = 0;
+let duration = 0;
+let volume = 0.8;
+let isMuted = false;
+let playMode: PlayMode = 'order';
 let audio: HTMLAudioElement | null = null;
+let loadedIndex: number | null = null;
 const listeners = new Set<Listener>();
+
+const currentSong = () => playlist[currentIndex] || null;
+
+function parseLRC(lrc = ''): { time: number; text: string }[] {
+  return lrc
+    .split('\n')
+    .map((line) => {
+      const m = line.match(/\[(\d+):(\d+(?:\.\d+)?)\](.*)/);
+      if (!m) return null;
+      return { time: Number(m[1]) * 60 + Number(m[2]), text: (m[3] || '').trim() };
+    })
+    .filter(Boolean) as { time: number; text: string }[];
+}
 
 function getAudio(): HTMLAudioElement {
   if (!audio) {
     audio = new Audio();
-    audio.addEventListener('ended', () => {
-      playing = false;
+    audio.addEventListener('timeupdate', () => {
+      if (audio) currentTime = audio.currentTime;
       emit();
     });
+    audio.addEventListener('loadedmetadata', () => {
+      if (audio) duration = audio.duration || 0;
+      emit();
+    });
+    audio.addEventListener('ended', onEnded);
   }
   return audio;
-}
-
-function persist() {
-  try {
-    if (currentTrack) localStorage.setItem(TRACK_KEY, currentTrack.id);
-    else localStorage.removeItem(TRACK_KEY);
-    localStorage.setItem(PLAYING_KEY, playing ? '1' : '0');
-  } catch {
-    /* ignore */
-  }
 }
 
 function emit() {
   listeners.forEach((l) => l());
 }
 
-function restore() {
+function persist() {
   try {
-    const id = localStorage.getItem(TRACK_KEY);
-    currentTrack = SONGS.find((s) => s.id === id) || null;
-    playing = false; // 出于自动播放限制,跨页复用时默认暂停
+    localStorage.setItem(S.index, String(currentIndex));
+    localStorage.setItem(S.playing, isPlaying ? '1' : '0');
+    localStorage.setItem(S.time, String(currentTime));
+    localStorage.setItem(S.volume, String(volume));
+    localStorage.setItem(S.muted, isMuted ? '1' : '0');
+    localStorage.setItem(S.mode, playMode);
   } catch {
     /* ignore */
   }
 }
 
-function ensureSrc(t: Song) {
-  const a = getAudio();
-  if (loadedId !== t.id) {
-    a.src = t.src;
-    loadedId = t.id;
+function restore() {
+  try {
+    const i = Number(localStorage.getItem(S.index) || 0);
+    if (i >= 0 && i < playlist.length) currentIndex = i;
+    currentTime = Number(localStorage.getItem(S.time) || 0);
+    volume = Number(localStorage.getItem(S.volume) || 0.8);
+    isMuted = localStorage.getItem(S.muted) === '1';
+    const mode = localStorage.getItem(S.mode);
+    playMode = mode === 'one' || mode === 'random' ? mode : 'order';
+    isPlaying = false; // 自动播放限制,恢复时默认暂停
+  } catch {
+    /* ignore */
   }
 }
 
-function play(track?: Song) {
-  const t = track || currentTrack;
-  if (!t) return;
-  ensureSrc(t);
-  if (currentTrack?.id !== t.id) currentTrack = t;
-  playing = true;
-  getAudio()
-    .play()
+function ensure(index: number) {
+  const a = getAudio();
+  if (loadedIndex !== index) {
+    a.src = playlist[index].audio;
+    a.volume = isMuted ? 0 : volume;
+    loadedIndex = index;
+  }
+}
+
+function playSong(index: number) {
+  if (index < 0 || index >= playlist.length) return;
+  if (index !== currentIndex) {
+    currentIndex = index;
+    currentTime = 0;
+    duration = 0;
+  }
+  ensure(currentIndex);
+  const a = getAudio();
+  if (loadedIndex === currentIndex && currentTime > 0 && a.currentTime !== currentTime) {
+    a.currentTime = currentTime;
+  }
+  a.play()
+    .then(() => {
+      isPlaying = true;
+      emit();
+    })
     .catch(() => {
-      playing = false;
+      isPlaying = false;
       emit();
     });
   persist();
   emit();
 }
 
-function toggle() {
-  if (!currentTrack) return;
-  if (playing) {
-    getAudio().pause();
-    playing = false;
+function togglePlay() {
+  const s = currentSong();
+  if (!s) return;
+  ensure(currentIndex);
+  const a = getAudio();
+  if (isPlaying) {
+    a.pause();
+    isPlaying = false;
   } else {
-    play(currentTrack);
-    return;
+    if (loadedIndex === currentIndex && currentTime > 0 && a.currentTime !== currentTime) {
+      a.currentTime = currentTime;
+    }
+    a.play()
+      .then(() => {
+        isPlaying = true;
+        emit();
+      })
+      .catch(() => {
+        isPlaying = false;
+        emit();
+      });
   }
   persist();
   emit();
 }
 
-function step(dir: 1 | -1) {
-  if (!currentTrack) return play(SONGS[0]);
-  const i = SONGS.findIndex((s) => s.id === currentTrack!.id);
-  const ni = (i + dir + SONGS.length) % SONGS.length;
-  play(SONGS[ni]);
+function onEnded() {
+  if (playMode === 'one') {
+    const a = getAudio();
+    a.currentTime = 0;
+    a.play().catch(() => {});
+    return;
+  }
+  nextSong();
+}
+
+function nextSong() {
+  let ni: number;
+  if (playMode === 'random') ni = Math.floor(Math.random() * playlist.length);
+  else ni = (currentIndex + 1) % playlist.length;
+  playSong(ni);
+}
+
+function prevSong() {
+  playSong((currentIndex - 1 + playlist.length) % playlist.length);
+}
+
+function handleSeek(t: number) {
+  const a = getAudio();
+  a.currentTime = t;
+  currentTime = t;
+  emit();
+}
+
+function setVolume(v: number) {
+  volume = Math.max(0, Math.min(1, v));
+  if (audio) audio.volume = isMuted ? 0 : volume;
+  persist();
+  emit();
+}
+
+function setMuted(m: boolean) {
+  isMuted = m;
+  if (audio) audio.volume = m ? 0 : volume;
+  persist();
+  emit();
+}
+
+function togglePlayMode() {
+  playMode = playMode === 'order' ? 'one' : playMode === 'one' ? 'random' : 'order';
+  persist();
+  emit();
+}
+
+function getCurrentLyric(): { text: string; lines: { time: number; text: string }[] } | null {
+  const s = currentSong();
+  if (!s?.lrc) return null;
+  const lines = parseLRC(s.lrc);
+  let text: string | null = null;
+  for (const ln of lines) {
+    if (ln.time <= currentTime) text = ln.text;
+    else break;
+  }
+  return { text: text ?? '', lines };
+}
+
+function getState() {
+  const lyric = getCurrentLyric();
+  return {
+    playlist,
+    currentIndex,
+    currentSong: currentSong(),
+    isPlaying,
+    currentTime,
+    duration,
+    volume,
+    isMuted,
+    playMode,
+    lrcLines: lyric?.lines ?? [],
+    currentLyric: lyric?.text ?? '',
+  };
 }
 
 export function initMusic() {
@@ -103,7 +234,7 @@ export function subscribe(cb: Listener) {
 }
 
 export function getMusicState() {
-  return { track: currentTrack, playing };
+  return getState();
 }
 
 export function audioElement() {
@@ -111,8 +242,12 @@ export function audioElement() {
 }
 
 export const music = {
-  play,
-  toggle,
-  next: () => step(1),
-  prev: () => step(-1),
+  playSong,
+  togglePlay,
+  nextSong,
+  prevSong,
+  handleSeek,
+  setVolume,
+  setMuted,
+  togglePlayMode,
 };
