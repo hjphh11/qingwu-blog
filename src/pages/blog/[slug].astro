@@ -2,7 +2,7 @@
 import Layout from '../../layouts/Layout.astro';
 import ReadingProgress from '../../components/ReadingProgress.tsx';
 import MorphIcon from 'morphicons/astro';
-import { List } from '../../lib/icons';
+import { List, ArrowLeft } from '../../lib/icons';
 import { getCollection, render } from 'astro:content';
 
 export async function getStaticPaths() {
@@ -35,7 +35,9 @@ const toc = headings.filter((h) => h.depth === 2 || h.depth === 3);
           type="button"
           class="mb-4 inline-flex cursor-pointer items-center gap-1 text-sm text-ink/60 transition-colors hover:text-crimson"
         >
-          <span aria-hidden="true">←</span>
+          <span aria-hidden="true">
+            <MorphIcon icon={ArrowLeft} size={16} color="currentColor" />
+          </span>
           返回
         </button>
         <div class="flex flex-wrap items-center gap-2 text-xs text-ink/50">

@@ -26,6 +26,7 @@ export {
   ChevronRight,
   GitBranch,
   List,
+  ArrowLeft,
   Volume2,
   VolumeX,
   House,
