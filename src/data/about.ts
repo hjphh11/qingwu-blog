@@ -9,10 +9,10 @@ export const profile = {
 
 // 信息条目:value 换成你的真实信息;不需要就删掉整行
 export const info = [
-  { icon: '📍', label: '来自', value: '广东' },
-  { icon: '🏫', label: '身份', value: '学生' },
-  { icon: '💻', label: '方向', value: '前端 / 折腾的码农' },
-  { icon: '🎵', label: '兴趣', value: '写代码、听歌、二次元' },
+  { icon: 'map', label: '来自', value: '广东' },
+  { icon: 'school', label: '身份', value: '学生' },
+  { icon: 'code', label: '方向', value: '前端 / 折腾的码农' },
+  { icon: 'music', label: '兴趣', value: '写代码、听歌、二次元' },
 ];
 
 export const emis = {

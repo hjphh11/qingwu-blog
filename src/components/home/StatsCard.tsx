@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { MorphIcon } from 'morphicons/react';
-import { ChartNoAxesColumn, Footprints, Compass, BookOpen } from '../../lib/icons';
+import { ChartNoAxesColumn, Footprints, Compass, BookOpen, Sparkles } from '../../lib/icons';
 
 export default function StatsCard({ articleCount = 0 }: { articleCount?: number }) {
   const [visits, setVisits] = useState(0);
@@ -46,7 +46,9 @@ export default function StatsCard({ articleCount = 0 }: { articleCount?: number 
     <div className="glass-card p-5">
       <div className="flex items-center gap-2 text-sm text-ink/70">
         <MorphIcon icon={ChartNoAxesColumn} size={17} className="shrink-0" color="currentColor" />
-        <span className="font-medium">悄悄收藏的脚印 ✨</span>
+        <span className="flex items-center gap-1 font-medium">
+          悄悄收藏的脚印 <MorphIcon icon={Sparkles} size={14} color="currentColor" />
+        </span>
       </div>
       <div className="mt-3 space-y-2">
         {row(Footprints, '留下的足迹', visits, '次')}

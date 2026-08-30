@@ -1,10 +1,16 @@
 ---
 import Layout from '../../layouts/Layout.astro';
 import MorphIcon from 'morphicons/astro';
-import { Mail, GitBranch } from '../../lib/icons';
+import { Mail, GitBranch, MapPin, GraduationCap, Laptop, Music } from '../../lib/icons';
 import { profile, info, emis, contacts } from '../../data/about';
 
 const contactIcons: Record<string, unknown> = { mail: Mail, github: GitBranch };
+const infoIcons: Record<string, unknown> = {
+  map: MapPin,
+  school: GraduationCap,
+  code: Laptop,
+  music: Music,
+};
 ---
 
 <Layout title="关于 · 清吾">
@@ -44,7 +50,7 @@ const contactIcons: Record<string, unknown> = { mail: Mail, github: GitBranch };
         {
           info.map((it) => (
             <p class="flex items-center gap-2 text-sm text-ink/70">
-              <span>{it.icon}</span>
+              <MorphIcon icon={infoIcons[it.icon] as never} size={16} color="currentColor" />
               <span class="text-ink/50">{it.label}</span>
               <span class="text-ink">{it.value}</span>
             </p>

@@ -1,6 +1,6 @@
 ---
 import MorphIcon from 'morphicons/astro';
-import { Wrench } from '../../lib/icons';
+import { Wrench, Sparkles } from '../../lib/icons';
 
 const stack = [
   { name: 'Astro', color: '#e0526b' },
@@ -14,7 +14,9 @@ const stack = [
 <div class="glass-card p-5">
   <div class="flex items-center gap-2 text-sm text-ink/70">
     <MorphIcon icon={Wrench} size={17} class="shrink-0" color="currentColor" />
-    <span class="font-medium">本站搭起来的小家伙 ✨</span>
+    <span class="flex items-center gap-1 font-medium">
+      本站搭起来的小家伙 <MorphIcon icon={Sparkles} size={14} color="currentColor" />
+    </span>
   </div>
 
   <div class="mt-4 flex flex-wrap gap-2">

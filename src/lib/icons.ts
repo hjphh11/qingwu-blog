@@ -26,4 +26,11 @@ export {
   ChevronRight,
   GitBranch,
   List,
+  Volume2,
+  VolumeX,
+  House,
+  Building,
+  GraduationCap,
+  Laptop,
+  Globe,
 } from 'lucide';

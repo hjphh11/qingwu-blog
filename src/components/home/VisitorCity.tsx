@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { MorphIcon } from 'morphicons/react';
-import { MapPin } from '../../lib/icons';
+import { MapPin, Building, House } from '../../lib/icons';
 
 type Status = 'idle' | 'loading' | 'granted' | 'unknown';
 
@@ -132,12 +132,15 @@ export default function VisitorCity() {
       )}
 
       {status === 'granted' && (
-        <p className="mt-3 font-display text-xl text-crimson">🏙 {city}</p>
+        <p className="mt-3 flex items-center gap-2 font-display text-xl text-crimson">
+          <MorphIcon icon={Building} size={18} color="currentColor" /> {city}
+        </p>
       )}
 
       {status === 'unknown' && (
-        <p className="mt-3 text-sm text-ink/50">
-          🏠 未知 &nbsp;<span className="text-xs">(可在浏览器允许定位后重试)</span>
+        <p className="mt-3 flex items-center gap-2 text-sm text-ink/50">
+          <MorphIcon icon={House} size={16} color="currentColor" /> 未知 &nbsp;
+          <span className="text-xs">(可在浏览器允许定位后重试)</span>
         </p>
       )}
     </div>

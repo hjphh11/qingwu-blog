@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { MorphIcon } from 'morphicons/react';
-import { SkipBack, Play, Pause, SkipForward } from '../lib/icons';
+import { SkipBack, Play, Pause, SkipForward, Volume2, VolumeX } from '../lib/icons';
 import { initMusic, subscribe, getMusicState, music } from '../lib/musicStore';
 
 function fmt(sec: number) {
@@ -169,7 +169,7 @@ export default function MusicClient() {
               className="text-lg text-ink/70 transition-colors hover:text-crimson"
               aria-label="静音"
             >
-              {isMuted || volume === 0 ? '🔇' : '🔊'}
+              <MorphIcon icon={isMuted || volume === 0 ? VolumeX : Volume2} size={20} color="currentColor" />
             </button>
             <input
               type="range"
