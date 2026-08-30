@@ -19,6 +19,9 @@ dist/
 .DS_Store
 Thumbs.db
 
+# 个人头像源文件(站点用的是 public/images/avatar.jpg)
+我的头像.jpg
+
 # Editor
 .vscode/
 .idea/

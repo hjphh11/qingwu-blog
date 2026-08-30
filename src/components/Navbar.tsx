@@ -74,8 +74,8 @@ export default function Navbar({ pathname = '/' }: Props) {
         <a className="relative z-10 flex items-center gap-2 text-ink" href="/">
           <span className="grid h-8 w-8 place-items-center overflow-hidden rounded-full ring-2 ring-white/70">
             <img
-              src="/images/emis/avatar.png"
-              alt="爱弥斯头像"
+              src="/images/avatar.jpg"
+              alt="清吾头像"
               width={32}
               height={32}
               className="h-full w-full object-cover"

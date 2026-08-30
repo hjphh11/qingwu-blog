@@ -68,6 +68,21 @@ export default function MusicClient() {
   const btn =
     'grid h-11 w-11 place-items-center rounded-full text-ink transition-transform hover:scale-110 active:scale-95';
 
+  if (playlist.length === 0) {
+    return (
+      <div className="flex flex-col gap-8">
+        <header>
+          <h1 className="font-hand text-4xl text-crimson md:text-5xl">音乐馆</h1>
+          <p className="mt-2 text-sm text-ink/60">在旋律里，找到片刻安静 ~</p>
+        </header>
+        <div className="glass-card grid place-items-center p-12 text-center">
+          <p className="font-hand text-2xl text-crimson">音乐馆还没开张 ~</p>
+          <p className="mt-2 text-sm text-ink/60">歌曲等主人慢慢添进来，稍后再来听。</p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="relative flex flex-col gap-8">
       {/* 背景:当前封面模糊放大 + 暖色蒙层 */}
