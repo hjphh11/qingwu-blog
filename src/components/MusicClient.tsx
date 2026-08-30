@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { MorphIcon } from 'morphicons/react';
-import { SkipBack, Play, Pause, SkipForward, Volume2, VolumeX } from '../lib/icons';
+import { SkipBack, Play, Pause, SkipForward, Volume2, VolumeX, Repeat, Repeat1, Shuffle } from '../lib/icons';
 import { initMusic, subscribe, getMusicState, music } from '../lib/musicStore';
 
 function fmt(sec: number) {
@@ -183,10 +183,15 @@ export default function MusicClient() {
             <button
               type="button"
               onClick={() => music.togglePlayMode()}
-              className="rounded-full border border-rose/30 px-3 py-1 text-xs text-ink/70 transition-colors hover:border-rose/60 hover:text-crimson"
-              title="播放模式"
+              className="grid h-9 w-9 place-items-center rounded-full border border-rose/30 text-ink/70 transition-colors hover:border-rose/60 hover:text-crimson"
+              title={`播放模式: ${modeText[playMode]}`}
+              aria-label={`播放模式: ${modeText[playMode]}`}
             >
-              {modeText[playMode]}
+              <MorphIcon
+                icon={playMode === 'order' ? Repeat : playMode === 'one' ? Repeat1 : Shuffle}
+                size={18}
+                color="currentColor"
+              />
             </button>
           </div>
         </div>
