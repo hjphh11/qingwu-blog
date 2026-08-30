@@ -22,6 +22,15 @@ Thumbs.db
 # 个人头像源文件(站点用的是 public/images/avatar.jpg)
 我的头像.jpg
 
+# 内部/规划文档(不推送到公开仓库,保留本地)
+AI说明.md
+制作方案.md
+要求.md
+部署说明.md
+音乐页设计.md
+项目Bug记录.md
+项目设计.md
+
 # Editor
 .vscode/
 .idea/
