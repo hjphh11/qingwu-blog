@@ -1,0 +1,70 @@
+---
+import Layout from '../../layouts/Layout.astro';
+---
+
+<Layout title="关于 · 清吾">
+  <div class="mx-auto max-w-3xl px-6 pb-20 pt-28">
+    {/* 我是清吾 */}
+    <section class="mb-10">
+      <h1 class="flex items-center gap-3 font-display text-3xl text-ink">
+        <span class="h-6 w-1.5 rounded-full bg-crimson"></span>
+        我是清吾
+      </h1>
+      <div class="glass-card mt-6 p-8">
+        <p class="leading-relaxed text-ink/80">
+          「清吾」这个名字，想说的是一个干干净净、自自在在的自己。这里是我的小小世界：写点技术，也记点生活，把值得留下的都收进来。
+        </p>
+        <p class="mt-4 leading-relaxed text-ink/80">
+          做这个博客，是因为想在网络里有一块完全属于自己的角落——可以慢慢写、慢慢改，配色和动效都按自己喜欢来。它是一个温馨二次元的小屋，只为自己和一小部分懂的人而存在。
+        </p>
+      </div>
+    </section>
+
+    {/* 爱弥斯 */}
+    <section class="mb-10">
+      <h2 class="flex items-center gap-3 font-display text-2xl text-ink">
+        <span class="h-5 w-1.5 rounded-full bg-crimson"></span>
+        爱弥斯
+      </h2>
+      <div class="glass-card mt-6 flex flex-col gap-6 p-8 sm:flex-row">
+        <img
+          src="/images/emis/portrait.png"
+          alt="爱弥斯"
+          width={180}
+          height={180}
+          class="mx-auto h-[180px] w-[180px] shrink-0 rounded-2xl object-cover sm:mx-0"
+        />
+        <div class="leading-relaxed text-ink/80">
+          <p>
+            <strong class="text-crimson">爱弥斯</strong> 是这个博客的主题形象，一个温暖、安静、带着一点少女感的角色。粉色的发、温柔的眉眼，像春天里静静盛开的花。
+          </p>
+          <p class="mt-3">
+            她的配色构成了整个站点的样子：玫瑰粉、绯红、奶油白、琥珀金、暖棕——希望你在每个角落都感受到这份温柔。
+          </p>
+        </div>
+      </div>
+    </section>
+
+    {/* 联系方式 */}
+    <section>
+      <h2 class="flex items-center gap-3 font-display text-2xl text-ink">
+        <span class="h-5 w-1.5 rounded-full bg-crimson"></span>
+        联系我
+      </h2>
+      <div class="glass-card mt-6 flex flex-wrap gap-3 p-6 text-sm">
+        <a href="#" class="rounded-full border border-rose/25 bg-white/50 px-4 py-2 text-ink/80 transition-colors hover:border-rose/60 hover:text-crimson">
+          📮 邮箱
+        </a>
+        <a href="#" class="rounded-full border border-rose/25 bg-white/50 px-4 py-2 text-ink/80 transition-colors hover:border-rose/60 hover:text-crimson">
+          🐱 GitHub
+        </a>
+        <a href="#" class="rounded-full border border-rose/25 bg-white/50 px-4 py-2 text-ink/80 transition-colors hover:border-rose/60 hover:text-crimson">
+          🕊 社交
+        </a>
+        <a href="#" class="rounded-full border border-rose/25 bg-white/50 px-4 py-2 text-ink/80 transition-colors hover:border-rose/60 hover:text-crimson">
+          💬 留下印记
+        </a>
+      </div>
+    </section>
+  </div>
+</Layout>

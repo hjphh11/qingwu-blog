@@ -1,0 +1,48 @@
+---
+import Layout from '../../layouts/Layout.astro';
+import { friends } from '../../data/links';
+---
+
+<Layout title="友链 · 清吾">
+  <div class="mx-auto max-w-4xl px-6 pb-20 pt-28">
+    <header class="mb-8">
+      <h1 class="flex items-center gap-3 font-display text-3xl text-ink">
+        <span class="h-6 w-1.5 rounded-full bg-crimson"></span>
+        友链
+      </h1>
+      <p class="mt-2 text-sm text-ink/60">在互联网的小角落，遇见彼此 ~</p>
+    </header>
+
+    <div class="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+      {
+        friends.map((f) => (
+          <a
+            href={f.url}
+            target="_blank"
+            rel="noreferrer"
+            class="glass-card group flex flex-col items-center gap-3 p-6 text-center transition-all hover:-translate-y-1 hover:shadow-xl"
+          >
+            <img
+              src={f.avatar}
+              alt={f.name}
+              width={72}
+              height={72}
+              class="h-[72px] w-[72px] rounded-full object-cover ring-2 ring-white/70"
+            />
+            <div>
+              <p class="font-display text-lg text-ink transition-colors group-hover:text-crimson">
+                {f.name}
+              </p>
+              <p class="mt-1 text-sm text-ink/60">{f.intro}</p>
+            </div>
+            <span class="text-xs text-rose hover:text-crimson">去看看 ✦</span>
+          </a>
+        ))
+      }
+    </div>
+
+    <p class="mt-10 text-center text-sm text-ink/50">
+      想互换友链吗?欢迎在<a href="/about" class="text-crimson underline-offset-2 hover:underline">关于</a>页联系我 ~
+    </p>
+  </div>
+</Layout>
