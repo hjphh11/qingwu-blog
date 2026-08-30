@@ -2,6 +2,7 @@
 import '@fontsource/ma-shan-zheng';
 import '@fontsource/zcool-xiaowei';
 import '../styles/global.css';
+import { SITE } from '../config';
 
 import Navbar from '../components/Navbar.tsx';
 import Footer from '../components/Footer.astro';
@@ -10,20 +11,39 @@ import MiniPlayer from '../components/MiniPlayer.tsx';
 
 interface Props {
   title?: string;
+  description?: string;
+  image?: string;
 }
 
-const { title = '清吾 · qingwu.ink' } = Astro.props;
+const { title = SITE.title, description = SITE.description, image = SITE.ogImage } = Astro.props;
 const pathname = Astro.url.pathname;
+const url = SITE.url.replace(/\/$/, '') + pathname;
 ---
 
 <!doctype html>
-<html lang="zh-CN">
+<html lang={SITE.language}>
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="generator" content={Astro.generator} />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="alternate" type="application/rss+xml" title={SITE.title} href="/rss.xml" />
+
     <title>{title}</title>
+    <meta name="description" content={description} />
+    <meta name="theme-color" content="#fdf6f0" />
+
+    <link rel="canonical" href={url} />
+    <meta property="og:title" content={title} />
+    <meta property="og:description" content={description} />
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content={url} />
+    <meta property="og:image" content={SITE.url.replace(/\/$/, '') + image} />
+    <meta property="og:site_name" content={SITE.title} />
+    <meta name="twitter:card" content="summary" />
+    <meta name="twitter:title" content={title} />
+    <meta name="twitter:description" content={description} />
+    <meta name="twitter:image" content={SITE.url.replace(/\/$/, '') + image} />
   </head>
   <body>
     <Navbar pathname={pathname} client:load />

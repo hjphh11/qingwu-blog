@@ -32,7 +32,6 @@ export default function MusicClient() {
     isMuted,
     playMode,
     lrcLines,
-    currentLyric,
   } = state;
 
   const pct = duration ? (currentTime / duration) * 100 : 0;

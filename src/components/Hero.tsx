@@ -105,6 +105,8 @@ export default function Hero() {
             alt="爱弥斯"
             width={480}
             height={760}
+            fetchPriority="high"
+            decoding="async"
             className="h-[75svh] w-auto max-w-[44vw] object-contain drop-shadow-[0_18px_40px_rgba(246,165,184,0.35)]"
           />
         </motion.div>
