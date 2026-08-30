@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { motion, useMotionValue } from 'motion/react';
+import { MorphIcon } from 'morphicons/react';
+import { Play, Pause, SkipForward } from '../lib/icons';
 import { initMusic, subscribe, getMusicState, music } from '../lib/musicStore';
 
 export default function MiniPlayer() {
@@ -60,7 +62,7 @@ export default function MiniPlayer() {
             onClick={() => music.togglePlay()}
             className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-crimson text-white transition-transform hover:scale-110 active:scale-95"
           >
-            <span className="text-sm">{isPlaying ? '⏸' : '▶'}</span>
+            <MorphIcon icon={isPlaying ? Pause : Play} size={17} color="#fff" />
           </button>
           <button
             type="button"
@@ -68,7 +70,7 @@ export default function MiniPlayer() {
             onClick={() => music.nextSong()}
             className="grid h-9 w-9 shrink-0 place-items-center rounded-full text-ink/70 transition-transform hover:scale-110 active:scale-95"
           >
-            <span className="text-sm">⏭</span>
+            <MorphIcon icon={SkipForward} size={17} color="currentColor" />
           </button>
         </div>
       </motion.div>

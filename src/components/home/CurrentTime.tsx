@@ -1,4 +1,6 @@
 import { useEffect, useState } from 'react';
+import { MorphIcon } from 'morphicons/react';
+import { Clock } from '../../lib/icons';
 
 export default function CurrentTime() {
   const [now, setNow] = useState(() => new Date());
@@ -19,7 +21,7 @@ export default function CurrentTime() {
   return (
     <div className="glass-card p-5">
       <div className="flex items-center gap-2 text-sm text-ink/70">
-        <span>⏰</span>
+        <MorphIcon icon={Clock} size={17} className="shrink-0" color="currentColor" />
         <span className="font-medium">现在几点啦 ₍ᐢ..ᐢ₎</span>
       </div>
       <p className="mt-2 font-display text-3xl text-crimson tabular-nums">{time}</p>

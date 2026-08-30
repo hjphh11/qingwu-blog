@@ -1,4 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { MorphIcon } from 'morphicons/react';
+import { SkipBack, Play, Pause, SkipForward } from '../lib/icons';
 import { initMusic, subscribe, getMusicState, music } from '../lib/musicStore';
 
 function fmt(sec: number) {
@@ -144,7 +146,7 @@ export default function MusicClient() {
           {/* 控制按钮 */}
           <div className="flex items-center gap-3">
             <button type="button" onClick={() => music.prevSong()} className={btn} aria-label="上一首">
-              ⏮
+              <MorphIcon icon={SkipBack} size={20} color="currentColor" />
             </button>
             <button
               type="button"
@@ -152,10 +154,10 @@ export default function MusicClient() {
               className="grid h-14 w-14 place-items-center rounded-full bg-crimson text-white shadow-lg transition-transform hover:scale-110 active:scale-95"
               aria-label={isPlaying ? '暂停' : '播放'}
             >
-              <span className="text-xl">{isPlaying ? '⏸' : '▶'}</span>
+              <MorphIcon icon={isPlaying ? Pause : Play} size={22} color="#fff" />
             </button>
             <button type="button" onClick={() => music.nextSong()} className={btn} aria-label="下一首">
-              ⏭
+              <MorphIcon icon={SkipForward} size={20} color="currentColor" />
             </button>
           </div>
 

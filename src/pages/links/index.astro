@@ -1,5 +1,7 @@
 ---
 import Layout from '../../layouts/Layout.astro';
+import MorphIcon from 'morphicons/astro';
+import { ChevronRight } from '../../lib/icons';
 import { friends } from '../../data/links';
 ---
 
@@ -37,7 +39,7 @@ import { friends } from '../../data/links';
                   </p>
                   <p class="mt-1 text-sm text-ink/60">{f.intro}</p>
                 </div>
-                <span class="text-xs text-rose hover:text-crimson">去看看 ✦</span>
+                <span class="inline-flex items-center gap-1 text-xs text-rose hover:text-crimson">去看看 <MorphIcon icon={ChevronRight} size={12} /></span>
               </a>
             ))
           }

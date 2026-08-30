@@ -1,4 +1,6 @@
 import { useEffect, useState } from 'react';
+import { MorphIcon } from 'morphicons/react';
+import { MapPin } from '../../lib/icons';
 
 type Status = 'idle' | 'loading' | 'granted' | 'unknown';
 
@@ -108,7 +110,7 @@ export default function VisitorCity() {
   return (
     <div className="glass-card p-5">
       <div className="flex items-center gap-2 text-sm text-ink/70">
-        <span>📍</span>
+        <MorphIcon icon={MapPin} size={17} className="shrink-0" color="currentColor" />
         <span className="font-medium">猜猜你在哪座城 ˶ᵔ ᵕ ᵔ˶</span>
       </div>
 

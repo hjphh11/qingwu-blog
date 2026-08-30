@@ -1,6 +1,10 @@
 ---
 import Layout from '../../layouts/Layout.astro';
+import MorphIcon from 'morphicons/astro';
+import { Mail, GitBranch } from '../../lib/icons';
 import { profile, info, emis, contacts } from '../../data/about';
+
+const contactIcons: Record<string, unknown> = { mail: Mail, github: GitBranch };
 ---
 
 <Layout title="关于 · 清吾">
@@ -71,7 +75,7 @@ import { profile, info, emis, contacts } from '../../data/about';
     {/* ③ 联系 / 社交 */}
     <div class="glass-card mt-6 p-8">
       <h2 class="flex items-center gap-2 font-display text-xl text-ink">
-        <span>✉️</span> 联系 / 社交
+        <MorphIcon icon={Mail} size={18} color="currentColor" /> 联系 / 社交
       </h2>
       <div class="mt-4 space-y-2">
         {
@@ -82,7 +86,7 @@ import { profile, info, emis, contacts } from '../../data/about';
               data-value={c.value}
               class="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-sm text-ink/80 transition-colors hover:bg-rose/10 hover:text-crimson"
             >
-              <span>{c.icon}</span>
+              <MorphIcon icon={contactIcons[c.icon] as never} size={16} color="currentColor" />
               <span>{c.label}</span>
               <span data-copy-msg class="ml-auto text-xs text-ink/40"></span>
             </button>

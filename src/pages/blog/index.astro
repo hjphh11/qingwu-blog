@@ -1,5 +1,7 @@
 ---
 import Layout from '../../layouts/Layout.astro';
+import MorphIcon from 'morphicons/astro';
+import { Sparkles, Flower2 } from '../../lib/icons';
 import { getCollection } from 'astro:content';
 
 const posts = (await getCollection('blog'))
@@ -48,8 +50,12 @@ const filters = [
             data-category={post.data.category}
             class="glass-card relative block p-6 transition-all hover:-translate-y-1 hover:shadow-xl"
           >
-            <span class="absolute right-4 top-4 text-lg" aria-hidden="true">
-              {post.data.category === 'tech' ? '✦' : '🌸'}
+            <span class="absolute right-4 top-4" aria-hidden="true">
+              <MorphIcon
+                icon={post.data.category === 'tech' ? Sparkles : Flower2}
+                size={18}
+                color="currentColor"
+              />
             </span>
             <div class="flex items-center gap-2 text-xs text-ink/50">
               <span class="rounded-full bg-rose/25 px-2.5 py-0.5 text-crimson">

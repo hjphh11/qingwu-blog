@@ -25,6 +25,6 @@ export const emis = {
 };
 
 export const contacts = [
-  { icon: '📮', label: '邮箱', action: 'copy', value: '1454109769@qq.com' },
-  { icon: '🐱', label: 'GitHub', action: 'link', value: 'https://github.com/hjphh11' },
+  { icon: 'mail', label: '邮箱', action: 'copy', value: '1454109769@qq.com' },
+  { icon: 'github', label: 'GitHub', action: 'link', value: 'https://github.com/hjphh11' },
 ];

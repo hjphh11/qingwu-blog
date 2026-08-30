@@ -1,4 +1,6 @@
 import { useEffect, useState } from 'react';
+import { MorphIcon } from 'morphicons/react';
+import { Timer } from '../../lib/icons';
 
 // 本站运行时长:以某个上线日期为起点,实时累加。
 const LAUNCH = '2026-08-30T14:00:00+08:00';
@@ -26,7 +28,7 @@ export default function UptimeCard() {
   return (
     <div className="glass-card p-5">
       <div className="flex items-center gap-2 text-sm text-ink/70">
-        <span>⏳</span>
+        <MorphIcon icon={Timer} size={17} className="shrink-0" color="currentColor" />
         <span className="font-medium">这里陪你多久啦 ✨</span>
       </div>
       <p className="mt-2 font-display text-2xl text-crimson tabular-nums">

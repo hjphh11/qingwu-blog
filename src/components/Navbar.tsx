@@ -1,4 +1,6 @@
 import { useState } from 'react';
+import { MorphIcon } from 'morphicons/react';
+import { Menu, X } from '../lib/icons';
 import {
   motion,
   AnimatePresence,
@@ -117,23 +119,7 @@ export default function Navbar({ pathname = '/' }: Props) {
           onClick={() => setOpen((v) => !v)}
           className="relative z-10 grid h-9 w-9 place-items-center rounded-full text-ink transition-colors hover:bg-rose/15 md:hidden"
         >
-          <span className="relative block h-3.5 w-5">
-            <span
-              className={`absolute left-0 block h-0.5 w-5 rounded bg-current transition-transform duration-200 ${
-                open ? 'top-1/2 -translate-y-1/2 rotate-45' : 'top-0'
-              }`}
-            />
-            <span
-              className={`absolute left-0 top-1/2 block h-0.5 w-5 -translate-y-1/2 rounded bg-current transition-opacity duration-200 ${
-                open ? 'opacity-0' : 'opacity-100'
-              }`}
-            />
-            <span
-              className={`absolute left-0 block h-0.5 w-5 rounded bg-current transition-transform duration-200 ${
-                open ? 'top-1/2 -translate-y-1/2 -rotate-45' : 'bottom-0'
-              }`}
-            />
-          </span>
+          <MorphIcon icon={open ? X : Menu} size={20} color="currentColor" />
         </button>
       </div>
 

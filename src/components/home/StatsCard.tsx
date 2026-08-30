@@ -1,4 +1,6 @@
 import { useEffect, useState } from 'react';
+import { MorphIcon } from 'morphicons/react';
+import { ChartNoAxesColumn, Footprints, Compass, BookOpen } from '../../lib/icons';
 
 export default function StatsCard({ articleCount = 0 }: { articleCount?: number }) {
   const [visits, setVisits] = useState(0);
@@ -23,10 +25,15 @@ export default function StatsCard({ articleCount = 0 }: { articleCount?: number 
     }
   }, []);
 
-  const row = (icon: string, label: string, value: number, unit: string) => (
+  const row = (
+    Icon: typeof Footprints,
+    label: string,
+    value: number,
+    unit: string,
+  ) => (
     <div className="flex items-center justify-between border-b border-rose/15 pb-2 text-sm last:border-0 last:pb-0">
       <span className="flex items-center gap-2 text-ink/70">
-        <span>{icon}</span>
+        <MorphIcon icon={Icon} size={16} className="shrink-0" color="currentColor" />
         {label}
       </span>
       <span className="font-display text-lg text-crimson tabular-nums">
@@ -38,13 +45,13 @@ export default function StatsCard({ articleCount = 0 }: { articleCount?: number 
   return (
     <div className="glass-card p-5">
       <div className="flex items-center gap-2 text-sm text-ink/70">
-        <span>📊</span>
+        <MorphIcon icon={ChartNoAxesColumn} size={17} className="shrink-0" color="currentColor" />
         <span className="font-medium">悄悄收藏的脚印 ✨</span>
       </div>
       <div className="mt-3 space-y-2">
-        {row('👣', '留下的足迹', visits, '次')}
-        {row('🧭', '来过的旅人', visitors, '位')}
-        {row('📖', '写下的故事', articleCount, '篇')}
+        {row(Footprints, '留下的足迹', visits, '次')}
+        {row(Compass, '来过的旅人', visitors, '位')}
+        {row(BookOpen, '写下的故事', articleCount, '篇')}
       </div>
     </div>
   );

@@ -1,6 +1,8 @@
 ---
 import Layout from '../../layouts/Layout.astro';
 import ReadingProgress from '../../components/ReadingProgress.tsx';
+import MorphIcon from 'morphicons/astro';
+import { List } from '../../lib/icons';
 import { getCollection, render } from 'astro:content';
 
 export async function getStaticPaths() {
@@ -64,7 +66,7 @@ const toc = headings.filter((h) => h.depth === 2 || h.depth === 3);
     <aside class="hidden md:block">
       <nav class="sticky top-24 self-start">
         <div class="mb-3 flex items-center gap-2 text-sm font-medium text-ink/70">
-          <span>📑</span>
+          <MorphIcon icon={List} size={16} color="currentColor" />
           目录
         </div>
         <ul class="space-y-1 border-l border-rose/25 pl-4 text-sm">
