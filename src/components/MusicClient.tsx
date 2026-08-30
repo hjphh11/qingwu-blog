@@ -106,7 +106,7 @@ export default function MusicClient() {
 
       <div className="grid gap-6 md:grid-cols-[minmax(0,1fr)_minmax(0,1.15fr)]">
         {/* 左:播放控制台 */}
-        <div className="glass-card flex flex-col items-center gap-6 p-8">
+        <div className="glass-card flex h-[560px] flex-col items-center gap-4 p-6">
           {/* 旋转光盘 */}
           <div className="relative grid place-items-center">
             <div className="absolute h-72 w-72 rounded-full bg-rose/25 blur-2xl" />
@@ -192,7 +192,7 @@ export default function MusicClient() {
         </div>
 
         {/* 右:歌词 / 歌单 */}
-        <div className="glass-card flex min-h-[440px] flex-col p-6">
+        <div className="glass-card flex h-[560px] flex-col p-6">
           <div className="flex gap-2">
             {(['lrc', 'list'] as const).map((t) => (
               <button
@@ -209,11 +209,11 @@ export default function MusicClient() {
           </div>
 
           {tab === 'lrc' ? (
-            <div className="relative mt-4 flex-1">
+            <div className="relative mt-4 flex min-h-0 flex-1">
               {lrcLines.length ? (
                 <div
                   ref={lyricsRef}
-                  className="no-scrollbar h-[330px] overflow-y-auto text-center"
+                  className="no-scrollbar h-full overflow-y-auto text-center"
                 >
                   {lrcLines.map((ln, i) => (
                     <button
@@ -221,7 +221,7 @@ export default function MusicClient() {
                       type="button"
                       data-line={i}
                       onClick={() => music.handleSeek(ln.time)}
-                      className={`block w-full py-2.5 transition-all ${
+                      className={`block w-full py-2.5 text-center transition-all ${
                         i === activeLyricIndex
                           ? 'scale-105 font-display text-xl text-crimson'
                           : 'text-sm text-ink/50 hover:text-ink/80'
@@ -232,7 +232,7 @@ export default function MusicClient() {
                   ))}
                 </div>
               ) : (
-                <div className="grid h-[330px] place-items-center text-sm text-ink/40">
+                <div className="grid h-full place-items-center text-sm text-ink/40">
                   暂无歌词
                 </div>
               )}
@@ -241,7 +241,7 @@ export default function MusicClient() {
               <div className="pointer-events-none absolute inset-x-0 bottom-0 h-10 bg-gradient-to-t from-white/80 to-transparent" />
             </div>
           ) : (
-            <div className="mt-4 flex flex-1 flex-col">
+            <div className="mt-4 flex min-h-0 flex-1 flex-col">
               <input
                 type="text"
                 value={query}
