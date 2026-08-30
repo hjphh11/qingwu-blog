@@ -59,4 +59,102 @@
     -webkit-backdrop-filter: blur(16px) saturate(160%);
     box-shadow: 0 10px 30px rgba(246, 165, 184, 0.16);
   }
+
+  /* 文章正文排版(暖色、舒适) */
+  .prose {
+    color: var(--color-ink);
+    line-height: 1.85;
+    font-size: 1.05rem;
+  }
+  .prose h2,
+  .prose h3,
+  .prose h4 {
+    font-family: var(--font-display);
+    color: var(--color-ink);
+    line-height: 1.3;
+    margin: 2em 0 0.8em;
+  }
+  .prose h2 {
+    font-size: 1.6rem;
+    padding-bottom: 0.4em;
+    border-bottom: 1px solid rgba(246, 165, 184, 0.3);
+  }
+  .prose h3 {
+    font-size: 1.3rem;
+  }
+  .prose p {
+    margin: 1.1em 0;
+  }
+  .prose a {
+    color: var(--color-crimson);
+    text-decoration-line: underline;
+    text-underline-offset: 2px;
+  }
+  .prose a:hover {
+    opacity: 0.8;
+  }
+  .prose code {
+    font-family: ui-monospace, 'SFMono-Regular', Menlo, Consolas, monospace;
+    background: rgba(246, 165, 184, 0.15);
+    color: var(--color-crimson);
+    padding: 0.15em 0.4em;
+    border-radius: 6px;
+    font-size: 0.9em;
+  }
+  .prose pre {
+    background: #2b2320;
+    color: #f6f0ea;
+    padding: 1em 1.2em;
+    border-radius: 12px;
+    overflow-x: auto;
+    margin: 1.4em 0;
+    line-height: 1.6;
+  }
+  .prose pre code {
+    background: transparent;
+    color: inherit;
+    padding: 0;
+  }
+  .prose blockquote {
+    border-left: 3px solid var(--color-rose);
+    background: rgba(248, 229, 220, 0.35);
+    padding: 0.6em 1em;
+    border-radius: 0 10px 10px 0;
+    margin: 1.2em 0;
+    color: rgba(74, 55, 40, 0.85);
+  }
+  .prose ul,
+  .prose ol {
+    margin: 1em 0;
+    padding-left: 1.6em;
+  }
+  .prose li {
+    margin: 0.4em 0;
+  }
+  .prose hr {
+    border: none;
+    border-top: 1px dashed rgba(246, 165, 184, 0.4);
+    margin: 2em 0;
+  }
+  .prose table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 1.4em 0;
+    font-size: 0.95em;
+  }
+  .prose th,
+  .prose td {
+    border-bottom: 1px solid rgba(246, 165, 184, 0.3);
+    padding: 0.55em 0.8em;
+    text-align: left;
+  }
+  .prose th {
+    background: rgba(246, 165, 184, 0.12);
+    font-weight: 600;
+  }
+  .prose img {
+    border-radius: 12px;
+    margin: 1.2em auto;
+    max-width: 100%;
+  }
 }

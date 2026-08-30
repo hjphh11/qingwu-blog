@@ -1,0 +1,79 @@
+---
+import Layout from '../../layouts/Layout.astro';
+import ReadingProgress from '../../components/ReadingProgress.tsx';
+import { getCollection, render } from 'astro:content';
+
+export async function getStaticPaths() {
+  const posts = (await getCollection('blog')).filter((p) => !p.data.draft);
+  return posts.map((post) => ({
+    params: { slug: post.id },
+    props: { post },
+  }));
+}
+
+const { post } = Astro.props;
+const { Content, headings } = await render(post);
+
+const catLabel = post.data.category === 'tech' ? '技术' : '记录';
+const chars = (post.body || '').replace(/\s/g, '').length;
+const readMin = Math.max(1, Math.round(chars / 400));
+
+const toc = headings.filter((h) => h.depth === 2 || h.depth === 3);
+---
+
+<Layout title={`${post.data.title} · 清吾`}>
+  <ReadingProgress client:load />
+
+  <div class="mx-auto grid max-w-5xl gap-10 px-6 pb-20 pt-28 md:grid-cols-[1fr_240px]">
+    {/* 正文 */}
+    <article class="min-w-0">
+      <header class="mb-8">
+        <div class="flex flex-wrap items-center gap-2 text-xs text-ink/50">
+          <span class="rounded-full bg-rose/25 px-2.5 py-0.5 text-crimson">{catLabel}</span>
+          <time datetime={post.data.pubDate.toISOString()}>
+            {post.data.pubDate.toLocaleDateString('zh-CN')}
+          </time>
+          <span>· 阅读约 {readMin} 分钟</span>
+        </div>
+        <h1 class="mt-4 font-display text-3xl leading-tight text-ink md:text-4xl">
+          {post.data.title}
+        </h1>
+        <div class="mt-4 flex flex-wrap gap-2">
+          {
+            post.data.tags.map((tag) => (
+              <span class="text-xs text-amber-700/70">#{tag}</span>
+            ))
+          }
+        </div>
+      </header>
+
+      <div class="prose">
+        <Content />
+      </div>
+    </article>
+
+    {/* 右侧目录 */}
+    <aside class="hidden md:block">
+      <nav class="sticky top-24 self-start">
+        <div class="mb-3 flex items-center gap-2 text-sm font-medium text-ink/70">
+          <span>📑</span>
+          目录
+        </div>
+        <ul class="space-y-1 border-l border-rose/25 pl-4 text-sm">
+          {
+            toc.map((h) => (
+              <li class={`${h.depth === 3 ? 'pl-4' : ''}`}>
+                <a
+                  href={`#${h.slug}`}
+                  class="text-ink/60 transition-colors hover:text-crimson"
+                >
+                  {h.text}
+                </a>
+              </li>
+            ))
+          }
+        </ul>
+      </nav>
+    </aside>
+  </div>
+</Layout>
