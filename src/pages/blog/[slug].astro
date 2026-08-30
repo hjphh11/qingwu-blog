@@ -28,6 +28,13 @@ const toc = headings.filter((h) => h.depth === 2 || h.depth === 3);
     {/* 正文 */}
     <article class="min-w-0">
       <header class="mb-8">
+        <a
+          href="/blog"
+          class="mb-4 inline-flex items-center gap-1 text-sm text-ink/60 transition-colors hover:text-crimson"
+        >
+          <span aria-hidden="true">←</span>
+          返回文章列表
+        </a>
         <div class="flex flex-wrap items-center gap-2 text-xs text-ink/50">
           <span class="rounded-full bg-rose/25 px-2.5 py-0.5 text-crimson">{catLabel}</span>
           <time datetime={post.data.pubDate.toISOString()}>
