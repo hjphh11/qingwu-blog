@@ -24,11 +24,15 @@ export default function Hero() {
     const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
     const chars = Array.from(GREETING);
 
-    const loadData = (char: string, onComplete: (data: any, err?: any) => void) => {
+    const loadData = (
+      char: string,
+      onLoad: (data: any) => void,
+      onError: (err?: any) => void,
+    ) => {
       fetch(`/hanzi/${char}.json`)
         .then((r) => r.json())
-        .then((data) => onComplete(data))
-        .catch((err) => onComplete(undefined, err));
+        .then((data) => onLoad(data))
+        .catch((err) => onError(err));
     };
 
     const startNext = (index: number) => {
@@ -48,17 +52,22 @@ export default function Hero() {
         return;
       }
 
-      HanziWriter.create(cell, chars[index], {
+      const writer = HanziWriter.create(cell, chars[index], {
         width: CELL,
         height: CELL + 8,
         padding: 4,
         delayBetweenStrokes: 110,
         showCharacter: false,
+        showOutline: true,
         strokeColor: '#4a3728',
         outlineColor: 'rgba(74, 55, 40, 0.25)',
         charDataLoader: loadData,
-        onComplete: () => startNext(index + 1),
       });
+      writer
+        .animateCharacter({
+          onComplete: () => startNext(index + 1),
+        })
+        .catch(() => startNext(index + 1));
     };
 
     startNext(0);

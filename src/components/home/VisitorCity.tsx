@@ -16,9 +16,12 @@ export default function VisitorCity() {
     navigator.geolocation.getCurrentPosition(
       async (pos) => {
         const { latitude, longitude } = pos.coords;
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), 9000);
         try {
           const url = `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${latitude}&lon=${longitude}&accept-language=zh-CN`;
-          const res = await fetch(url);
+          const res = await fetch(url, { signal: controller.signal });
+          if (!res.ok) throw new Error('geocode failed');
           const data = await res.json();
           const a = data.address ?? {};
           const name =
@@ -27,10 +30,12 @@ export default function VisitorCity() {
           setStatus('granted');
         } catch {
           setStatus('unknown');
+        } finally {
+          clearTimeout(timer);
         }
       },
       () => setStatus('unknown'),
-      { timeout: 12000 },
+      { enableHighAccuracy: true, timeout: 12000, maximumAge: 60000 },
     );
   };
 
