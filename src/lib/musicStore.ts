@@ -228,6 +228,10 @@ export function initMusic() {
 
 export function subscribe(cb: Listener) {
   listeners.add(cb);
+  // 注册时立即回调一次,确保恢复出来的状态(如上次播放的歌)被界面拿到。
+  // 否则 initMusic() 里的 restore()+emit() 先于订阅发生,首屏会停留在
+  // 模块默认值(currentIndex=0,第 1 首歌),导致「切页后悬浮窗显示错歌」。
+  cb();
   return () => {
     listeners.delete(cb);
   };
