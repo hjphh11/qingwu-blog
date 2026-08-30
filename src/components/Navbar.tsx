@@ -81,7 +81,7 @@ export default function Navbar({ pathname = '/' }: Props) {
               className="h-full w-full object-cover"
             />
           </span>
-          <span className="font-hand text-xl leading-none">清吾</span>
+          <span className="font-hand text-2xl font-bold leading-none">清吾</span>
         </a>
 
         {/* 导航项 → 右侧(桌面) */}
@@ -92,7 +92,7 @@ export default function Navbar({ pathname = '/' }: Props) {
               <a
                 key={item.href}
                 href={item.href}
-                className={`relative rounded-full px-3.5 py-1.5 text-sm transition-colors duration-200 ${
+                className={`relative rounded-full px-3.5 py-1.5 text-base font-medium transition-colors duration-200 ${
                   active ? 'text-crimson' : 'text-ink/70 hover:text-crimson'
                 }`}
               >
@@ -160,9 +160,9 @@ export default function Navbar({ pathname = '/' }: Props) {
                 key={item.href}
                 href={item.href}
                 onClick={() => setOpen(false)}
-                className={`rounded-xl px-4 py-2.5 text-sm transition-colors ${
+                className={`rounded-xl px-4 py-2.5 text-base font-medium transition-colors ${
                   isActive(item.href)
-                    ? 'bg-rose/25 font-medium text-crimson'
+                    ? 'bg-rose/25 text-crimson'
                     : 'text-ink/80 hover:bg-rose/15'
                 }`}
               >
