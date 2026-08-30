@@ -22,10 +22,10 @@ interface Props {
   pathname?: string;
 }
 
-// 液态玻璃导航 · 三态:
-//  ① 首页顶部(未滚动):透明,导航项浮在 Hero 上,头像+名字属于 Hero(不在此条)
-//  ② 首页滚动过阈值:玻璃条浮现,头像+名字以胶囊融入条左侧
-//  ③ 其他页面:常驻玻璃条,头像+名字直接合并
+// 液态玻璃导航 · 左右分栏(品牌左 / 菜单右):
+//  ① 首页顶部(未滚动):透明,品牌+菜单浮在 Hero 上(无玻璃背景)
+//  ② 首页滚动过阈值:玻璃背景淡入浮现
+//  ③ 其他页面:常驻玻璃背景
 export default function Navbar({ pathname = '/' }: Props) {
   const { scrollY } = useScroll();
   const reduce = useReducedMotion();
@@ -48,11 +48,11 @@ export default function Navbar({ pathname = '/' }: Props) {
   return (
     <motion.header
       initial={false}
-      animate={{ y: glass ? 0 : -6 }}
+      animate={{ y: glass ? 0 : -4 }}
       transition={{ duration: dur, ease: 'easeOut' }}
       className="fixed inset-x-0 top-0 z-50 flex justify-center px-4 pt-4"
     >
-      <div className="relative flex w-full max-w-4xl items-center justify-center py-2">
+      <div className="relative flex w-full max-w-4xl items-center justify-between gap-4 py-2 pl-4 pr-3">
         {/* 液态玻璃背景层:透明 → 玻璃的淡入 */}
         <motion.div
           aria-hidden="true"
@@ -70,34 +70,22 @@ export default function Navbar({ pathname = '/' }: Props) {
           }}
         />
 
-        {/* 头像 + 名字(小胶囊):仅玻璃态出现,融入条左侧 */}
-        <AnimatePresence>
-          {glass && (
-            <motion.a
-              key="brand"
-              href="/"
-              initial={{ opacity: 0, x: -14 }}
-              animate={{ opacity: 1, x: 0 }}
-              exit={{ opacity: 0, x: -14 }}
-              transition={{ duration: dur, ease: 'easeOut' }}
-              className="absolute left-3 flex items-center gap-2 text-ink"
-            >
-              <span className="grid h-8 w-8 place-items-center overflow-hidden rounded-full ring-2 ring-white/70">
-                <img
-                  src="/images/emis/avatar.png"
-                  alt="爱弥斯头像"
-                  width={32}
-                  height={32}
-                  className="h-full w-full object-cover"
-                />
-              </span>
-              <span className="font-hand text-xl leading-none">清吾</span>
-            </motion.a>
-          )}
-        </AnimatePresence>
+        {/* 品牌(头像 + 名字)→ 左侧,始终显示 */}
+        <a className="relative z-10 flex items-center gap-2 text-ink" href="/">
+          <span className="grid h-8 w-8 place-items-center overflow-hidden rounded-full ring-2 ring-white/70">
+            <img
+              src="/images/emis/avatar.png"
+              alt="爱弥斯头像"
+              width={32}
+              height={32}
+              className="h-full w-full object-cover"
+            />
+          </span>
+          <span className="font-hand text-xl leading-none">清吾</span>
+        </a>
 
-        {/* 桌面端导航(居中) */}
-        <nav className="hidden items-center gap-1 md:flex">
+        {/* 导航项 → 右侧(桌面) */}
+        <nav className="relative z-10 hidden items-center gap-1 md:flex">
           {NAV_ITEMS.map((item) => {
             const active = isActive(item.href);
             return (
@@ -121,13 +109,13 @@ export default function Navbar({ pathname = '/' }: Props) {
           })}
         </nav>
 
-        {/* 移动端折叠按钮 */}
+        {/* 移动端折叠按钮 → 右侧(移动) */}
         <button
           type="button"
           aria-label="打开菜单"
           aria-expanded={open}
           onClick={() => setOpen((v) => !v)}
-          className="absolute right-3 grid h-9 w-9 place-items-center rounded-full text-ink transition-colors hover:bg-rose/15 md:hidden"
+          className="relative z-10 grid h-9 w-9 place-items-center rounded-full text-ink transition-colors hover:bg-rose/15 md:hidden"
         >
           <span className="relative block h-3.5 w-5">
             <span
