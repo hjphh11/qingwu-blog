@@ -1,14 +1,19 @@
 ---
-// 骨架布局:只搭外层。完整导航/页脚/装饰在阶段 1 再加。
 import '@fontsource/ma-shan-zheng';
 import '@fontsource/zcool-xiaowei';
 import '../styles/global.css';
+
+import Navbar from '../components/Navbar.tsx';
+import Footer from '../components/Footer.astro';
+import BackgroundDecor from '../components/BackgroundDecor.tsx';
+import MiniPlayer from '../components/MiniPlayer.tsx';
 
 interface Props {
   title?: string;
 }
 
 const { title = '清吾 · qingwu.ink' } = Astro.props;
+const pathname = Astro.url.pathname;
 ---
 
 <!doctype html>
@@ -21,6 +26,12 @@ const { title = '清吾 · qingwu.ink' } = Astro.props;
     <title>{title}</title>
   </head>
   <body>
+    <Navbar pathname={pathname} client:load />
+    <BackgroundDecor client:only="react" />
+    <MiniPlayer client:only="react" />
+
     <slot />
+
+    <Footer />
   </body>
 </html>

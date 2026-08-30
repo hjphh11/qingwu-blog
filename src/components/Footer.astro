@@ -1,0 +1,31 @@
+---
+const year = new Date().getFullYear();
+---
+
+<footer class="mt-24 border-t border-rose/25 bg-cream/70 py-10">
+  <div class="mx-auto flex max-w-4xl flex-col items-center gap-5 px-6 text-center">
+    <p class="font-hand text-2xl text-crimson">欢迎来到清吾的小屋</p>
+
+    <div class="flex flex-wrap items-center justify-center gap-x-6 gap-y-2 text-sm text-ink/70">
+      <a href="/about" class="transition-colors hover:text-crimson">关于</a>
+      <a href="/links" class="transition-colors hover:text-crimson">友链</a>
+      <a href="/share" class="transition-colors hover:text-crimson">分享</a>
+      <a href="/blog" class="transition-colors hover:text-crimson">文章</a>
+      <span class="hidden h-1 w-1 rounded-full bg-rose/40 sm:block" />
+      <a href="#" class="transition-colors hover:text-crimson">GitHub</a>
+      <a href="#" class="transition-colors hover:text-crimson">邮箱</a>
+    </div>
+
+    <p class="text-xs text-ink/50">
+      © {year} 清吾 · 由
+      <a
+        href="https://astro.build/"
+        target="_blank"
+        rel="noreferrer"
+        class="text-crimson/70 underline-offset-2 hover:underline"
+        >Astro</a
+      >
+      构建 · 备案占位
+    </p>
+  </div>
+</footer>
