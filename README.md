@@ -27,7 +27,12 @@ npm run check    # 类型检查
 ```
 
 ## 📦 部署
-见 [`部署说明.md`](./部署说明.md)：推到 GitHub → 导入 Vercel（Build `npm run build`、Output `dist`）→ 绑定 `qingwu.ink`。
+推送到 GitHub 的 `main` 分支 → Vercel 通过 GitHub 集成自动构建并上线：
+- Build：`npm run build`（静态输出到 `dist/`）
+- Output：`dist`
+- 绑定域名：`qingwu.ink` / `www.qingwu.ink`
+
+> 部署的更多细节与备注，保存在**本地** `docs/部署说明.md`，不随仓库公开。
 
 ## 📝 内容
 - 文章：`src/content/blog/*.md`
