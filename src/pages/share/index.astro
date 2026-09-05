@@ -59,7 +59,7 @@ const filters = [
             /* 语录:3D 翻转卡(借鉴 MotionVault FlipCard,MIT,暖色)。正面=语录,背面=作者+一句标注 */
             <div
               data-type="quote"
-              class="flip-card h-[210px]"
+              class="flip-card h-[210px] cursor-pointer select-none"
             >
               <div class="flip-inner glass-card h-full w-full border-l-4 border-rose/40">
                 <div class="flip-face flex flex-col p-6">
@@ -96,12 +96,10 @@ const filters = [
     });
   });
 
-  // 触屏无 hover:点击翻转语录卡
-  if (window.matchMedia('(hover: none)').matches) {
-    document
-      .querySelectorAll<HTMLElement>('.flip-card[data-type="quote"]')
-      .forEach((card) => {
-        card.addEventListener('click', () => card.classList.toggle('is-flipped'));
-      });
-  }
+  // 点击切换翻转(桌面 + 触屏统一)
+  document
+    .querySelectorAll<HTMLElement>('.flip-card[data-type="quote"]')
+    .forEach((card) => {
+      card.addEventListener('click', () => card.classList.toggle('is-flipped'));
+    });
 </script>
