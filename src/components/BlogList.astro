@@ -1,0 +1,149 @@
+---
+import MorphIcon from 'morphicons/astro';
+import { Sparkles, Flower2 } from '../lib/icons';
+
+interface Props {
+  posts: any[];
+  currentPage: number;
+  lastPage: number;
+}
+const { posts, currentPage, lastPage } = Astro.props;
+
+const catLabel = (cat: string) => (cat === 'tech' ? '技术' : '记录');
+const filters = [
+  { key: 'all', label: '全部' },
+  { key: 'tech', label: '技术' },
+  { key: 'life', label: '记录' },
+];
+const pageHref = (n: number) => (n === 1 ? '/blog' : `/blog/page/${n}/`);
+const pages = Array.from({ length: lastPage }, (_, i) => i + 1);
+const prevHref = currentPage > 1 ? pageHref(currentPage - 1) : null;
+const nextHref = currentPage < lastPage ? pageHref(currentPage + 1) : null;
+---
+
+<header class="mb-8 reveal">
+  <h1 class="flex items-center gap-3 font-display text-3xl text-ink">
+    <span class="h-6 w-1.5 rounded-full bg-crimson"></span>
+    文章
+  </h1>
+  <p class="mt-2 text-sm text-ink/60">写下的故事，都收在这里 ~</p>
+</header>
+
+<div class="mb-8 flex gap-2" id="post-filters">
+  {
+    filters.map((f) => (
+      <button
+        type="button"
+        data-filter={f.key}
+        class="btn-ripple rounded-full border border-rose/25 bg-white/50 px-4 py-1.5 text-sm text-ink/70 transition-all hover:border-rose/50 hover:text-crimson hover:shadow-[0_6px_18px_rgba(246,165,184,0.28)] active:scale-95"
+      >
+        {f.label}
+      </button>
+    ))
+  }
+</div>
+
+{
+  posts.length > 0 ? (
+    <div id="post-list" class="reveal flex flex-col gap-6">
+      {posts.map((post) => (
+        <a
+          href={`/blog/${post.id}`}
+          data-category={post.data.category}
+          class="glass-card card-spotlight relative block p-6 transition-all hover:-translate-y-1"
+        >
+          <span class="absolute right-4 top-4" aria-hidden="true">
+            <MorphIcon
+              icon={post.data.category === 'tech' ? Sparkles : Flower2}
+              size={18}
+              color="currentColor"
+            />
+          </span>
+          <div class="flex items-center gap-2 text-xs text-ink/50">
+            <span class="rounded-full bg-rose/25 px-2.5 py-0.5 text-crimson">
+              {catLabel(post.data.category)}
+            </span>
+            <time datetime={post.data.pubDate.toISOString()}>
+              {post.data.pubDate.toLocaleDateString('zh-CN')}
+            </time>
+          </div>
+          <h2 class="mt-3 font-display text-xl text-ink">{post.data.title}</h2>
+          <p class="mt-2 line-clamp-2 text-sm text-ink/60">{post.data.description}</p>
+          <div class="mt-4 flex flex-wrap gap-x-3 gap-y-1 text-xs">
+            {post.data.tags.map((tag: string) => <span class="text-ink/50">#{tag}</span>)}
+          </div>
+        </a>
+      ))}
+    </div>
+  ) : (
+    <div class="glass-card grid place-items-center p-12 text-center">
+      <p class="font-hand text-2xl text-crimson">这里还很空 ~</p>
+    </div>
+  )
+}
+
+<nav aria-label="分页" class="mt-12 flex items-center justify-center gap-2">
+  {
+    prevHref ? (
+      <a
+        href={prevHref}
+        class="rounded-full border border-rose/25 bg-white/50 px-4 py-1.5 text-sm text-ink/70 transition-colors hover:border-rose/50 hover:text-crimson"
+      >
+        上一页
+      </a>
+    ) : (
+      <span class="rounded-full border border-rose/25 bg-white/30 px-4 py-1.5 text-sm text-ink/40">
+        上一页
+      </span>
+    )
+  }
+  {
+    pages.map((n) => (
+      <a
+        href={pageHref(n)}
+        class={`rounded-full px-3.5 py-1.5 text-sm transition-colors ${
+          n === currentPage
+            ? 'bg-rose/70 text-ink'
+            : 'text-ink/60 hover:text-crimson'
+        }`}
+      >
+        {n}
+      </a>
+    ))
+  }
+  {
+    nextHref ? (
+      <a
+        href={nextHref}
+        class="rounded-full border border-rose/25 bg-white/50 px-4 py-1.5 text-sm text-ink/70 transition-colors hover:border-rose/50 hover:text-crimson"
+      >
+        下一页
+      </a>
+    ) : (
+      <span class="rounded-full border border-rose/25 bg-white/30 px-4 py-1.5 text-sm text-ink/40">
+        下一页
+      </span>
+    )
+  }
+</nav>
+
+<script>
+  const list = document.getElementById('post-list');
+  const buttons = Array.from(document.querySelectorAll('#post-filters button'));
+
+  buttons.forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const key = btn.getAttribute('data-filter');
+      buttons.forEach((b) => {
+        b.classList.remove('bg-rose/70', 'text-ink');
+      });
+      btn.classList.add('bg-rose/70', 'text-ink');
+
+      if (!list) return;
+      list.querySelectorAll<HTMLElement>('[data-category]').forEach((card) => {
+        const cat = card.getAttribute('data-category');
+        card.style.display = key === 'all' || cat === key ? '' : 'none';
+      });
+    });
+  });
+</script>
