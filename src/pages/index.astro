@@ -30,7 +30,7 @@ const posts = (await getCollection('blog'))
           posts.map((post) => (
             <a
               href={`/blog/${post.id}`}
-              class="glass-card relative block p-6 transition-all hover:-translate-y-1 hover:shadow-xl"
+              class="glass-card card-spotlight relative block p-6 transition-all hover:-translate-y-1"
             >
               <span class="absolute right-4 top-4" aria-hidden="true">
                 <MorphIcon

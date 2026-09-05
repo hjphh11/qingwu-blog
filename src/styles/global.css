@@ -206,11 +206,52 @@
   .no-scrollbar::-webkit-scrollbar {
     display: none;
   }
+
+  /* 卡片聚光(借鉴 MotionVault「SpotlightCard」思路,MIT,按爱弥斯暖色重写)
+     ::before 用 z-index:-1 + 卡片自身建立 stacking context( z-index:0 ),
+     使聚光层位于玻璃背景之上、内容文字之下 —— 文字仍清晰可读。
+     --mx / --my 由全局脚本按指针位置写入(单位为 px)。 */
+  .card-spotlight {
+    position: relative;
+    z-index: 0;
+    overflow: hidden;
+  }
+  .card-spotlight::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    opacity: 0;
+    pointer-events: none;
+    border-radius: inherit;
+    transition: opacity 0.5s var(--ease-soft);
+    background: radial-gradient(
+      280px circle at var(--mx, 50%) var(--my, 50%),
+      rgba(246, 165, 184, 0.3),
+      transparent 72%
+    );
+  }
+  .card-spotlight:hover::before {
+    opacity: 1;
+  }
+  /* 悬停时:上浮 + 暖色边缘发光 */
+  .glass-card.card-spotlight:hover {
+    border-color: rgba(246, 165, 184, 0.55);
+    box-shadow: 0 16px 40px rgba(246, 165, 184, 0.22);
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
   .disc,
   .wave-bar {
     animation: none !important;
+  }
+
+  /* 降级:聚光不做淡入淡出,关闭 */
+  .card-spotlight::before {
+    transition: none;
+  }
+  .card-spotlight:hover::before {
+    opacity: 0;
   }
 }

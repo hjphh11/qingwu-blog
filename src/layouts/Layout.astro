@@ -57,5 +57,25 @@ const url = SITE.url.replace(/\/$/, '') + pathname;
     <slot />
 
     <Footer />
+
+    {/* 卡片聚光:全局指针追踪,把 --mx/--my(px) 写到聚光卡片,驱动 .card-spotlight 的径向光斑 */}
+    <script is:inline>
+      if (!window.__qCardSpotlight) {
+        window.__qCardSpotlight = true;
+        document.addEventListener(
+          'pointermove',
+          function onMove(e) {
+            const t = e.target;
+            if (!(t instanceof Element)) return;
+            const el = t.closest('.card-spotlight');
+            if (!el) return;
+            const r = el.getBoundingClientRect();
+            el.style.setProperty('--mx', (e.clientX - r.left).toFixed(1) + 'px');
+            el.style.setProperty('--my', (e.clientY - r.top).toFixed(1) + 'px');
+          },
+          { passive: true },
+        );
+      }
+    </script>
   </body>
 </html>
