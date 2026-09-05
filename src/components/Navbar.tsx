@@ -39,6 +39,7 @@ export default function Navbar({ pathname = '/' }: Props) {
   const reduce = useReducedMotion();
   const [scrolled, setScrolled] = useState(false);
   const [open, setOpen] = useState(false);
+  const [settled, setSettled] = useState(false);
 
   const itemRefs = useRef<(HTMLAnchorElement | null)[]>([]);
 
@@ -75,19 +76,22 @@ export default function Navbar({ pathname = '/' }: Props) {
     targetW.set(el.offsetWidth);
   }, [activeIdx, targetX, targetW]);
 
-  const mounted = useRef(false);
   useLayoutEffect(() => {
     measure();
-    // 初次挂载直接吸附到激活项:保证白色激活文字始终压在玫瑰→绯红块上,避免入口闪白。
-    // 之后激活项变化(同会话内)再走弹簧做 gooey 滑动。
-    if (!mounted.current) {
-      mounted.current = true;
-      x.jump(targetX.get());
-      w.jump(targetW.get());
-      tailX.jump(targetX.get());
-    }
+    // 不吸附:让指示块在挂载时从左 gooey 滑到激活项;激活项变化(同会话内)同样走弹簧滑动。
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [measure]);
+
+  // 指示块滑入到位后,再把激活文字反白,避免入场时白字悬在奶油底上
+  useEffect(() => {
+    setSettled(false);
+    if (reduce) {
+      setSettled(true);
+      return;
+    }
+    const t = window.setTimeout(() => setSettled(true), 650);
+    return () => window.clearTimeout(t);
+  }, [activeIdx, reduce]);
 
   useEffect(() => {
     const onResize = () => measure();
@@ -179,7 +183,11 @@ export default function Navbar({ pathname = '/' }: Props) {
                   itemRefs.current[i] = el;
                 }}
                 className={`relative z-10 block rounded-full px-3.5 py-1.5 text-base font-medium transition-colors duration-200 active:scale-95 ${
-                  active ? 'text-white' : 'text-ink/70 hover:text-crimson'
+                  active
+                    ? settled
+                      ? 'text-white'
+                      : 'text-crimson'
+                    : 'text-ink/70 hover:text-crimson'
                 }`}
               >
                 {item.label}
