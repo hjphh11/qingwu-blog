@@ -65,10 +65,12 @@ const toc = headings.filter((h) => h.depth === 2 || h.depth === 3);
         <Content />
       </div>
 
-      {/* 联系我们 · 分享展开按钮 */}
+      {/* 分享 · 展开按钮 */}
       <div class="mt-10 flex justify-center">
         <ContactExpand
           client:load
+          variant="share"
+          label="分享"
           url={`${SITE.url}/blog/${post.id}`}
           title={post.data.title}
           email={SITE.email}
