@@ -173,6 +173,19 @@
     animation-play-state: running;
   }
 
+  /* 唱盘周围环形旋转文字(借鉴 MotionVault「环形旋转文字」,MIT,按爱弥斯暖色)
+     transform-box:view-box 使旋转围绕 viewBox 中心(即圆环圆心);播放旋转、暂停即停。 */
+  .disc-ring {
+    display: block;
+    animation: disc-spin 24s linear infinite;
+    animation-play-state: paused;
+    transform-box: view-box;
+    transform-origin: center;
+  }
+  .disc-ring.playing {
+    animation-play-state: running;
+  }
+
   /* 播放波纹 */
   @keyframes wave {
     0%,
@@ -349,7 +362,8 @@
 
 @media (prefers-reduced-motion: reduce) {
   .disc,
-  .wave-bar {
+  .wave-bar,
+  .disc-ring {
     animation: none !important;
   }
 

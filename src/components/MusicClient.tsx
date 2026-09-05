@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { motion } from 'motion/react';
 import { MorphIcon } from 'morphicons/react';
 import { SkipBack, Play, Pause, SkipForward, Volume2, VolumeX, Repeat, Repeat1, Shuffle } from '../lib/icons';
 import { initMusic, subscribe, getMusicState, music } from '../lib/musicStore';
@@ -107,9 +108,34 @@ export default function MusicClient() {
       <div className="grid gap-6 md:grid-cols-[minmax(0,1fr)_minmax(0,1.15fr)]">
         {/* 左:播放控制台 */}
         <div className="glass-card flex h-[560px] flex-col items-center gap-4 p-6">
-          {/* 旋转光盘 */}
+          {/* 旋转光盘 + 环形文字 */}
           <div className="relative grid place-items-center">
             <div className="absolute h-72 w-72 rounded-full bg-rose/25 blur-2xl" />
+            {/* 环形旋转文字(借鉴 MotionVault CircularText,MIT,按爱弥斯暖色) */}
+            <div className="pointer-events-none absolute inset-0 grid place-items-center" aria-hidden="true">
+              <svg viewBox="0 0 320 320" className={`disc-ring h-[320px] w-[320px] ${isPlaying ? 'playing' : ''}`}>
+                <defs>
+                  <path
+                    id="music-ring-path"
+                    d="M 160,160 m -140,0 a 140,140 0 1,1 280,0 a 140,140 0 1,1 -280,0"
+                    fill="none"
+                  />
+                </defs>
+                <text
+                  style={{
+                    fontSize: 13,
+                    letterSpacing: '0.34em',
+                    fontWeight: 600,
+                    fill: 'var(--color-crimson)',
+                    fontFamily: 'var(--font-body)',
+                  }}
+                >
+                  <textPath href="#music-ring-path">
+                    清吾音乐馆 · QINGWU MUSIC · 清吾音乐馆 · QINGWU MUSIC · 清吾音乐馆 · QINGWU MUSIC · 清吾音乐馆 ·
+                  </textPath>
+                </text>
+              </svg>
+            </div>
             <img
               src={currentSong?.cover ?? '/music/covers/cover-1.svg'}
               alt={currentSong?.title ?? '封面'}
@@ -123,7 +149,16 @@ export default function MusicClient() {
           </div>
 
           <div className="text-center">
-            <p className="font-display text-2xl text-ink">{currentSong?.title ?? '未选择歌曲'}</p>
+            {/* 歌名:切歌时柔和模糊浮现(借鉴 MotionVault blur-fade-in,MIT) */}
+            <motion.p
+              key={currentSong?.title ?? 'empty'}
+              initial={{ opacity: 0, y: 8, filter: 'blur(6px)' }}
+              animate={{ opacity: 1, y: 0, filter: 'blur(0px)' }}
+              transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
+              className="font-display text-2xl text-ink"
+            >
+              {currentSong?.title ?? '未选择歌曲'}
+            </motion.p>
             <p className="mt-1 text-sm text-ink/50">{currentSong?.artist ?? ''}</p>
           </div>
 
