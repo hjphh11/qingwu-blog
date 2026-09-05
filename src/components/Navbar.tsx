@@ -9,8 +9,6 @@ import {
   useReducedMotion,
   useMotionValue,
   useSpring,
-  useVelocity,
-  useTransform,
 } from 'motion/react';
 
 type NavItem = { label: string; href: string };
@@ -32,14 +30,12 @@ interface Props {
 //  ① 首页顶部(未滚动):透明,品牌+菜单浮在 Hero 上(无玻璃背景)
 //  ② 首页滚动过阈值:玻璃背景淡入浮现
 //  ③ 其他页面:常驻玻璃背景
-// 桌面导航项用「gooey 融合导航」(借鉴 MotionVault gooey-nav,MIT,暖色重写):
-//   激活项 = 玫瑰→绯红渐变实心块,黏糊糊滑动,移动时被速度拉伸、拖一条可融合的小尾巴,激活文字反白。
+// 桌面导航:激活项 = 「透明玻璃胶囊」,随弹簧滑动到当前页(借鉴 MotionVault 导航弹簧滑动思路,按爱弥斯暖色)。
 export default function Navbar({ pathname = '/' }: Props) {
   const { scrollY } = useScroll();
   const reduce = useReducedMotion();
   const [scrolled, setScrolled] = useState(false);
   const [open, setOpen] = useState(false);
-  const [settled, setSettled] = useState(false);
 
   const itemRefs = useRef<(HTMLAnchorElement | null)[]>([]);
 
@@ -57,17 +53,12 @@ export default function Navbar({ pathname = '/' }: Props) {
 
   const dur = reduce ? 0 : 0.32;
 
-  // —— gooey 融合导航(桌面):测量激活项位置,指示块用弹簧滑动 + 速度拉伸 + 拖尾 ——
+  // —— 导航指示块:测量激活项位置,透明玻璃胶囊弹簧滑动过去 ——
   const springCfg = reduce ? { stiffness: 900, damping: 80 } : { stiffness: 300, damping: 24 };
-  const lazyCfg = reduce ? { stiffness: 600, damping: 70 } : { stiffness: 90, damping: 14 };
   const targetX = useMotionValue(0);
   const targetW = useMotionValue(0);
   const x = useSpring(targetX, springCfg);
   const w = useSpring(targetW, springCfg);
-  const tailX = useSpring(targetX, lazyCfg);
-  const vx = useVelocity(x);
-  const scaleX = useTransform(vx, (v) => 1 + Math.min(Math.abs(v) / 900, 0.55));
-  const tailScaleY = useTransform(vx, (v) => Math.max(0.35, 1 - Math.abs(v) / 2200));
 
   const measure = useCallback(() => {
     const el = itemRefs.current[activeIdx];
@@ -78,20 +69,9 @@ export default function Navbar({ pathname = '/' }: Props) {
 
   useLayoutEffect(() => {
     measure();
-    // 不吸附:让指示块在挂载时从左 gooey 滑到激活项;激活项变化(同会话内)同样走弹簧滑动。
+    // 不吸附:指示块在挂载时从左滑到激活项;激活项变化(同会话内)同样走弹簧滑动
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [measure]);
-
-  // 指示块滑入到位后,再把激活文字反白,避免入场时白字悬在奶油底上
-  useEffect(() => {
-    setSettled(false);
-    if (reduce) {
-      setSettled(true);
-      return;
-    }
-    const t = window.setTimeout(() => setSettled(true), 650);
-    return () => window.clearTimeout(t);
-  }, [activeIdx, reduce]);
 
   useEffect(() => {
     const onResize = () => measure();
@@ -138,38 +118,14 @@ export default function Navbar({ pathname = '/' }: Props) {
           <span className="font-hand text-2xl font-bold leading-none">清吾</span>
         </a>
 
-        {/* 导航项 → 右侧(桌面) · gooey 融合导航 */}
+        {/* 导航项 → 右侧(桌面) · 透明玻璃胶囊滑动指示 */}
         <nav className="relative z-10 hidden items-center gap-1 md:flex">
-          {/* SVG gooey 滤镜定义 */}
-          <svg className="absolute h-0 w-0 overflow-hidden" aria-hidden="true">
-            <defs>
-              <filter id="gooeyNav">
-                <feGaussianBlur in="SourceGraphic" stdDeviation="5" result="blur" />
-                <feColorMatrix
-                  in="blur"
-                  mode="matrix"
-                  values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 19 -8"
-                  result="gooey"
-                />
-                <feComposite in="SourceGraphic" in2="gooey" operator="atop" />
-              </filter>
-            </defs>
-          </svg>
-
-          {/* gooey 指示层(叠在菜单项之后) */}
+          {/* 指示层:透明玻璃胶囊(叠在菜单项之后),随弹簧滑动到当前页 */}
           <div className="pointer-events-none absolute inset-0" aria-hidden="true">
-            <div className="h-full w-full" style={{ filter: 'url(#gooeyNav)' }}>
-              {/* 主指示块:弹簧滑动 + 速度拉伸 */}
-              <motion.div
-                className="absolute top-0 h-full rounded-full bg-gradient-to-r from-rose to-crimson"
-                style={{ left: x, width: w, scaleX }}
-              />
-              {/* 拖尾小球:滞后融合,速度越高越扁 */}
-              <motion.div
-                className="absolute top-0 h-full rounded-full bg-gradient-to-r from-rose to-crimson"
-                style={{ left: tailX, width: 22, scaleY: tailScaleY }}
-              />
-            </div>
+            <motion.div
+              className="absolute top-0 h-full rounded-full border border-white/50 bg-rose/25 backdrop-blur-sm"
+              style={{ left: x, width: w }}
+            />
           </div>
 
           {/* 菜单项 */}
@@ -183,11 +139,7 @@ export default function Navbar({ pathname = '/' }: Props) {
                   itemRefs.current[i] = el;
                 }}
                 className={`relative z-10 block rounded-full px-3.5 py-1.5 text-base font-medium transition-colors duration-200 active:scale-95 ${
-                  active
-                    ? settled
-                      ? 'text-white'
-                      : 'text-crimson'
-                    : 'text-ink/70 hover:text-crimson'
+                  active ? 'text-crimson' : 'text-ink/70 hover:text-crimson'
                 }`}
               >
                 {item.label}
