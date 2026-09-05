@@ -30,4 +30,28 @@ export const shares: ShareItem[] = [
     text: '去爱、去创造、去成为自己。',
     author: '某刻的摘录',
   },
+  {
+    type: 'quote',
+    id: 'q-3',
+    text: '慢一点也没关系，只要一直在往前走。',
+    author: '清吾手记',
+  },
+  {
+    type: 'quote',
+    id: 'q-4',
+    text: '愿你的每一次努力，都藏着一个更喜欢的自己。',
+    author: '某刻的摘录',
+  },
+  {
+    type: 'quote',
+    id: 'q-5',
+    text: '把平凡的日子，过成属于自己的诗。',
+    author: '清吾手记',
+  },
+  {
+    type: 'quote',
+    id: 'q-6',
+    text: '真正的温柔，是不打扰，也一直在。',
+    author: '某刻的摘录',
+  },
 ];
