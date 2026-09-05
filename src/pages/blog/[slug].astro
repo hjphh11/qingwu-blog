@@ -1,9 +1,11 @@
 ---
 import Layout from '../../layouts/Layout.astro';
 import ReadingProgress from '../../components/ReadingProgress.tsx';
+import ContactExpand from '../../components/ContactExpand.tsx';
 import MorphIcon from 'morphicons/astro';
 import { List, ArrowLeft } from '../../lib/icons';
 import { getCollection, render } from 'astro:content';
+import { SITE } from '../../config';
 
 export async function getStaticPaths() {
   const posts = (await getCollection('blog')).filter((p) => !p.data.draft);
@@ -61,6 +63,16 @@ const toc = headings.filter((h) => h.depth === 2 || h.depth === 3);
 
       <div class="prose">
         <Content />
+      </div>
+
+      {/* 联系我们 · 分享展开按钮 */}
+      <div class="mt-10 flex justify-center">
+        <ContactExpand
+          client:load
+          url={`${SITE.url}/blog/${post.id}`}
+          title={post.data.title}
+          email={SITE.email}
+        />
       </div>
     </article>
 
