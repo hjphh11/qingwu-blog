@@ -174,12 +174,11 @@
   }
 
   /* 唱盘周围环形旋转文字(借鉴 MotionVault「环形旋转文字」,MIT,按爱弥斯暖色)
-     transform-box:view-box 使旋转围绕 viewBox 中心(即圆环圆心);播放旋转、暂停即停。 */
+     旋转作用于包裹 SVG 的 div(transform-origin:center = 自身中心),居中用外层 grid;
+     这样文字环严格绕唱盘圆心旋转,播放转、暂停即停。 */
   .disc-ring {
-    display: block;
     animation: disc-spin 24s linear infinite;
     animation-play-state: paused;
-    transform-box: view-box;
     transform-origin: center;
   }
   .disc-ring.playing {

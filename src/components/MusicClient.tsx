@@ -111,30 +111,33 @@ export default function MusicClient() {
           {/* 旋转光盘 + 环形文字 */}
           <div className="relative grid place-items-center">
             <div className="absolute h-72 w-72 rounded-full bg-rose/25 blur-2xl" />
-            {/* 环形旋转文字(借鉴 MotionVault CircularText,MIT,按爱弥斯暖色) */}
+            {/* 环形旋转文字(借鉴 MotionVault CircularText,MIT,按爱弥斯暖色)
+               外层 grid 负责居中、内层 .disc-ring 负责旋转,两者分离保证绕唱盘圆心转 */}
             <div className="pointer-events-none absolute inset-0 grid place-items-center" aria-hidden="true">
-              <svg viewBox="0 0 320 320" className={`disc-ring h-[320px] w-[320px] ${isPlaying ? 'playing' : ''}`}>
-                <defs>
-                  <path
-                    id="music-ring-path"
-                    d="M 160,160 m -140,0 a 140,140 0 1,1 280,0 a 140,140 0 1,1 -280,0"
-                    fill="none"
-                  />
-                </defs>
-                <text
-                  style={{
-                    fontSize: 13,
-                    letterSpacing: '0.34em',
-                    fontWeight: 600,
-                    fill: 'var(--color-crimson)',
-                    fontFamily: 'var(--font-body)',
-                  }}
-                >
-                  <textPath href="#music-ring-path">
-                    清吾音乐馆 · QINGWU MUSIC · 清吾音乐馆 · QINGWU MUSIC · 清吾音乐馆 · QINGWU MUSIC · 清吾音乐馆 ·
-                  </textPath>
-                </text>
-              </svg>
+              <div className={`disc-ring ${isPlaying ? 'playing' : ''}`}>
+                <svg viewBox="0 0 320 320" className="h-[320px] w-[320px]">
+                  <defs>
+                    <path
+                      id="music-ring-path"
+                      d="M 160,160 m -140,0 a 140,140 0 1,1 280,0 a 140,140 0 1,1 -280,0"
+                      fill="none"
+                    />
+                  </defs>
+                  <text
+                    style={{
+                      fontSize: 13,
+                      letterSpacing: '0.34em',
+                      fontWeight: 600,
+                      fill: 'var(--color-crimson)',
+                      fontFamily: 'var(--font-body)',
+                    }}
+                  >
+                    <textPath href="#music-ring-path">
+                      清吾音乐馆 · QINGWU MUSIC · 清吾音乐馆 · QINGWU MUSIC · 清吾音乐馆 · QINGWU MUSIC · 清吾音乐馆 ·
+                    </textPath>
+                  </text>
+                </svg>
+              </div>
             </div>
             <img
               src={currentSong?.cover ?? '/music/covers/cover-1.svg'}
