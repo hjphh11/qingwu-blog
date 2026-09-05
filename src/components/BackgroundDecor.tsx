@@ -145,11 +145,16 @@ export default function BackgroundDecor() {
     };
   }, []);
 
+  // 暖色氛围光斑衬在樱花/星光之下,由 global.css 的 .aurora-blob 驱动。
   return (
-    <canvas
-      ref={canvasRef}
-      aria-hidden="true"
-      className="pointer-events-none fixed inset-0 -z-10 h-full w-full"
-    />
+    <div aria-hidden="true" className="pointer-events-none fixed inset-0 -z-10 overflow-hidden">
+      <div className="aurora-blob blob-1" />
+      <div className="aurora-blob blob-2" />
+      <div className="aurora-blob blob-3" />
+      <canvas
+        ref={canvasRef}
+        className="absolute inset-0 h-full w-full"
+      />
+    </div>
   );
 }

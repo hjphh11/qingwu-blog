@@ -260,6 +260,77 @@
       opacity: 0;
     }
   }
+
+  /* 暖色氛围光斑(借鉴 MotionVault 背景渐变光斑思路,MIT,按爱弥斯暖色)
+     三团大而柔的渐变光缓慢漂浮融合,营造温馨氛围;仅 transform/scale,
+     GPU 合成,无逐帧重绘。放在樱花/星光之后,支持 prefers-reduced-motion。 */
+  .aurora-blob {
+    position: absolute;
+    aspect-ratio: 1;
+    border-radius: 50%;
+    pointer-events: none;
+    will-change: transform;
+  }
+  .blob-1 {
+    width: 62vmax;
+    top: -20vmax;
+    left: -18vmax;
+    background: radial-gradient(
+      circle,
+      rgba(246, 165, 184, 0.48) 0%,
+      rgba(246, 165, 184, 0.15) 44%,
+      transparent 68%
+    );
+    animation: aurora-a 28s ease-in-out infinite alternate;
+  }
+  .blob-2 {
+    width: 54vmax;
+    top: -10vmax;
+    right: -18vmax;
+    background: radial-gradient(
+      circle,
+      rgba(232, 176, 75, 0.4) 0%,
+      rgba(232, 176, 75, 0.13) 44%,
+      transparent 68%
+    );
+    animation: aurora-b 34s ease-in-out infinite alternate;
+  }
+  .blob-3 {
+    width: 58vmax;
+    bottom: -22vmax;
+    left: 14vmax;
+    background: radial-gradient(
+      circle,
+      rgba(224, 82, 107, 0.34) 0%,
+      rgba(224, 82, 107, 0.12) 46%,
+      transparent 70%
+    );
+    animation: aurora-c 40s ease-in-out infinite alternate;
+  }
+  @keyframes aurora-a {
+    from {
+      transform: translate(0, 0) scale(1);
+    }
+    to {
+      transform: translate(10vmax, 8vmax) scale(1.18);
+    }
+  }
+  @keyframes aurora-b {
+    from {
+      transform: translate(0, 0) scale(1.05);
+    }
+    to {
+      transform: translate(-12vmax, 10vmax) scale(0.95);
+    }
+  }
+  @keyframes aurora-c {
+    from {
+      transform: translate(0, 0) scale(1);
+    }
+    to {
+      transform: translate(-8vmax, -8vmax) scale(1.12);
+    }
+  }
 }
 
 /* 滚动揭示(借鉴 MotionVault「滚动叙事 / line-reveal」思路,MIT,暖色)
@@ -298,5 +369,10 @@
   .btn-ripple .ripple {
     animation: none;
     opacity: 0;
+  }
+
+  /* 暖色氛围光斑:降级时静止(保留静态柔光,不再漂浮) */
+  .aurora-blob {
+    animation: none !important;
   }
 }
