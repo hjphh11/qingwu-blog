@@ -240,6 +240,33 @@
     box-shadow: 0 16px 40px rgba(246, 165, 184, 0.22);
   }
 
+  /* 3D 翻转卡(借鉴 MotionVault「FlipCard」,MIT,按爱弥斯暖色)
+     .flip-inner 绕 Y 轴 180° 翻转,正面 .flip-front / 背面 .flip-back;
+     桌面悬停翻转,触屏用 .is-flipped 点击切换。 */
+  .flip-card {
+    perspective: 1200px;
+  }
+  .flip-inner {
+    position: relative;
+    width: 100%;
+    height: 100%;
+    transform-style: preserve-3d;
+    transition: transform 0.7s var(--ease-soft);
+  }
+  .flip-card:hover .flip-inner,
+  .flip-card.is-flipped .flip-inner {
+    transform: rotateY(180deg);
+  }
+  .flip-face {
+    position: absolute;
+    inset: 0;
+    backface-visibility: hidden;
+    -webkit-backface-visibility: hidden;
+  }
+  .flip-back {
+    transform: rotateY(180deg);
+  }
+
   /* 按钮波纹涟漪(借鉴 MotionVault 按钮涟漪,MIT,按爱弥斯暖色重写)
      点击时在指针处扩散一圈玫瑰粉涟漪;降级见底部 @media。 */
   .btn-ripple {
@@ -374,5 +401,10 @@
   /* 暖色氛围光斑:降级时静止(保留静态柔光,不再漂浮) */
   .aurora-blob {
     animation: none !important;
+  }
+
+  /* 翻转卡:降级时不做 0.7s 翻转动画 */
+  .flip-inner {
+    transition: none;
   }
 }
