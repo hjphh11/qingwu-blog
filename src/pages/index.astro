@@ -12,7 +12,8 @@ import UptimeCard from '../components/home/UptimeCard.tsx';
 
 const posts = (await getCollection('blog'))
   .filter((p) => !p.data.draft)
-  .sort((a, b) => b.data.pubDate.valueOf() - a.data.pubDate.valueOf());
+  .sort((a, b) => b.data.pubDate.valueOf() - a.data.pubDate.valueOf())
+  .slice(0, 5);
 ---
 <Layout title="清吾 · qingwu.ink">
   <Hero client:load />
@@ -58,6 +59,14 @@ const posts = (await getCollection('blog'))
           ))
         }
       </div>
+
+      <a
+        href="/blog"
+        class="group mt-6 inline-flex items-center gap-1 text-sm text-ink/60 transition-colors hover:text-crimson"
+      >
+        查看全部文章
+        <span aria-hidden="true" class="transition-transform group-hover:translate-x-0.5">→</span>
+      </a>
     </section>
 
     {/* 右栏卡片 */}

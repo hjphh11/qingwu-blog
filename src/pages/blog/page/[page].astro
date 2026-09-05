@@ -1,0 +1,33 @@
+---
+import Layout from '../../../layouts/Layout.astro';
+import BlogList from '../../../components/BlogList.astro';
+import { getCollection } from 'astro:content';
+
+export async function getStaticPaths() {
+  const PAGE_SIZE = 6;
+  const ALL = (await getCollection('blog'))
+    .filter((p) => !p.data.draft)
+    .sort((a, b) => b.data.pubDate.valueOf() - a.data.pubDate.valueOf());
+  const totalPages = Math.max(1, Math.ceil(ALL.length / PAGE_SIZE));
+  const paths = [];
+  for (let p = 2; p <= totalPages; p++) {
+    paths.push({
+      params: { page: String(p) },
+      props: {
+        pageNum: p,
+        pagePosts: ALL.slice((p - 1) * PAGE_SIZE, p * PAGE_SIZE),
+        lastPage: totalPages,
+      },
+    });
+  }
+  return paths;
+}
+
+const { pageNum, pagePosts, lastPage } = Astro.props;
+---
+
+<Layout title="文章 · 清吾">
+  <div class="mx-auto max-w-4xl px-6 pb-20 pt-28">
+    <BlogList posts={pagePosts} currentPage={pageNum} lastPage={lastPage} />
+  </div>
+</Layout>
