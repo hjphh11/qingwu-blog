@@ -173,18 +173,6 @@
     animation-play-state: running;
   }
 
-  /* 唱盘周围环形旋转文字(借鉴 MotionVault「环形旋转文字」,MIT,按爱弥斯暖色)
-     旋转作用于包裹 SVG 的 div(transform-origin:center = 自身中心),居中用外层 grid;
-     这样文字环严格绕唱盘圆心旋转,播放转、暂停即停。 */
-  .disc-ring {
-    animation: disc-spin 24s linear infinite;
-    animation-play-state: paused;
-    transform-origin: center;
-  }
-  .disc-ring.playing {
-    animation-play-state: running;
-  }
-
   /* 播放波纹 */
   @keyframes wave {
     0%,
@@ -361,8 +349,7 @@
 
 @media (prefers-reduced-motion: reduce) {
   .disc,
-  .wave-bar,
-  .disc-ring {
+  .wave-bar {
     animation: none !important;
   }
 
