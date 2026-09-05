@@ -33,7 +33,7 @@ const filters = [
           <button
             type="button"
             data-filter={f.key}
-            class="rounded-full border border-rose/25 bg-white/50 px-4 py-1.5 text-sm text-ink/70 transition-all hover:border-rose/50 hover:text-crimson"
+            class="btn-ripple rounded-full border border-rose/25 bg-white/50 px-4 py-1.5 text-sm text-ink/70 transition-all hover:border-rose/50 hover:text-crimson hover:shadow-[0_6px_18px_rgba(246,165,184,0.28)] active:scale-95"
           >
             {f.label}
           </button>
@@ -42,13 +42,13 @@ const filters = [
     </div>
 
     {/* 文章列表 */}
-    <div id="post-list" class="flex flex-col gap-6">
+    <div id="post-list" class="reveal flex flex-col gap-6">
       {
         posts.map((post) => (
           <a
             href={`/blog/${post.id}`}
             data-category={post.data.category}
-            class="glass-card relative block p-6 transition-all hover:-translate-y-1 hover:shadow-xl"
+            class="glass-card card-spotlight relative block p-6 transition-all hover:-translate-y-1"
           >
             <span class="absolute right-4 top-4" aria-hidden="true">
               <MorphIcon

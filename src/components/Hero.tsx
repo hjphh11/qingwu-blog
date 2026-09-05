@@ -1,14 +1,18 @@
 import { useEffect, useRef } from 'react';
 import HanziWriter from 'hanzi-writer';
-import { motion, useScroll, useTransform } from 'motion/react';
+import { motion, useReducedMotion, useScroll, useTransform } from 'motion/react';
 
 const GREETING = '欢迎来到清吾的小屋';
 const CELL = 92;
+
+// 副标文案,按「 · 」切成三段,供逐词模糊浮现。
+const SUBTITLE_PARTS = '写技术 · 记生活 · 一个温馨二次元的小角落'.split('·').map((s) => s.trim());
 
 // 首页 Hero:左=Hanzi Writer 笔顺问候,右=爱弥斯(随滚动缩小)。
 export default function Hero() {
   const heroRef = useRef<HTMLElement>(null);
   const greetingRef = useRef<HTMLDivElement>(null);
+  const reduce = useReducedMotion();
 
   const { scrollYProgress } = useScroll({
     target: heroRef,
@@ -90,8 +94,40 @@ export default function Hero() {
             aria-label={GREETING}
             role="text"
           />
+          {/* 副标:逐词模糊浮现(借鉴 MotionVault「blur-fade-in」,MIT,按爱弥斯暖色重写) */}
           <p className="mt-8 text-base text-ink/70">
-            写技术 · 记生活 · 一个温馨二次元的小角落
+            {reduce ? (
+              SUBTITLE_PARTS.join(' · ')
+            ) : (
+              <motion.span
+                className="inline-flex flex-wrap items-center"
+                initial="hidden"
+                animate="show"
+                variants={{
+                  hidden: {},
+                  show: { transition: { staggerChildren: 0.14, delayChildren: 0.5 } },
+                }}
+              >
+                {SUBTITLE_PARTS.map((part, i) => (
+                  <span key={i} className="inline-flex items-center">
+                    {i > 0 && <span className="mx-2 text-rose" aria-hidden="true">·</span>}
+                    <motion.span
+                      variants={{
+                        hidden: { opacity: 0, filter: 'blur(8px)', y: 8 },
+                        show: {
+                          opacity: 1,
+                          filter: 'blur(0px)',
+                          y: 0,
+                          transition: { duration: 0.7, ease: [0.16, 1, 0.3, 1] },
+                        },
+                      }}
+                    >
+                      {part}
+                    </motion.span>
+                  </span>
+                ))}
+              </motion.span>
+            )}
           </p>
         </div>
 

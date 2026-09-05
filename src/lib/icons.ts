@@ -37,4 +37,8 @@ export {
   GraduationCap,
   Laptop,
   Globe,
+  Link2,
+  Share2,
+  MessageCircle,
+  Send,
 } from 'lucide';

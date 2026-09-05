@@ -33,6 +33,11 @@ const url = SITE.url.replace(/\/$/, '') + pathname;
 
     <ClientRouter />
 
+    {/* 滚动揭示启用标记:让 .reveal 只在 JS 可用时才隐藏,避免无 JS 时内容缺失 */}
+    <script is:inline>
+      document.documentElement.classList.add('qjs');
+    </script>
+
     <title>{title}</title>
     <meta name="description" content={description} />
     <meta name="theme-color" content="#fdf6f0" />
@@ -57,5 +62,87 @@ const url = SITE.url.replace(/\/$/, '') + pathname;
     <slot />
 
     <Footer />
+
+    {/* 卡片聚光:全局指针追踪,把 --mx/--my(px) 写到聚光卡片,驱动 .card-spotlight 的径向光斑 */}
+    <script is:inline>
+      if (!window.__qCardSpotlight) {
+        window.__qCardSpotlight = true;
+        document.addEventListener(
+          'pointermove',
+          function onMove(e) {
+            const t = e.target;
+            if (!(t instanceof Element)) return;
+            const el = t.closest('.card-spotlight');
+            if (!el) return;
+            const r = el.getBoundingClientRect();
+            el.style.setProperty('--mx', (e.clientX - r.left).toFixed(1) + 'px');
+            el.style.setProperty('--my', (e.clientY - r.top).toFixed(1) + 'px');
+          },
+          { passive: true },
+        );
+      }
+    </script>
+
+    {/* 按钮涟漪:全局委托,点击 .btn-ripple 时在指针处生成一圈玫瑰粉涟漪 */}
+    <script is:inline>
+      if (!window.__qBtnRipple) {
+        window.__qBtnRipple = true;
+        document.addEventListener(
+          'click',
+          function onRipple(e) {
+            if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+            const t = e.target;
+            if (!(t instanceof Element)) return;
+            const el = t.closest('.btn-ripple');
+            if (!el) return;
+            const r = el.getBoundingClientRect();
+            const s = Math.max(r.width, r.height);
+            const span = document.createElement('span');
+            span.className = 'ripple';
+            span.style.width = span.style.height = s + 'px';
+            span.style.left = e.clientX - r.left - s / 2 + 'px';
+            span.style.top = e.clientY - r.top - s / 2 + 'px';
+            el.appendChild(span);
+            span.addEventListener('animationend', function () {
+              span.remove();
+            });
+          },
+          { passive: true },
+        );
+      }
+    </script>
+
+    {/* 滚动揭示:全局 IntersectionObserver,进入视口给 .reveal 上淡入 */}
+    <script is:inline>
+      if (!window.__qReveal) {
+        window.__qReveal = true;
+        var io =
+          'IntersectionObserver' in window
+            ? new IntersectionObserver(function (entries) {
+                entries.forEach(function (entry) {
+                  if (entry.isIntersecting) {
+                    entry.target.classList.add('is-visible');
+                    io.unobserve(entry.target);
+                  }
+                });
+              }, { rootMargin: '0px 0px -12% 0px', threshold: 0.08 })
+            : null;
+        function observeReveals() {
+          document.documentElement.classList.add('qjs');
+          var els = document.querySelectorAll('.reveal:not(.is-visible)');
+          if (!io) {
+            els.forEach(function (el) {
+              el.classList.add('is-visible');
+            });
+            return;
+          }
+          els.forEach(function (el) {
+            io.observe(el);
+          });
+        }
+        observeReveals();
+        document.addEventListener('astro:page-load', observeReveals);
+      }
+    </script>
   </body>
 </html>

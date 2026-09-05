@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { motion } from 'motion/react';
 import { MorphIcon } from 'morphicons/react';
 import { SkipBack, Play, Pause, SkipForward, Volume2, VolumeX, Repeat, Repeat1, Shuffle } from '../lib/icons';
 import { initMusic, subscribe, getMusicState, music } from '../lib/musicStore';
@@ -123,7 +124,16 @@ export default function MusicClient() {
           </div>
 
           <div className="text-center">
-            <p className="font-display text-2xl text-ink">{currentSong?.title ?? '未选择歌曲'}</p>
+            {/* 歌名:切歌时柔和模糊浮现(借鉴 MotionVault blur-fade-in,MIT) */}
+            <motion.p
+              key={currentSong?.title ?? 'empty'}
+              initial={{ opacity: 0, y: 8, filter: 'blur(6px)' }}
+              animate={{ opacity: 1, y: 0, filter: 'blur(0px)' }}
+              transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
+              className="font-display text-2xl text-ink"
+            >
+              {currentSong?.title ?? '未选择歌曲'}
+            </motion.p>
             <p className="mt-1 text-sm text-ink/50">{currentSong?.artist ?? ''}</p>
           </div>
 

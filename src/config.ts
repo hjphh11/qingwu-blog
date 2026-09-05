@@ -5,4 +5,5 @@ export const SITE = {
   ogImage: '/images/avatar.jpg',
   author: '清吾',
   language: 'zh-CN',
+  email: '1454109769@qq.com',
 };

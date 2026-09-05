@@ -206,11 +206,204 @@
   .no-scrollbar::-webkit-scrollbar {
     display: none;
   }
+
+  /* 卡片聚光(借鉴 MotionVault「SpotlightCard」思路,MIT,按爱弥斯暖色重写)
+     ::before 用 z-index:-1 + 卡片自身建立 stacking context( z-index:0 ),
+     使聚光层位于玻璃背景之上、内容文字之下 —— 文字仍清晰可读。
+     --mx / --my 由全局脚本按指针位置写入(单位为 px)。 */
+  .card-spotlight {
+    position: relative;
+    z-index: 0;
+    overflow: hidden;
+  }
+  .card-spotlight::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    opacity: 0;
+    pointer-events: none;
+    border-radius: inherit;
+    transition: opacity 0.5s var(--ease-soft);
+    background: radial-gradient(
+      280px circle at var(--mx, 50%) var(--my, 50%),
+      rgba(246, 165, 184, 0.3),
+      transparent 72%
+    );
+  }
+  .card-spotlight:hover::before {
+    opacity: 1;
+  }
+  /* 悬停时:上浮 + 暖色边缘发光 */
+  .glass-card.card-spotlight:hover {
+    border-color: rgba(246, 165, 184, 0.55);
+    box-shadow: 0 16px 40px rgba(246, 165, 184, 0.22);
+  }
+
+  /* 3D 翻转卡(借鉴 MotionVault「FlipCard」,MIT,按爱弥斯暖色)
+     .flip-inner 绕 Y 轴 180° 翻转,正面 .flip-front / 背面 .flip-back;
+     桌面悬停翻转,触屏用 .is-flipped 点击切换。 */
+  .flip-card {
+    perspective: 1200px;
+  }
+  .flip-inner {
+    position: relative;
+    width: 100%;
+    height: 100%;
+    transform-style: preserve-3d;
+    transition: transform 0.7s var(--ease-soft);
+  }
+  .flip-card.is-flipped .flip-inner {
+    transform: rotateY(180deg);
+  }
+  .flip-face {
+    position: absolute;
+    inset: 0;
+    backface-visibility: hidden;
+    -webkit-backface-visibility: hidden;
+  }
+  .flip-back {
+    transform: rotateY(180deg);
+  }
+
+  /* 按钮波纹涟漪(借鉴 MotionVault 按钮涟漪,MIT,按爱弥斯暖色重写)
+     点击时在指针处扩散一圈玫瑰粉涟漪;降级见底部 @media。 */
+  .btn-ripple {
+    position: relative;
+    overflow: hidden;
+  }
+  .btn-ripple .ripple {
+    position: absolute;
+    border-radius: 9999px;
+    background: rgba(246, 165, 184, 0.45);
+    transform: scale(0);
+    animation: ripple 0.55s var(--ease-soft) forwards;
+    pointer-events: none;
+  }
+  @keyframes ripple {
+    to {
+      transform: scale(2.6);
+      opacity: 0;
+    }
+  }
+
+  /* 暖色氛围光斑(借鉴 MotionVault 背景渐变光斑思路,MIT,按爱弥斯暖色)
+     三团大而柔的渐变光缓慢漂浮融合,营造温馨氛围;仅 transform/scale,
+     GPU 合成,无逐帧重绘。放在樱花/星光之后,支持 prefers-reduced-motion。 */
+  .aurora-blob {
+    position: absolute;
+    aspect-ratio: 1;
+    border-radius: 50%;
+    pointer-events: none;
+    will-change: transform;
+  }
+  .blob-1 {
+    width: 62vmax;
+    top: -20vmax;
+    left: -18vmax;
+    background: radial-gradient(
+      circle,
+      rgba(246, 165, 184, 0.48) 0%,
+      rgba(246, 165, 184, 0.15) 44%,
+      transparent 68%
+    );
+    animation: aurora-a 28s ease-in-out infinite alternate;
+  }
+  .blob-2 {
+    width: 54vmax;
+    top: -10vmax;
+    right: -18vmax;
+    background: radial-gradient(
+      circle,
+      rgba(232, 176, 75, 0.4) 0%,
+      rgba(232, 176, 75, 0.13) 44%,
+      transparent 68%
+    );
+    animation: aurora-b 34s ease-in-out infinite alternate;
+  }
+  .blob-3 {
+    width: 58vmax;
+    bottom: -22vmax;
+    left: 14vmax;
+    background: radial-gradient(
+      circle,
+      rgba(224, 82, 107, 0.34) 0%,
+      rgba(224, 82, 107, 0.12) 46%,
+      transparent 70%
+    );
+    animation: aurora-c 40s ease-in-out infinite alternate;
+  }
+  @keyframes aurora-a {
+    from {
+      transform: translate(0, 0) scale(1);
+    }
+    to {
+      transform: translate(10vmax, 8vmax) scale(1.18);
+    }
+  }
+  @keyframes aurora-b {
+    from {
+      transform: translate(0, 0) scale(1.05);
+    }
+    to {
+      transform: translate(-12vmax, 10vmax) scale(0.95);
+    }
+  }
+  @keyframes aurora-c {
+    from {
+      transform: translate(0, 0) scale(1);
+    }
+    to {
+      transform: translate(-8vmax, -8vmax) scale(1.12);
+    }
+  }
+}
+
+/* 滚动揭示(借鉴 MotionVault「滚动叙事 / line-reveal」思路,MIT,暖色)
+   仅在 JS 可用(<html>.qjs)时隐藏待展示元素,避免无 JS 时内容缺失;
+   进入视口后上浮淡入(is-visible),由 Layout 全局 IntersectionObserver 驱动。 */
+.qjs .reveal {
+  opacity: 0;
+  transform: translateY(26px);
+  transition: opacity 0.7s var(--ease-soft), transform 0.7s var(--ease-soft);
+  will-change: opacity, transform;
+}
+.qjs .reveal.is-visible {
+  opacity: 1;
+  transform: none;
 }
 
 @media (prefers-reduced-motion: reduce) {
   .disc,
   .wave-bar {
     animation: none !important;
+  }
+
+  .qjs .reveal {
+    transition: none;
+  }
+
+  /* 降级:聚光不做淡入淡出,关闭 */
+  .card-spotlight::before {
+    transition: none;
+  }
+  .card-spotlight:hover::before {
+    opacity: 0;
+  }
+
+  /* 按钮涟漪:降级时不做扩散动画 */
+  .btn-ripple .ripple {
+    animation: none;
+    opacity: 0;
+  }
+
+  /* 暖色氛围光斑:降级时静止(保留静态柔光,不再漂浮) */
+  .aurora-blob {
+    animation: none !important;
+  }
+
+  /* 翻转卡:降级时不做 0.7s 翻转动画 */
+  .flip-inner {
+    transition: none;
   }
 }

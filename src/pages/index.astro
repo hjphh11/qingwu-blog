@@ -19,7 +19,7 @@ const posts = (await getCollection('blog'))
 
   <div class="mx-auto grid max-w-5xl gap-10 px-6 pb-20 md:grid-cols-[1fr_300px]">
     {/* 中央:文章流 */}
-    <section>
+    <section class="reveal">
       <h2 class="mb-6 flex items-center gap-2 font-display text-2xl text-ink">
         <span class="h-5 w-1.5 rounded-full bg-crimson"></span>
         最近文章
@@ -30,7 +30,7 @@ const posts = (await getCollection('blog'))
           posts.map((post) => (
             <a
               href={`/blog/${post.id}`}
-              class="glass-card relative block p-6 transition-all hover:-translate-y-1 hover:shadow-xl"
+              class="glass-card card-spotlight relative block p-6 transition-all hover:-translate-y-1"
             >
               <span class="absolute right-4 top-4" aria-hidden="true">
                 <MorphIcon
@@ -61,7 +61,7 @@ const posts = (await getCollection('blog'))
     </section>
 
     {/* 右栏卡片 */}
-    <aside class="flex flex-col gap-8">
+    <aside class="reveal flex flex-col gap-8">
       <CurrentTime client:only="react" />
       <VisitorCity client:only="react" />
       <StatsCard articleCount={posts.length} client:only="react" />
