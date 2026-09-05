@@ -77,5 +77,34 @@ const url = SITE.url.replace(/\/$/, '') + pathname;
         );
       }
     </script>
+
+    {/* 按钮涟漪:全局委托,点击 .btn-ripple 时在指针处生成一圈玫瑰粉涟漪 */}
+    <script is:inline>
+      if (!window.__qBtnRipple) {
+        window.__qBtnRipple = true;
+        document.addEventListener(
+          'click',
+          function onRipple(e) {
+            if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+            const t = e.target;
+            if (!(t instanceof Element)) return;
+            const el = t.closest('.btn-ripple');
+            if (!el) return;
+            const r = el.getBoundingClientRect();
+            const s = Math.max(r.width, r.height);
+            const span = document.createElement('span');
+            span.className = 'ripple';
+            span.style.width = span.style.height = s + 'px';
+            span.style.left = e.clientX - r.left - s / 2 + 'px';
+            span.style.top = e.clientY - r.top - s / 2 + 'px';
+            el.appendChild(span);
+            span.addEventListener('animationend', function () {
+              span.remove();
+            });
+          },
+          { passive: true },
+        );
+      }
+    </script>
   </body>
 </html>

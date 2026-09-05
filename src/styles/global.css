@@ -239,6 +239,27 @@
     border-color: rgba(246, 165, 184, 0.55);
     box-shadow: 0 16px 40px rgba(246, 165, 184, 0.22);
   }
+
+  /* 按钮波纹涟漪(借鉴 MotionVault 按钮涟漪,MIT,按爱弥斯暖色重写)
+     点击时在指针处扩散一圈玫瑰粉涟漪;降级见底部 @media。 */
+  .btn-ripple {
+    position: relative;
+    overflow: hidden;
+  }
+  .btn-ripple .ripple {
+    position: absolute;
+    border-radius: 9999px;
+    background: rgba(246, 165, 184, 0.45);
+    transform: scale(0);
+    animation: ripple 0.55s var(--ease-soft) forwards;
+    pointer-events: none;
+  }
+  @keyframes ripple {
+    to {
+      transform: scale(2.6);
+      opacity: 0;
+    }
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -252,6 +273,12 @@
     transition: none;
   }
   .card-spotlight:hover::before {
+    opacity: 0;
+  }
+
+  /* 按钮涟漪:降级时不做扩散动画 */
+  .btn-ripple .ripple {
+    animation: none;
     opacity: 0;
   }
 }

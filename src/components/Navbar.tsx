@@ -94,7 +94,7 @@ export default function Navbar({ pathname = '/' }: Props) {
               <a
                 key={item.href}
                 href={item.href}
-                className={`relative rounded-full px-3.5 py-1.5 text-base font-medium transition-colors duration-200 ${
+                className={`relative rounded-full px-3.5 py-1.5 text-base font-medium transition duration-200 active:scale-95 ${
                   active ? 'text-crimson' : 'text-ink/70 hover:text-crimson'
                 }`}
               >
@@ -146,7 +146,7 @@ export default function Navbar({ pathname = '/' }: Props) {
                 key={item.href}
                 href={item.href}
                 onClick={() => setOpen(false)}
-                className={`rounded-xl px-4 py-2.5 text-base font-medium transition-colors ${
+                className={`rounded-xl px-4 py-2.5 text-base font-medium transition active:scale-95 ${
                   isActive(item.href)
                     ? 'bg-rose/25 text-crimson'
                     : 'text-ink/80 hover:bg-rose/15'
