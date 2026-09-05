@@ -1,14 +1,14 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { MorphIcon } from 'morphicons/react';
 import { Menu, X } from '../lib/icons';
 import {
   motion,
   AnimatePresence,
+  animate,
   useScroll,
   useMotionValueEvent,
   useReducedMotion,
   useMotionValue,
-  useSpring,
 } from 'motion/react';
 
 type NavItem = { label: string; href: string };
@@ -25,6 +25,9 @@ const NAV_ITEMS: NavItem[] = [
 interface Props {
   pathname?: string;
 }
+
+// 模块级:记住上次激活导航项索引,跨客户端路由重挂载仍有效,用于「从上一个滑到下一个」。
+let lastActiveIdx = -1;
 
 // 液态玻璃导航 · 左右分栏(品牌左 / 菜单右):
 //  ① 首页顶部(未滚动):透明,品牌+菜单浮在 Hero 上(无玻璃背景)
@@ -53,31 +56,46 @@ export default function Navbar({ pathname = '/' }: Props) {
 
   const dur = reduce ? 0 : 0.32;
 
-  // —— 导航指示块:测量激活项位置,透明玻璃胶囊弹簧滑动过去 ——
-  const springCfg = reduce ? { stiffness: 900, damping: 80 } : { stiffness: 300, damping: 24 };
-  const targetX = useMotionValue(0);
-  const targetW = useMotionValue(0);
-  const x = useSpring(targetX, springCfg);
-  const w = useSpring(targetW, springCfg);
-
-  const measure = useCallback(() => {
-    const el = itemRefs.current[activeIdx];
-    if (!el) return;
-    targetX.set(el.offsetLeft);
-    targetW.set(el.offsetWidth);
-  }, [activeIdx, targetX, targetW]);
+  // —— 导航指示块:透明玻璃胶囊,从上一个导航项滑到当前项 ——
+  const x = useMotionValue(0);
+  const w = useMotionValue(0);
+  const spring = reduce
+    ? ({ type: 'tween', duration: 0.2 } as const)
+    : ({ type: 'spring', stiffness: 300, damping: 24 } as const);
 
   useLayoutEffect(() => {
-    measure();
-    // 不吸附:指示块在挂载时从左滑到激活项;激活项变化(同会话内)同样走弹簧滑动
+    const cur = itemRefs.current[activeIdx];
+    const curLeft = cur?.offsetLeft ?? 0;
+    const curW = cur?.offsetWidth ?? 0;
+    // 上次挂载记录的激活项 = 上一个来源;有且和当前不同时,从它滑到当前;否则直接落到当前项
+    const prev =
+      lastActiveIdx >= 0 && lastActiveIdx !== activeIdx
+        ? itemRefs.current[lastActiveIdx]
+        : null;
+    if (reduce || !prev) {
+      x.set(curLeft);
+      w.set(curW);
+    } else {
+      x.set(prev.offsetLeft);
+      w.set(prev.offsetWidth);
+      animate(x, curLeft, spring);
+      animate(w, curW, spring);
+    }
+    lastActiveIdx = activeIdx;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [measure]);
+  }, [activeIdx, reduce]);
 
   useEffect(() => {
-    const onResize = () => measure();
+    const onResize = () => {
+      const cur = itemRefs.current[activeIdx];
+      if (cur) {
+        x.set(cur.offsetLeft);
+        w.set(cur.offsetWidth);
+      }
+    };
     window.addEventListener('resize', onResize);
     return () => window.removeEventListener('resize', onResize);
-  }, [measure]);
+  }, [activeIdx, x, w]);
 
   return (
     <motion.header
