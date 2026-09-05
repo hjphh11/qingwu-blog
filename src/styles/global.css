@@ -262,10 +262,28 @@
   }
 }
 
+/* 滚动揭示(借鉴 MotionVault「滚动叙事 / line-reveal」思路,MIT,暖色)
+   仅在 JS 可用(<html>.qjs)时隐藏待展示元素,避免无 JS 时内容缺失;
+   进入视口后上浮淡入(is-visible),由 Layout 全局 IntersectionObserver 驱动。 */
+.qjs .reveal {
+  opacity: 0;
+  transform: translateY(26px);
+  transition: opacity 0.7s var(--ease-soft), transform 0.7s var(--ease-soft);
+  will-change: opacity, transform;
+}
+.qjs .reveal.is-visible {
+  opacity: 1;
+  transform: none;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .disc,
   .wave-bar {
     animation: none !important;
+  }
+
+  .qjs .reveal {
+    transition: none;
   }
 
   /* 降级:聚光不做淡入淡出,关闭 */
