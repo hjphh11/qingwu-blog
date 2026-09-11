@@ -1,7 +1,7 @@
 ---
 import Layout from '../../layouts/Layout.astro';
 import MorphIcon from 'morphicons/astro';
-import { Mail, MapPin, GraduationCap, Laptop, Music } from '../../lib/icons';
+import { Mail, MapPin, GraduationCap, Laptop, Music, BookOpen } from '../../lib/icons';
 import { profile, info, emis } from '../../data/about';
 import ContactExpand from '../../components/ContactExpand.tsx';
 import { SITE } from '../../config';
@@ -79,18 +79,39 @@ const infoIcons: Record<string, unknown> = {
       </div>
     </div>
 
-    {/* ③ 联系 / 社交 —— 用「联系我们」展开主件替换原邮箱/GitHub 卡片 */}
-    <div class="glass-card reveal mt-6 flex flex-col items-center gap-5 p-8">
-      <h2 class="flex w-full items-center gap-2 font-display text-xl text-ink">
-        <MorphIcon icon={Mail} size={18} color="currentColor" /> 联系 / 社交
-      </h2>
-      <ContactExpand
-        client:load
-        variant="contact"
-        label="联系我们"
-        email={SITE.email}
-        github="https://github.com/hjphh11"
-      />
+    {/* ③ 联系 / 社交 + 刷题(左右两半) */}
+    <div class="glass-card reveal mt-6 grid gap-6 p-8 sm:grid-cols-2">
+      {/* 左半:联系 / 社交 */}
+      <div class="flex flex-col items-center gap-5">
+        <h2 class="flex w-full items-center gap-2 font-display text-xl text-ink">
+          <MorphIcon icon={Mail} size={18} color="currentColor" /> 联系 / 社交
+        </h2>
+        <ContactExpand
+          client:load
+          variant="contact"
+          label="联系我们"
+          email={SITE.email}
+          github="https://github.com/hjphh11"
+        />
+      </div>
+
+      {/* 右半:刷题入口 */}
+      <div class="flex flex-col items-center gap-5 sm:border-l sm:border-rose/20 sm:pl-6">
+        <h2 class="flex w-full items-center gap-2 font-display text-xl text-ink">
+          <MorphIcon icon={BookOpen} size={18} color="currentColor" /> 刷题
+        </h2>
+        <a
+          href="/quiz/"
+          class="group flex w-full flex-col items-center gap-2 rounded-[var(--radius-card)] border border-rose/25 bg-white/40 p-6 text-center transition-colors hover:border-rose/50 hover:bg-rose/10"
+        >
+          <MorphIcon icon={BookOpen} size={24} color="currentColor" />
+          <span class="font-display text-lg text-ink transition-colors group-hover:text-crimson">
+            Python 二级刷题
+          </span>
+          <span class="text-xs text-ink/60">选择题 · 随机抽题 · 自动判分与解析</span>
+          <span class="mt-1 text-sm text-crimson">进入题库 →</span>
+        </a>
+      </div>
     </div>
   </div>
 </Layout>

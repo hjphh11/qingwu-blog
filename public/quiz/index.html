@@ -1,0 +1,2834 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="description" content="二级 Python 选择题题库智能抽题练习与自动评分系统">
+<meta name="color-scheme" content="light dark">
+<title>二级 Python 刷题 · 智能抽题评测</title>
+<style>
+/* ==========================================================================
+   二级 Python 刷题 · 设计系统
+   方向：学术工具 / 沉静专注 —— 高对比排版、克制留白、单一蓝色主色
+   色彩基于 ui-ux-pro-max 检索到的 “Study Together（专注蓝 #2563EB +
+   完成绿 #059669）” 调色板，并按考试场景约束对比度（正文 ≥ 4.5:1）。
+   字体与代码字体全部使用本地系统字体，离线可用、无外部请求。
+   ========================================================================== */
+
+/* ---------------------------------------------------------------- 令牌 */
+:root {
+  --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI Variable Text", "Segoe UI",
+    "PingFang SC", "HarmonyOS Sans SC", "Microsoft YaHei UI", "Microsoft YaHei",
+    "Source Han Sans SC", "Noto Sans SC", "Hiragino Sans GB", sans-serif;
+  --font-mono: ui-monospace, "Cascadia Code", "JetBrains Mono", "SF Mono", Menlo,
+    Consolas, "Liberation Mono", "Courier New", monospace;
+
+  --sp-1: 4px;  --sp-2: 8px;  --sp-3: 12px; --sp-4: 16px;
+  --sp-5: 20px; --sp-6: 24px; --sp-7: 32px; --sp-8: 40px;
+  --sp-9: 56px; --sp-10: 72px;
+
+  --r-xs: 6px; --r-sm: 9px; --r-md: 12px; --r-lg: 16px; --r-xl: 22px; --r-pill: 999px;
+
+  --appbar-h: 68px;
+  --maxw: 1180px;
+  --maxw-read: 780px;
+
+  --ease: cubic-bezier(.22,.61,.36,1);
+  --ease-out: cubic-bezier(.16,1,.3,1);
+  --t-fast: 140ms;
+  --t: 200ms;
+  --t-slow: 320ms;
+
+  --fs-xs: .78rem;   /* 12.5px */
+  --fs-sm: .85rem;   /* 13.6px */
+  --fs-base: 1rem;   /* 16px   */
+  --fs-lg: 1.09rem;
+  --fs-xl: 1.3rem;
+  --fs-2xl: 1.65rem;
+  --fs-3xl: 2.2rem;
+  --fs-4xl: clamp(2.1rem, 4.4vw, 3.1rem);
+}
+
+/* 浅色 —— 冷调纸感 */
+:root[data-theme="light"] {
+  --bg: #f4f6fb;
+  --bg-deep: #e9edf6;
+  --surface: #ffffff;
+  --surface-2: #f2f5fa;
+  --surface-3: #e7ecf6;
+
+  --text: #0d1526;
+  --text-2: #4b5563;
+  --text-3: #636d80;   /* 4.77:1 on #f2f5fa —— 满足 AA 正文对比度 */
+
+  --border: #e3e8f2;
+  --border-strong: #cbd4e4;
+
+  --primary: #1d4ed8;
+  --primary-hover: #1a44bd;
+  --primary-ink: #1d4ed8;
+  --primary-soft: #e9effe;
+  --on-primary: #ffffff;
+  --ring: #2563eb;
+
+  --ok: #047857;
+  --ok-strong: #059669;
+  --ok-bg: #e7f6f0;
+  --ok-border: #8fd6bd;
+
+  --bad: #c81e1e;
+  --bad-strong: #dc2626;
+  --bad-bg: #fdecec;
+  --bad-border: #f2b3b3;
+
+  --flag: #a16207;
+  --flag-bg: #fdf6e3;
+  --flag-border: #e8cd8a;
+
+  --brand-1: #2563eb;
+  --brand-2: #7c3aed;
+
+  --sh-1: 0 1px 2px rgba(15,23,42,.05);
+  --sh-2: 0 4px 14px -6px rgba(15,23,42,.12), 0 1px 2px rgba(15,23,42,.05);
+  --sh-3: 0 18px 44px -20px rgba(15,23,42,.25), 0 2px 6px rgba(15,23,42,.05);
+  --sh-focus: 0 0 0 3px rgba(37,99,235,.22);
+
+  --art-card: #ffffff;
+  --art-bar: #dbe3f2;
+  --art-bar-lg: #c3cfe6;
+  --art-opt: #eef2fa;
+  --art-opt-on: #dbe6ff;
+  --art-opt-dot: #c3cfe6;
+  --art-ring-bg: #eef2fa;
+  color-scheme: light;
+}
+
+/* 深色 —— 夜间自习 */
+:root[data-theme="dark"] {
+  --bg: #090d16;
+  --bg-deep: #060a11;
+  --surface: #121827;
+  --surface-2: #1a2234;
+  --surface-3: #222c44;
+
+  --text: #e9edf8;
+  --text-2: #a7b1c6;
+  --text-3: #8892a7;
+
+  --border: #232c42;
+  --border-strong: #354160;
+
+  --primary: #3667f0;   /* 白字对比度 4.82:1 —— 满足 AA */
+  --primary-hover: #4b79ff;
+  --primary-ink: #93aeff;
+  --primary-soft: #16233f;
+  --on-primary: #ffffff;
+  --ring: #93aeff;
+
+  --ok: #4ade80;
+  --ok-strong: #22c55e;
+  --ok-bg: #0d2a20;
+  --ok-border: #2f7d5c;
+
+  --bad: #f98a8a;
+  --bad-strong: #ef4444;
+  --bad-bg: #2c1519;
+  --bad-border: #8c3b3b;
+
+  --flag: #e0b155;
+  --flag-bg: #2a2113;
+  --flag-border: #6d5626;
+
+  --brand-1: #5b8cff;
+  --brand-2: #a78bfa;
+
+  --sh-1: 0 1px 2px rgba(0,0,0,.4);
+  --sh-2: 0 6px 18px -8px rgba(0,0,0,.6), 0 1px 2px rgba(0,0,0,.4);
+  --sh-3: 0 22px 50px -22px rgba(0,0,0,.75), 0 2px 6px rgba(0,0,0,.4);
+  --sh-focus: 0 0 0 3px rgba(147,174,255,.28);
+
+  --art-card: #161d2e;
+  --art-bar: #26314a;
+  --art-bar-lg: #33415f;
+  --art-opt: #1b2438;
+  --art-opt-on: #23345c;
+  --art-opt-dot: #3a486a;
+  --art-ring-bg: #1b2438;
+  color-scheme: dark;
+}
+
+/* ---------------------------------------------------------------- 基础 */
+*, *::before, *::after { box-sizing: border-box; }
+
+html { -webkit-text-size-adjust: 100%; scroll-behavior: smooth; }
+@media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
+
+body {
+  margin: 0;
+  font-family: var(--font-sans);
+  font-size: var(--fs-base);
+  line-height: 1.62;
+  color: var(--text);
+  background: var(--bg);
+  background-image:
+    radial-gradient(1100px 520px at 12% -8%, color-mix(in srgb, var(--brand-1) 9%, transparent), transparent 70%),
+    radial-gradient(900px 480px at 92% 0%, color-mix(in srgb, var(--brand-2) 8%, transparent), transparent 68%);
+  background-attachment: fixed;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+h1, h2, h3, h4 { margin: 0; line-height: 1.28; letter-spacing: -.012em; font-weight: 680; }
+p { margin: 0; }
+ul, ol, dl, dd, dt { margin: 0; padding: 0; }
+li { list-style: none; }
+a { color: var(--primary-ink); text-decoration: none; }
+a:hover { text-decoration: underline; }
+button { font: inherit; color: inherit; }
+code, kbd, pre, samp { font-family: var(--font-mono); }
+
+.ic { width: 18px; height: 18px; flex: none; fill: none; stroke: currentColor; stroke-width: 1.9; stroke-linecap: round; stroke-linejoin: round; }
+.ic.fill { fill: currentColor; stroke: none; }
+.sprite { display: none; }
+.sr-only {
+  position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+  overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0;
+}
+[hidden] { display: none !important; }
+.muted { color: var(--text-2); }
+.sm { font-size: var(--fs-sm); }
+.pad { padding: 0 var(--sp-6) var(--sp-2); }
+
+:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+  border-radius: var(--r-xs);
+}
+
+.skip-link {
+  position: absolute; left: 12px; top: -60px; z-index: 200;
+  background: var(--primary); color: var(--on-primary);
+  padding: 10px 16px; border-radius: var(--r-sm); font-size: var(--fs-sm);
+  transition: top var(--t) var(--ease);
+}
+.skip-link:focus { top: 12px; text-decoration: none; }
+
+/* ---------------------------------------------------------------- 顶栏 */
+.appbar {
+  position: sticky; top: 0; z-index: 60;
+  height: var(--appbar-h);
+  background: color-mix(in srgb, var(--bg) 82%, transparent);
+  backdrop-filter: saturate(160%) blur(14px);
+  -webkit-backdrop-filter: saturate(160%) blur(14px);
+  border-bottom: 1px solid var(--border);
+}
+.appbar-inner {
+  max-width: var(--maxw); height: 100%; margin: 0 auto;
+  padding: 0 var(--sp-6);
+  display: flex; align-items: center; justify-content: space-between; gap: var(--sp-4);
+}
+.brand { display: flex; align-items: center; gap: var(--sp-3); color: var(--text); }
+.brand:hover { text-decoration: none; }
+.brand-mark { width: 38px; height: 38px; display: block; }
+.brand-mark svg { width: 100%; height: 100%; }
+.brand-mark path:first-child { fill: var(--primary); }
+.brand-glyph { fill: var(--on-primary); }
+.brand-dot { fill: color-mix(in srgb, var(--on-primary) 78%, transparent); }
+.brand-text { display: flex; flex-direction: column; line-height: 1.18; }
+.brand-text strong { font-size: 1.02rem; letter-spacing: -.015em; }
+.brand-text small { font-size: var(--fs-xs); color: var(--text-3); letter-spacing: .01em; }
+
+.mainnav { display: flex; align-items: center; gap: var(--sp-1); }
+.navbtn {
+  display: inline-flex; align-items: center; gap: 7px;
+  min-height: 40px; padding: 0 13px;
+  background: transparent; border: 1px solid transparent; border-radius: var(--r-sm);
+  font-size: var(--fs-sm); font-weight: 560; color: var(--text-2);
+  cursor: pointer; position: relative;
+  transition: background var(--t-fast) var(--ease), color var(--t-fast) var(--ease), border-color var(--t-fast) var(--ease);
+}
+.navbtn:hover { background: var(--surface-2); color: var(--text); }
+.navbtn[aria-current="page"] { background: var(--primary-soft); color: var(--primary-ink); border-color: color-mix(in srgb, var(--primary) 22%, transparent); }
+.navbtn .ic { width: 17px; height: 17px; }
+.navbtn.icon-only { padding: 0; width: 40px; justify-content: center; }
+.pill {
+  min-width: 19px; height: 19px; padding: 0 5px; border-radius: var(--r-pill);
+  background: var(--bad-strong); color: #fff; font-size: 11px; font-weight: 700;
+  display: inline-grid; place-items: center; line-height: 1;
+}
+
+/* ---------------------------------------------------------------- 布局 */
+main { flex: 1 0 auto; width: 100%; max-width: var(--maxw); margin: 0 auto; padding: var(--sp-7) var(--sp-6) var(--sp-9); }
+.view { animation: fade-up var(--t-slow) var(--ease-out) both; }
+@keyframes fade-up { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  box-shadow: var(--sh-2);
+}
+.card-head {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: var(--sp-4); flex-wrap: wrap;
+  padding: var(--sp-5) var(--sp-6);
+  border-bottom: 1px solid var(--border);
+}
+.card-head h2, .card-head h3 { font-size: var(--fs-lg); display: flex; align-items: center; gap: 9px; }
+.card-head h2 .ic, .card-head h3 .ic { color: var(--primary-ink); }
+
+/* ---------------------------------------------------------------- 首屏 */
+.hero {
+  display: grid; grid-template-columns: minmax(0, 1.35fr) minmax(0, .95fr);
+  gap: var(--sp-8); align-items: center;
+  padding: var(--sp-8) 0 var(--sp-9);
+}
+.eyebrow {
+  display: inline-flex; align-items: center; gap: 8px;
+  font-size: var(--fs-xs); font-weight: 600; letter-spacing: .06em; text-transform: uppercase;
+  color: var(--primary-ink); background: var(--primary-soft);
+  border: 1px solid color-mix(in srgb, var(--primary) 20%, transparent);
+  padding: 6px 12px; border-radius: var(--r-pill); margin-bottom: var(--sp-4);
+}
+.eyebrow .ic { width: 14px; height: 14px; }
+.hero h1 { font-size: var(--fs-4xl); font-weight: 720; letter-spacing: -.028em; margin-bottom: var(--sp-4); }
+.hero h1 .hl {
+  background: linear-gradient(96deg, var(--brand-1), var(--brand-2));
+  -webkit-background-clip: text; background-clip: text; color: transparent;
+}
+.lede { font-size: var(--fs-lg); color: var(--text-2); max-width: 56ch; line-height: 1.72; }
+.lede strong { color: var(--text); font-weight: 680; }
+
+.hero-stats { display: flex; flex-wrap: wrap; gap: var(--sp-6); margin-top: var(--sp-6); }
+.hstat { display: flex; flex-direction: column; }
+.hstat b { font-size: 1.5rem; font-weight: 720; letter-spacing: -.02em; font-variant-numeric: tabular-nums; }
+.hstat span { font-size: var(--fs-xs); color: var(--text-3); letter-spacing: .02em; }
+
+.hero-art { display: block; }
+.hero-art svg { width: 100%; height: auto; filter: drop-shadow(0 20px 34px rgba(15,23,42,.13)); }
+.art-card { fill: var(--art-card); }
+.art-bar { fill: var(--art-bar); }
+.art-bar-lg { fill: var(--art-bar-lg); }
+.art-opts rect { fill: var(--art-opt); }
+.art-opts rect.on { fill: var(--art-opt-on); stroke: var(--brand-1); stroke-width: 2; }
+.art-opts circle { fill: var(--art-opt-dot); }
+.art-opts circle.on { fill: var(--brand-1); }
+.art-ring circle { fill: var(--art-ring-bg); stroke: none; }
+.art-ring path {
+  fill: none; stroke: var(--ok-strong); stroke-width: 3.4;
+  stroke-linecap: round; stroke-linejoin: round;
+  stroke-dasharray: 60; stroke-dashoffset: 60;
+  animation: draw 1s var(--ease-out) .35s forwards;
+}
+@keyframes draw { to { stroke-dashoffset: 0; } }
+
+.grid-setup { display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr); gap: var(--sp-6); align-items: start; }
+.side-stack { display: flex; flex-direction: column; gap: var(--sp-5); }
+
+/* ---------------------------------------------------------------- 表单 */
+.config { padding-bottom: var(--sp-6); }
+.config .card-head { border-bottom: none; padding-bottom: var(--sp-2); }
+.field { border: 0; margin: 0; padding: var(--sp-4) var(--sp-6) 0; }
+.field + .field { border-top: 1px solid var(--border); margin-top: var(--sp-4); padding-top: var(--sp-5); }
+.field legend { font-size: var(--fs-sm); font-weight: 640; color: var(--text); padding: 0; margin-bottom: var(--sp-3); }
+.hint { font-size: var(--fs-xs); color: var(--text-3); margin-top: var(--sp-3); }
+
+.segmented {
+  display: inline-flex; flex-wrap: wrap; gap: 3px;
+  background: var(--surface-2); border: 1px solid var(--border);
+  border-radius: var(--r-md); padding: 3px;
+}
+.segmented button {
+  min-height: 36px; padding: 0 15px;
+  background: transparent; border: 0; border-radius: var(--r-sm);
+  font-size: var(--fs-sm); font-weight: 570; color: var(--text-2);
+  cursor: pointer; white-space: nowrap;
+  transition: background var(--t-fast) var(--ease), color var(--t-fast) var(--ease), box-shadow var(--t-fast) var(--ease);
+}
+.segmented button:hover { color: var(--text); background: color-mix(in srgb, var(--surface) 70%, transparent); }
+.segmented button[aria-checked="true"] {
+  background: var(--surface); color: var(--primary-ink);
+  box-shadow: var(--sh-1), inset 0 0 0 1px color-mix(in srgb, var(--primary) 24%, transparent);
+  font-weight: 640;
+}
+
+.setpick { margin-top: var(--sp-4); border: 1px solid var(--border); border-radius: var(--r-md); padding: var(--sp-4); background: var(--surface-2); }
+.setpick-head { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-3); margin-bottom: var(--sp-3); flex-wrap: wrap; }
+.setpick-head strong { color: var(--primary-ink); font-variant-numeric: tabular-nums; }
+.setpick-actions { display: flex; gap: var(--sp-1); }
+.setgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(52px, 1fr)); gap: 7px; }
+.setchip {
+  min-height: 40px; display: grid; place-items: center;
+  background: var(--surface); border: 1.5px solid var(--border); border-radius: var(--r-sm);
+  font-size: var(--fs-sm); font-weight: 600; color: var(--text-2);
+  cursor: pointer; font-variant-numeric: tabular-nums;
+  transition: border-color var(--t-fast) var(--ease), background var(--t-fast) var(--ease), color var(--t-fast) var(--ease);
+}
+.setchip:hover { border-color: var(--border-strong); color: var(--text); }
+.setchip[aria-pressed="true"] { background: var(--primary-soft); border-color: var(--primary); color: var(--primary-ink); }
+
+.config-foot { padding: var(--sp-6) var(--sp-6) 0; display: flex; flex-direction: column; gap: var(--sp-3); }
+.err { font-size: var(--fs-sm); color: var(--bad); display: flex; align-items: center; gap: 7px; }
+
+/* ---------------------------------------------------------------- 按钮 */
+.btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+  min-height: 42px; padding: 0 18px;
+  border: 1px solid var(--border); border-radius: var(--r-sm);
+  background: var(--surface); color: var(--text);
+  font-size: var(--fs-sm); font-weight: 620; letter-spacing: -.005em;
+  cursor: pointer; white-space: nowrap;
+  transition: background var(--t-fast) var(--ease), border-color var(--t-fast) var(--ease),
+              color var(--t-fast) var(--ease), transform var(--t-fast) var(--ease), box-shadow var(--t-fast) var(--ease);
+}
+.btn:hover { border-color: var(--border-strong); background: var(--surface-2); }
+.btn:active { transform: translateY(1px); }
+.btn:disabled { opacity: .45; cursor: not-allowed; transform: none; }
+
+.btn.primary { background: var(--primary); border-color: var(--primary); color: var(--on-primary); box-shadow: var(--sh-2); }
+.btn.primary:hover { background: var(--primary-hover); border-color: var(--primary-hover); }
+.btn.accent {
+  background: var(--surface); border-color: color-mix(in srgb, var(--ok-strong) 42%, var(--border));
+  color: var(--ok);
+}
+.btn.accent:hover { background: var(--ok-bg); border-color: var(--ok-strong); }
+.btn.ghost { background: transparent; border-color: var(--border); color: var(--text-2); }
+.btn.ghost:hover { background: var(--surface-2); color: var(--text); }
+.btn.danger-ghost { color: var(--bad); border-color: color-mix(in srgb, var(--bad-strong) 34%, var(--border)); }
+.btn.danger-ghost:hover { background: var(--bad-bg); border-color: var(--bad-strong); }
+.btn.lg { min-height: 50px; padding: 0 26px; font-size: var(--fs-base); }
+.btn.sm { min-height: 36px; padding: 0 13px; }
+.btn.xs { min-height: 30px; padding: 0 10px; font-size: var(--fs-xs); }
+.btn.icon-only { padding: 0; width: 36px; }
+.btn.icon-only.sm { width: 32px; min-height: 32px; }
+
+/* ---------------------------------------------------------------- 统计列表 */
+.stat-card h3 {
+  font-size: var(--fs-sm); font-weight: 640; letter-spacing: .02em; color: var(--text-2);
+  display: flex; align-items: center; gap: 8px;
+  padding: var(--sp-5) var(--sp-5) var(--sp-3);
+}
+.statlist { padding: 0 var(--sp-5) var(--sp-5); display: flex; flex-direction: column; }
+.statlist > div {
+  display: flex; align-items: baseline; justify-content: space-between; gap: var(--sp-3);
+  padding: 9px 0; border-bottom: 1px dashed var(--border);
+}
+.statlist > div:last-child { border-bottom: 0; }
+.statlist dt { font-size: var(--fs-sm); color: var(--text-2); }
+.statlist dd { font-size: var(--fs-base); font-weight: 680; font-variant-numeric: tabular-nums; }
+.quickrow { display: flex; flex-wrap: wrap; gap: var(--sp-2); padding: 0 var(--sp-5) var(--sp-5); }
+.resume-card { padding: var(--sp-5); border-color: color-mix(in srgb, var(--flag) 40%, var(--border)); background: color-mix(in srgb, var(--flag-bg) 55%, var(--surface)); }
+.resume-card h3 { font-size: var(--fs-base); display: flex; align-items: center; gap: 8px; color: var(--flag); margin-bottom: var(--sp-2); }
+.resume-card .quickrow { padding: var(--sp-4) 0 0; }
+
+/* ---------------------------------------------------------------- 答题顶栏 */
+.quizbar {
+  position: sticky; top: calc(var(--appbar-h) + 10px); z-index: 30;
+  display: grid; grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center; gap: var(--sp-5);
+  padding: var(--sp-3) var(--sp-5);
+  margin-bottom: var(--sp-5);
+}
+.quizbar-left, .quizbar-right { display: flex; align-items: center; gap: var(--sp-3); }
+.quizbar-mid { min-width: 0; }
+.badge {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-size: var(--fs-xs); font-weight: 660; letter-spacing: .02em;
+  padding: 5px 11px; border-radius: var(--r-pill);
+  background: var(--primary-soft); color: var(--primary-ink);
+  border: 1px solid color-mix(in srgb, var(--primary) 22%, transparent);
+}
+.badge.practice { background: var(--ok-bg); color: var(--ok); border-color: var(--ok-border); }
+.prog-text { font-size: var(--fs-sm); color: var(--text-2); font-variant-numeric: tabular-nums; }
+.prog-text strong { color: var(--text); font-size: var(--fs-base); }
+.progress { height: 8px; border-radius: var(--r-pill); background: var(--surface-3); overflow: hidden; }
+.progress-fill {
+  display: block; height: 100%; width: 0; border-radius: inherit;
+  background: linear-gradient(90deg, var(--brand-1), var(--brand-2));
+  transition: width var(--t-slow) var(--ease-out);
+}
+.timer {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-size: var(--fs-sm); font-weight: 620; font-variant-numeric: tabular-nums;
+  color: var(--text-2); padding: 6px 11px; border-radius: var(--r-sm);
+  background: var(--surface-2); border: 1px solid var(--border);
+}
+.timer.warn { color: var(--flag); background: var(--flag-bg); border-color: var(--flag-border); }
+.timer.crit { color: var(--bad); background: var(--bad-bg); border-color: var(--bad-border); animation: pulse 1.6s var(--ease) infinite; }
+@keyframes pulse { 50% { opacity: .62; } }
+
+/* ---------------------------------------------------------------- 答题区 */
+.quiz-layout { display: grid; grid-template-columns: minmax(0, 1fr) 288px; gap: var(--sp-6); align-items: start; }
+.qwrap { min-width: 0; }
+
+.question { padding: var(--sp-6); }
+.qhead { display: flex; align-items: center; gap: var(--sp-3); flex-wrap: wrap; margin-bottom: var(--sp-5); }
+.qno { font-size: var(--fs-lg); font-weight: 700; letter-spacing: -.015em; }
+.qsrc {
+  font-size: var(--fs-xs); color: var(--text-3);
+  background: var(--surface-2); border: 1px solid var(--border);
+  padding: 3px 9px; border-radius: var(--r-pill);
+}
+.flagbtn {
+  margin-left: auto; display: inline-flex; align-items: center; gap: 6px;
+  min-height: 34px; padding: 0 12px;
+  background: transparent; border: 1px solid var(--border); border-radius: var(--r-sm);
+  font-size: var(--fs-xs); font-weight: 600; color: var(--text-3);
+  cursor: pointer; transition: all var(--t-fast) var(--ease);
+}
+.flagbtn:hover { color: var(--flag); border-color: var(--flag-border); background: var(--flag-bg); }
+.flagbtn[aria-pressed="true"] { background: var(--flag-bg); border-color: var(--flag-border); color: var(--flag); }
+.flagbtn[aria-pressed="true"] .ic { fill: currentColor; }
+
+.stem { font-size: var(--fs-lg); line-height: 1.78; color: var(--text); margin-bottom: var(--sp-5); max-width: var(--maxw-read); }
+.stem p + p { margin-top: var(--sp-3); }
+.stem p.qtext { white-space: pre-wrap; }
+.stem .qtext { font-weight: 560; }
+.stem figure { margin: 0; }
+pre.code {
+  margin: var(--sp-3) 0 0;
+  padding: var(--sp-4) var(--sp-5);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--brand-1);
+  border-radius: var(--r-sm);
+  font-size: .875rem; line-height: 1.75;
+  overflow-x: auto; white-space: pre; tab-size: 4;
+  color: var(--text);
+}
+.stem pre.code { font-size: .9rem; }
+
+.options { display: flex; flex-direction: column; gap: var(--sp-3); }
+.option {
+  display: flex; align-items: flex-start; gap: var(--sp-4);
+  width: 100%; text-align: left;
+  padding: var(--sp-4);
+  background: var(--surface); border: 1.5px solid var(--border); border-radius: var(--r-md);
+  cursor: pointer; color: var(--text);
+  transition: border-color var(--t-fast) var(--ease), background var(--t-fast) var(--ease),
+              box-shadow var(--t-fast) var(--ease), transform var(--t-fast) var(--ease);
+  animation: opt-in var(--t-slow) var(--ease-out) both;
+}
+.option:nth-child(1) { animation-delay: 20ms; }
+.option:nth-child(2) { animation-delay: 60ms; }
+.option:nth-child(3) { animation-delay: 100ms; }
+.option:nth-child(4) { animation-delay: 140ms; }
+@keyframes opt-in { from { opacity: 0; transform: translateY(7px); } to { opacity: 1; transform: none; } }
+.option:hover { border-color: var(--border-strong); background: var(--surface-2); }
+.option:active { transform: scale(.995); }
+.option[aria-checked="true"] {
+  border-color: var(--primary); background: var(--primary-soft);
+  box-shadow: var(--sh-focus);
+}
+.option-key {
+  flex: none; width: 30px; height: 30px; border-radius: var(--r-sm);
+  display: grid; place-items: center;
+  background: var(--surface-2); border: 1px solid var(--border);
+  font-size: var(--fs-sm); font-weight: 700; color: var(--text-2);
+  transition: all var(--t-fast) var(--ease);
+}
+.option[aria-checked="true"] .option-key { background: var(--primary); border-color: var(--primary); color: var(--on-primary); }
+.option-body { flex: 1; min-width: 0; font-size: var(--fs-base); line-height: 1.7; white-space: pre-wrap; overflow-wrap: anywhere; }
+.option-body pre.code { margin: 0; font-size: .85rem; }
+
+.option.locked { cursor: default; }
+.option.locked:hover { border-color: var(--border); background: var(--surface); }
+.option.is-right { border-color: var(--ok-strong); background: var(--ok-bg); box-shadow: none; }
+.option.is-right .option-key { background: var(--ok-strong); border-color: var(--ok-strong); color: #fff; }
+.option.is-wrong { border-color: var(--bad-strong); background: var(--bad-bg); box-shadow: none; }
+.option.is-wrong .option-key { background: var(--bad-strong); border-color: var(--bad-strong); color: #fff; }
+.option.is-missed { border-color: var(--ok-strong); border-style: dashed; background: color-mix(in srgb, var(--ok-bg) 60%, var(--surface)); box-shadow: none; }
+.option.is-missed .option-key { background: var(--ok-strong); border-color: var(--ok-strong); color: #fff; }
+.option-mark { margin-left: auto; flex: none; display: flex; align-items: center; }
+.option-mark .ic { width: 20px; height: 20px; stroke-width: 2.6; }
+.option-mark.right { color: var(--ok-strong); }
+.option-mark.wrong { color: var(--bad-strong); }
+
+.feedback {
+  margin-top: var(--sp-5); padding: var(--sp-4) var(--sp-5);
+  border-radius: var(--r-md); border: 1px solid var(--border);
+  background: var(--surface-2); font-size: var(--fs-sm); line-height: 1.75;
+  animation: fade-up var(--t) var(--ease-out) both;
+}
+.feedback.ok { background: var(--ok-bg); border-color: var(--ok-border); }
+.feedback.no { background: var(--bad-bg); border-color: var(--bad-border); }
+.feedback-head { display: flex; align-items: center; gap: 8px; font-weight: 680; margin-bottom: 7px; }
+.feedback.ok .feedback-head { color: var(--ok); }
+.feedback.no .feedback-head { color: var(--bad); }
+.feedback-body { color: var(--text-2); }
+.feedback-body strong { color: var(--text); }
+
+.qnav { display: flex; align-items: center; gap: var(--sp-3); margin-top: var(--sp-5); flex-wrap: wrap; }
+.qnav #btnSubmit { margin-left: auto; }
+
+/* ---------------------------------------------------------------- 答题卡 */
+.cardcard { padding-bottom: var(--sp-5); position: sticky; top: calc(var(--appbar-h) + 82px); }
+.cardcard .card-head { padding: var(--sp-4) var(--sp-5); }
+.cardcard .card-head h2 { font-size: var(--fs-base); }
+#btnCardClose { display: none; }
+.cardgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(40px, 1fr)); gap: 7px; padding: var(--sp-4) var(--sp-5); }
+.qcell {
+  position: relative; min-height: 40px; border-radius: var(--r-sm);
+  background: var(--surface-2); border: 1.5px solid var(--border);
+  font-size: var(--fs-sm); font-weight: 640; color: var(--text-2);
+  cursor: pointer; font-variant-numeric: tabular-nums;
+  display: grid; place-items: center;
+  transition: all var(--t-fast) var(--ease);
+}
+.qcell:hover { border-color: var(--border-strong); color: var(--text); }
+.qcell.answered { background: var(--primary-soft); border-color: color-mix(in srgb, var(--primary) 45%, transparent); color: var(--primary-ink); }
+.qcell.current { border-color: var(--primary); box-shadow: var(--sh-focus); color: var(--text); background: var(--surface); }
+.qcell.flagged::after {
+  content: ""; position: absolute; top: 3px; right: 3px;
+  width: 6px; height: 6px; border-radius: 50%; background: var(--flag);
+}
+.qcell.right { background: var(--ok-bg); border-color: var(--ok-border); color: var(--ok); }
+.qcell.wrong { background: var(--bad-bg); border-color: var(--bad-border); color: var(--bad); }
+
+.legend { display: flex; flex-wrap: wrap; gap: var(--sp-3); padding: 0 var(--sp-5) var(--sp-4); font-size: var(--fs-xs); color: var(--text-3); }
+.legend li { display: flex; align-items: center; gap: 6px; }
+.dot { width: 10px; height: 10px; border-radius: 3px; border: 1.5px solid var(--border); background: var(--surface-2); }
+.dot.answered { background: var(--primary-soft); border-color: color-mix(in srgb, var(--primary) 45%, transparent); }
+.dot.current { border-color: var(--primary); background: var(--surface); }
+.dot.flagged { background: var(--flag); border-color: var(--flag); }
+.cardcard-sum {
+  display: flex; justify-content: space-between; gap: var(--sp-2);
+  padding: var(--sp-3) var(--sp-5) 0; border-top: 1px solid var(--border);
+  font-size: var(--fs-xs); color: var(--text-3);
+}
+.cardcard-sum strong { color: var(--text); font-variant-numeric: tabular-nums; }
+
+/* ---------------------------------------------------------------- 成绩页 */
+.result-top { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: var(--sp-8); align-items: center; padding: var(--sp-8); }
+.ring-wrap { position: relative; width: 200px; height: 200px; flex: none; }
+.ring { width: 100%; height: 100%; transform: rotate(-90deg); }
+.ring-bg { fill: none; stroke: var(--surface-3); stroke-width: 12; }
+.ring-fg {
+  fill: none; stroke: url(#ringGrad); stroke-width: 12; stroke-linecap: round;
+  stroke: var(--primary);
+  stroke-dasharray: 364.4; stroke-dashoffset: 364.4;
+  transition: stroke-dashoffset 1.1s var(--ease-out), stroke var(--t) var(--ease);
+}
+.ring-fg.good { stroke: var(--ok-strong); }
+.ring-fg.mid { stroke: var(--flag); }
+.ring-fg.low { stroke: var(--bad-strong); }
+.ring-num { position: absolute; inset: 0; display: grid; place-content: center; text-align: center; }
+.ring-num strong { font-size: 3rem; font-weight: 720; letter-spacing: -.03em; font-variant-numeric: tabular-nums; line-height: 1; }
+.ring-num span { font-size: var(--fs-sm); color: var(--text-3); }
+
+.result-sum { min-width: 0; }
+.grade {
+  display: inline-block; font-size: var(--fs-xs); font-weight: 700; letter-spacing: .06em;
+  padding: 5px 12px; border-radius: var(--r-pill); margin-bottom: var(--sp-3);
+  background: var(--primary-soft); color: var(--primary-ink);
+  border: 1px solid color-mix(in srgb, var(--primary) 22%, transparent);
+}
+.grade.good { background: var(--ok-bg); color: var(--ok); border-color: var(--ok-border); }
+.grade.mid { background: var(--flag-bg); color: var(--flag); border-color: var(--flag-border); }
+.grade.low { background: var(--bad-bg); color: var(--bad); border-color: var(--bad-border); }
+.result-sum h2 { font-size: var(--fs-2xl); margin-bottom: var(--sp-2); }
+.kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(96px, 1fr)); gap: var(--sp-4); margin: var(--sp-6) 0; }
+.kpis > div { padding: var(--sp-3) 0; border-top: 2px solid var(--border); }
+.kpis dt { font-size: var(--fs-xs); color: var(--text-3); margin-bottom: 3px; }
+.kpis dd { font-size: 1.32rem; font-weight: 700; font-variant-numeric: tabular-nums; }
+.kpis dd.ok { color: var(--ok); }
+.kpis dd.bad { color: var(--bad); }
+.result-actions { display: flex; flex-wrap: wrap; gap: var(--sp-3); }
+
+.review-card { margin-top: var(--sp-6); }
+.filterbar { display: flex; flex-wrap: wrap; gap: var(--sp-2); }
+.chip {
+  min-height: 34px; padding: 0 14px; border-radius: var(--r-pill);
+  background: var(--surface-2); border: 1px solid var(--border);
+  font-size: var(--fs-xs); font-weight: 600; color: var(--text-2);
+  cursor: pointer; transition: all var(--t-fast) var(--ease);
+}
+.chip:hover { border-color: var(--border-strong); color: var(--text); }
+.chip.on { background: var(--primary); border-color: var(--primary); color: var(--on-primary); }
+
+.review-list { display: flex; flex-direction: column; }
+.review-item { border-bottom: 1px solid var(--border); padding: var(--sp-5) var(--sp-6); }
+.review-item:last-child { border-bottom: 0; }
+.ri-head { display: flex; align-items: center; gap: var(--sp-3); flex-wrap: wrap; margin-bottom: var(--sp-4); }
+.ri-no { font-weight: 700; font-variant-numeric: tabular-nums; }
+.tag {
+  display: inline-flex; align-items: center; gap: 5px;
+  font-size: var(--fs-xs); font-weight: 660; padding: 3px 10px; border-radius: var(--r-pill);
+}
+.tag.ok { background: var(--ok-bg); color: var(--ok); border: 1px solid var(--ok-border); }
+.tag.no { background: var(--bad-bg); color: var(--bad); border: 1px solid var(--bad-border); }
+.tag.blank { background: var(--surface-2); color: var(--text-3); border: 1px solid var(--border); }
+.tag .ic { width: 13px; height: 13px; stroke-width: 2.6; }
+.ri-src { font-size: var(--fs-xs); color: var(--text-3); margin-left: auto; }
+.ri-stem { font-size: var(--fs-base); line-height: 1.76; margin-bottom: var(--sp-4); max-width: var(--maxw-read); }
+.ri-stem pre.code { margin-top: var(--sp-2); }
+.ri-opts { display: grid; gap: 7px; margin-bottom: var(--sp-4); }
+.ri-opt {
+  display: flex; align-items: flex-start; gap: var(--sp-3);
+  padding: 10px var(--sp-4); border-radius: var(--r-sm);
+  border: 1px solid var(--border); background: var(--surface);
+  font-size: var(--fs-sm); line-height: 1.68;
+}
+.ri-opt .k { flex: none; width: 22px; font-weight: 700; color: var(--text-3); }
+.ri-opt.right { border-color: var(--ok-border); background: var(--ok-bg); }
+.ri-opt.right .k { color: var(--ok); }
+.ri-opt.wrong { border-color: var(--bad-border); background: var(--bad-bg); }
+.ri-opt.wrong .k { color: var(--bad); }
+.ri-opt .t { flex: 1; min-width: 0; }
+.ri-opt .t pre.code { margin: 0; font-size: .82rem; padding: var(--sp-3); }
+.ri-mine { display: flex; align-items: center; gap: var(--sp-4); flex-wrap: wrap; font-size: var(--fs-sm); color: var(--text-2); margin-bottom: var(--sp-4); }
+.ri-mine b { font-family: var(--font-mono); font-weight: 700; }
+.ri-mine .ok { color: var(--ok); }
+.ri-mine .bad { color: var(--bad); }
+.ri-expl {
+  padding: var(--sp-4) var(--sp-5); border-radius: var(--r-md);
+  background: var(--surface-2); border: 1px solid var(--border);
+  border-left: 3px solid var(--primary);
+  font-size: var(--fs-sm); line-height: 1.8; color: var(--text-2);
+}
+.ri-expl strong { color: var(--text); font-weight: 660; }
+
+.empty { padding: var(--sp-10) var(--sp-6); text-align: center; color: var(--text-3); }
+.empty .ic { width: 34px; height: 34px; margin-bottom: var(--sp-4); color: var(--border-strong); stroke-width: 1.5; }
+.empty p { font-size: var(--fs-sm); }
+.empty .btn { margin-top: var(--sp-5); }
+
+/* ---------------------------------------------------------------- 历史图表 */
+.hist-chart { display: flex; align-items: flex-end; gap: 8px; height: 190px; padding: var(--sp-6) var(--sp-6) var(--sp-2); overflow-x: auto; }
+.hist-chart .empty { flex: 1; align-self: center; padding: var(--sp-6) var(--sp-4); }
+.hist-col { flex: 1 0 40px; display: flex; flex-direction: column; justify-content: flex-end; align-items: center; gap: 7px; height: 100%; min-width: 40px; }
+.hist-col .v { font-size: 11px; font-weight: 700; color: var(--text-2); font-variant-numeric: tabular-nums; }
+.hist-col .bar {
+  width: 100%; max-width: 46px; border-radius: 8px 8px 3px 3px; min-height: 4px;
+  background: linear-gradient(180deg, var(--brand-1), color-mix(in srgb, var(--brand-1) 62%, transparent));
+  transition: height var(--t-slow) var(--ease-out);
+}
+.hist-col.good .bar { background: linear-gradient(180deg, var(--ok-strong), color-mix(in srgb, var(--ok-strong) 62%, transparent)); }
+.hist-col.mid .bar { background: linear-gradient(180deg, var(--flag), color-mix(in srgb, var(--flag) 62%, transparent)); }
+.hist-col.low .bar { background: linear-gradient(180deg, var(--bad-strong), color-mix(in srgb, var(--bad-strong) 62%, transparent)); }
+.hist-col .l { font-size: 10.5px; color: var(--text-3); white-space: nowrap; }
+
+.table-wrap { overflow-x: auto; }
+.table { width: 100%; border-collapse: collapse; font-size: var(--fs-sm); }
+.table th, .table td { padding: 12px var(--sp-6); text-align: left; border-bottom: 1px solid var(--border); white-space: nowrap; }
+.table th { font-size: var(--fs-xs); font-weight: 640; color: var(--text-3); letter-spacing: .03em; background: var(--surface-2); }
+.table td { color: var(--text-2); font-variant-numeric: tabular-nums; }
+.table tbody tr:hover td { background: var(--surface-2); }
+.table td strong { color: var(--text); }
+
+/* ---------------------------------------------------------------- 弹层 */
+.modal { position: fixed; inset: 0; z-index: 120; display: grid; place-items: center; padding: var(--sp-5); }
+.modal-backdrop { position: absolute; inset: 0; background: rgba(9,13,22,.55); backdrop-filter: blur(3px); animation: fade var(--t) var(--ease) both; }
+@keyframes fade { from { opacity: 0; } to { opacity: 1; } }
+.modal-panel {
+  position: relative; width: min(480px, 100%);
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--r-xl); box-shadow: var(--sh-3);
+  padding: var(--sp-6); animation: pop var(--t-slow) var(--ease-out) both;
+  max-height: 85vh; overflow-y: auto;
+}
+@keyframes pop { from { opacity: 0; transform: translateY(14px) scale(.975); } to { opacity: 1; transform: none; } }
+.modal-panel h2 { font-size: var(--fs-xl); margin-bottom: var(--sp-4); }
+.modal-panel p { color: var(--text-2); font-size: var(--fs-sm); line-height: 1.75; }
+.modal-foot { display: flex; gap: var(--sp-3); justify-content: flex-end; margin-top: var(--sp-6); }
+.keys { display: flex; flex-direction: column; gap: 2px; }
+.keys > div { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-4); padding: 11px 0; border-bottom: 1px dashed var(--border); }
+.keys > div:last-child { border-bottom: 0; }
+.keys dt { display: flex; gap: 4px; }
+.keys dd { font-size: var(--fs-sm); color: var(--text-2); }
+kbd {
+  display: inline-grid; place-items: center; min-width: 26px; height: 26px; padding: 0 7px;
+  background: var(--surface-2); border: 1px solid var(--border); border-bottom-width: 2px;
+  border-radius: var(--r-xs); font-size: var(--fs-xs); font-weight: 640; color: var(--text-2);
+}
+.toast {
+  position: fixed; left: 50%; bottom: 30px; transform: translateX(-50%) translateY(14px);
+  z-index: 150; max-width: min(440px, calc(100vw - 32px));
+  background: var(--text); color: var(--bg);
+  padding: 12px 20px; border-radius: var(--r-pill);
+  font-size: var(--fs-sm); font-weight: 570;
+  box-shadow: var(--sh-3); opacity: 0;
+  transition: opacity var(--t) var(--ease), transform var(--t) var(--ease-out);
+}
+.toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+.appfoot {
+  border-top: 1px solid var(--border);
+  padding: var(--sp-6); text-align: center;
+  font-size: var(--fs-xs); color: var(--text-3);
+  display: flex; flex-direction: column; gap: 5px;
+}
+.appfoot code { background: var(--surface-2); padding: 2px 7px; border-radius: var(--r-xs); border: 1px solid var(--border); }
+.appfoot kbd { min-width: 20px; height: 20px; }
+
+/* ---------------------------------------------------------------- 响应式 */
+@media (max-width: 1080px) {
+  .grid-setup { grid-template-columns: minmax(0, 1fr); }
+  .hero { grid-template-columns: minmax(0, 1fr); gap: var(--sp-6); }
+  .hero-art { display: none; }
+  .quiz-layout { grid-template-columns: minmax(0, 1fr); }
+  .cardcard {
+    position: fixed; top: auto; bottom: 0; left: 0; right: 0; z-index: 90;
+    border-radius: var(--r-xl) var(--r-xl) 0 0; max-height: 78vh; overflow-y: auto;
+    transform: translateY(101%); transition: transform var(--t-slow) var(--ease-out);
+    box-shadow: 0 -14px 44px -20px rgba(0,0,0,.4);
+  }
+  .cardcard.open { transform: none; }
+  #btnCardClose { display: inline-flex; }
+  .result-top { grid-template-columns: minmax(0, 1fr); justify-items: center; text-align: center; gap: var(--sp-6); }
+  .result-actions { justify-content: center; }
+  .kpis { text-align: left; }
+}
+@media (max-width: 780px) {
+  :root { --appbar-h: 62px; }
+  .appbar-inner, main { padding-left: var(--sp-4); padding-right: var(--sp-4); }
+  .brand-text small { display: none; }
+  .navbtn span:not(.pill) { display: none; }
+  .navbtn { padding: 0 9px; }
+  .navbtn.icon-only { width: 36px; }
+  .mainnav { gap: 3px; }
+  main { padding-top: var(--sp-5); }
+  .hero { padding: var(--sp-5) 0 var(--sp-7); }
+  .quizbar { grid-template-columns: minmax(0, 1fr); gap: var(--sp-3); position: static; }
+  .quizbar-mid { order: 3; grid-column: 1 / -1; }
+  .quizbar-right { flex-wrap: wrap; }
+  .question { padding: var(--sp-4); }
+  .qnav #btnSubmit { margin-left: 0; width: 100%; }
+  .result-top { padding: var(--sp-6) var(--sp-4); }
+  .ring-wrap { width: 160px; height: 160px; }
+  .ring-num strong { font-size: 2.4rem; }
+  .review-item { padding: var(--sp-5) var(--sp-4); }
+  .field { padding-left: var(--sp-4); padding-right: var(--sp-4); }
+  .config-foot { padding-left: var(--sp-4); padding-right: var(--sp-4); }
+  .card-head { padding: var(--sp-4); }
+  .pad { padding: 0 var(--sp-4) var(--sp-2); }
+  .table th, .table td { padding: 11px var(--sp-4); }
+  .toast { bottom: 16px; }
+}
+
+/* 窄屏：只保留品牌图标，避免顶栏溢出 */
+@media (max-width: 560px) {
+  .brand-text { display: none; }
+  .brand-mark { width: 34px; height: 34px; }
+  .appbar-inner { gap: var(--sp-2); }
+  .navbtn { padding: 0 7px; }
+  .navbtn.icon-only { width: 34px; }
+  .mainnav { gap: 2px; }
+}
+
+/* 手机端底部导航留白 */
+@media (max-width: 780px) { main { padding-bottom: var(--sp-8); } }
+
+/* ---------------------------------------------------------------- 打印 */
+@media print {
+  .appbar, .appfoot, .qnav, .quizbar, .filterbar, .toast, .modal, .card-head .btn, .quickrow { display: none !important; }
+  body { background: #fff; background-image: none; color: #000; }
+  .card { box-shadow: none; border-color: #ccc; break-inside: avoid; }
+  .view[hidden] { display: none !important; }
+  .review-item { break-inside: avoid; page-break-inside: avoid; }
+  pre.code { background: #f5f5f5; border-color: #ccc; }
+}
+
+/* ---------------------------------------------------------------- 减少动效 */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: .001ms !important; animation-iteration-count: 1 !important;
+    transition-duration: .001ms !important; scroll-behavior: auto !important;
+  }
+  .art-ring path { stroke-dashoffset: 0; }
+  .ring-fg { transition: none; }
+}
+</style>
+
+<style>
+/* ===== 清吾 · 爱弥斯暖色主题覆盖（覆盖原冷色变量，浅/深统一为暖色） ===== */
+:root[data-theme="light"],
+:root[data-theme="dark"] {
+  --bg: #fdf6f0;
+  --bg-deep: #f7ece4;
+  --surface: #fffdfb;
+  --surface-2: #fbf1ea;
+  --surface-3: #f6e8e0;
+
+  --text: #4a3728;
+  --text-2: #6b5443;
+  --text-3: #8a7360;
+
+  --border: #f0dcd2;
+  --border-strong: #e3c4b8;
+
+  --primary: #e0526b;
+  --primary-hover: #cf4760;
+  --primary-ink: #e0526b;
+  --primary-soft: #fbe4e9;
+  --on-primary: #ffffff;
+  --ring: #e0526b;
+
+  --ok: #2f855a;
+  --ok-strong: #276749;
+  --ok-bg: #e8f5ee;
+  --ok-border: #a8d5bd;
+
+  --bad: #c0392b;
+  --bad-strong: #d64541;
+  --bad-bg: #fdeceb;
+  --bad-border: #f0b3ad;
+
+  --flag: #a9772a;
+  --flag-bg: #fdf6e3;
+  --flag-border: #e8cd8a;
+
+  --brand-1: #e0526b;
+  --brand-2: #e8b04b;
+
+  --sh-1: 0 1px 2px rgba(74, 55, 40, .05);
+  --sh-2: 0 4px 14px -6px rgba(74, 55, 40, .12), 0 1px 2px rgba(74, 55, 40, .05);
+  --sh-3: 0 18px 44px -20px rgba(74, 55, 40, .25), 0 2px 6px rgba(74, 55, 40, .05);
+  --sh-focus: 0 0 0 3px rgba(224, 82, 107, .22);
+
+  --art-card: #fffdfb;
+  --art-bar: #f0dcd2;
+  --art-bar-lg: #e3c4b8;
+  --art-opt: #fbf1ea;
+  --art-opt-on: #fbe4e9;
+  --art-opt-dot: #e3c4b8;
+  --art-ring-bg: #fbf1ea;
+
+  color-scheme: light;
+}
+
+/* 博客只做暖色，隐藏深浅切换按钮 */
+#btnTheme { display: none !important; }
+</style>
+</head>
+<body>
+
+<a class="skip-link" href="#main">跳到主要内容</a>
+
+<!-- ============================ 图标精灵（全部为内联 SVG，无 emoji） ============================ -->
+<svg class="sprite" aria-hidden="true" focusable="false" xmlns="http://www.w3.org/2000/svg">
+  <symbol id="i-check" viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></symbol>
+  <symbol id="i-x" viewBox="0 0 24 24"><path d="M18 6 6 18M6 6l12 12"/></symbol>
+  <symbol id="i-flag" viewBox="0 0 24 24"><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V4s-1 1-4 1-5-2-8-2-4 1-4 1z"/><path d="M4 22v-7"/></symbol>
+  <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3.5 2"/></symbol>
+  <symbol id="i-left" viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></symbol>
+  <symbol id="i-right" viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></symbol>
+  <symbol id="i-refresh" viewBox="0 0 24 24"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><path d="M21 3v6h-6"/></symbol>
+  <symbol id="i-book" viewBox="0 0 24 24"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></symbol>
+  <symbol id="i-chart" viewBox="0 0 24 24"><path d="M3 3v18h18"/><path d="M7 16v-4M12 16V8M17 16v-7"/></symbol>
+  <symbol id="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></symbol>
+  <symbol id="i-moon" viewBox="0 0 24 24"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9z"/></symbol>
+  <symbol id="i-play" viewBox="0 0 24 24"><path d="M6 3.5 20 12 6 20.5z"/></symbol>
+  <symbol id="i-trophy" viewBox="0 0 24 24"><path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6"/><path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18"/><path d="M4 22h16"/><path d="M10 14.7V17c0 .6-.5 1-1 1.2-1.2.5-2 2-2 3.8"/><path d="M14 14.7V17c0 .6.5 1 1 1.2 1.2.5 2 2 2 3.8"/><path d="M18 2H6v7a6 6 0 0 0 12 0z"/></symbol>
+  <symbol id="i-alert" viewBox="0 0 24 24"><path d="m21.7 18-8-14a2 2 0 0 0-3.5 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.7-3z"/><path d="M12 9v4"/><path d="M12 17h.01"/></symbol>
+  <symbol id="i-list" viewBox="0 0 24 24"><path d="M8 6h13M8 12h13M8 18h13M3.5 6h.01M3.5 12h.01M3.5 18h.01"/></symbol>
+  <symbol id="i-target" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1.4"/></symbol>
+  <symbol id="i-trash" viewBox="0 0 24 24"><path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><path d="M10 11v6M14 11v6"/></symbol>
+  <symbol id="i-arrow-right" viewBox="0 0 24 24"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></symbol>
+  <symbol id="i-layers" viewBox="0 0 24 24"><path d="m12 2 9 5-9 5-9-5z"/><path d="m3 12 9 5 9-5"/><path d="m3 17 9 5 9-5"/></symbol>
+  <symbol id="i-zap" viewBox="0 0 24 24"><path d="M13 2 3 14h9l-1 8 10-12h-9z"/></symbol>
+  <symbol id="i-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 16v-4.5"/><path d="M12 8h.01"/></symbol>
+  <symbol id="i-sliders" viewBox="0 0 24 24"><path d="M4 21v-6M4 11V3M12 21v-9M12 8V3M20 21v-4M20 13V3"/><path d="M1.5 15h5M9.5 8h5M17.5 17h5"/></symbol>
+  <symbol id="i-keyboard" viewBox="0 0 24 24"><rect x="2" y="6" width="20" height="12" rx="2"/><path d="M6 10h.01M10 10h.01M14 10h.01M18 10h.01M7 14h10"/></symbol>
+  <symbol id="i-copy" viewBox="0 0 24 24"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></symbol>
+  <symbol id="i-printer" viewBox="0 0 24 24"><path d="M6 9V3h12v6"/><path d="M6 18H4a2 2 0 0 1-2-2v-4a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v4a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8" rx="1"/></symbol>
+  <symbol id="i-home" viewBox="0 0 24 24"><path d="m3 10 9-7 9 7v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><path d="M9 21v-7h6v7"/></symbol>
+  <symbol id="i-shield" viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="m9 12 2 2 4-4"/></symbol>
+</svg>
+
+<!-- ============================ 顶栏 ============================ -->
+<header class="appbar">
+  <div class="appbar-inner">
+    <a class="brand" href="#/setup" data-nav="setup">
+      <span class="brand-mark" aria-hidden="true">
+        <svg viewBox="0 0 32 32"><path d="M16 2.6 28.4 9.5v13L16 29.4 3.6 22.5v-13z"/><path class="brand-glyph" d="M11.6 20.6V11h3.9c1.8 0 2.9 1 2.9 2.7 0 1.7-1.1 2.7-2.9 2.7h-2v4.2zm1.9-5.8h1.8c.8 0 1.2-.4 1.2-1.1s-.4-1.1-1.2-1.1h-1.8z"/><path class="brand-dot" d="M21.2 20.9c-.7 0-1.2-.5-1.2-1.2s.5-1.2 1.2-1.2 1.2.5 1.2 1.2-.5 1.2-1.2 1.2z"/></svg>
+      </span>
+      <span class="brand-text">
+        <strong>二级 Python 刷题</strong>
+        <small>智能抽题 · 自动评分</small>
+      </span>
+    </a>
+
+    <nav class="mainnav" aria-label="主导航">
+      <button class="navbtn" type="button" data-nav="setup"><svg class="ic" aria-hidden="true"><use href="#i-home"/></svg><span>开始</span></button>
+      <button class="navbtn" type="button" data-nav="quiz" id="navQuiz" hidden><svg class="ic" aria-hidden="true"><use href="#i-target"/></svg><span>答题</span></button>
+      <button class="navbtn" type="button" data-nav="wrong"><svg class="ic" aria-hidden="true"><use href="#i-book"/></svg><span>错题本</span><span class="pill" id="navWrongCount" hidden>0</span></button>
+      <button class="navbtn" type="button" data-nav="history"><svg class="ic" aria-hidden="true"><use href="#i-chart"/></svg><span>成绩</span></button>
+      <button class="navbtn icon-only" type="button" id="btnKeys" aria-label="快捷键说明" title="快捷键说明"><svg class="ic" aria-hidden="true"><use href="#i-keyboard"/></svg></button>
+      <button class="navbtn icon-only" type="button" id="btnTheme" aria-label="切换深色模式" title="切换深色模式"><svg class="ic" aria-hidden="true"><use href="#i-moon"/></svg></button>
+    </nav>
+  </div>
+</header>
+
+<main id="main">
+
+  <!-- ============================ 视图：开始 / 配置 ============================ -->
+  <section class="view" id="view-setup" aria-labelledby="setupTitle">
+    <div class="hero">
+      <div class="hero-copy">
+        <span class="eyebrow"><svg class="ic" aria-hidden="true"><use href="#i-shield"/></svg>全国计算机等级考试二级 · Python 语言程序设计</span>
+        <h1 id="setupTitle">随机抽题，<span class="hl">当场判分</span></h1>
+        <p class="lede">从 <strong id="heroBankCount">689</strong> 道选择题中随机抽取一组，限时或自由作答，交卷后逐题给出标准答案与解析，错题自动进入错题本。</p>
+        <div class="hero-stats" id="heroStats"></div>
+      </div>
+      <div class="hero-art" aria-hidden="true">
+        <svg viewBox="0 0 320 260" role="presentation">
+          <defs>
+            <linearGradient id="gArt" x1="0" y1="0" x2="1" y2="1">
+              <stop offset="0%" stop-color="var(--brand-1)"/><stop offset="100%" stop-color="var(--brand-2)"/>
+            </linearGradient>
+          </defs>
+          <rect x="24" y="30" width="272" height="200" rx="18" class="art-card"/>
+          <rect x="48" y="56" width="120" height="11" rx="5.5" class="art-bar-lg"/>
+          <rect x="48" y="78" width="180" height="8" rx="4" class="art-bar"/>
+          <rect x="48" y="96" width="150" height="8" rx="4" class="art-bar"/>
+          <g class="art-opts">
+            <rect x="48" y="122" width="224" height="26" rx="8"/><circle cx="64" cy="135" r="6.5"/>
+            <rect x="48" y="156" width="224" height="26" rx="8" class="on"/><circle cx="64" cy="169" r="6.5" class="on"/>
+            <rect x="48" y="190" width="224" height="26" rx="8"/><circle cx="64" cy="203" r="6.5"/>
+          </g>
+          <g class="art-ring">
+            <circle cx="264" cy="76" r="26"/>
+            <path d="M252 76l9 9 17-18"/>
+          </g>
+        </svg>
+      </div>
+    </div>
+
+    <div class="grid-setup">
+      <form class="card config" id="configForm" novalidate>
+        <div class="card-head">
+          <h2><svg class="ic" aria-hidden="true"><use href="#i-sliders"/></svg>组卷设置</h2>
+          <button class="btn ghost sm" type="button" id="btnResetConfig">恢复默认</button>
+        </div>
+
+        <fieldset class="field">
+          <legend>每套题量</legend>
+          <div class="segmented" role="radiogroup" aria-label="每套题量" data-seg="count">
+            <button type="button" role="radio" aria-checked="false" data-val="10">10 题</button>
+            <button type="button" role="radio" aria-checked="true" data-val="20">20 题</button>
+            <button type="button" role="radio" aria-checked="false" data-val="30">30 题</button>
+            <button type="button" role="radio" aria-checked="false" data-val="50">50 题</button>
+          </div>
+          <p class="hint" id="countHint">默认 20 题，约需 15 分钟。</p>
+        </fieldset>
+
+        <fieldset class="field">
+          <legend>抽题范围</legend>
+          <div class="segmented" role="radiogroup" aria-label="抽题范围" data-seg="rangeMode">
+            <button type="button" role="radio" aria-checked="true" data-val="all">全部套次</button>
+            <button type="button" role="radio" aria-checked="false" data-val="custom">指定套次</button>
+          </div>
+          <div class="setpick" id="setPick" hidden>
+            <div class="setpick-head">
+              <span class="muted sm">共 20 套，已选 <strong id="setPickCount">0</strong> 套</span>
+              <span class="setpick-actions">
+                <button class="btn ghost xs" type="button" id="setSelAll">全选</button>
+                <button class="btn ghost xs" type="button" id="setSelNone">清空</button>
+              </span>
+            </div>
+            <div class="setgrid" id="setGrid" role="group" aria-label="选择套次"></div>
+          </div>
+        </fieldset>
+
+        <fieldset class="field">
+          <legend>答题模式</legend>
+          <div class="segmented" role="radiogroup" aria-label="答题模式" data-seg="mode">
+            <button type="button" role="radio" aria-checked="true" data-val="exam">考试模式</button>
+            <button type="button" role="radio" aria-checked="false" data-val="practice">练习模式</button>
+          </div>
+          <p class="hint" id="modeHint">考试模式：交卷后统一公布答案与解析。</p>
+        </fieldset>
+
+        <fieldset class="field">
+          <legend>计时方式</legend>
+          <div class="segmented" role="radiogroup" aria-label="计时方式" data-seg="timer">
+            <button type="button" role="radio" aria-checked="false" data-val="off">不限时</button>
+            <button type="button" role="radio" aria-checked="true" data-val="on">限时</button>
+          </div>
+          <p class="hint" id="timerHint">限时按每题 60 秒计算，届时自动交卷。</p>
+        </fieldset>
+
+        <fieldset class="field">
+          <legend>选题偏好</legend>
+          <div class="segmented" role="radiogroup" aria-label="选题偏好" data-seg="source">
+            <button type="button" role="radio" aria-checked="true" data-val="all">随机抽题</button>
+            <button type="button" role="radio" aria-checked="false" data-val="unseen">优先未做过</button>
+            <button type="button" role="radio" aria-checked="false" data-val="wrong">只抽错题</button>
+          </div>
+          <p class="hint" id="sourceHint">从全部题目中等概率随机抽取。</p>
+        </fieldset>
+
+        <div class="config-foot">
+          <button class="btn primary lg" type="submit" id="btnStart">
+            <svg class="ic" aria-hidden="true"><use href="#i-play"/></svg>开始答题
+          </button>
+          <p class="err" id="configErr" role="alert" hidden></p>
+        </div>
+      </form>
+
+      <aside class="side-stack">
+        <section class="card stat-card">
+          <h3><svg class="ic" aria-hidden="true"><use href="#i-layers"/></svg>题库概览</h3>
+          <dl class="statlist" id="bankStats"></dl>
+        </section>
+
+        <section class="card stat-card">
+          <h3><svg class="ic" aria-hidden="true"><use href="#i-book"/></svg>我的进度</h3>
+          <dl class="statlist" id="myStats"></dl>
+          <div class="quickrow">
+            <button class="btn ghost sm" type="button" data-nav="wrong"><svg class="ic" aria-hidden="true"><use href="#i-book"/></svg>错题本</button>
+            <button class="btn ghost sm" type="button" data-nav="history"><svg class="ic" aria-hidden="true"><use href="#i-chart"/></svg>成绩记录</button>
+          </div>
+        </section>
+
+        <section class="card stat-card">
+          <h3><svg class="ic" aria-hidden="true"><use href="#i-layers"/></svg>题库来源</h3>
+          <p class="sm muted pad" id="bankSource">内置题库</p>
+          <div class="quickrow">
+            <button class="btn ghost sm" type="button" id="btnImportBank">
+              <svg class="ic" aria-hidden="true"><use href="#i-copy"/></svg>导入题库
+            </button>
+            <button class="btn ghost sm danger-ghost" type="button" id="btnResetBank" hidden>
+              <svg class="ic" aria-hidden="true"><use href="#i-refresh"/></svg>恢复内置
+            </button>
+          </div>
+          <input type="file" id="bankFile" accept=".json,application/json" hidden>
+        </section>
+
+        <section class="card resume-card" id="resumeCard" hidden>
+          <h3><svg class="ic" aria-hidden="true"><use href="#i-alert"/></svg>有未完成的答题</h3>
+          <p class="sm muted" id="resumeInfo"></p>
+          <div class="quickrow">
+            <button class="btn primary sm" type="button" id="btnResume">继续答题</button>
+            <button class="btn ghost sm" type="button" id="btnDiscard">放弃</button>
+          </div>
+        </section>
+      </aside>
+    </div>
+  </section>
+
+  <!-- ============================ 视图：答题 ============================ -->
+  <section class="view" id="view-quiz" aria-labelledby="quizHeading" hidden>
+    <h2 class="sr-only" id="quizHeading">答题</h2>
+
+    <div class="quizbar card">
+      <div class="quizbar-left">
+        <span class="badge" id="quizModeBadge">考试模式</span>
+        <span class="prog-text"><strong id="progNow">1</strong> / <span id="progTotal">20</span></span>
+      </div>
+      <div class="quizbar-mid">
+        <div class="progress" role="progressbar" aria-label="答题进度" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" id="progBar">
+          <span class="progress-fill" id="progFill"></span>
+        </div>
+      </div>
+      <div class="quizbar-right">
+        <span class="timer" id="quizTimer" title="用时"><svg class="ic" aria-hidden="true"><use href="#i-clock"/></svg><span id="timerText">00:00</span></span>
+        <button class="btn ghost sm" type="button" id="btnCardToggle" aria-expanded="false"><svg class="ic" aria-hidden="true"><use href="#i-list"/></svg>答题卡</button>
+        <button class="btn ghost sm danger-ghost" type="button" id="btnQuit">退出</button>
+      </div>
+    </div>
+
+    <div class="quiz-layout">
+      <div class="qwrap">
+        <article class="card question" id="questionCard" aria-live="polite">
+          <header class="qhead">
+            <span class="qno" id="qNo">第 1 题</span>
+            <span class="qsrc" id="qSrc"></span>
+            <button class="flagbtn" type="button" id="btnFlag" aria-pressed="false">
+              <svg class="ic" aria-hidden="true"><use href="#i-flag"/></svg><span id="flagText">标记待定</span>
+            </button>
+          </header>
+          <div class="stem" id="qStem"></div>
+          <div class="options" id="qOptions" role="radiogroup" aria-label="选项"></div>
+          <div class="feedback" id="qFeedback" hidden></div>
+        </article>
+
+        <div class="qnav">
+          <button class="btn ghost" type="button" id="btnPrev"><svg class="ic" aria-hidden="true"><use href="#i-left"/></svg>上一题</button>
+          <button class="btn primary" type="button" id="btnNext">下一题<svg class="ic" aria-hidden="true"><use href="#i-right"/></svg></button>
+          <button class="btn accent" type="button" id="btnSubmit"><svg class="ic" aria-hidden="true"><use href="#i-check"/></svg>交卷评分</button>
+        </div>
+      </div>
+
+      <aside class="cardcard card" id="cardPanel" aria-labelledby="cardTitle">
+        <header class="card-head">
+          <h2 id="cardTitle"><svg class="ic" aria-hidden="true"><use href="#i-list"/></svg>答题卡</h2>
+          <button class="btn ghost icon-only sm" type="button" id="btnCardClose" aria-label="关闭答题卡"><svg class="ic" aria-hidden="true"><use href="#i-x"/></svg></button>
+        </header>
+        <div class="cardgrid" id="cardGrid"></div>
+        <ul class="legend">
+          <li><i class="dot answered"></i>已答</li>
+          <li><i class="dot current"></i>当前</li>
+          <li><i class="dot flagged"></i>已标记</li>
+          <li><i class="dot todo"></i>未答</li>
+        </ul>
+        <div class="cardcard-sum">
+          <span>已答 <strong id="sumAnswered">0</strong></span>
+          <span>未答 <strong id="sumTodo">20</strong></span>
+          <span>标记 <strong id="sumFlagged">0</strong></span>
+        </div>
+      </aside>
+    </div>
+  </section>
+
+  <!-- ============================ 视图：成绩 ============================ -->
+  <section class="view" id="view-result" aria-labelledby="resultTitle" hidden>
+    <h2 class="sr-only" id="resultTitle">成绩</h2>
+    <div class="result-top card">
+      <div class="ring-wrap">
+        <svg class="ring" viewBox="0 0 132 132" role="img" aria-labelledby="ringLabel">
+          <title id="ringLabel">得分</title>
+          <circle class="ring-bg" cx="66" cy="66" r="58"/>
+          <circle class="ring-fg" cx="66" cy="66" r="58" id="ringFg"/>
+        </svg>
+        <div class="ring-num">
+          <strong id="scoreValue">0</strong>
+          <span>分</span>
+        </div>
+      </div>
+      <div class="result-sum">
+        <span class="grade" id="gradeText">—</span>
+        <h2 id="resultHeadline">本次成绩</h2>
+        <p class="muted" id="resultSub"></p>
+        <dl class="kpis" id="resultKpis"></dl>
+        <div class="result-actions">
+          <button class="btn primary" type="button" id="btnAgain"><svg class="ic" aria-hidden="true"><use href="#i-refresh"/></svg>再抽一套</button>
+          <button class="btn accent" type="button" id="btnRetryWrong"><svg class="ic" aria-hidden="true"><use href="#i-target"/></svg>重练本次错题</button>
+          <button class="btn ghost" type="button" data-nav="setup"><svg class="ic" aria-hidden="true"><use href="#i-sliders"/></svg>调整设置</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="card review-card">
+      <header class="card-head">
+        <h2><svg class="ic" aria-hidden="true"><use href="#i-list"/></svg>逐题解析</h2>
+        <div class="filterbar" role="group" aria-label="筛选题目">
+          <button class="chip on" type="button" data-filter="all">全部</button>
+          <button class="chip" type="button" data-filter="wrong">答错</button>
+          <button class="chip" type="button" data-filter="right">答对</button>
+          <button class="chip" type="button" data-filter="blank">未答</button>
+        </div>
+      </header>
+      <div class="review-list" id="reviewList"></div>
+    </div>
+  </section>
+
+  <!-- ============================ 视图：错题本 ============================ -->
+  <section class="view" id="view-wrong" aria-labelledby="wrongTitle" hidden>
+    <div class="card">
+      <header class="card-head">
+        <h2 id="wrongTitle"><svg class="ic" aria-hidden="true"><use href="#i-book"/></svg>错题本</h2>
+        <div class="filterbar">
+          <button class="btn ghost sm" type="button" id="btnWrongPractice"><svg class="ic" aria-hidden="true"><use href="#i-play"/></svg>开始攻克</button>
+          <button class="btn ghost sm" type="button" id="btnWrongCopy"><svg class="ic" aria-hidden="true"><use href="#i-copy"/></svg>复制</button>
+          <button class="btn ghost sm" type="button" id="btnWrongPrint"><svg class="ic" aria-hidden="true"><use href="#i-printer"/></svg>打印</button>
+          <button class="btn ghost sm danger-ghost" type="button" id="btnWrongClear"><svg class="ic" aria-hidden="true"><use href="#i-trash"/></svg>清空</button>
+        </div>
+      </header>
+      <p class="muted sm pad">答错的题目会自动收进这里；再次答对即视为攻克并自动移出。</p>
+      <div class="review-list" id="wrongList"></div>
+    </div>
+  </section>
+
+  <!-- ============================ 视图：成绩记录 ============================ -->
+  <section class="view" id="view-history" aria-labelledby="histTitle" hidden>
+    <div class="card">
+      <header class="card-head">
+        <h2 id="histTitle"><svg class="ic" aria-hidden="true"><use href="#i-chart"/></svg>成绩记录</h2>
+        <button class="btn ghost sm danger-ghost" type="button" id="btnHistClear"><svg class="ic" aria-hidden="true"><use href="#i-trash"/></svg>清空记录</button>
+      </header>
+      <div class="hist-chart" id="histChart"></div>
+      <div class="table-wrap">
+        <table class="table" id="histTable">
+          <thead>
+            <tr><th scope="col">时间</th><th scope="col">模式</th><th scope="col">题量</th><th scope="col">正确</th><th scope="col">得分</th><th scope="col">用时</th></tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+</main>
+
+<footer class="appfoot">
+  <p>题库来源：<code>二级python题库【选择题】.docx</code> · 共 <span id="footCount">689</span> 题 · 答案与解析均来自原卷</p>
+  <p class="muted sm">按 <kbd>?</kbd> 查看快捷键；所有答题数据仅保存在本机浏览器中。</p>
+</footer>
+
+<!-- 弹层：交卷确认 -->
+<div class="modal" id="modal" hidden>
+  <div class="modal-backdrop" data-close></div>
+  <div class="modal-panel" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
+    <h2 id="modalTitle">确认交卷</h2>
+    <div id="modalBody"></div>
+    <div class="modal-foot">
+      <button class="btn ghost" type="button" data-close>继续答题</button>
+      <button class="btn primary" type="button" id="modalConfirm">确认交卷</button>
+    </div>
+  </div>
+</div>
+
+<!-- 弹层：快捷键 -->
+<div class="modal" id="keysModal" hidden>
+  <div class="modal-backdrop" data-close></div>
+  <div class="modal-panel" role="dialog" aria-modal="true" aria-labelledby="keysTitle">
+    <h2 id="keysTitle">键盘快捷键</h2>
+    <dl class="keys">
+      <div><dt><kbd>A</kbd><kbd>B</kbd><kbd>C</kbd><kbd>D</kbd></dt><dd>选择对应选项</dd></div>
+      <div><dt><kbd>1</kbd>–<kbd>4</kbd></dt><dd>同上</dd></div>
+      <div><dt><kbd>←</kbd><kbd>→</kbd></dt><dd>上一题 / 下一题</dd></div>
+      <div><dt><kbd>F</kbd></dt><dd>标记 / 取消标记本题</dd></div>
+      <div><dt><kbd>Enter</kbd></dt><dd>下一题（最后一题时交卷）</dd></div>
+      <div><dt><kbd>Esc</kbd></dt><dd>关闭弹窗或答题卡</dd></div>
+      <div><dt><kbd>?</kbd></dt><dd>打开本说明</dd></div>
+    </dl>
+    <div class="modal-foot">
+      <button class="btn primary" type="button" data-close>知道了</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
+
+<!-- 题库不内嵌于页面：运行时从 /api/questions 获取（见下方脚本）。 -->
+<script>
+/* 题库不放在页面里：运行时从 /api/questions（服务端函数，代取私有仓库）获取。
+   「自带题库」= 服务端返回的题库；「我的题库」= 你在本页导入、存在 localStorage 的题库。 */
+(function () {
+  function boot(bank) {
+    window.BUILTIN_BANK = bank;
+    window.QUESTION_BANK = bank;
+    try {
+      var saved = JSON.parse(localStorage.getItem('pyquiz.bank.v1') || 'null');
+      if (Array.isArray(saved) && saved.length) window.QUESTION_BANK = saved;
+    } catch (e) { /* 忽略损坏的本地题库，回退到自带题库 */ }
+    if (typeof window.__pyquizBoot === 'function') window.__pyquizBoot();
+  }
+  fetch('/api/questions', { headers: { accept: 'application/json' } })
+    .then(function (r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
+    .then(function (data) { boot(Array.isArray(data) ? data : []); })
+    .catch(function (err) {
+      console.error('[quiz] 题库获取失败:', err);
+      boot([]);
+    });
+})();
+</script>
+<script>
+/* ==========================================================================
+   二级 Python 刷题 · 应用逻辑
+   纯前端、离线可用：题库由 questions.js 以脚本方式注入（file:// 下无需 fetch）。
+   ========================================================================== */
+window.__pyquizBoot = function () {
+  'use strict';
+
+  /* ------------------------------------------------------------ 常量 */
+  var BANK = Array.isArray(window.QUESTION_BANK) ? window.QUESTION_BANK : [];
+  var LETTERS = ['A', 'B', 'C', 'D'];
+  var BY_ID = {};
+  BANK.forEach(function (q) { BY_ID[q.id] = q; });
+
+  var LS = {
+    wrong: 'pyquiz.wrong.v1',
+    history: 'pyquiz.history.v1',
+    progress: 'pyquiz.progress.v1',
+    settings: 'pyquiz.settings.v1',
+    seen: 'pyquiz.seen.v1',
+    bank: 'pyquiz.bank.v1'
+  };
+
+  var DEFAULT_CONFIG = { count: 20, rangeMode: 'all', sets: [], mode: 'exam', timer: 'on', source: 'all' };
+  var SEC_PER_Q = 60;
+
+  var MODE_HINT = {
+    exam: '考试模式：交卷后统一公布答案与解析。',
+    practice: '练习模式：每次选择后立即判定并显示解析。'
+  };
+  var SOURCE_HINT = {
+    all: '从全部题目中等概率随机抽取。',
+    unseen: '优先抽取从未作答过的题目，不足时由已做题目补齐。',
+    wrong: '只从错题本中抽取，用于集中攻克薄弱题。'
+  };
+
+  /* ------------------------------------------------------------ 存储 */
+  var store = {
+    get: function (key, fallback) {
+      try {
+        var raw = window.localStorage.getItem(key);
+        return raw === null ? fallback : JSON.parse(raw);
+      } catch (e) { return fallback; }
+    },
+    set: function (key, value) {
+      try { window.localStorage.setItem(key, JSON.stringify(value)); return true; }
+      catch (e) { return false; }
+    },
+    del: function (key) {
+      try { window.localStorage.removeItem(key); } catch (e) { /* 忽略 */ }
+    }
+  };
+
+  /* ------------------------------------------------------------ 状态 */
+  var state = {
+    view: 'setup',
+    config: Object.assign({}, DEFAULT_CONFIG, store.get(LS.settings, {}) || {}),
+    quiz: null,
+    reviewFilter: 'all'
+  };
+  if (!Array.isArray(state.config.sets)) state.config.sets = [];
+  if (!['all', 'custom'].includes(state.config.rangeMode)) state.config.rangeMode = 'all';
+
+  var wrongBook = store.get(LS.wrong, {}) || {};      // { qid: {count, lastAt} }
+  var scoreHistory = store.get(LS.history, []) || [];  // [ {at,total,right,score,duration,mode} ]
+  var seen = store.get(LS.seen, {}) || {};             // { qid: true }
+  var timerId = null;
+
+  /* ------------------------------------------------------------ 小工具 */
+  function $(sel, root) { return (root || document).querySelector(sel); }
+  function $$(sel, root) { return Array.prototype.slice.call((root || document).querySelectorAll(sel)); }
+
+  function el(tag, className, text) {
+    var node = document.createElement(tag);
+    if (className) node.className = className;
+    if (text !== undefined && text !== null) node.textContent = String(text);
+    return node;
+  }
+
+  function svgIcon(id, cls) {
+    var svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    svg.setAttribute('class', 'ic' + (cls ? ' ' + cls : ''));
+    svg.setAttribute('aria-hidden', 'true');
+    var use = document.createElementNS('http://www.w3.org/2000/svg', 'use');
+    use.setAttribute('href', '#' + id);
+    svg.appendChild(use);
+    return svg;
+  }
+
+  function shuffle(arr) {
+    var a = arr.slice();
+    for (var i = a.length - 1; i > 0; i--) {
+      var j = Math.floor(Math.random() * (i + 1));
+      var t = a[i]; a[i] = a[j]; a[j] = t;
+    }
+    return a;
+  }
+
+  function fmtClock(sec) {
+    sec = Math.max(0, Math.floor(sec));
+    var h = Math.floor(sec / 3600);
+    var m = Math.floor((sec % 3600) / 60);
+    var s = sec % 60;
+    var pad = function (n) { return n < 10 ? '0' + n : String(n); };
+    return h > 0 ? h + ':' + pad(m) + ':' + pad(s) : pad(m) + ':' + pad(s);
+  }
+
+  function fmtTime(ts) {
+    var d = new Date(ts);
+    var pad = function (n) { return n < 10 ? '0' + n : String(n); };
+    return (d.getMonth() + 1) + '/' + d.getDate() + ' ' + pad(d.getHours()) + ':' + pad(d.getMinutes());
+  }
+
+  var toastTimer = null;
+  function toast(msg) {
+    var node = $('#toast');
+    node.textContent = msg;
+    node.hidden = false;
+    requestAnimationFrame(function () { node.classList.add('show'); });
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(function () {
+      node.classList.remove('show');
+      setTimeout(function () { node.hidden = true; }, 240);
+    }, 2400);
+  }
+
+  /* ------------------------------------------------------------ 弹层 */
+  var modalConfirm = null;
+  function openModal(title, bodyNode, confirmLabel, onConfirm) {
+    $('#modalTitle').textContent = title;
+    var body = $('#modalBody');
+    body.innerHTML = '';
+    if (bodyNode) body.appendChild(bodyNode);
+    modalConfirm = onConfirm || null;
+    var btn = $('#modalConfirm');
+    btn.textContent = confirmLabel || '确认';
+    btn.hidden = !onConfirm;
+    $('#modal').hidden = false;
+    var foot = $$('.modal-foot .btn', $('#modal')).filter(function (b) { return !b.hidden; });
+    if (foot.length) foot[0].focus();
+  }
+  function closeModal() { $('#modal').hidden = true; modalConfirm = null; }
+  function closeKeys() { $('#keysModal').hidden = true; }
+
+  /* ------------------------------------------------------------ 渲染：题干 */
+  function renderStem(container, q) {
+    container.innerHTML = '';
+    var parts = q.stemParts && q.stemParts.length ? q.stemParts : [{ t: 'text', v: q.stem }];
+    parts.forEach(function (part) {
+      if (part.t === 'code') {
+        var pre = el('pre', 'code');
+        pre.textContent = part.v;
+        container.appendChild(pre);
+      } else {
+        var p = el('p', 'qtext', part.v);
+        container.appendChild(p);
+      }
+    });
+  }
+
+  /* ------------------------------------------------------------ 视图切换 */
+  var VIEWS = ['setup', 'quiz', 'result', 'wrong', 'history'];
+  function go(view, skipHash) {
+    if (VIEWS.indexOf(view) === -1) view = 'setup';
+    if (view === 'quiz' && !state.quiz) view = 'setup';
+    if (view === 'result' && !state.quiz) view = 'setup';
+    state.view = view;
+
+    VIEWS.forEach(function (v) {
+      var node = $('#view-' + v);
+      if (node) node.hidden = (v !== view);
+    });
+
+    $$('.navbtn[data-nav]').forEach(function (btn) {
+      btn.setAttribute('aria-current', btn.dataset.nav === view ? 'page' : 'false');
+    });
+
+    $('#navQuiz').hidden = !state.quiz;
+
+    if (view === 'setup') { renderHeroStats(); renderBankStats(); renderMyStats(); renderResume(); renderBankSource(); }
+    if (view === 'wrong') renderWrongBook();
+    if (view === 'history') renderHistory();
+    if (view === 'result') renderResult();
+
+    if (!skipHash) {
+      var want = '#/' + view;
+      if (location.hash !== want) replaceHash(want);
+    }
+    window.scrollTo({ top: 0, behavior: 'auto' });
+  }
+  function replaceHash(hash) {
+    try { window.history.replaceState(null, '', hash); }
+    catch (e) { window.location.hash = hash; }
+  }
+
+  /* ------------------------------------------------------------ 首页统计 */
+  function renderHeroStats() {
+    var box = $('#heroStats');
+    if (!box) return;
+    box.innerHTML = '';
+    var sets = {};
+    BANK.forEach(function (q) { sets[q.set] = true; });
+    var withExpl = BANK.filter(function (q) { return q.explanation; }).length;
+    var rows = [
+      [String(BANK.length), '道选择题'],
+      [String(Object.keys(sets).length), '套试卷'],
+      ['4', '个选项 / 题'],
+      [Math.round(withExpl / BANK.length * 100) + '%', '含答案与解析']
+    ];
+    rows.forEach(function (r) {
+      var d = el('div', 'hstat');
+      d.appendChild(el('b', null, r[0]));
+      d.appendChild(el('span', null, r[1]));
+      box.appendChild(d);
+    });
+  }
+
+  /* ------------------------------------------------------------ 题库导入 */
+  function usingCustomBank() {
+    return Array.isArray(window.BUILTIN_BANK) &&
+      BANK.length > 0 && BANK !== window.BUILTIN_BANK;
+  }
+
+  function renderBankSource() {
+    var p = $('#bankSource');
+    if (!p) return;
+    var custom = usingCustomBank();
+    p.textContent = custom
+      ? '当前使用导入的题库，共 ' + BANK.length + ' 题。'
+      : '当前使用页面内置题库，共 ' + BANK.length + ' 题。';
+    $('#btnResetBank').hidden = !custom;
+  }
+
+  function validateBank(data) {
+    if (!Array.isArray(data)) return { ok: false, error: '顶层必须是一个数组' };
+    if (!data.length) return { ok: false, error: '题库是空的' };
+    var out = [];
+    for (var i = 0; i < data.length; i++) {
+      var q = data[i];
+      var at = '第 ' + (i + 1) + ' 项';
+      if (!q || typeof q !== 'object') return { ok: false, error: at + ' 不是对象' };
+      if (typeof q.stem !== 'string' || !q.stem.trim()) return { ok: false, error: at + ' 缺少题干 stem' };
+      if (!Array.isArray(q.options) || q.options.length < 2) return { ok: false, error: at + ' 的 options 至少要 2 个' };
+      var keys = [];
+      for (var k = 0; k < q.options.length; k++) {
+        var o = q.options[k] || {};
+        var key = String(o.key == null ? '' : o.key).trim();
+        if (!key) return { ok: false, error: at + ' 有选项缺少 key' };
+        if (keys.indexOf(key) !== -1) return { ok: false, error: at + ' 的选项 key「' + key + '」重复' };
+        keys.push(key);
+      }
+      var ans = String(q.answer == null ? '' : q.answer).trim();
+      if (keys.indexOf(ans) === -1) return { ok: false, error: at + ' 的答案「' + ans + '」不在选项 key 中' };
+      var parts = Array.isArray(q.stemParts) && q.stemParts.length
+        ? q.stemParts.filter(function (pp) { return pp && typeof pp.v === 'string'; })
+          .map(function (pp) { return { t: pp.t === 'code' ? 'code' : 'text', v: pp.v }; })
+        : [{ t: 'text', v: q.stem }];
+      out.push({
+        id: out.length + 1,
+        set: Number(q.set) || 1,
+        num: Number(q.num) || (i + 1),
+        section: q.section || '选择题',
+        stem: q.stem,
+        stemParts: parts,
+        options: q.options.map(function (o) {
+          return {
+            key: String(o.key).trim(),
+            text: o.text == null ? '' : String(o.text),
+            code: !!o.code
+          };
+        }),
+        answer: ans,
+        explanation: q.explanation == null ? '' : String(q.explanation)
+      });
+    }
+    return { ok: true, questions: out };
+  }
+
+  function importBankFile(file) {
+    var reader = new FileReader();
+    reader.onerror = function () { toast('读取文件失败'); };
+    reader.onload = function () {
+      var data;
+      try {
+        data = JSON.parse(String(reader.result).replace(/^\uFEFF/, ''));
+      } catch (err) {
+        toast('不是合法的 JSON：' + err.message);
+        return;
+      }
+      var res = validateBank(data);
+      if (!res.ok) { toast('题库格式有误：' + res.error); return; }
+      if (!store.set(LS.bank, res.questions)) {
+        toast('本地存储写入失败，题库可能过大');
+        return;
+      }
+      store.del(LS.progress);
+      toast('已导入 ' + res.questions.length + ' 题，正在重新加载…');
+      setTimeout(function () { window.location.reload(); }, 700);
+    };
+    reader.readAsText(file, 'utf-8');
+  }
+
+  function renderBankStats() {
+    var box = $('#bankStats');
+    if (!box) return;
+    box.innerHTML = '';
+    var sets = {};
+    BANK.forEach(function (q) { sets[q.set] = (sets[q.set] || 0) + 1; });
+    var codeCount = BANK.filter(function (q) { return q.options.some(function (o) { return o.code; }); }).length;
+    var rows = [
+      ['题库总量', BANK.length + ' 题'],
+      ['套次数量', Object.keys(sets).length + ' 套'],
+      ['含代码题', codeCount + ' 题'],
+      ['全部有解析', '是']
+    ];
+    rows.forEach(function (r) {
+      var d = el('div');
+      d.appendChild(el('dt', null, r[0]));
+      d.appendChild(el('dd', null, r[1]));
+      box.appendChild(d);
+    });
+  }
+
+  function renderMyStats() {
+    var box = $('#myStats');
+    if (!box) return;
+    box.innerHTML = '';
+    var solved = Object.keys(seen).length;
+    var wrongCount = Object.keys(wrongBook).length;
+    var avg = '—';
+    if (scoreHistory.length) {
+      var sum = scoreHistory.reduce(function (a, h) { return a + h.score; }, 0);
+      avg = Math.round(sum / scoreHistory.length) + ' 分';
+    }
+    var rows = [
+      ['已做题目', solved + ' / ' + BANK.length],
+      ['错题本', wrongCount + ' 题'],
+      ['历史平均分', avg],
+      ['测验次数', scoreHistory.length + ' 次']
+    ];
+    rows.forEach(function (r) {
+      var d = el('div');
+      d.appendChild(el('dt', null, r[0]));
+      d.appendChild(el('dd', null, r[1]));
+      box.appendChild(d);
+    });
+
+    var pill = $('#navWrongCount');
+    pill.textContent = String(wrongCount);
+    pill.hidden = wrongCount === 0;
+  }
+
+  /* ------------------------------------------------------------ 配置界面 */
+  function initSetGrid() {
+    var grid = $('#setGrid');
+    if (!grid) return;
+    var present = {};
+    BANK.forEach(function (q) { present[q.set] = (present[q.set] || 0) + 1; });
+    var nums = Object.keys(present).map(Number).sort(function (a, b) { return a - b; });
+    grid.innerHTML = '';
+    nums.forEach(function (n) {
+      var b = el('button', 'setchip', '第' + n + '套');
+      b.type = 'button';
+      b.dataset.set = String(n);
+      b.setAttribute('aria-pressed', 'false');
+      b.title = '共 ' + present[n] + ' 题';
+      b.addEventListener('click', function () {
+        var on = b.getAttribute('aria-pressed') === 'true';
+        b.setAttribute('aria-pressed', on ? 'false' : 'true');
+        syncSetsFromDom();
+      });
+      grid.appendChild(b);
+    });
+  }
+
+  function syncSetsFromDom() {
+    var picked = $$('#setGrid .setchip[aria-pressed="true"]').map(function (b) { return Number(b.dataset.set); });
+    state.config.sets = picked;
+    $('#setPickCount').textContent = String(picked.length);
+    validateConfig();
+  }
+
+  function applySetsToDom() {
+    var selected = state.config.sets || [];
+    $$('#setGrid .setchip').forEach(function (b) {
+      b.setAttribute('aria-pressed', selected.indexOf(Number(b.dataset.set)) !== -1 ? 'true' : 'false');
+    });
+    $('#setPickCount').textContent = String(selected.length);
+  }
+
+  function initSegments() {
+    $$('[data-seg]').forEach(function (group) {
+      var key = group.dataset.seg;
+      group.addEventListener('click', function (ev) {
+        var btn = ev.target.closest('button[role="radio"]');
+        if (!btn || !group.contains(btn)) return;
+        setSegment(key, btn.dataset.val);
+      });
+      group.addEventListener('keydown', function (ev) {
+        if (ev.key !== 'ArrowLeft' && ev.key !== 'ArrowRight') return;
+        var btns = $$('button[role="radio"]', group);
+        var i = btns.indexOf(document.activeElement);
+        if (i === -1) return;
+        ev.preventDefault();
+        var next = ev.key === 'ArrowRight' ? (i + 1) % btns.length : (i - 1 + btns.length) % btns.length;
+        btns[next].focus();
+        setSegment(key, btns[next].dataset.val);
+      });
+    });
+  }
+
+  function setSegment(key, value) {
+    if (key === 'count') state.config.count = Number(value);
+    else if (key === 'sets') state.config.sets = value;
+    else state.config[key] = value;
+
+    var group = $('[data-seg="' + key + '"]');
+    if (group) {
+      $$('button[role="radio"]', group).forEach(function (b) {
+        b.setAttribute('aria-checked', b.dataset.val === String(value) ? 'true' : 'false');
+      });
+    }
+    syncHints();
+    if (key === 'rangeMode') {
+      $('#setPick').hidden = value !== 'custom';
+      if (value === 'custom') applySetsToDom();
+    }
+    validateConfig();
+    saveSettings();
+  }
+
+  function syncHints() {
+    var c = state.config;
+    $('#countHint').textContent = c.count + ' 题，约需 ' + Math.max(3, Math.round(c.count * 0.75)) + ' 分钟；' +
+      (c.timer === 'on' ? '限时 ' + Math.round(c.count * SEC_PER_Q / 60) + ' 分钟。' : '不限时。');
+    $('#modeHint').textContent = MODE_HINT[c.mode];
+    $('#timerHint').textContent = c.timer === 'on'
+      ? '限时按每题 ' + SEC_PER_Q + ' 秒计算，倒计时结束自动交卷。'
+      : '不限时，正计时统计总用时。';
+    $('#sourceHint').textContent = SOURCE_HINT[c.source];
+  }
+
+  function saveSettings() {
+    var c = state.config;
+    store.set(LS.settings, {
+      count: c.count, rangeMode: c.rangeMode, sets: c.sets,
+      mode: c.mode, timer: c.timer, source: c.source,
+      theme: document.documentElement.getAttribute('data-theme') || 'light'
+    });
+  }
+
+  function applyConfigToDom() {
+    var c = state.config;
+    setSegment('count', c.count);
+    setSegment('rangeMode', c.rangeMode);
+    setSegment('mode', c.mode);
+    setSegment('timer', c.timer);
+    setSegment('source', c.source);
+    $('#setPick').hidden = c.rangeMode !== 'custom';
+    applySetsToDom();
+    syncHints();
+  }
+
+  /* ------------------------------------------------------------ 组卷 */
+  function poolFor(config) {
+    var pool = BANK.slice();
+    if (config.rangeMode === 'custom') {
+      var setSet = {};
+      (config.sets || []).forEach(function (n) { setSet[n] = true; });
+      pool = pool.filter(function (q) { return setSet[q.set]; });
+    }
+    if (config.source === 'wrong') {
+      pool = pool.filter(function (q) { return wrongBook[q.id]; });
+    }
+    return pool;
+  }
+
+  function pickQuestions(config) {
+    var pool = poolFor(config);
+    var picked = [];
+    if (config.source === 'unseen') {
+      var fresh = shuffle(pool.filter(function (q) { return !seen[q.id]; }));
+      var old = shuffle(pool.filter(function (q) { return seen[q.id]; }));
+      picked = fresh.concat(old);
+    } else {
+      picked = shuffle(pool);
+    }
+    return picked.slice(0, Math.min(config.count, picked.length));
+  }
+
+  function validateConfig() {
+    var err = $('#configErr');
+    var msg = '';
+    var pool = poolFor(state.config);
+    if (state.config.rangeMode === 'custom' && (state.config.sets || []).length === 0) {
+      msg = '请至少选择一个套次。';
+    } else if (pool.length === 0) {
+      msg = state.config.source === 'wrong'
+        ? '错题本目前是空的，先做一套题来收集错题吧。'
+        : '所选范围内没有题目。';
+    } else if (pool.length < state.config.count) {
+      msg = '所选范围内只有 ' + pool.length + ' 题，本次将抽取全部 ' + pool.length + ' 题。';
+    }
+    err.hidden = !msg;
+    err.textContent = msg;
+    var blocking = (state.config.rangeMode === 'custom' && (state.config.sets || []).length === 0) || pool.length === 0;
+    err.style.color = blocking ? '' : 'var(--flag)';
+    $('#btnStart').disabled = blocking;
+    return !blocking;
+  }
+
+  function startQuiz(items, config) {
+    var now = Date.now();
+    state.quiz = {
+      items: items.map(function (q) { return q.id; }),
+      answers: {},
+      flags: {},
+      revealed: {},
+      index: 0,
+      mode: config.mode,
+      timerOn: config.timer === 'on',
+      limitSec: config.timer === 'on' ? items.length * SEC_PER_Q : null,
+      elapsed: 0,
+      startedAt: now,
+      lastTick: now,
+      submitted: false,
+      config: {
+        count: config.count, mode: config.mode, timer: config.timer,
+        source: config.source, rangeMode: config.rangeMode, sets: config.sets.slice()
+      }
+    };
+    $('#navQuiz').hidden = false;
+    $('#quizModeBadge').textContent = config.mode === 'exam' ? '考试模式' : '练习模式';
+    $('#quizModeBadge').className = 'badge' + (config.mode === 'practice' ? ' practice' : '');
+    $('#progTotal').textContent = String(state.quiz.items.length);
+    startTimer();
+    go('quiz', true);
+    location.hash = '#/quiz';
+    renderQuestion();
+    saveProgress();
+  }
+
+  function currentItem() {
+    if (!state.quiz) return null;
+    return BY_ID[state.quiz.items[state.quiz.index]] || null;
+  }
+
+  /* ------------------------------------------------------------ 计时 */
+  function startTimer() {
+    stopTimer();
+    $('#quizTimer').classList.remove('warn', 'crit');
+    timerId = setInterval(function () {
+      var q = state.quiz;
+      if (!q || q.submitted) return;
+      var now = Date.now();
+      q.elapsed += Math.round((now - q.lastTick) / 1000);
+      q.lastTick = now;
+      updateTimerUI();
+      if (q.timerOn && q.limitSec !== null) {
+        var left = q.limitSec - q.elapsed;
+        if (left <= 0) {
+          stopTimer();
+          toast('时间到，已自动交卷');
+          submitQuiz(true);
+        } else if (left <= 60) {
+          $('#quizTimer').classList.add('crit');
+        } else if (left <= 300) {
+          $('#quizTimer').classList.add('warn');
+        }
+        if (q.elapsed % 5 === 0) saveProgress();
+      }
+    }, 1000);
+    updateTimerUI();
+  }
+  function stopTimer() { if (timerId) { clearInterval(timerId); timerId = null; } }
+
+  function updateTimerUI() {
+    var q = state.quiz;
+    if (!q) return;
+    var text = q.timerOn && q.limitSec !== null
+      ? fmtClock(q.limitSec - q.elapsed)
+      : fmtClock(q.elapsed);
+    $('#timerText').textContent = text;
+    $('#quizTimer').title = q.timerOn && q.limitSec !== null ? '剩余时间' : '已用时间';
+  }
+
+  /* ------------------------------------------------------------ 答题渲染 */
+  function renderQuestion() {
+    var q = state.quiz;
+    if (!q) return;
+    var item = currentItem();
+    if (!item) return;
+
+    $('#qNo').textContent = '第 ' + (q.index + 1) + ' 题';
+    $('#qSrc').textContent = '第 ' + item.set + ' 套 · 第 ' + item.num + ' 题';
+    $('#progNow').textContent = String(q.index + 1);
+
+    renderStem($('#qStem'), item);
+    renderOptions(item);
+    renderFlag();
+    renderFeedback(item);
+    renderProgressBar();
+    renderCardGrid();
+    updateNavButtons();
+  }
+
+  function revealState(item) {
+    var q = state.quiz;
+    if (q.submitted) return true;
+    if (q.mode === 'practice' && q.answers[item.id]) return true;
+    return false;
+  }
+
+  function renderOptions(item) {
+    var q = state.quiz;
+    var box = $('#qOptions');
+    var picked = q.answers[item.id];
+    var show = revealState(item);
+    box.innerHTML = '';
+
+    item.options.forEach(function (opt) {
+      var btn = el('button', 'option');
+      btn.type = 'button';
+      btn.setAttribute('role', 'radio');
+      btn.dataset.key = opt.key;
+      btn.setAttribute('aria-checked', picked === opt.key ? 'true' : 'false');
+
+      var key = el('span', 'option-key', opt.key);
+      btn.appendChild(key);
+
+      var body = el('span', 'option-body');
+      if (opt.code) {
+        var pre = el('pre', 'code');
+        pre.textContent = opt.text;
+        body.appendChild(pre);
+      } else {
+        body.textContent = opt.text;
+      }
+      btn.appendChild(body);
+
+      if (show) {
+        btn.classList.add('locked');
+        btn.setAttribute('tabindex', '-1');
+        var isAnswer = opt.key === item.answer;
+        var isPick = opt.key === picked;
+        var mark = el('span', 'option-mark');
+        if (isAnswer) {
+          btn.classList.add(isPick ? 'is-right' : 'is-missed');
+          mark.classList.add('right');
+          mark.appendChild(svgIcon('i-check'));
+        } else if (isPick) {
+          btn.classList.add('is-wrong');
+          mark.classList.add('wrong');
+          mark.appendChild(svgIcon('i-x'));
+        }
+        if (mark.childNodes.length) btn.appendChild(mark);
+      } else {
+        btn.setAttribute('tabindex', picked === opt.key || (!picked && opt.key === 'A') ? '0' : '-1');
+        btn.addEventListener('click', function () { selectOption(opt.key); });
+      }
+      box.appendChild(btn);
+    });
+  }
+
+  function renderFlag() {
+    var q = state.quiz;
+    var item = currentItem();
+    var on = !!q.flags[item.id];
+    var btn = $('#btnFlag');
+    btn.setAttribute('aria-pressed', on ? 'true' : 'false');
+    $('#flagText').textContent = on ? '已标记' : '标记待定';
+  }
+
+  function renderFeedback(item) {
+    var q = state.quiz;
+    var box = $('#qFeedback');
+    if (!revealState(item)) { box.hidden = true; box.innerHTML = ''; return; }
+    var picked = q.answers[item.id];
+    var right = picked === item.answer;
+
+    box.hidden = false;
+    box.className = 'feedback ' + (right ? 'ok' : 'no');
+    box.innerHTML = '';
+
+    var head = el('div', 'feedback-head');
+    head.appendChild(svgIcon(right ? 'i-check' : 'i-x'));
+    head.appendChild(el('span', null, right ? '回答正确' : (picked ? '回答错误' : '本题未作答')));
+    if (!right) {
+      var s = el('span', null, '　正确答案：' + item.answer);
+      s.style.fontFamily = 'var(--font-mono)';
+      s.style.marginLeft = 'auto';
+      head.appendChild(s);
+    }
+    box.appendChild(head);
+
+    if (item.explanation) {
+      var body = el('div', 'feedback-body');
+      body.appendChild(el('strong', null, '解析：'));
+      body.appendChild(document.createTextNode(' ' + item.explanation));
+      box.appendChild(body);
+    }
+  }
+
+  function selectOption(key) {
+    var q = state.quiz;
+    var item = currentItem();
+    if (!item || q.submitted) return;
+    if (q.mode === 'practice' && q.answers[item.id]) return;
+
+    q.answers[item.id] = key;
+    seen[item.id] = true;
+    store.set(LS.seen, seen);
+
+    renderOptions(item);
+    renderFlag();
+    renderFeedback(item);
+    renderCardGrid();
+    renderProgressBar();
+    updateNavButtons();
+    saveProgress();
+  }
+
+  function renderProgressBar() {
+    var q = state.quiz;
+    var total = q.items.length;
+    var answered = Object.keys(q.answers).length;
+    var pct = total ? Math.round((q.index + 1) / total * 100) : 0;
+    var bar = $('#progBar');
+    bar.setAttribute('aria-valuenow', String(pct));
+    bar.setAttribute('aria-label', '答题进度 ' + pct + '%');
+    $('#progFill').style.width = pct + '%';
+    $('#sumAnswered').textContent = String(answered);
+    $('#sumTodo').textContent = String(total - answered);
+    $('#sumFlagged').textContent = String(Object.keys(q.flags).length);
+  }
+
+  function updateNavButtons() {
+    var q = state.quiz;
+    var last = q.index === q.items.length - 1;
+    $('#btnPrev').disabled = q.index === 0;
+    $('#btnNext').hidden = last;
+    $('#btnSubmit').hidden = false;
+  }
+
+  function renderCardGrid() {
+    var q = state.quiz;
+    var grid = $('#cardGrid');
+    grid.innerHTML = '';
+    q.items.forEach(function (qid, i) {
+      var cell = el('button', 'qcell', String(i + 1));
+      cell.type = 'button';
+      if (q.answers[qid]) cell.classList.add('answered');
+      if (i === q.index) cell.classList.add('current');
+      if (q.flags[qid]) cell.classList.add('flagged');
+      if (q.submitted) {
+        var item = BY_ID[qid];
+        var pick = q.answers[qid];
+        if (!pick) cell.classList.add('wrong');
+        else if (pick === item.answer) cell.classList.add('right');
+        else cell.classList.add('wrong');
+      }
+      cell.setAttribute('aria-label', '第 ' + (i + 1) + ' 题' +
+        (q.answers[qid] ? '，已答 ' + q.answers[qid] : '，未答') + (q.flags[qid] ? '，已标记' : ''));
+      cell.addEventListener('click', function () {
+        gotoQuestion(i);
+        closeCardPanel();
+      });
+      grid.appendChild(cell);
+    });
+  }
+
+  function gotoQuestion(i) {
+    var q = state.quiz;
+    if (!q) return;
+    if (i < 0 || i >= q.items.length) return;
+    q.index = i;
+    renderQuestion();
+    saveProgress();
+    var card = $('#questionCard');
+    if (card && window.innerWidth <= 780) card.scrollIntoView({ block: 'start', behavior: 'smooth' });
+  }
+
+  function toggleFlag() {
+    var q = state.quiz;
+    var item = currentItem();
+    if (!q || !item) return;
+    if (q.flags[item.id]) delete q.flags[item.id];
+    else q.flags[item.id] = true;
+    renderFlag();
+    renderCardGrid();
+    renderProgressBar();
+    saveProgress();
+  }
+
+  /* ------------------------------------------------------------ 答题卡抽屉 */
+  function openCardPanel() {
+    $('#cardPanel').classList.add('open');
+    $('#btnCardToggle').setAttribute('aria-expanded', 'true');
+  }
+  function closeCardPanel() {
+    $('#cardPanel').classList.remove('open');
+    $('#btnCardToggle').setAttribute('aria-expanded', 'false');
+  }
+
+  /* ------------------------------------------------------------ 进度保存 */
+  function saveProgress() {
+    var q = state.quiz;
+    if (!q || q.submitted) return;
+    store.set(LS.progress, {
+      items: q.items, answers: q.answers, flags: q.flags, index: q.index,
+      mode: q.mode, timerOn: q.timerOn, limitSec: q.limitSec,
+      elapsed: q.elapsed, startedAt: q.startedAt, config: q.config, savedAt: Date.now()
+    });
+  }
+
+  function renderResume() {
+    var saved = store.get(LS.progress, null);
+    var card = $('#resumeCard');
+    if (!saved || !saved.items || !saved.items.length) { card.hidden = true; return; }
+    var answered = Object.keys(saved.answers || {}).length;
+    $('#resumeInfo').textContent = '共 ' + saved.items.length + ' 题，已答 ' + answered +
+      ' 题，保存于 ' + fmtTime(saved.savedAt || Date.now()) + '。';
+    card.hidden = false;
+  }
+
+  function resumeQuiz() {
+    var saved = store.get(LS.progress, null);
+    if (!saved) return;
+    var items = (saved.items || []).filter(function (id) { return BY_ID[id]; });
+    if (!items.length) { store.del(LS.progress); renderResume(); return; }
+    state.quiz = {
+      items: items,
+      answers: saved.answers || {},
+      flags: saved.flags || {},
+      revealed: {},
+      index: Math.min(saved.index || 0, items.length - 1),
+      mode: saved.mode || 'exam',
+      timerOn: !!saved.timerOn,
+      limitSec: saved.limitSec === undefined ? null : saved.limitSec,
+      elapsed: saved.elapsed || 0,
+      startedAt: saved.startedAt || Date.now(),
+      lastTick: Date.now(),
+      submitted: false,
+      config: saved.config || Object.assign({}, state.config)
+    };
+    $('#navQuiz').hidden = false;
+    $('#quizModeBadge').textContent = state.quiz.mode === 'exam' ? '考试模式' : '练习模式';
+    $('#quizModeBadge').className = 'badge' + (state.quiz.mode === 'practice' ? ' practice' : '');
+    $('#progTotal').textContent = String(state.quiz.items.length);
+    startTimer();
+    go('quiz', true);
+    location.hash = '#/quiz';
+    renderQuestion();
+  }
+
+  /* ------------------------------------------------------------ 交卷判分 */
+  function gradeOf(score) {
+    if (score >= 90) return { text: '优秀', cls: 'good' };
+    if (score >= 80) return { text: '良好', cls: 'good' };
+    if (score >= 70) return { text: '中等', cls: 'mid' };
+    if (score >= 60) return { text: '及格', cls: 'mid' };
+    return { text: '需努力', cls: 'low' };
+  }
+
+  function submitQuiz(auto) {
+    var q = state.quiz;
+    if (!q || q.submitted) return;
+    q.submitted = true;
+    stopTimer();
+    closeCardPanel();
+    store.del(LS.progress);
+
+    var total = q.items.length;
+    var right = 0, blank = 0;
+    q.items.forEach(function (qid) {
+      var item = BY_ID[qid];
+      var pick = q.answers[qid];
+      if (!pick) { blank++; return; }
+      if (pick === item.answer) {
+        right++;
+        if (wrongBook[qid]) { delete wrongBook[qid]; }   // 答对即视为攻克
+      } else {
+        var rec = wrongBook[qid] || { count: 0 };
+        rec.count += 1;
+        rec.lastAt = Date.now();
+        wrongBook[qid] = rec;
+      }
+    });
+    store.set(LS.wrong, wrongBook);
+    store.set(LS.seen, seen);
+
+    var wrong = total - right - blank;
+    var score = total ? Math.round(right / total * 100) : 0;
+    state.quiz.result = {
+      total: total, right: right, wrong: wrong, blank: blank,
+      score: score, duration: q.elapsed, mode: q.mode, auto: !!auto
+    };
+
+    scoreHistory.unshift({
+      at: Date.now(), total: total, right: right, score: score,
+      duration: q.elapsed, mode: q.mode
+    });
+    if (scoreHistory.length > 100) scoreHistory.length = 100;
+    store.set(LS.history, scoreHistory);
+
+    renderMyStats();
+    go('result', true);
+    location.hash = '#/result';
+    toast(auto ? '已自动交卷 · 得分 ' + score + ' 分' : '交卷完成 · 得分 ' + score + ' 分');
+  }
+
+  /* ------------------------------------------------------------ 成绩页 */
+  function renderResult() {
+    var q = state.quiz;
+    if (!q || !q.result) return;
+    var r = q.result;
+    var g = gradeOf(r.score);
+    var C = 2 * Math.PI * 58;
+
+    var ring = $('#ringFg');
+    ring.setAttribute('stroke-dasharray', String(C));
+    ring.setAttribute('stroke-dashoffset', String(C));
+    ring.setAttribute('class', 'ring-fg ' + g.cls);   // SVGElement.className 只读，必须用 setAttribute
+    requestAnimationFrame(function () {
+      setTimeout(function () {
+        ring.setAttribute('stroke-dashoffset', String(C * (1 - r.score / 100)));
+      }, 60);
+    });
+
+    animateNumber($('#scoreValue'), r.score);
+    $('#gradeText').textContent = g.text;
+    $('#gradeText').className = 'grade ' + g.cls;
+    $('#resultHeadline').textContent = r.score >= 60 ? '本次测验已通过标准线' : '本次测验仍需加强';
+    $('#resultSub').textContent = '共 ' + r.total + ' 题，' +
+      (r.mode === 'exam' ? '考试模式' : '练习模式') +
+      '，用时 ' + fmtClock(r.duration) + '。答错的题目已自动收入错题本。';
+
+    var kpis = $('#resultKpis');
+    kpis.innerHTML = '';
+    var items = [
+      { k: '正确', v: r.right + ' 题', c: 'ok' },
+      { k: '错误', v: r.wrong + ' 题', c: 'bad' },
+      { k: '未答', v: r.blank + ' 题', c: '' },
+      { k: '正确率', v: (r.total ? Math.round(r.right / r.total * 100) : 0) + '%', c: '' },
+      { k: '用时', v: fmtClock(r.duration), c: '' }
+    ];
+    items.forEach(function (it) {
+      var d = el('div');
+      d.appendChild(el('dt', null, it.k));
+      d.appendChild(el('dd', it.c, it.v));
+      kpis.appendChild(d);
+    });
+
+    $('#btnRetryWrong').disabled = r.wrong === 0 && r.blank === 0;
+    renderReview();
+  }
+
+  function animateNumber(node, target) {
+    var start = 0;
+    var dur = 900;
+    var t0 = performance.now();
+    function step(t) {
+      var p = Math.min(1, (t - t0) / dur);
+      var eased = 1 - Math.pow(1 - p, 3);
+      node.textContent = String(Math.round(start + (target - start) * eased));
+      if (p < 1) requestAnimationFrame(step);
+    }
+    requestAnimationFrame(step);
+  }
+
+  function renderReview() {
+    var q = state.quiz;
+    var box = $('#reviewList');
+    if (!q || !q.result) return;
+    box.innerHTML = '';
+
+    var filter = state.reviewFilter;
+    var rows = [];
+
+    q.items.forEach(function (qid, i) {
+      var item = BY_ID[qid];
+      var pick = q.answers[qid];
+      var kind = !pick ? 'blank' : (pick === item.answer ? 'right' : 'wrong');
+      if (filter !== 'all' && filter !== kind) return;
+      rows.push({ item: item, pick: pick, kind: kind, i: i });
+    });
+
+    if (!rows.length) {
+      var empty = el('div', 'empty');
+      empty.appendChild(svgIcon('i-list'));
+      empty.appendChild(el('p', null, '该分类下没有题目。'));
+      box.appendChild(empty);
+      return;
+    }
+
+    rows.forEach(function (row) {
+      box.appendChild(buildReviewItem(row.item, row.pick, row.i, row.kind));
+    });
+  }
+
+  function buildReviewItem(item, pick, index, kind) {
+    var wrap = el('article', 'review-item');
+
+    var head = el('div', 'ri-head');
+    head.appendChild(el('span', 'ri-no', '第 ' + (index + 1) + ' 题'));
+
+    var tagCls = kind === 'right' ? 'ok' : (kind === 'wrong' ? 'no' : 'blank');
+    var tag = el('span', 'tag ' + tagCls);
+    tag.appendChild(svgIcon(kind === 'right' ? 'i-check' : (kind === 'wrong' ? 'i-x' : 'i-alert')));
+    tag.appendChild(el('span', null, kind === 'right' ? '答对' : (kind === 'wrong' ? '答错' : '未答')));
+    head.appendChild(tag);
+    head.appendChild(el('span', 'ri-src', '第 ' + item.set + ' 套 · 第 ' + item.num + ' 题'));
+    wrap.appendChild(head);
+
+    var stem = el('div', 'ri-stem');
+    renderStem(stem, item);
+    wrap.appendChild(stem);
+
+    var opts = el('div', 'ri-opts');
+    item.options.forEach(function (opt) {
+      var row = el('div', 'ri-opt');
+      var isAnswer = opt.key === item.answer;
+      var isPick = opt.key === pick;
+      if (isAnswer) row.classList.add('right');
+      else if (isPick) row.classList.add('wrong');
+      row.appendChild(el('span', 'k', opt.key));
+      var t = el('span', 't');
+      if (opt.code) {
+        var pre = el('pre', 'code');
+        pre.textContent = opt.text;
+        t.appendChild(pre);
+      } else {
+        t.textContent = opt.text;
+      }
+      row.appendChild(t);
+      opts.appendChild(row);
+    });
+    wrap.appendChild(opts);
+
+    var mine = el('div', 'ri-mine');
+    var a = el('span');
+    a.appendChild(document.createTextNode('你的答案：'));
+    var b1 = el('b', pick ? (pick === item.answer ? 'ok' : 'bad') : 'bad', pick || '未作答');
+    a.appendChild(b1);
+    mine.appendChild(a);
+    var b2 = el('span');
+    b2.appendChild(document.createTextNode('正确答案：'));
+    b2.appendChild(el('b', 'ok', item.answer));
+    mine.appendChild(b2);
+    wrap.appendChild(mine);
+
+    if (item.explanation) {
+      var ex = el('div', 'ri-expl');
+      ex.appendChild(el('strong', null, '解析：'));
+      ex.appendChild(document.createTextNode(' ' + item.explanation));
+      wrap.appendChild(ex);
+    }
+    return wrap;
+  }
+
+  /* ------------------------------------------------------------ 错题本 */
+  function renderWrongBook() {
+    var box = $('#wrongList');
+    box.innerHTML = '';
+    var ids = Object.keys(wrongBook).map(Number).filter(function (id) { return BY_ID[id]; });
+    ids.sort(function (a, b) { return (wrongBook[b].count || 0) - (wrongBook[a].count || 0); });
+
+    $('#btnWrongPractice').disabled = ids.length === 0;
+    $('#btnWrongCopy').disabled = ids.length === 0;
+    $('#btnWrongClear').disabled = ids.length === 0;
+
+    if (!ids.length) {
+      var empty = el('div', 'empty');
+      empty.appendChild(svgIcon('i-book'));
+      empty.appendChild(el('p', null, '错题本还是空的。做一套题，答错的题目会自动收进这里。'));
+      var btn = el('button', 'btn primary');
+      btn.type = 'button';
+      btn.appendChild(svgIcon('i-play'));
+      btn.appendChild(el('span', null, '去抽一套题'));
+      btn.addEventListener('click', function () { go('setup'); });
+      empty.appendChild(btn);
+      box.appendChild(empty);
+      return;
+    }
+
+    ids.forEach(function (id, i) {
+      var item = BY_ID[id];
+      var wrap = buildReviewItem(item, null, i, 'wrong');
+      /* 错题本显示错误次数，并隐藏“你的答案”行 */
+      var mine = $('.ri-mine', wrap);
+      if (mine) mine.remove();
+      var tag = $('.tag', wrap);
+      if (tag) {
+        tag.className = 'tag no';
+        tag.innerHTML = '';
+        tag.appendChild(svgIcon('i-alert'));
+        tag.appendChild(el('span', null, '错 ' + (wrongBook[id].count || 1) + ' 次'));
+      }
+      var src = $('.ri-src', wrap);
+      if (src) src.textContent = '第 ' + item.set + ' 套 · 第 ' + item.num + ' 题';
+      box.appendChild(wrap);
+    });
+  }
+
+  function wrongBookText() {
+    var ids = Object.keys(wrongBook).map(Number).filter(function (id) { return BY_ID[id]; });
+    var lines = ['二级 Python 错题本（' + ids.length + ' 题）', ''];
+    ids.forEach(function (id, i) {
+      var q = BY_ID[id];
+      lines.push((i + 1) + '. ' + q.stem);
+      q.options.forEach(function (o) { lines.push('   ' + o.key + '. ' + o.text); });
+      lines.push('   正确答案：' + q.answer);
+      if (q.explanation) lines.push('   解析：' + q.explanation);
+      lines.push('');
+    });
+    return lines.join('\n');
+  }
+
+  function copyText(text) {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).then(function () {
+        toast('已复制到剪贴板');
+      }).catch(function () { fallbackCopy(text); });
+    } else {
+      fallbackCopy(text);
+    }
+  }
+  function fallbackCopy(text) {
+    var ta = document.createElement('textarea');
+    ta.value = text;
+    ta.setAttribute('readonly', 'readonly');
+    ta.style.position = 'fixed';
+    ta.style.top = '-1000px';
+    document.body.appendChild(ta);
+    ta.select();
+    var ok = false;
+    try { ok = document.execCommand('copy'); } catch (e) { ok = false; }
+    document.body.removeChild(ta);
+    toast(ok ? '已复制到剪贴板' : '复制失败，请手动选择文本');
+  }
+
+  /* ------------------------------------------------------------ 成绩记录 */
+  function renderHistory() {
+    var chart = $('#histChart');
+    var tbody = $('#histTable tbody');
+    chart.innerHTML = '';
+    tbody.innerHTML = '';
+
+    $('#btnHistClear').disabled = scoreHistory.length === 0;
+
+    if (!scoreHistory.length) {
+      var empty = el('div', 'empty');
+      empty.appendChild(svgIcon('i-chart'));
+      empty.appendChild(el('p', null, '还没有成绩记录，完成一次测验后会在这里生成趋势图。'));
+      chart.appendChild(empty);
+      return;
+    }
+
+    var recent = scoreHistory.slice(0, 12).slice().reverse();
+    recent.forEach(function (h, i) {
+      var g = gradeOf(h.score);
+      var col = el('div', 'hist-col ' + g.cls);
+      col.appendChild(el('span', 'v', String(h.score)));
+      var bar = el('div', 'bar');
+      bar.style.height = Math.max(4, h.score) + '%';
+      bar.title = fmtTime(h.at) + ' · ' + h.score + ' 分 · ' + h.right + '/' + h.total;
+      col.appendChild(bar);
+      col.appendChild(el('span', 'l', i === recent.length - 1 ? '最新' : fmtTime(h.at).split(' ')[1]));
+      chart.appendChild(col);
+    });
+
+    scoreHistory.slice(0, 50).forEach(function (h) {
+      var tr = el('tr');
+      tr.appendChild(el('td', null, fmtTime(h.at)));
+      var tdMode = el('td');
+      tdMode.appendChild(el('strong', null, h.mode === 'practice' ? '练习' : '考试'));
+      tr.appendChild(tdMode);
+      tr.appendChild(el('td', null, h.total + ' 题'));
+      tr.appendChild(el('td', null, h.right + ' 题'));
+      var tdScore = el('td');
+      tdScore.appendChild(el('strong', null, h.score + ' 分'));
+      tr.appendChild(tdScore);
+      tr.appendChild(el('td', null, fmtClock(h.duration || 0)));
+      tbody.appendChild(tr);
+    });
+  }
+
+  /* ------------------------------------------------------------ 主题 */
+  function applyTheme(theme) {
+    document.documentElement.setAttribute('data-theme', theme);
+    state.config.theme = theme;
+    var btn = $('#btnTheme');
+    btn.innerHTML = '';
+    btn.appendChild(svgIcon(theme === 'dark' ? 'i-sun' : 'i-moon'));
+    btn.setAttribute('aria-label', theme === 'dark' ? '切换到浅色模式' : '切换到深色模式');
+    btn.title = btn.getAttribute('aria-label');
+    var meta = document.querySelector('meta[name="color-scheme"]');
+    if (meta) meta.setAttribute('content', theme === 'dark' ? 'dark' : 'light');
+    store.set(LS.settings, Object.assign({}, state.config, { theme: theme }));
+  }
+  function toggleTheme() {
+    var cur = document.documentElement.getAttribute('data-theme');
+    applyTheme(cur === 'dark' ? 'light' : 'dark');
+  }
+  function initTheme() {
+    var saved = state.config.theme;
+    if (saved !== 'dark' && saved !== 'light') {
+      saved = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+    }
+    applyTheme(saved);
+  }
+
+  /* ------------------------------------------------------------ 事件绑定 */
+  function bind() {
+    document.addEventListener('click', function (ev) {
+      var nav = ev.target.closest('[data-nav]');
+      if (nav) {
+        ev.preventDefault();
+        if (nav.dataset.nav === 'quiz' && !state.quiz) { go('setup'); return; }
+        go(nav.dataset.nav);
+        return;
+      }
+      if (ev.target.closest('[data-close]')) {
+        var m = ev.target.closest('.modal');
+        if (m) m.hidden = true;
+        if (m && m.id === 'modal') modalConfirm = null;
+      }
+    });
+
+    $('#modalConfirm').addEventListener('click', function () {
+      var fn = modalConfirm;
+      closeModal();
+      if (fn) fn();
+    });
+
+    $('#btnKeys').addEventListener('click', function () { $('#keysModal').hidden = false; });
+    $('#btnTheme').addEventListener('click', toggleTheme);
+
+    $('#configForm').addEventListener('submit', function (ev) {
+      ev.preventDefault();
+      if (!validateConfig()) return;
+      var items = pickQuestions(state.config);
+      if (!items.length) { toast('没有可抽取的题目'); return; }
+      saveSettings();
+      startQuiz(items, state.config);
+    });
+
+    $('#btnResetConfig').addEventListener('click', function () {
+      state.config = Object.assign({}, DEFAULT_CONFIG, { theme: state.config.theme });
+      applyConfigToDom();
+      validateConfig();
+      saveSettings();
+      toast('已恢复默认设置');
+    });
+
+    $('#setSelAll').addEventListener('click', function () {
+      $$('#setGrid .setchip').forEach(function (b) { b.setAttribute('aria-pressed', 'true'); });
+      syncSetsFromDom();
+    });
+    $('#setSelNone').addEventListener('click', function () {
+      $$('#setGrid .setchip').forEach(function (b) { b.setAttribute('aria-pressed', 'false'); });
+      syncSetsFromDom();
+    });
+
+    $('#btnResume').addEventListener('click', resumeQuiz);
+    $('#btnDiscard').addEventListener('click', function () {
+      store.del(LS.progress);
+      renderResume();
+      toast('已放弃未完成的答题');
+    });
+
+    $('#btnImportBank').addEventListener('click', function () { $('#bankFile').click(); });
+    $('#bankFile').addEventListener('change', function (ev) {
+      var file = ev.target.files && ev.target.files[0];
+      if (file) importBankFile(file);
+      ev.target.value = '';
+    });
+    $('#btnResetBank').addEventListener('click', function () {
+      var body = el('div');
+      body.appendChild(el('p', null, '将清除导入的题库并恢复页面内置题库，当前错题本与成绩记录会一并清空。'));
+      openModal('恢复内置题库', body, '确认恢复', function () {
+        store.del(LS.bank);
+        store.del(LS.wrong);
+        store.del(LS.history);
+        store.del(LS.seen);
+        store.del(LS.progress);
+        toast('已恢复内置题库，正在重新加载…');
+        setTimeout(function () { window.location.reload(); }, 700);
+      });
+    });
+
+    $('#btnPrev').addEventListener('click', function () { gotoQuestion(state.quiz.index - 1); });
+    $('#btnNext').addEventListener('click', function () { gotoQuestion(state.quiz.index + 1); });
+    $('#btnFlag').addEventListener('click', toggleFlag);
+    $('#btnCardToggle').addEventListener('click', function () {
+      if ($('#cardPanel').classList.contains('open')) closeCardPanel(); else openCardPanel();
+    });
+    $('#btnCardClose').addEventListener('click', closeCardPanel);
+
+    $('#btnSubmit').addEventListener('click', function () {
+      var q = state.quiz;
+      if (!q) return;
+      var blank = q.items.length - Object.keys(q.answers).length;
+      var body = el('div');
+      var p = el('p');
+      p.textContent = blank > 0
+        ? '还有 ' + blank + ' 题未作答，交卷后这些题目将计为错误。确定要交卷吗？'
+        : '全部 ' + q.items.length + ' 题已作答完毕。确定交卷并查看成绩吗？';
+      body.appendChild(p);
+      if (Object.keys(q.flags).length) {
+        var p2 = el('p');
+        p2.style.marginTop = '8px';
+        p2.textContent = '其中有 ' + Object.keys(q.flags).length + ' 题被标记为待定。';
+        body.appendChild(p2);
+      }
+      openModal('确认交卷', body, '确认交卷', function () { submitQuiz(false); });
+    });
+
+    $('#btnQuit').addEventListener('click', function () {
+      var q = state.quiz;
+      if (!q) { go('setup'); return; }
+      var body = el('div');
+      body.appendChild(el('p', null, '退出后本次作答进度会保留在首页，可以稍后继续；也可以选择直接放弃。'));
+      openModal('退出答题', body, '保留并退出', function () {
+        saveProgress();
+        go('setup');
+        toast('进度已保存，可在首页继续');
+      });
+    });
+
+    $$('.filterbar .chip[data-filter]').forEach(function (chip) {
+      chip.addEventListener('click', function () {
+        state.reviewFilter = chip.dataset.filter;
+        $$('.filterbar .chip[data-filter]').forEach(function (c) {
+          c.classList.toggle('on', c === chip);
+        });
+        renderReview();
+      });
+    });
+
+    $('#btnAgain').addEventListener('click', function () {
+      var cfg = Object.assign({}, state.config, (state.quiz && state.quiz.config) || {});
+      cfg.source = state.config.source === 'wrong' ? 'all' : state.config.source;
+      var items = pickQuestions(cfg);
+      if (!items.length) { go('setup'); return; }
+      startQuiz(items, cfg);
+    });
+
+    $('#btnRetryWrong').addEventListener('click', function () {
+      var q = state.quiz;
+      if (!q || !q.result) return;
+      var ids = q.items.filter(function (qid) { return q.answers[qid] !== BY_ID[qid].answer; });
+      if (!ids.length) { toast('本次没有错题'); return; }
+      var items = ids.map(function (id) { return BY_ID[id]; });
+      var cfg = Object.assign({}, state.config, q.config, { mode: 'practice', count: items.length });
+      startQuiz(items, cfg);
+    });
+
+    $('#btnWrongPractice').addEventListener('click', function () {
+      var ids = Object.keys(wrongBook).map(Number).filter(function (id) { return BY_ID[id]; });
+      if (!ids.length) return;
+      var items = shuffle(ids).slice(0, Math.min(state.config.count, ids.length)).map(function (id) { return BY_ID[id]; });
+      var cfg = Object.assign({}, state.config, { mode: 'practice', source: 'wrong', count: items.length });
+      startQuiz(items, cfg);
+    });
+
+    $('#btnWrongCopy').addEventListener('click', function () {
+      if (!Object.keys(wrongBook).length) return;
+      copyText(wrongBookText());
+    });
+
+    $('#btnWrongPrint').addEventListener('click', function () { window.print(); });
+
+    $('#btnWrongClear').addEventListener('click', function () {
+      var body = el('div');
+      body.appendChild(el('p', null, '将清空错题本中的全部记录，此操作不可撤销。'));
+      openModal('清空错题本', body, '确认清空', function () {
+        wrongBook = {};
+        store.set(LS.wrong, wrongBook);
+        renderWrongBook();
+        renderMyStats();
+        toast('错题本已清空');
+      });
+    });
+
+    $('#btnHistClear').addEventListener('click', function () {
+      var body = el('div');
+      body.appendChild(el('p', null, '将删除全部成绩记录与趋势数据，此操作不可撤销。'));
+      openModal('清空成绩记录', body, '确认清空', function () {
+        scoreHistory = [];
+        store.set(LS.history, scoreHistory);
+        renderHistory();
+        renderMyStats();
+        toast('成绩记录已清空');
+      });
+    });
+
+    window.addEventListener('resize', function () { if (window.innerWidth > 1080) closeCardPanel(); });
+    window.addEventListener('beforeunload', function () {
+      if (state.quiz && !state.quiz.submitted) saveProgress();
+    });
+
+    document.addEventListener('keydown', onKeydown);
+  }
+
+  function onKeydown(ev) {
+    if (ev.key === '?' || (ev.key === '/' && ev.shiftKey)) {
+      ev.preventDefault();
+      $('#keysModal').hidden = false;
+      return;
+    }
+    if (ev.key === 'Escape') {
+      if (!$('#modal').hidden) { closeModal(); return; }
+      if (!$('#keysModal').hidden) { closeKeys(); return; }
+      closeCardPanel();
+      return;
+    }
+    var modalOpen = !$('#modal').hidden || !$('#keysModal').hidden;
+    if (modalOpen) {
+      if (ev.key === 'Enter' && !$('#modal').hidden && modalConfirm) {
+        ev.preventDefault();
+        var fn = modalConfirm;
+        closeModal();
+        fn();
+      }
+      return;
+    }
+
+    if (state.view !== 'quiz' || !state.quiz) return;
+    var tag = (ev.target && ev.target.tagName) || '';
+    if (tag === 'INPUT' || tag === 'TEXTAREA') return;
+
+    var q = state.quiz;
+    var item = currentItem();
+    if (!item) return;
+
+    var k = ev.key.toUpperCase();
+    var digits = '123456789';
+    var byKey = null;
+    for (var oi = 0; oi < item.options.length; oi++) {
+      if (String(item.options[oi].key).toUpperCase() === k) { byKey = item.options[oi].key; break; }
+    }
+    if (byKey === null && digits.indexOf(k) !== -1) {
+      var idx = digits.indexOf(k);
+      if (idx < item.options.length) byKey = item.options[idx].key;
+    }
+    if (byKey !== null) {
+      ev.preventDefault();
+      selectOption(byKey);
+      return;
+    }
+    if (ev.key === 'ArrowLeft') { ev.preventDefault(); gotoQuestion(q.index - 1); return; }
+    if (ev.key === 'ArrowRight') { ev.preventDefault(); gotoQuestion(q.index + 1); return; }
+    if (k === 'F') { ev.preventDefault(); toggleFlag(); return; }
+    if (ev.key === 'Enter') {
+      // 焦点在按钮/链接上时交给原生激活，避免重复触发
+      var ae = document.activeElement;
+      if (ae && (ae.tagName === 'BUTTON' || ae.tagName === 'A')) return;
+      ev.preventDefault();
+      if (q.index === q.items.length - 1) $('#btnSubmit').click();
+      else gotoQuestion(q.index + 1);
+    }
+  }
+
+  /* ------------------------------------------------------------ 启动 */
+  function init() {
+    if (!BANK.length) {
+      var main = $('#main');
+      main.innerHTML = '';
+      var box = el('div', 'card empty');
+      box.appendChild(svgIcon('i-alert'));
+      box.appendChild(el('p', null, '未能加载题库。请稍后重试，或在「题库来源」导入自己的题库。'));
+      main.appendChild(box);
+      return;
+    }
+
+    $('#heroBankCount').textContent = String(BANK.length);
+    $('#footCount').textContent = String(BANK.length);
+
+    initTheme();
+    initSetGrid();
+    initSegments();
+    applyConfigToDom();
+    validateConfig();
+    bind();
+
+    var hash = (location.hash || '').replace(/^#\/?/, '');
+    var initial = VIEWS.indexOf(hash) !== -1 ? hash : 'setup';
+    if (initial === 'quiz' && !store.get(LS.progress, null)) initial = 'setup';
+
+    renderHeroStats();
+    renderBankStats();
+    renderMyStats();
+    renderResume();
+    renderBankSource();
+
+    window.addEventListener('hashchange', function () {
+      var v = (location.hash || '').replace(/^#\/?/, '');
+      if (VIEWS.indexOf(v) !== -1 && v !== state.view) go(v, true);
+    });
+
+    go(initial, true);
+    if (!location.hash) location.hash = '#/setup';
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', init);
+  } else {
+    init();
+  }
+};
+</script>
+</body>
+</html>
