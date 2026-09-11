@@ -9,10 +9,14 @@ import type { APIRoute } from 'astro';
 //   BANK_REF    选填,默认 master
 export const prerender = false;
 
-const REPO = process.env.BANK_REPO || 'hjphh11/python-exam-quiz-bank';
-const PATH = process.env.BANK_PATH || 'questions.json';
-const REF = process.env.BANK_REF || 'master';
-const TOKEN = process.env.BANK_TOKEN || '';
+// 本地开发读 .env(Vite 注入 import.meta.env);线上读 Vercel 环境变量(process.env)。
+const env = (key: string): string =>
+  (import.meta.env[key] as string | undefined) || process.env[key] || '';
+
+const REPO = env('BANK_REPO') || 'hjphh11/python-exam-quiz-bank';
+const PATH = env('BANK_PATH') || 'questions.json';
+const REF = env('BANK_REF') || 'master';
+const TOKEN = env('BANK_TOKEN');
 
 const json = (body: string, status: number, extra: Record<string, string> = {}) =>
   new Response(body, {
