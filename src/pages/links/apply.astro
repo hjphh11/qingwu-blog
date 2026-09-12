@@ -1,8 +1,11 @@
 ---
 import Layout from '../../layouts/Layout.astro';
 import MorphIcon from 'morphicons/astro';
-import { ArrowLeft, Info } from '../../lib/icons';
+import { ArrowLeft } from '../../lib/icons';
 import LinkApply from '../../components/LinkApply.tsx';
+
+// Turnstile 站点密钥是**公开**的(设计如此)，走 PUBLIC_ 前缀让构建时注入到前端
+const turnstileSiteKey = import.meta.env.PUBLIC_TURNSTILE_SITE_KEY ?? '';
 ---
 
 <Layout
@@ -28,20 +31,6 @@ import LinkApply from '../../components/LinkApply.tsx';
       </p>
     </header>
 
-    <!-- 事先说清楚：在线提交通道尚未接通（阶段 B 才接），别让访客白填 -->
-    <div
-      class="reveal mb-8 flex items-start gap-2.5 rounded-[var(--radius-card)] border border-amber/40 bg-amber/15 p-4 text-sm text-ink/80"
-    >
-      <span class="mt-0.5 shrink-0 text-amber">
-        <MorphIcon icon={Info} size={17} color="currentColor" />
-      </span>
-      <p class="leading-relaxed">
-        <span class="font-medium">在线提交通道还在建设中</span>
-        ：表单已经能填、能校验，但正式接收申请的功能要下一阶段才上线。
-        现在填好后可以用「用邮件发给我」把整理好的信息一次发过来，我会收到。
-      </p>
-    </div>
-
-    <LinkApply client:load />
+    <LinkApply client:load siteKey={turnstileSiteKey} />
   </div>
 </Layout>
