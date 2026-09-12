@@ -86,7 +86,7 @@ export default function Trash() {
         </div>
 
         {!items ? (
-          <div className="empty">正在读取…</div>
+          <div className="empty">{error ? `读取失败：${error}` : '正在读取…'}</div>
         ) : items.length === 0 ? (
           <div className="empty">
             <MorphIcon icon={Inbox} size={16} color="currentColor" /> 回收站是空的

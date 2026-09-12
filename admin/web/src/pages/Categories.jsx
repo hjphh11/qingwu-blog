@@ -248,7 +248,7 @@ export default function Categories() {
         )}
 
         {!data ? (
-          <div className="empty">正在读取…</div>
+          <div className="empty">{error ? `读取失败：${error}` : '正在读取…'}</div>
         ) : total === 0 ? (
           <div className="empty">还没有分类，先新建一个</div>
         ) : (

@@ -67,7 +67,7 @@ export default function Logs() {
         </div>
 
         {!items ? (
-          <div className="empty">正在读取…</div>
+          <div className="empty">{error ? `读取失败：${error}` : '正在读取…'}</div>
         ) : items.length === 0 ? (
           <div className="empty">
             <MorphIcon icon={ScrollText} size={16} color="currentColor" /> 还没有记录（发过一次之后就有了）
