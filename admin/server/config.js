@@ -40,6 +40,27 @@ export const config = {
   /** 会话有效期（天） */
   sessionDays: Number(env('ADMIN_SESSION_DAYS', '7')),
 
+  /**
+   * 发布用的 GitHub PAT（细粒度、`Contents: Read and write`）。
+   * 只在推送时注入子进程环境 —— **不落盘、不进命令行参数**（见 publish.js 的凭据助手）。
+   * 没配它就只能「保存」不能「发布」。
+   */
+  gitToken: env('ADMIN_GIT_TOKEN'),
+
+  /**
+   * Vercel Deploy Hook URL（选填）。配了就在推送后**立刻**触发站点重建；
+   * 不配也能用 —— Vercel 自己会检测到 push 然后重建，只是慢一点。
+   */
+  deployHook: env('ADMIN_DEPLOY_HOOK'),
+
+  /** 操作日志（第 43 条）放仓库里的 `.admin-logs/`，已 gitignore；只在服务器上有意义 */
+  logPath: path.resolve(
+    env(
+      'ADMIN_LOG_PATH',
+      path.join(env('ADMIN_REPO_PATH', path.resolve(adminRoot, '..')), '.admin-logs'),
+    ),
+  ),
+
   isProd,
 
   /**

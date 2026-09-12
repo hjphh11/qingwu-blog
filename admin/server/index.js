@@ -1,7 +1,7 @@
 // 后台服务端入口。
 //
-// 阶段 E 起后台**能写文件**了（文章），阶段 F 加分类，阶段 G 加友链/分享/关于；
-// 写范围仍受各模块（articles / categories / links / shares / about）里的白名单限制。
+// 阶段 E 起后台**能写文件**（文章），F 加分类，G 加友链/分享/关于，H 加音乐，I 加**发布**；
+// 写范围仍受各模块白名单限制；发布是唯一会**推送 GitHub** 的动作（走 publish.js）。
 // 只监听 127.0.0.1；对外访问由 `tailscale serve` 转发（不开任何公网端口）。
 import express from 'express';
 import cookieParser from 'cookie-parser';
@@ -13,6 +13,7 @@ import authRoutes from './routes/auth.js';
 import categoriesRoutes from './routes/categories.js';
 import contentRoutes from './routes/content.js';
 import dataRoutes from './routes/data.js';
+import publishRoutes from './routes/publish.js';
 import trashRoutes from './routes/trash.js';
 
 assertConfig();
@@ -58,6 +59,7 @@ app.use('/api/auth', authRoutes);
 app.use('/api', articlesRoutes);
 app.use('/api', categoriesRoutes);
 app.use('/api', contentRoutes);
+app.use('/api', publishRoutes);
 app.use('/api', trashRoutes);
 app.use('/api', dataRoutes);
 
