@@ -240,7 +240,7 @@ export default function Shares() {
                 </div>
 
                 <span className="cat-icon">
-                  <MorphIcon icon={it.type === 'link' ? BookOpen : Quote} size={16} color="currentColor" />
+                  <MorphIcon icon={it.type === 'link' ? BookOpen : Quote} size={16} color="currentColor" spring="snappy" reducedMotion="user" />
                 </span>
 
                 <div className="post-main">

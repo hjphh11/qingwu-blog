@@ -423,7 +423,7 @@ export default function Articles({ go }) {
                       title={a.pinned ? '取消置顶' : '置顶'}
                       onClick={() => onTogglePin(a)}
                     >
-                      <MorphIcon icon={a.pinned ? PinOff : Pin} size={16} color="currentColor" />
+                      <MorphIcon icon={a.pinned ? PinOff : Pin} size={16} color="currentColor" spring="snappy" reducedMotion="user" />
                     </button>
                     <button
                       type="button"

@@ -241,6 +241,7 @@ a:hover {
   border-right: 1px solid var(--line);
   background: rgba(255, 253, 251, 0.6);
   backdrop-filter: blur(16px) saturate(160%);
+  position: relative; /* 高亮胶囊按 offsetTop 定位，需要一个定位祖先（阶段 L）*/
 }
 .sidebar-brand {
   display: flex;
@@ -1342,8 +1343,295 @@ a:hover {
   .topbar .btn {
     padding: 9px 14px;
     font-size: 13px;
+    gap: 5px;
+  }
+  /* 手机上没有 ⌘K 这种组合键，提示藏掉（正好也给顶栏腾出 30 多像素，
+     否则「搜索 + 发布 N + 退出」会顶出 3px 横向滚动）*/
+  .kbd {
+    display: none;
   }
   .stats {
     grid-template-columns: repeat(auto-fill, minmax(132px, 1fr));
+  }
+}
+
+/* =====================================================================
+   阶段 L：动效与交互打磨（方案 §4.12 的打磨阶段 + 第 24 条）
+   —— 原则：**克制**。后台是工具，动效只用来「说明发生了什么」——
+      切换时知道换了页、点下去知道按到了、发布时看得见进度。
+      另外一切都要能被 prefers-reduced-motion 一键关掉（不晕）。
+   ===================================================================== */
+
+:root {
+  --dur-quick: 0.14s;   /* 按下/悬停这种即时反馈 */
+  --dur-base: 0.22s;    /* 一般过渡 */
+  --dur-slow: 0.38s;    /* 页面进入、抽屉 */
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);      /* 快出慢停，收得干净 */
+  --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1); /* 轻微回弹，只用在「确认」类反馈 */
+}
+
+/* ——— 键盘可达性：只在键盘操作时画出焦点圈（鼠标点击不画）——— */
+:focus-visible {
+  outline: 2px solid var(--color-crimson);
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+.btn:focus-visible,
+.iconbtn:focus-visible,
+.nav-item:focus-visible,
+.chip:focus-visible {
+  outline-offset: 2px;
+}
+
+/* ——— 页面切换：内容轻轻上浮 + 淡入（换页时「知道自己换了地方」）——— */
+.page-enter {
+  animation: page-in var(--dur-slow) var(--ease-out) both;
+}
+@keyframes page-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+}
+/* 顶栏标题跟着换页轻推一下，视线有个落点 */
+.topbar .topbar-title {
+  animation: title-in var(--dur-base) var(--ease-out) both;
+}
+@keyframes title-in {
+  from {
+    opacity: 0;
+    transform: translateX(-4px);
+  }
+}
+
+/* ——— 侧栏：滑动的高亮胶囊（和博客前台导航同一套手感）——— */
+.nav-capsule {
+  position: absolute;
+  /* ⚠️ top: 0 不能少：绝对定位元素的「静态位置」本来就排在第一个 nav 项之前，
+     不给 top 的话 translateY(offsetTop) 会把这段偏移算两遍 —— 胶囊会整体错位一格。*/
+  top: 0;
+  left: 14px;
+  right: 14px;
+  border-radius: 12px;
+  background: rgba(246, 165, 184, 0.24);
+  box-shadow: inset 0 0 0 1px rgba(246, 165, 184, 0.35);
+  transition: transform var(--dur-base) var(--ease-out), height var(--dur-base) var(--ease-out),
+    opacity var(--dur-quick) linear;
+  pointer-events: none;
+}
+.nav-capsule[hidden] {
+  display: block; /* 用 opacity 控制显隐，才能淡入淡出 */
+  opacity: 0;
+}
+.nav-item {
+  position: relative; /* 让胶囊压在文字下面 */
+  z-index: 1;
+  transition: background var(--dur-quick) var(--ease-soft), color var(--dur-quick) var(--ease-soft),
+    transform var(--dur-quick) var(--ease-out);
+}
+.nav-item.on {
+  background: none; /* 高亮交给胶囊 */
+}
+
+/* ——— 按钮 / 图标按钮 / 标签的微交互 ——— */
+.btn {
+  transition: transform var(--dur-quick) var(--ease-spring), box-shadow var(--dur-base) var(--ease-out),
+    background var(--dur-quick) var(--ease-soft), opacity var(--dur-quick);
+}
+.btn:hover:not([disabled]) {
+  box-shadow: 0 10px 26px rgba(224, 82, 107, 0.32);
+}
+.btn:active:not([disabled]) {
+  transform: scale(0.97);
+}
+.btn-ghost:hover:not([disabled]) {
+  background: rgba(255, 255, 255, 0.9);
+}
+.iconbtn {
+  transition: transform var(--dur-quick) var(--ease-spring), background var(--dur-quick),
+    color var(--dur-quick);
+}
+.iconbtn:hover:not([disabled]) {
+  transform: scale(1.12);
+}
+.iconbtn:active:not([disabled]) {
+  transform: scale(0.94);
+}
+.iconbtn.danger:hover:not([disabled]) {
+  transform: scale(1.12) rotate(-6deg);
+}
+.chip {
+  transition: transform var(--dur-quick) var(--ease-spring), background var(--dur-quick),
+    border-color var(--dur-quick), color var(--dur-quick);
+}
+.chip:hover {
+  transform: translateY(-1px);
+}
+.chip:active {
+  transform: translateY(0) scale(0.97);
+}
+.tag {
+  transition: background var(--dur-quick), color var(--dur-quick);
+}
+
+/* 列表行：悬停时轻轻抬起 + 暖色底，指到哪儿一目了然。
+   ⚠️ 必须圈在 (hover: hover) 里：触屏设备上「点一下」也会留下 :hover，
+   而 translateX(3px) 会把整页撑出 3px 横向滚动条（阶段 K 的手机宽度用例就是这么抓到的）。*/
+@media (hover: hover) and (pointer: fine) {
+  .post-item:hover {
+    background: rgba(255, 255, 255, 0.62);
+    transform: translateX(3px);
+    box-shadow: -3px 0 0 0 var(--color-rose);
+  }
+  .nav-item:hover {
+    background: rgba(255, 255, 255, 0.55);
+    transform: translateX(2px);
+  }
+  .chip:hover {
+    transform: translateY(-1px);
+  }
+  .btn:hover:not([disabled]) {
+    box-shadow: 0 10px 26px rgba(224, 82, 107, 0.32);
+  }
+  .btn-ghost:hover:not([disabled]) {
+    background: rgba(255, 255, 255, 0.9);
+  }
+  .iconbtn:hover:not([disabled]) {
+    transform: scale(1.12);
+  }
+  .iconbtn.danger:hover:not([disabled]) {
+    transform: scale(1.12) rotate(-6deg);
+  }
+}
+.post-item {
+  transition: background var(--dur-base) var(--ease-soft), transform var(--dur-base) var(--ease-out),
+    box-shadow var(--dur-base) var(--ease-out);
+}
+.card,
+.panel {
+  transition: box-shadow var(--dur-base) var(--ease-out);
+}
+
+/* 输入框：聚焦时边框与底色一起亮一下（手感） */
+.input,
+.select,
+.textarea {
+  transition: border-color var(--dur-base) var(--ease-soft), background var(--dur-base) var(--ease-soft),
+    box-shadow var(--dur-base) var(--ease-out);
+}
+.input:focus,
+.select:focus,
+.textarea:focus {
+  box-shadow: 0 0 0 3px rgba(246, 165, 184, 0.22);
+}
+
+/* ——— 提示条 / 通知：从上方滑入 ——— */
+.alert {
+  animation: alert-in var(--dur-base) var(--ease-out) both;
+}
+@keyframes alert-in {
+  from {
+    opacity: 0;
+    transform: translateY(-6px);
+  }
+}
+
+/* ——— 顶栏「发布 N」角标：数量变化时轻轻跳一下 ——— */
+.badge-pop {
+  animation: badge-pop 0.5s var(--ease-spring);
+}
+@keyframes badge-pop {
+  0% {
+    transform: scale(1);
+  }
+  35% {
+    transform: scale(1.18);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+/* ——— 发布进度：每一步「完成」时打一个勾的弹跳，正在跑的那步呼吸 ——— */
+.steps .step .dot {
+  transition: transform var(--dur-base) var(--ease-spring), background var(--dur-base),
+    color var(--dur-base);
+}
+.step-done-pop {
+  animation: dot-pop 0.42s var(--ease-spring);
+}
+@keyframes dot-pop {
+  0% {
+    transform: scale(0.6);
+  }
+  55% {
+    transform: scale(1.28);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+.step-running .dot {
+  animation: dot-breathe 1.15s ease-in-out infinite;
+}
+@keyframes dot-breathe {
+  0%,
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.55;
+    transform: scale(0.86);
+  }
+}
+
+/* 发布成功那条提示：轻微放大进入（「确认」类反馈才用回弹）*/
+.alert-success-pop {
+  animation: success-pop var(--dur-slow) var(--ease-spring) both;
+}
+@keyframes success-pop {
+  from {
+    opacity: 0;
+    transform: scale(0.97);
+  }
+}
+
+/* ——— 概览数字：滚动到位（数字变化比突然跳变好读）——— */
+.stat-value {
+  font-variant-numeric: tabular-nums;
+}
+
+/* ——— 转圈（发布进行中的图标）——— */
+.spin {
+  animation: spin 0.9s linear infinite;
+  transform-origin: center;
+}
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* ——— 手机抽屉：手指拖动时跟手（JS 写 --drawer-x），松手后用过渡收尾 ——— */
+.sidebar.dragging {
+  transition: none;
+}
+.sidebar {
+  will-change: transform;
+}
+.scrim {
+  transition: opacity var(--dur-base) var(--ease-out);
+}
+
+/* ——— 尊重系统设置：一键关掉所有动效（前庭敏感的人不晕）——— */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
   }
 }

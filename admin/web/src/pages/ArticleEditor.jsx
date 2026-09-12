@@ -50,6 +50,7 @@ export default function ArticleEditor({ id, go }) {
   const [slugTouched, setSlugTouched] = useState(Boolean(id));
   const [dirty, setDirty] = useState(false);
   const taRef = useRef(null);
+  const titleRef = useRef(null);
 
   const set = (patch) => {
     setForm((f) => ({ ...f, ...patch }));
@@ -230,6 +231,37 @@ export default function ArticleEditor({ id, go }) {
     go('posts');
   };
 
+  // 阶段 L：新文章直接把光标放到标题上（少点一下，写作更顺）
+  useEffect(() => {
+    if (!id) titleRef.current?.focus();
+  }, [id]);
+
+  // 阶段 L：写作时的键盘手感（编辑器里最常用的几下）
+  //   Cmd/Ctrl+S 保存 · Cmd/Ctrl+B 加粗 · Cmd/Ctrl+I 斜体 · Cmd/Ctrl+1/2 标题
+  //   注意：全局的 Cmd+K 是搜索（第 44 条），这里**不抢**它。
+  useEffect(() => {
+    const onKey = (e) => {
+      const mod = e.metaKey || e.ctrlKey;
+      if (!mod || e.altKey) return;
+      const k = e.key?.toLowerCase();
+      if (k === 's') {
+        e.preventDefault();
+        submit();
+      } else if (k === 'b') {
+        e.preventDefault();
+        wrapSel('**', '**', '加粗文字');
+      } else if (k === 'i') {
+        e.preventDefault();
+        wrapSel('*', '*', '斜体文字');
+      } else if (k === '1' || k === '2') {
+        e.preventDefault();
+        prefixLine('#'.repeat(Number(k)) + ' ');
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  });
+
   const title = id ? '编辑文章' : '新建文章';
   const excerptHint = useMemo(
     () => (form.description.trim() ? '' : '留空会自动取正文开头约 80 字'),
@@ -279,6 +311,7 @@ export default function ArticleEditor({ id, go }) {
             <span>标题</span>
             <input
               className="input"
+              ref={titleRef}
               value={form.title}
               onChange={(e) => set({ title: e.target.value })}
               placeholder="文章标题"

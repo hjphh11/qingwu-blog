@@ -243,7 +243,7 @@ export default function Links() {
                       mark(next);
                     }}
                   >
-                    <MorphIcon icon={it.visible === false ? EyeOff : Eye} size={16} color="currentColor" />
+                    <MorphIcon icon={it.visible === false ? EyeOff : Eye} size={16} color="currentColor" spring="snappy" reducedMotion="user" />
                   </button>
                   <button
                     type="button"
