@@ -17,7 +17,8 @@ if (!fs.existsSync(envFile)) {
   process.exit(1);
 }
 
-const nodeArgs = ['--env-file', envFile];
+// --watch：改了服务端代码自动重启（不用手动停起）
+const nodeArgs = ['--watch', '--env-file', envFile];
 const api = spawn(process.execPath, [...nodeArgs, 'server/index.js'], {
   cwd: adminRoot,
   stdio: 'inherit',

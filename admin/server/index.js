@@ -1,12 +1,13 @@
 // 后台服务端入口。
 //
-// 阶段 D 范围：登录 + 数据总览（**只读**）。
+// 阶段 E 起后台**能写文件**了（文章管理），但写范围仍受 articles.js 的白名单限制。
 // 只监听 127.0.0.1；对外访问由 `tailscale serve` 转发（不开任何公网端口）。
 import express from 'express';
 import cookieParser from 'cookie-parser';
 import fs from 'node:fs';
 import path from 'node:path';
 import { assertConfig, config } from './config.js';
+import articlesRoutes from './routes/articles.js';
 import authRoutes from './routes/auth.js';
 import dataRoutes from './routes/data.js';
 
@@ -15,8 +16,8 @@ assertConfig();
 const app = express();
 app.disable('x-powered-by');
 
-// 只在本地/私网内跑，body 不必很大
-app.use(express.json({ limit: '256kb' }));
+// 只在本地/私网内跑，body 不必很大（Markdown 正文留足余量）
+app.use(express.json({ limit: '2mb' }));
 app.use(cookieParser());
 
 // 顺手加几个安全响应头
@@ -27,12 +28,30 @@ app.use((req, res, next) => {
   next();
 });
 
+// 状态变更请求要求同源。
+// cookie 是 SameSite=Lax，本来就能挡住跨站 POST；这里再加一道 Origin 校验，
+// 免得以后有人改了 cookie 设置就把写接口暴露出去。
+// （不带 Origin 的请求放行 —— 那是 curl/脚本，它们本来也得先登录拿到 cookie。）
+const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
+app.use((req, res, next) => {
+  if (SAFE_METHODS.has(req.method)) return next();
+  const origin = req.headers.origin;
+  if (!origin) return next();
+  try {
+    if (new URL(origin).host === req.headers.host) return next();
+  } catch {
+    /* Origin 不合法，落到下面拒绝 */
+  }
+  res.status(403).json({ error: 'bad_origin', message: '跨站请求被拒绝' });
+});
+
 // 健康检查（不需要登录；用来确认服务活着）
 app.get('/api/health', (req, res) => {
   res.json({ ok: true, repoPath: config.repoPath, prod: config.isProd });
 });
 
 app.use('/api/auth', authRoutes);
+app.use('/api', articlesRoutes);
 app.use('/api', dataRoutes);
 
 // 单端口模式：如果前端已经构建过（web/dist 存在），就一并托管

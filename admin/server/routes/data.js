@@ -1,8 +1,8 @@
-// 数据接口（阶段 D 全部**只读**）。
-// 一律要求登录；读取范围受 server/data.js 的白名单限制。
+// src/data/*.json 的**只读**接口（阶段 D 起就有）。
+// 文章、概览与回收站在 routes/articles.js；这里路径不重叠，两边都挂在 /api 下。
 import { Router } from 'express';
 import { requireAuth } from '../auth.js';
-import { dataHealth, overview, rawData, readArticles, readData } from '../data.js';
+import { dataHealth, rawData, readData } from '../data.js';
 
 const router = Router();
 
@@ -14,14 +14,8 @@ const wrap = (fn) => (req, res, next) => {
   Promise.resolve(fn(req, res, next)).catch(next);
 };
 
-/** 数据总览：文章统计 + 各数据文件健康 + 最近文章 */
-router.get('/overview', wrap(async (req, res) => res.json(await overview())));
-
-/** 各数据文件健康（单独一个接口，概览页可单独刷新） */
+/** 各数据文件健康（写坏了会指出是哪个文件、哪个字段）*/
 router.get('/health/data', wrap(async (req, res) => res.json(await dataHealth())));
-
-/** 文章列表（含草稿；带 frontmatter 摘要与统计） */
-router.get('/articles', wrap(async (req, res) => res.json(await readArticles())));
 
 /** 白名单数据文件：解析后的内容 */
 router.get(
