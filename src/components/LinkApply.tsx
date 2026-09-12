@@ -99,7 +99,7 @@ const MY_INFO = [
 // 'fallback' 只用于「这次没能存进去」；'duplicate' 是「已经收到过了」——
 // 两者文案完全相反，必须分开。早期把 409 也塞进 fallback，结果弹出
 // 「通道还在建设中，请邮件发我」，和「已收到你的申请」自相矛盾。
-type Status = 'editing' | 'submitting' | 'sent' | 'duplicate' | 'fallback';
+type Status = 'editing' | 'submitting' | 'sent' | 'duplicate' | 'limited' | 'fallback';
 
 /** fallback 的两种语气：通道本来就没开 vs 这一次操作失败了 */
 type FallbackKind = 'building' | 'error';
@@ -117,6 +117,12 @@ export default function LinkApply({ siteKey = '' }: { siteKey?: string }) {
   const [turnstileMsg, setTurnstileMsg] = useState('');
   const [serverMessage, setServerMessage] = useState('');
   const [fallbackKind, setFallbackKind] = useState<FallbackKind>('building');
+  /** 限流时服务端给的 scope(ip-* / global-*)，用来决定标题 */
+  const [limitScope, setLimitScope] = useState('');
+  /** 蜜罐字段：正常访客看不到也不会填，只有脚本会填 */
+  const [honeypot, setHoneypot] = useState('');
+  /** 进页面到点提交花了多久(ms)，用于识别秒填的脚本(只记日志，不拦截) */
+  const openedAt = useRef(Date.now());
 
   const turnstileBox = useRef<HTMLDivElement>(null);
   const widgetId = useRef<string | null>(null);
@@ -275,17 +281,31 @@ export default function LinkApply({ siteKey = '' }: { siteKey?: string }) {
       const res = await fetch('/api/links/apply', {
         method: 'POST',
         headers: { 'content-type': 'application/json', accept: 'application/json' },
-        body: JSON.stringify({ ...norm, turnstileToken: token }),
+        body: JSON.stringify({
+          ...norm,
+          turnstileToken: token,
+          hp: honeypot,
+          elapsedMs: Date.now() - openedAt.current,
+        }),
       });
       const data = (await res.json().catch(() => ({}))) as {
         ok?: boolean;
         error?: string;
         message?: string;
+        scope?: string;
         fields?: ApplyErrors;
       };
 
       if (res.ok && data.ok) {
         setStatus('sent');
+        return;
+      }
+
+      // 被限流了(429 单人 / 503 全站)—— 不是"没做完"，别弹"建设中"
+      if (data.error === 'rate_limited') {
+        setLimitScope(data.scope || '');
+        setServerMessage(data.message || '');
+        setStatus('limited');
         return;
       }
 
@@ -452,6 +472,64 @@ export default function LinkApply({ siteKey = '' }: { siteKey?: string }) {
                 </button>
               </div>
             </motion.div>
+          ) : status === 'limited' ? (
+            /* 被限流 —— 也不是"没做完"，所以同样不出现"建设中" */
+            <motion.div
+              initial={reduce ? false : { opacity: 0, y: 12 }}
+              animate={reduce ? {} : { opacity: 1, y: 0 }}
+              transition={{ duration: 0.45, ease: [0.16, 1, 0.3, 1] }}
+              className="glass-card p-7 text-center"
+            >
+              <span className="mx-auto grid h-14 w-14 place-items-center rounded-full bg-amber/20 text-amber">
+                <MorphIcon icon={CircleAlert} size={26} color="currentColor" />
+              </span>
+              <h2 className="mt-4 font-display text-2xl text-ink">
+                {limitScope.startsWith('global') ? '暂时停止接收申请' : '提交有点频繁啦'}
+              </h2>
+              <p className="mt-2 text-sm leading-relaxed text-ink/70">
+                {serverMessage || '请稍等一会儿再试 ~'}
+              </p>
+
+              <div className="mt-5 flex items-start gap-2.5 rounded-[var(--radius-card)] border border-amber/40 bg-amber/15 p-4 text-left text-sm text-ink/80">
+                <span className="mt-0.5 shrink-0 text-amber">
+                  <MorphIcon icon={Info} size={17} color="currentColor" />
+                </span>
+                <p className="leading-relaxed">
+                  等一会儿再点一次就好。如果比较急，也可以直接用下面的按钮把信息发给我。
+                </p>
+              </div>
+
+              <dl className="mt-5 space-y-2 rounded-[var(--radius-card)] border border-rose/20 bg-white/40 p-4 text-left text-sm">
+                {FIELDS.map((f) => (
+                  <div key={f.key} className="flex gap-3">
+                    <dt className="w-20 shrink-0 text-ink/50">{f.label}</dt>
+                    <dd className="min-w-0 flex-1 break-all text-ink">{norm[f.key]}</dd>
+                  </div>
+                ))}
+              </dl>
+
+              <div className="mt-6 flex flex-wrap items-center justify-center gap-3">
+                <a href={mailto} className={primaryBtn}>
+                  <MorphIcon icon={Mail} size={16} color="#fff" />
+                  用邮件发给我
+                </a>
+                <button
+                  type="button"
+                  onClick={() => copyText(savedBody, 'limited')}
+                  className="btn-ripple inline-flex items-center gap-2 rounded-full border border-rose/30 bg-white/60 px-5 py-2.5 text-sm text-ink transition-colors hover:border-rose/60 hover:text-crimson"
+                >
+                  {copied === 'limited' ? '已复制 ✓' : '复制申请信息'}
+                </button>
+                <button
+                  type="button"
+                  onClick={resetToEditing}
+                  className="inline-flex items-center gap-1.5 rounded-full px-4 py-2.5 text-sm text-ink/60 transition-colors hover:text-crimson"
+                >
+                  <MorphIcon icon={ArrowLeft} size={15} color="currentColor" />
+                  返回修改
+                </button>
+              </div>
+            </motion.div>
           ) : status === 'fallback' ? (
             <motion.div
               initial={reduce ? false : { opacity: 0, y: 12 }}
@@ -529,8 +607,25 @@ export default function LinkApply({ siteKey = '' }: { siteKey?: string }) {
                 void handleSubmit();
               }}
               noValidate
-              className="glass-card p-7"
+              className="glass-card relative p-7"
             >
+              {/* 蜜罐：正常访客看不见也不会填(屏幕外 + tabindex=-1 + 无标签)，
+                  只有按字段名盲填的脚本会中招。命中后服务端静默忽略。 */}
+              <div
+                aria-hidden="true"
+                className="absolute -left-[9999px] top-0 h-px w-px overflow-hidden"
+              >
+                <label htmlFor="apply-hp">请勿填写这一栏</label>
+                <input
+                  id="apply-hp"
+                  name="hp"
+                  type="text"
+                  tabIndex={-1}
+                  autoComplete="off"
+                  value={honeypot}
+                  onChange={(e) => setHoneypot(e.target.value)}
+                />
+              </div>
               <h2 className="flex items-center gap-2 font-display text-xl text-ink">
                 <span className="text-rose">
                   <MorphIcon icon={Sparkles} size={18} color="currentColor" />
@@ -638,6 +733,12 @@ export default function LinkApply({ siteKey = '' }: { siteKey?: string }) {
                   ~
                 </p>
               </div>
+
+              {/* 透明说明：限流会用到匿名标识，写清楚比藏着好 */}
+              <p className="mt-4 text-[11px] leading-relaxed text-ink/40">
+                为防刷，提交时会记录一个不可逆的匿名标识（不含明文 IP），仅用于限制提交频率，
+                24 小时后自动失效。
+              </p>
             </form>
           )}
         </div>

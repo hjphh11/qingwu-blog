@@ -1,6 +1,7 @@
-// 友链申请的服务端函数(阶段 B)。
+// 友链申请的服务端函数(阶段 B / B.1)。
 //
-// 流程：校验 → Cloudflare Turnstile 防刷 → 写私有仓库 → Resend 发通知给站主。
+// 流程：校验 → Cloudflare Turnstile 防刷 → **限流(Upstash)** → 写私有仓库
+//       → Resend 发通知(超额度则排队,下个小时补发)。
 //
 // 两个端点：
 //   GET  /api/links/apply   能力探测。返回 { enabled }，前端据此决定
@@ -15,6 +16,12 @@ import type { APIRoute } from 'astro';
 import { appendApplication } from '../../../lib/applyStore';
 import { notifyNewApplication } from '../../../lib/applyNotify';
 import { normalizeValues, validateApply, type ApplyValues } from '../../../lib/applyValidation';
+import {
+  checkAndBump,
+  deliverNotifications,
+  hashIp,
+  rateLimitConfig,
+} from '../../../lib/rateLimit';
 import { env } from '../../../lib/serverEnv';
 
 // ——— 配置(用户填在 Vercel → Settings → Environment Variables) ———
@@ -31,11 +38,14 @@ const RESEND_API_KEY = env('RESEND_API_KEY');
 const APPLY_MAIL_FROM = env('APPLY_MAIL_FROM');
 const APPLY_NOTIFY_TO = env('APPLY_NOTIFY_TO');
 
+// IP 匿名化用的盐(必填才能启用限流;缺了就是 fail-open)
+const APPLY_IP_SALT = env('APPLY_IP_SALT');
+
 // 可选覆盖：把对外请求指向本地 mock，用于本地联调(平时不用填)
 const GITHUB_API_BASE = env('APPLY_GITHUB_API_BASE') || undefined;
 const RESEND_API_BASE = env('RESEND_API_BASE') || undefined;
 
-/** 存储与防刷都就绪才算「能真提交」；邮件是尽力而为，不参与这个判断 */
+/** 存储与防刷都就绪才算「能真提交」；限流/邮件是尽力而为，不参与这个判断 */
 const ENABLED = Boolean(APPLY_TOKEN && TURNSTILE_SECRET);
 
 const json = (body: unknown, status: number, extra: Record<string, string> = {}) =>
@@ -71,7 +81,8 @@ export const POST: APIRoute = async ({ request, clientAddress }) => {
     return json({ error: 'unavailable', message: '提交通道还没开放' }, 503);
   }
 
-  let payload: (Partial<ApplyValues> & { turnstileToken?: string }) | null = null;
+  let payload: (Partial<ApplyValues> & { turnstileToken?: string; hp?: string; elapsedMs?: number }) | null =
+    null;
   try {
     payload = await request.json();
   } catch {
@@ -79,6 +90,18 @@ export const POST: APIRoute = async ({ request, clientAddress }) => {
   }
   if (!payload || typeof payload !== 'object') {
     return json({ error: 'bad_request', message: '请求格式不对' }, 400);
+  }
+
+  // —— 0. 蜜罐：正常访客看不到这个隐藏字段，只有脚本会填 ——
+  // 返回「假装成功」，不落库、不发信、不留痕迹，让脚本拿不到反馈。
+  if (typeof payload.hp === 'string' && payload.hp.trim() !== '') {
+    console.warn('[links/apply] 蜜罐命中，已忽略该提交');
+    return json({ ok: true, id: 'ignored', notified: false }, 200, { 'cache-control': 'no-store' });
+  }
+
+  // 填表太快通常也不是人(只记日志,不拦 —— 免得误伤自动填充的用户)
+  if (typeof payload.elapsedMs === 'number' && payload.elapsedMs >= 0 && payload.elapsedMs < 1500) {
+    console.warn(`[links/apply] 填表仅 ${payload.elapsedMs}ms，疑似脚本(未拦截)`);
   }
 
   // —— 1. 字段校验(与前端同一套规则，前端被绕过也能兜住) ——
@@ -106,7 +129,32 @@ export const POST: APIRoute = async ({ request, clientAddress }) => {
     return json({ error: 'turnstile', message: '人机验证没通过，请刷新后重试' }, 403);
   }
 
-  // —— 3. 写私有仓库(含去重) ——
+  // —— 3. 限流(只对「真解了人机验证」的提交计数) ——
+  const rl = rateLimitConfig();
+  if (rl && APPLY_IP_SALT) {
+    const decision = await checkAndBump(rl, hashIp(ip || 'unknown', APPLY_IP_SALT));
+    if (!decision.allowed) {
+      const status = decision.scope?.startsWith('global') ? 503 : 429;
+      return json(
+        {
+          error: 'rate_limited',
+          scope: decision.scope,
+          message: decision.message,
+        },
+        status,
+        {
+          'cache-control': 'no-store',
+          ...(decision.retryAfterSec ? { 'retry-after': String(decision.retryAfterSec) } : {}),
+        },
+      );
+    }
+  } else if (!rl) {
+    console.warn('[links/apply] 未配置 Upstash，限流已跳过(fail-open)');
+  } else {
+    console.warn('[links/apply] 未配置 APPLY_IP_SALT，限流已跳过(fail-open)');
+  }
+
+  // —— 4. 写私有仓库(含去重) ——
   let stored: { ok: true; id: string } | { ok: false; code: 'duplicate'; message: string };
   try {
     stored = await appendApplication(
@@ -135,27 +183,42 @@ export const POST: APIRoute = async ({ request, clientAddress }) => {
     return json({ error: 'duplicate', message: stored.message }, 409);
   }
 
-  // —— 4. 邮件通知(尽力而为：失败不影响访客，数据已经存好了) ——
+  // —— 5. 邮件通知(尽力而为；超额度就排队，下个额度窗口补发) ——
+  const submission = {
+    id: stored.id,
+    submittedAt: new Date().toISOString(),
+    ...values,
+  };
   let notified = false;
+  let queued = false;
+
   if (RESEND_API_KEY && APPLY_MAIL_FROM && APPLY_NOTIFY_TO) {
-    const sent = await notifyNewApplication(
-      {
-        apiKey: RESEND_API_KEY,
-        from: APPLY_MAIL_FROM,
-        to: APPLY_NOTIFY_TO,
-        apiBase: RESEND_API_BASE,
-      },
-      {
-        id: stored.id,
-        submittedAt: new Date().toISOString(),
-        ...values,
-      },
-    );
-    notified = sent.ok;
-    if (!sent.ok) console.error('[links/apply] 邮件通知失败:', sent.error);
+    const send = async (p: Record<string, unknown>) => {
+      const sent = await notifyNewApplication(
+        {
+          apiKey: RESEND_API_KEY,
+          from: APPLY_MAIL_FROM,
+          to: APPLY_NOTIFY_TO,
+          apiBase: RESEND_API_BASE,
+        },
+        p as unknown as Parameters<typeof notifyNewApplication>[1],
+      );
+      if (!sent.ok) console.error('[links/apply] 邮件通知失败:', sent.error);
+      return sent.ok;
+    };
+
+    try {
+      // 传 null 表示没配 Upstash → 内部会走进程内兜底
+      const r = await deliverNotifications(rl, send, submission);
+      notified = r.notified;
+      queued = r.queued;
+    } catch (err) {
+      console.error('[links/apply] 通知投递异常，改为直接发送:', err);
+      notified = await send(submission);
+    }
   } else {
     console.warn('[links/apply] 未配置 Resend，跳过邮件通知');
   }
 
-  return json({ ok: true, id: stored.id, notified }, 200, { 'cache-control': 'no-store' });
+  return json({ ok: true, id: stored.id, notified, queued }, 200, { 'cache-control': 'no-store' });
 };
