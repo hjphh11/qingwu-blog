@@ -35,9 +35,13 @@ npm run check    # 类型检查
 > 部署的更多细节与备注，保存在**本地** `docs/部署说明.md`，不随仓库公开。
 
 ## 📝 内容
-- 文章：`src/content/blog/*.md`
-- 音乐：`src/data/music.ts` + `public/music/`
-- 友链：`src/data/links.ts` ｜ 分享：`src/data/share.ts` ｜ 关于：`src/data/about.ts`
+- 文章：`src/content/blog/*.md`（分类见 `src/data/categories.json`）
+- 音乐：`src/data/music.json` + `public/music/`（改完跑 `node scripts/gen.mjs` 重新生成 `src/data/music.ts`）
+- 友链：`src/data/links.json` ｜ 分享：`src/data/share.json` ｜ 关于：`src/data/about.json`
+- 以上 JSON 在构建时会经 zod 校验，写错会在构建时报出「哪个文件、哪个字段」
+
+> 这些内容文件都是纯 JSON，是给将来的后台管理系统读写用的；
+> 对应的 `src/data/*.ts` 只是带校验的薄封装，改内容请改 JSON。
 
 ## 🎨 主题形象
 **爱弥斯**（《鸣潮》五星热熔共鸣者，《飞行雪绒》/《电子幽灵》，作者的小 IP）。她的配色即全站的方向。

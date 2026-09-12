@@ -7,7 +7,9 @@ export type Song = {
   lrc?: string;
 };
 
-// 《鸣潮》音乐(本地自托管):音频/封面/歌词在 public/music/,替换即改此文件。
+// 本文件由 scripts/gen.mjs 从 src/data/music.json 生成,**不要手改** ——
+// 改歌曲信息请改 music.json 再跑 `node scripts/gen.mjs`。
+// 《鸣潮》音乐(本地自托管):音频/封面/歌词在 public/music/。
 export const playlist: Song[] = [
   {
     title: "Waking of a World",
