@@ -121,16 +121,28 @@ async function writeApplications(
   message: string,
 ): Promise<void> {
   const body = JSON.stringify({ applications: apps }, null, 2) + '\n';
-  const res = await fetch(contentsUrl(cfg), {
-    method: 'PUT',
-    headers: { ...ghHeaders(cfg.token), 'content-type': 'application/json' },
-    body: JSON.stringify({
-      message,
-      content: Buffer.from(body, 'utf8').toString('base64'),
-      ...(sha ? { sha } : {}),
-      branch: cfg.ref,
-    }),
-  });
+  const content = Buffer.from(body, 'utf8').toString('base64');
+
+  const put = (withBranch: boolean) =>
+    fetch(contentsUrl(cfg), {
+      method: 'PUT',
+      headers: { ...ghHeaders(cfg.token), 'content-type': 'application/json' },
+      body: JSON.stringify({
+        message,
+        content,
+        ...(sha ? { sha } : {}),
+        ...(withBranch ? { branch: cfg.ref } : {}),
+      }),
+    });
+
+  let res = await put(true);
+
+  // 空仓库(还没有任何提交 → 目标分支 ref 都还不存在)时,带 branch 会被 GitHub 拒掉。
+  // 去掉 branch 再试一次,GitHub 会用默认分支建出第一个提交。
+  // 只在「新建文件」(无 sha)时才走这条路,所以不会掩盖真正的写冲突。
+  if (!res.ok && !sha && (res.status === 404 || res.status === 422)) {
+    res = await put(false);
+  }
 
   if (res.ok) return;
 
