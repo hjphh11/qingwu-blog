@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { MorphIcon } from 'morphicons/react';
 import { api } from '../api.js';
-import { CircleAlert, CircleCheck, RefreshCw, Sparkles } from '../icons.js';
+import { downloadBackup } from '../backup.js';
+import { CircleAlert, CircleCheck, Download, RefreshCw, Sparkles } from '../icons.js';
 
 const RAW_FILES = ['links.json', 'share.json', 'about.json', 'music.json', 'categories.json'];
 
@@ -26,13 +27,17 @@ const fmtDate = (iso) => {
   return d.toLocaleDateString('zh-CN');
 };
 
-export default function Overview() {
+export default function Overview({ go }) {
   const [data, setData] = useState(null);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   const [rawName, setRawName] = useState('links.json');
   const [rawText, setRawText] = useState('');
   const [rawError, setRawError] = useState('');
+  // 阶段 K：备份与定时发布
+  const [backup, setBackup] = useState({});
+  const [schedule, setSchedule] = useState({ jobs: [] });
+  const [backing, setBacking] = useState(false);
 
   const load = useCallback(async () => {
     setBusy(true);
@@ -49,6 +54,23 @@ export default function Overview() {
   useEffect(() => {
     load();
   }, [load]);
+
+  // 备份元信息 + 定时待办（失败也不影响概览其它部分）
+  useEffect(() => {
+    api.get('/api/backup/info').then(setBackup).catch(() => setBackup({}));
+    api.get('/api/schedule').then(setSchedule).catch(() => setSchedule({ jobs: [] }));
+  }, []);
+
+  const doBackup = async () => {
+    setBacking(true);
+    try {
+      downloadBackup();
+      // 打包要一两秒，给个提前量再刷新元信息
+      setTimeout(() => api.get('/api/backup/info').then(setBackup).catch(() => {}), 2500);
+    } finally {
+      setTimeout(() => setBacking(false), 1200);
+    }
+  };
 
   useEffect(() => {
     let cancelled = false;
@@ -142,7 +164,7 @@ export default function Overview() {
             {bad.length > 0 && (
               <>
                 有 {bad.length} 个数据文件有问题：{bad.map((b) => b.file).join('、')} ——
-                这会让站点**构建失败**，下面「数据文件健康」里有具体原因。
+                这会让站点<strong>构建失败</strong>，下面「数据文件健康」里有具体原因。
               </>
             )}
           </span>
@@ -292,6 +314,54 @@ export default function Overview() {
         ) : (
           <pre className="raw">{rawText}</pre>
         )}
+      </section>
+
+      <section className="card panel">
+        <div className="panel-head">
+          <h2>备份与定时发布</h2>
+          <div className="spacer" />
+          <span className="hint">
+            {backup.at ? `内容文件 ${backup.count} 个 · 当前提交 ${backup.commit ?? '—'}` : '正在读取…'}
+          </span>
+          <button type="button" className="btn" onClick={doBackup} disabled={backing}>
+            <MorphIcon icon={Download} size={15} color="#fff" />
+            {backing ? '打包中…' : '一键导出备份（zip）'}
+          </button>
+        </div>
+        <p className="hint" style={{ marginTop: -6, marginBottom: 10 }}>
+          备份里是<strong>内容</strong>（文章 + 各 JSON + 歌词 + 生成好的 <span className="mono">music.ts</span>），
+          附 <span className="mono">MANIFEST.json</span>（每个文件的 sha256）和恢复说明 —— 解压覆盖回仓库就能完整还原。
+          代码不在里面（代码在 git 里）。
+        </p>
+        <div className="table-wrap">
+          <table className="table">
+            <tbody>
+              <tr>
+                <th style={{ width: 120 }}>定时发布</th>
+                <td>
+                  {schedule.jobs?.length ? (
+                    <>
+                      有 <b>{schedule.jobs.filter((j) => j.state === 'pending').length}</b> 条待办，
+                      最近一条 {fmtTime(schedule.jobs.find((j) => j.state === 'pending')?.at)}
+                      <button
+                        type="button"
+                        className="btn btn-ghost"
+                        style={{ marginLeft: 10, padding: '5px 12px', fontSize: 13 }}
+                        onClick={() => go?.('publish')}
+                      >
+                        去发布页管理
+                      </button>
+                    </>
+                  ) : (
+                    <>
+                      没有待办 <span className="hint">（在发布页可以设「到点自动发布」）</span>
+                    </>
+                  )}
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
       </section>
 
       <section className="card panel">

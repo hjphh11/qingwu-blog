@@ -5,13 +5,17 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { MorphIcon } from 'morphicons/react';
 import { api } from '../api.js';
 import {
+  CalendarClock,
   CircleAlert,
   CircleCheck,
+  Clock,
   RefreshCw,
   RotateCcw,
   Send,
   Sparkles,
+  Trash,
   TriangleAlert,
+  X,
 } from '../icons.js';
 
 const KIND = {
@@ -37,6 +41,62 @@ export default function Publish() {
   const [selected, setSelected] = useState(null); // null = 全选
   const [busy, setBusy] = useState(false);
   const pollRef = useRef(null);
+  // 阶段 K：定时发布（到点由服务器自动跑一遍发布）
+  const [schedule, setSchedule] = useState({ jobs: [] });
+  const [at, setAt] = useState('');
+  const [articleId, setArticleId] = useState('');
+  const [note, setNote] = useState('');
+  const [schedBusy, setSchedBusy] = useState(false);
+  const [articles, setArticles] = useState([]);
+
+  const loadSchedule = useCallback(async () => {
+    try {
+      setSchedule(await api.get('/api/schedule'));
+    } catch {
+      /* 定时待办读不到不影响发布本身 */
+    }
+  }, []);
+
+  useEffect(() => {
+    loadSchedule();
+    api
+      .get('/api/articles?pageSize=200')
+      .then((r) => setArticles(r.articles ?? []))
+      .catch(() => setArticles([]));
+  }, [loadSchedule]);
+
+  const addSchedule = async () => {
+    setError('');
+    setSchedBusy(true);
+    try {
+      const r = await api.post('/api/schedule', { at, articleId: articleId || null, note });
+      setSchedule(r);
+      setAt('');
+      setArticleId('');
+      setNote('');
+    } catch (err) {
+      setError(err.message || '加定时任务失败');
+    } finally {
+      setSchedBusy(false);
+    }
+  };
+
+  const cancelSchedule = async (id) => {
+    setError('');
+    try {
+      setSchedule(await api.post('/api/schedule/cancel', { id }));
+    } catch (err) {
+      setError(err.message || '取消失败');
+    }
+  };
+
+  const clearSchedule = async () => {
+    try {
+      setSchedule(await api.post('/api/schedule/clear', {}));
+    } catch (err) {
+      setError(err.message || '清理失败');
+    }
+  };
 
   const load = useCallback(async () => {
     setBusy(true);
@@ -193,6 +253,104 @@ export default function Publish() {
             </tbody>
           </table>
         </div>
+      </section>
+
+      {/* 定时发布（阶段 K · 方案 §4.12）：到点由服务器自己跑一遍发布 */}
+      <section className="card panel">
+        <div className="panel-head">
+          <h2>定时发布</h2>
+          <div className="spacer" />
+          <span className="hint">服务器每 15 秒检查一次；重启后过期的待办会补跑</span>
+        </div>
+        <p className="hint" style={{ marginTop: -6, marginBottom: 10 }}>
+          到点自动跑一遍和上面「发布」<strong>完全一样</strong>的流程（构建校验 → 提交 → 推送）。
+          指定一篇文章时，会先把它的<strong>草稿</strong>改成已发布再发 —— 这就是「定时上线」。
+        </p>
+
+        <div className="form-grid">
+          <label className="field">
+            <span>什么时候发</span>
+            <input
+              className="input"
+              type="datetime-local"
+              value={at}
+              onChange={(e) => setAt(e.target.value)}
+            />
+          </label>
+          <label className="field">
+            <span>发哪篇（可不选 = 发布当时所有待发布改动）</span>
+            <select className="select" value={articleId} onChange={(e) => setArticleId(e.target.value)}>
+              <option value="">（不指定：发全部待发布）</option>
+              {articles.map((a) => (
+                <option key={a.id} value={a.id}>
+                  {a.title}
+                  {a.draft ? '（草稿）' : ''}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="field">
+            <span>备注（选填）</span>
+            <input
+              className="input"
+              value={note}
+              onChange={(e) => setNote(e.target.value)}
+              placeholder="例如：早上八点发新文章"
+            />
+          </label>
+          <div className="field">
+            <span>&nbsp;</span>
+            <button type="button" className="btn" onClick={addSchedule} disabled={!at || schedBusy}>
+              <MorphIcon icon={CalendarClock} size={15} color="#fff" />
+              {schedBusy ? '添加中…' : '加一条定时'}
+            </button>
+          </div>
+        </div>
+
+        {schedule.jobs?.length > 0 && (
+          <div className="post-list" style={{ marginTop: 12 }}>
+            {schedule.jobs.map((j) => (
+              <div key={j.id} className="post-item">
+                <span className="cat-icon">
+                  <MorphIcon icon={j.state === 'pending' ? Clock : CircleCheck} size={16} color="currentColor" />
+                </span>
+                <div className="post-main">
+                  <div className="post-title">
+                    {fmt(j.at)}
+                    <span
+                      className={`tag ${
+                        j.state === 'pending' ? 'tag-amber' : j.state === 'done' ? 'tag-ok' : j.state === 'running' ? 'tag-soft' : 'tag-bad'
+                      }`}
+                      style={{ marginLeft: 8 }}
+                    >
+                      {j.state === 'pending' ? '等待中' : j.state === 'running' ? '发布中' : j.state === 'done' ? '已发布' : j.state === 'canceled' ? '已取消' : '失败'}
+                    </span>
+                  </div>
+                  <div className="post-meta">
+                    {j.articleId ? `文章 ${j.articleId}` : '全部待发布改动'}
+                    {j.note && <> · {j.note}</>}
+                    {j.result && <> · {j.result}</>}
+                  </div>
+                </div>
+                <div className="post-acts">
+                  {j.state === 'pending' && (
+                    <button type="button" className="iconbtn danger" title="取消这条定时" onClick={() => cancelSchedule(j.id)}>
+                      <MorphIcon icon={X} size={16} color="currentColor" />
+                    </button>
+                  )}
+                </div>
+              </div>
+            ))}
+            {schedule.jobs.some((j) => j.state !== 'pending') && (
+              <div className="pager">
+                <button type="button" className="btn btn-ghost" onClick={clearSchedule}>
+                  <MorphIcon icon={Trash} size={15} color="currentColor" />
+                  清掉已结束的
+                </button>
+              </div>
+            )}
+          </div>
+        )}
       </section>
 
       {/* 待发布文件（可勾选）*/}

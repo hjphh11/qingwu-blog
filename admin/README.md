@@ -5,7 +5,7 @@
 
 ## 现在做到哪了
 
-**阶段 D ~ J：概览 / 文章 / 分类 / 友链 / 友链申请 / 分享 / 关于页 / 音乐 / 回收站 / 发布 / 操作日志**
+**阶段 D ~ K：概览 / 文章 / 分类 / 友链 / 友链申请 / 分享 / 关于页 / 音乐 / 回收站 / 发布 / 操作日志 / 备份与搜索**
 
 - ✅ 服务端：Express（只监听 `127.0.0.1`）+ 单用户密码登录（argon2 哈希 + 签名会话 cookie + 登录限速）
 - ✅ 前端：React + Vite 单页应用（暖色玻璃拟态，与博客前台同一套 tokens 与图标）
@@ -30,8 +30,12 @@
   · **通过** = 自动写进 `links.json`（补齐 `addedAt`/`visible`、自带同名链接去重）→ 于是它出现在**「待发布」**里，回发布页点一下就上线
   · **拒绝** = 把状态写回私有仓库（可留原因）；点错了能**改回待审批**。状态写在仓库里，所以阶段 B 的「被拒后可以重新申请」去重逻辑仍然成立
   · **审批也进操作日志**（第 43 条）：approve / reject / reopen
-- ⚠️ **写范围受限**：文章只写 `src/content/blog/*.md`；分类写 `src/data/categories.json`；友链/分享/关于分别写 `links.json` / `share.json` / `about.json`；音乐写 `src/data/music.json` + `public/music/lrc/*.lrc`（并重新生成 `src/data/music.ts`）；删除进 `.admin-trash/`（已 gitignore，**多类型共用**：文章/友链/分享）；**友链申请**只写私有仓库 `hjphh11/qingwu-link-applications`（**不写**博客仓库）
-- ⬜ 还没做：便捷功能（K）、动效打磨（L）、统计（M）、收尾（N）
+- ✅ **便捷功能（阶段 K）**
+  · **定时发布**：发布页可以设「到点自动发布」—— 到点服务器自动跑一遍和手点**完全一样**的流程（构建校验 → 提交 → 推送）；指定某篇文章时，会先把它从**草稿**转成已发布再发（= 定时上线）；能取消、能清历史；**服务器重启后过期的待办会补跑**
+  · **一键导出备份**：概览页一个按钮下载 zip（文章 + 各 JSON + 歌词 + `music.ts` + `MANIFEST.json`（逐文件 sha256）+ 恢复说明），解压覆盖回仓库即可完整还原（ZIP 按格式自己写，**没有新增依赖**）
+  · **`Cmd/Ctrl + K` 全局搜索**：搜文章（含**正文**）/ 分类 / 友链 / 语录 / 歌曲 / 友链申请，也能搜**页面**与**动作**（如「下载备份」「新建文章」）；↑↓ 选择、Enter 打开、Esc 关闭
+- ⚠️ **写范围受限**：文章只写 `src/content/blog/*.md`；分类写 `src/data/categories.json`；友链/分享/关于分别写 `links.json` / `share.json` / `about.json`；音乐写 `src/data/music.json` + `public/music/lrc/*.lrc`（并重新生成 `src/data/music.ts`）；删除进 `.admin-trash/`（已 gitignore，**多类型共用**：文章/友链/分享）；**友链申请**只写私有仓库 `hjphh11/qingwu-link-applications`（**不写**博客仓库）；**定时待办**写在 `.admin-logs/schedule.json`（后台自己的待办，不进公开仓库）
+- ⬜ 还没做：动效打磨（L）、统计（M）、收尾（N）
 
 ## 本地运行
 
@@ -90,12 +94,15 @@ admin/
 │  ├─ articles.js          # 文章读写 + 摘要/slug + **未发布改动清单（changedFiles）**
 │  ├─ applications.js      # **阶段 J：友链申请审批**（私有仓库 Contents API 读写 + 通过则写进 links.json）
 │  ├─ oplog.js             # 操作日志（第 43 条；发布/回滚/审批共用一份）
+│  ├─ search.js            # **阶段 K：全局搜索索引**（文章含正文 / 友链 / 语录 / 歌曲 / 申请 / 页面 / 动作）
+│  ├─ backup.js + zip.js   # **阶段 K：一键导出备份**（自己按 ZIP 格式打包，不加依赖）
+│  ├─ schedule.js          # **阶段 K：定时发布**（待办存 .admin-logs/schedule.json，到点自动发布，重启会补跑）
 │  ├─ categories.js links.js shares.js about.js music.js
 │  │                       # 各模块的读写实现（白名单路径 + 校验）
 │  ├─ trash.js             # 回收站（多类型软删除 / 恢复 / 彻底清除）
 │  ├─ overview.js          # 概览统计
 │  ├─ publish.js           # **阶段 I：发布 / 回滚**（构建校验 → 提交 → 拉取 → 推送 → 触发重建）
-│  └─ routes/              # auth / articles / categories / content / data / trash / publish / applications
+│  └─ routes/              # auth / articles / categories / content / data / trash / publish / applications / tools
 ├─ web/                    # React + Vite 前端
 │  ├─ vite.config.js       # dev 时 /api 代理到 3000
 │  └─ src/{App,api,icons}.js(x) + components/ + pages/ + styles/

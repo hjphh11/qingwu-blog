@@ -12,6 +12,7 @@ import {
   Music,
   Quote,
   ScrollText,
+  Search,
   Send,
   Settings,
   Trash,
@@ -21,6 +22,8 @@ import {
 import AboutPage from '../pages/About.jsx';
 import Applications from '../pages/Applications.jsx';
 import ArticleEditor from '../pages/ArticleEditor.jsx';
+import { downloadBackup } from '../backup.js';
+import CommandPalette from './CommandPalette.jsx';
 import Articles from '../pages/Articles.jsx';
 import Categories from '../pages/Categories.jsx';
 import Links from '../pages/Links.jsx';
@@ -69,6 +72,20 @@ export default function Shell({ onLogout }) {
   const [navOpen, setNavOpen] = useState(false);
   const [pending, setPending] = useState(0);
   const [applyPending, setApplyPending] = useState(0);
+  const [paletteOpen, setPaletteOpen] = useState(false);
+
+  // 全局搜索（阶段 K · 第 44 条）：Cmd/Ctrl + K 唤起、再按一次关掉；Esc 也能关
+  useEffect(() => {
+    const onKey = (e) => {
+      const k = e.key?.toLowerCase();
+      if ((e.metaKey || e.ctrlKey) && k === 'k') {
+        e.preventDefault();
+        setPaletteOpen((v) => !v);
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
 
   // 顶栏「发布」按钮上的待发布数量（切页面时刷新；发布页发完也会喊一声，见 Publish.jsx）
   useEffect(() => {
@@ -108,7 +125,7 @@ export default function Shell({ onLogout }) {
   const content = (() => {
     switch (route.name) {
       case 'dash':
-        return <Overview />;
+        return <Overview go={go} />;
       case 'posts':
         return <Articles go={go} />;
       case 'edit':
@@ -166,9 +183,9 @@ export default function Shell({ onLogout }) {
         ))}
 
         <div className="sidebar-foot">
-          阶段 J：友链申请审批
+          阶段 K：便捷功能
           <br />
-          通过 → 写进友链 → 发布
+          ⌘K 搜索 · 定时发布 · 一键备份
         </div>
       </aside>
 
@@ -189,6 +206,17 @@ export default function Shell({ onLogout }) {
           <div className="spacer" />
           <button
             type="button"
+            className="btn btn-ghost search-btn"
+            onClick={() => setPaletteOpen(true)}
+            title="全局搜索（Cmd/Ctrl + K）"
+            aria-label="全局搜索"
+          >
+            <MorphIcon icon={Search} size={16} color="currentColor" />
+            <span className="search-btn-text">搜索</span>
+            <kbd className="kbd">⌘K</kbd>
+          </button>
+          <button
+            type="button"
             className={`btn${pending > 0 ? '' : ' btn-ghost'}`}
             onClick={() => go('publish')}
             title={pending > 0 ? `${pending} 个文件待发布` : '没有待发布的改动'}
@@ -204,6 +232,13 @@ export default function Shell({ onLogout }) {
 
         <main className="content">{content}</main>
       </div>
+
+      <CommandPalette
+        open={paletteOpen}
+        onClose={() => setPaletteOpen(false)}
+        go={go}
+        onDownload={downloadBackup}
+      />
     </div>
   );
 }
