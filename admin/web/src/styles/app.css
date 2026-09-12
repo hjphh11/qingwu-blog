@@ -171,6 +171,7 @@ a:hover {
   padding: 10px 20px;
   font: inherit;
   font-size: 14px;
+  white-space: nowrap; /* 窄屏时按钮文字别折成两行（「发布 1」/「退出」被挤断很难看）*/
   color: #fff;
   background: var(--color-crimson);
   border: none;
@@ -645,6 +646,63 @@ a:hover {
   border-color: rgba(224, 82, 107, 0.3);
 }
 
+/* ——— 发布步骤流 ——— */
+.steps {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-bottom: 12px;
+}
+.step {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 10px;
+  border-radius: 10px;
+  font-size: 13.5px;
+  color: rgba(74, 55, 40, 0.72);
+}
+.step .dot {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  flex: none;
+  font-size: 12px;
+  border-radius: 9999px;
+  background: rgba(74, 55, 40, 0.1);
+}
+.step .lbl {
+  min-width: 72px;
+}
+.step .msg {
+  color: rgba(74, 55, 40, 0.5);
+  font-size: 12.5px;
+}
+.step.running {
+  background: rgba(232, 176, 75, 0.14);
+  color: #7a5a1c;
+}
+.step.running .dot {
+  background: rgba(232, 176, 75, 0.35);
+}
+.step.ok .dot {
+  color: #2f7a55;
+  background: rgba(47, 122, 85, 0.16);
+}
+.step.failed {
+  background: rgba(224, 82, 107, 0.1);
+  color: #8c2b39;
+}
+.step.failed .dot {
+  color: #8c2b39;
+  background: rgba(224, 82, 107, 0.2);
+}
+.step.skip {
+  opacity: 0.7;
+}
+
 /* ——— 歌词时间轴编辑（音乐管理）——— */
 .lrc-rows {
   max-height: 520px;
@@ -680,6 +738,13 @@ a:hover {
 @media (max-width: 620px) {
   .lrc-row {
     grid-template-columns: 84px minmax(0, 1fr) auto;
+  }
+  /* 待发布的文件列表：窄屏让它换行，别横向滚动（文件名看不全最难受）*/
+  .unpub-box .table {
+    min-width: 0;
+  }
+  .unpub-box .table td.mono {
+    word-break: break-all;
   }
 }
 
@@ -1088,6 +1153,21 @@ a:hover {
   }
   .topbar {
     padding: 12px 16px;
+    gap: 8px;
+  }
+  .topbar h1 {
+    font-size: 17px;
+  }
+  /* 标题块允许收缩，否则会把右边的按钮挤到换行 */
+  .topbar > div:first-of-type {
+    min-width: 0;
+  }
+  .topbar .crumb {
+    display: none; /* 副标题太长，窄屏收起来（同样的说明卡片里有）*/
+  }
+  .topbar .btn {
+    padding: 9px 14px;
+    font-size: 13px;
   }
   .stats {
     grid-template-columns: repeat(auto-fill, minmax(132px, 1fr));

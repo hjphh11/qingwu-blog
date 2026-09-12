@@ -5,7 +5,7 @@
 
 ## 现在做到哪了
 
-**阶段 D + E + F + G + H：概览 / 文章 / 分类 / 友链 / 分享 / 关于页 / 音乐 / 回收站**
+**阶段 D + E + F + G + H + I：概览 / 文章 / 分类 / 友链 / 分享 / 关于页 / 音乐 / 回收站 / 发布 / 操作日志**
 
 - ✅ 服务端：Express（只监听 `127.0.0.1`）+ 单用户密码登录（argon2 哈希 + 签名会话 cookie + 登录限速）
 - ✅ 前端：React + Vite 单页应用（暖色玻璃拟态，与博客前台同一套 tokens 与图标）
@@ -17,9 +17,16 @@
   · 分享：收藏与语录统一列表 · **标签**（前台可按标签筛选）· id 自动分配
   · 关于页：四块独立保存（主页信息 / 信息条目 / 爱弥斯 / 联系方式）· 条目带**图形化图标选择器**
 - ✅ **音乐（阶段 H）**：只改现有 13 首的标题 / 歌手 / 封面 / 说明 · **歌词时间轴编辑**（每行「时间 + 文字」，可改/插行/删行 + 按时间排序/清空）· 上下移动排序（= 前台歌单顺序）· **保存后自动重跑 `scripts/gen.mjs` 重新生成 `music.ts`**（**不做**新增歌曲/音频上传）
+- ✅ **发布与回滚（阶段 I）**：「保存」≠「上线」，这里才是上线
+  · 顶栏「发布 N」按钮（有待发布就显示数字）+ **发布页**：分支/领先落后/待发布清单（**可勾选部分发布**）/ 六步进度 / 原始日志 / 发布历史 + **一键回滚**
+  · 六步 = **构建校验 → 暂存 → 提交（信息自动生成）→ `pull --rebase --autostash` → 推送 → 触发 Deploy Hook**
+  · **构建不过绝不推送**（远端一个字节都不动）；**冲突不会静默失败**：自动 `rebase --abort` + 把这次自动提交**退回工作区**，改动不丢、能再发一次
+  · **推送失败**（断网/被拒）本地提交保留，界面上出现 **「重试推送 N 个提交」**（推出去了才算完）
+  · **回滚**用 `git revert`（不改写历史）+ 构建 + 推送，失败自动还原；仓库第一个提交回滚不了（按钮已禁）
+  · PAT **只经子进程环境变量**传给 git，不进命令行、不落盘
+  · **操作日志页**：只记发布 / 回滚（第 43 条），存在 `<仓库>/.admin-logs/operations.jsonl`（已 gitignore）
 - ⚠️ **写范围受限**：文章只写 `src/content/blog/*.md`；分类写 `src/data/categories.json`；友链/分享/关于分别写 `links.json` / `share.json` / `about.json`；音乐写 `src/data/music.json` + `public/music/lrc/*.lrc`（并重新生成 `src/data/music.ts`）；删除进 `.admin-trash/`（已 gitignore，**多类型共用**：文章/友链/分享）
-- ⚠️ **「保存」≠「上线」**：保存只是写进仓库文件；真正发布（git push + Vercel Deploy Hook）是**阶段 I**，现在列表上会显示「N 个文件待发布」
-- ⬜ 还没做：发布与回滚（I）、申请审批（J）、统计（M）
+- ⬜ 还没做：申请审批（J）、便捷功能（K）、动效打磨（L）、统计（M）、收尾（N）
 
 ## 本地运行
 
@@ -55,6 +62,9 @@ npm run dev
 | `ADMIN_SESSION_DAYS` | 选填 | 登录态保留天数，默认 7 |
 | `ADMIN_COOKIE_SECURE` | 选填 | 会话 cookie 是否带 `Secure`，默认跟 `NODE_ENV`（生产就带）。**只有走明文 HTTP 时才设 `0`**（见下方「部署实况」） |
 | `ADMIN_TRASH_PATH` | 选填 | 回收站目录。默认 `<仓库>/.admin-trash/`（已 gitignore）。**删掉的文章可能从没提交过，放进公开仓库等于泄露，所以必须保持忽略** |
+| `ADMIN_GIT_TOKEN` | 发布必填 | **GitHub 细粒度 PAT**（`qingwu-blog` 仓库 `Contents: Write`），发布/回滚要用它推送。**只经子进程环境变量传给 git**，不写命令行、不落盘。不配 → 只能保存、不能发布 |
+| `ADMIN_DEPLOY_HOOK` | 选填 | **Vercel Deploy Hook URL**。配上就由后台主动触发重建（状态更明确）；不配也能用 —— Vercel 自己会检测到 push 后重建，只是慢一点 |
+| `ADMIN_LOG_PATH` | 选填 | 操作日志目录。默认 `<仓库>/.admin-logs/`（已 gitignore），里面是 `operations.jsonl`（只记发布 / 回滚） |
 
 `.env` 已被 `.gitignore` 忽略（`.env` 规则），**不要提交**。
 
@@ -67,7 +77,14 @@ admin/
 │  ├─ config.js            # 环境变量读取 + 启动自检
 │  ├─ auth.js              # argon2 校验 / 签名会话 cookie / 登录限速 / requireAuth
 │  ├─ data.js              # 读博客仓库数据（白名单 + zod 校验 + frontmatter 解析）
-│  └─ routes/              # auth.js（登录登出）、data.js（只读数据接口）
+│  ├─ jsonFile.js          # JSON 读写（zod 校验 + 原子写 + **沿用目标文件的换行符**）
+│  ├─ articles.js          # 文章读写 + 摘要/slug + **未发布改动清单（changedFiles）**
+│  ├─ categories.js links.js shares.js about.js music.js
+│  │                       # 各模块的读写实现（白名单路径 + 校验）
+│  ├─ trash.js             # 回收站（多类型软删除 / 恢复 / 彻底清除）
+│  ├─ overview.js          # 概览统计
+│  ├─ publish.js           # **阶段 I：发布 / 回滚 / 操作日志**（构建校验 → 提交 → 拉取 → 推送 → 触发重建）
+│  └─ routes/              # auth / articles / categories / content / data / trash / publish
 ├─ web/                    # React + Vite 前端
 │  ├─ vite.config.js       # dev 时 /api 代理到 3000
 │  └─ src/{App,api,icons}.js(x) + components/ + pages/ + styles/
@@ -86,8 +103,9 @@ admin/
 | CSRF | 会话 cookie 是 `SameSite=Lax`，另外**所有状态变更请求还要 Origin 同源校验** |
 | 校验 | 读到的 JSON 都用 zod 校验，坏数据在后台就能看出「哪个文件、哪个字段」 |
 
-## 部署（阶段 D 的后半段，尚未执行）
+## 部署（已在服务器上跑起来了）
 
-按 `docs/后台管理方案.md` 第十节：装 Node 20 + git → clone 仓库到 `/opt/qingwu/repo` → 装并登录 Tailscale → 配 `/opt/qingwu/.env`（600 权限）→ `npm install && npm run build` → systemd 常驻 → `tailscale serve --bg https / http://127.0.0.1:3000`。
+阶段 D 就部署完了：装 Node → clone 仓库到 `/opt/qingwu/repo` → Tailscale 登录 → 配 `/opt/qingwu/.env`（600 权限，**阶段 I 起要加 `ADMIN_GIT_TOKEN`**）→ `npm ci && npm run build` → systemd 常驻 → `tailscale serve --bg --http=8080 3000`。
 
-> 访问方式：`https://<服务器名>.<tailnet>.ts.net`（手机/电脑都要装 Tailscale 并登录同一账号）。
+> **实况（为什么是 http 不是 https、怎么重新部署、踩过的坑）见 `docs/部署说明.md` §7**。
+> 访问方式：`http://<服务器名>.<tailnet>.ts.net:8080`（手机/电脑都要装 Tailscale 并登录同一账号）。

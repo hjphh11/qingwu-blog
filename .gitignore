@@ -42,6 +42,9 @@ HANDOFF.md
 # 删掉的文章可能从没提交过，放进公开仓库等于泄露。
 .admin-trash/
 
+# 后台操作日志（第 43 条）。只在服务器上有意义，不进公开仓库。
+.admin-logs/
+
 # Editor
 .vscode/
 .idea/
