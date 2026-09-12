@@ -167,7 +167,7 @@ export default function Links() {
 
         <p className="hint" style={{ marginTop: -6, marginBottom: 12 }}>
           顺序就是前台 /links 的展示顺序。用上下箭头调整后点「保存」。
-          「是否显示」与「添加时间」只在后台用，**不影响前台**。
+          「是否显示」与「添加时间」只在后台用，<strong>不影响前台</strong>。
         </p>
 
         {adding && (

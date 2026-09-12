@@ -394,6 +394,11 @@ async function runPublish(jobRef, { paths = null }) {
  *  两种情况都能发：① 有改动要发布；② 本地领先远端（上次推送失败）—— 这时是「重试推送」。*/
 export async function startPublish(opts = {}) {
   if (job?.running) throw conflict('上一次发布还没结束，等它跑完再发');
+  // 没配 token 就别开始：不然会 commit 出一个推不上去的本地提交，反而把仓库搞乱
+  // （界面上按钮本来就是灰的；定时发布那条路也得挡住）
+  if (!config.gitToken) {
+    throw conflict('没配 ADMIN_GIT_TOKEN —— 现在只能保存内容，不能发布（发布要推 GitHub）');
+  }
   const branch = await git(['rev-parse', '--abbrev-ref', 'HEAD']);
   if (branch.ok && branch.out !== 'main') {
     throw conflict(`仓库现在在 ${branch.out} 分支上；发布只会推 main，请先切回 main 再发`);

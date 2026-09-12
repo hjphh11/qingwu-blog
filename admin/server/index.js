@@ -15,7 +15,9 @@ import categoriesRoutes from './routes/categories.js';
 import contentRoutes from './routes/content.js';
 import dataRoutes from './routes/data.js';
 import publishRoutes from './routes/publish.js';
+import toolsRoutes from './routes/tools.js';
 import trashRoutes from './routes/trash.js';
+import { startScheduler } from './schedule.js';
 
 assertConfig();
 
@@ -62,6 +64,7 @@ app.use('/api', articlesRoutes);
 app.use('/api', categoriesRoutes);
 app.use('/api', contentRoutes);
 app.use('/api', publishRoutes);
+app.use('/api', toolsRoutes);
 app.use('/api', trashRoutes);
 app.use('/api', dataRoutes);
 
@@ -91,4 +94,8 @@ app.listen(config.port, config.host, () => {
   if (!fs.existsSync(config.webDist)) {
     console.log('[admin] 前端未构建（web/dist 不存在）—— 开发时请用 `npm run dev`');
   }
+  // 定时发布（阶段 K）：到点的待办会自动跑一遍发布；启动后 20 秒开始检查，
+  // 所以服务器半夜重启也不会漏掉过期的待办。
+  startScheduler();
+  console.log('[admin] 定时发布已启动（每 15 秒检查一次待办）');
 });
