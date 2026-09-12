@@ -20,6 +20,15 @@ export const config = {
   /** 博客仓库路径：后台只读写这个目录下的**白名单**内容文件 */
   repoPath: path.resolve(env('ADMIN_REPO_PATH', path.resolve(adminRoot, '..'))),
 
+  /**
+   * 回收站目录（软删除的内容存在这里，可恢复）。
+   * 默认放仓库里的 `.admin-trash/`（已加进 .gitignore，**不会进公开仓库**）。
+   * 删除的文章可能从没提交过，放进公开仓库等于泄露，所以必须忽略。
+   */
+  trashPath: path.resolve(
+    env('ADMIN_TRASH_PATH', path.join(env('ADMIN_REPO_PATH', path.resolve(adminRoot, '..')), '.admin-trash')),
+  ),
+
   /** 只监听本地；对外由 tailscale serve 转发（不开公网端口） */
   host: env('ADMIN_HOST', '127.0.0.1'),
   port: Number(env('ADMIN_PORT', '3000')),

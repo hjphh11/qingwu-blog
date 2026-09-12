@@ -21,6 +21,9 @@ const blog = defineCollection({
     draft: z.boolean().default(false),
     // 置顶：为 true 的文章排在其他文章前面（见 src/lib/posts.ts 的 sortPosts）
     pinned: z.boolean().default(false),
+    // 置顶之间的先后顺序（后台「置顶区上下移动」写入）。数字小的在前；
+    // 不填则排在有值的后面，同组内仍按发布时间倒序。只有 pinned=true 时才有意义。
+    pinOrder: z.number().int().optional(),
   }),
 });
 

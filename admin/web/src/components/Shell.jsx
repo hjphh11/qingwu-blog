@@ -15,37 +15,64 @@ import {
   User,
   X,
 } from '../icons.js';
+import ArticleEditor from '../pages/ArticleEditor.jsx';
+import Articles from '../pages/Articles.jsx';
 import Overview from '../pages/Overview.jsx';
 import Soon from '../pages/Soon.jsx';
+import TrashPage from '../pages/Trash.jsx';
 
 // 侧栏模块（与 docs/后台界面预览.html 的划分一致）。
-// 阶段 D 只做「概览」；其余标注了各自归属的阶段，先占位。
+// 做完了的去掉 stage 标记；没做的仍标注归属阶段。
 const NAV = [
   { key: 'dash', label: '概览', icon: LayoutDashboard },
-  { key: 'posts', label: '文章', icon: FileText, stage: '阶段 E' },
+  { key: 'posts', label: '文章', icon: FileText },
   { key: 'links', label: '友链', icon: Link2, stage: '阶段 G' },
   { key: 'share', label: '分享 · 语录', icon: Quote, stage: '阶段 G' },
   { key: 'about', label: '关于页', icon: User, stage: '阶段 G' },
   { key: 'music', label: '音乐', icon: Music, stage: '阶段 H' },
   { key: 'cats', label: '分类', icon: Settings, stage: '阶段 F' },
-  { key: 'trash', label: '回收站', icon: Trash, stage: '阶段 E' },
+  { key: 'trash', label: '回收站', icon: Trash },
   { key: 'logs', label: '操作日志', icon: ScrollText, stage: '阶段 I' },
   { key: 'stats', label: '访问统计', icon: ChartNoAxesColumn, stage: '阶段 M' },
 ];
 
-const TITLES = Object.fromEntries(NAV.map((n) => [n.key, { title: n.label }]));
+// 顶栏标题（编辑页再按「新建 / 编辑」细分）
+const TITLES = {
+  dash: ['概览', '清清的小屋 · 内容与发布'],
+  posts: ['文章', '管理文章'],
+  edit: ['编辑文章', 'Markdown · 实时预览'],
+  trash: ['回收站', '可恢复的已删除内容'],
+};
 
 export default function Shell({ onLogout }) {
-  const [view, setView] = useState('dash');
+  const [route, setRoute] = useState({ name: 'dash', params: {} });
   const [navOpen, setNavOpen] = useState(false);
 
-  const current = NAV.find((n) => n.key === view) ?? NAV[0];
-  const meta = TITLES[view] ?? { title: current.label };
-
-  const go = (key) => {
-    setView(key);
+  const go = (name, params = {}) => {
+    setRoute({ name, params });
     setNavOpen(false);
+    window.scrollTo({ top: 0 });
   };
+
+  const current = NAV.find((n) => n.key === route.name) ?? NAV[0];
+  // 编辑页在侧栏里仍高亮「文章」
+  const navKey = route.name === 'edit' ? 'posts' : route.name;
+  const [title, crumb] = TITLES[route.name] ?? [current.label, ''];
+
+  const content = (() => {
+    switch (route.name) {
+      case 'dash':
+        return <Overview />;
+      case 'posts':
+        return <Articles go={go} />;
+      case 'edit':
+        return <ArticleEditor id={route.params.id ?? null} go={go} />;
+      case 'trash':
+        return <TrashPage />;
+      default:
+        return <Soon label={current.label} stage={current.stage} />;
+    }
+  })();
 
   return (
     <div className="shell">
@@ -66,7 +93,7 @@ export default function Shell({ onLogout }) {
           <button
             key={n.key}
             type="button"
-            className={`nav-item${view === n.key ? ' on' : ''}`}
+            className={`nav-item${navKey === n.key ? ' on' : ''}`}
             onClick={() => go(n.key)}
           >
             <MorphIcon icon={n.icon} size={17} color="currentColor" />
@@ -76,9 +103,9 @@ export default function Shell({ onLogout }) {
         ))}
 
         <div className="sidebar-foot">
-          阶段 D：骨架 + 登录 + 数据总览
+          阶段 E：文章管理
           <br />
-          只读，不会改动仓库
+          保存只写进仓库，发布在阶段 I
         </div>
       </aside>
 
@@ -93,8 +120,8 @@ export default function Shell({ onLogout }) {
             <MorphIcon icon={navOpen ? X : Menu} size={18} color="currentColor" />
           </button>
           <div>
-            <h1>{meta.title}</h1>
-            <div className="crumb">清清的小屋 · 内容与发布</div>
+            <h1>{route.name === 'edit' && !route.params.id ? '新建文章' : title}</h1>
+            <div className="crumb">{crumb || '清清的小屋 · 内容与发布'}</div>
           </div>
           <div className="spacer" />
           <button type="button" className="btn btn-ghost" onClick={onLogout}>
@@ -103,13 +130,7 @@ export default function Shell({ onLogout }) {
           </button>
         </header>
 
-        <main className="content">
-          {view === 'dash' ? (
-            <Overview />
-          ) : (
-            <Soon label={current.label} stage={current.stage} />
-          )}
-        </main>
+        <main className="content">{content}</main>
       </div>
     </div>
   );

@@ -38,6 +38,10 @@ HANDOFF.md
 后台管理方案.md
 后台界面预览.html
 
+# 后台回收站（软删除的内容）。**必须忽略**：
+# 删掉的文章可能从没提交过，放进公开仓库等于泄露。
+.admin-trash/
+
 # Editor
 .vscode/
 .idea/

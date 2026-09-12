@@ -13,10 +13,13 @@
   "dependencies": {
     "@node-rs/argon2": "^2.0.2",
     "cookie-parser": "^1.4.7",
+    "dompurify": "^3.4.15",
     "express": "^4.21.2",
     "gray-matter": "^4.0.3",
     "lucide": "^1.37.0",
+    "markdown-it": "^15.0.2",
     "morphicons": "^1.7.1",
+    "pinyin": "^4.0.0",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
     "zod": "^3.24.1"
