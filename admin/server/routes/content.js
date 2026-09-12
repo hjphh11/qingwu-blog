@@ -1,4 +1,4 @@
-// 友链 / 分享 / 关于页的读写接口（阶段 G）。
+// 友链 / 分享 / 关于页 / 音乐的读写接口（阶段 G、H）。
 //
 // 都是**整块保存**的语义：后台改好整块再 PUT 回来（增删改排序一次提交），
 // 只有「删除」是单独接口 —— 因为它要走回收站（软删除）。
@@ -6,6 +6,7 @@ import { Router } from 'express';
 import { requireAuth } from '../auth.js';
 import { getAbout, saveAbout } from '../about.js';
 import { deleteLink, listLinks, saveLinks } from '../links.js';
+import { listMusic, saveMusic } from '../music.js';
 import { allShareTags, deleteShare, listShares, saveShares } from '../shares.js';
 
 const router = Router();
@@ -49,6 +50,14 @@ router.get('/about', wrap(async (req, res) => res.json(await getAbout())));
 router.put(
   '/about',
   wrap(async (req, res) => res.json({ ok: true, about: await saveAbout(req.body ?? {}) })),
+);
+
+// ——— 音乐 ———
+// 保存后会**自动重跑 scripts/gen.mjs** 重新生成 src/data/music.ts
+router.get('/music', wrap(async (req, res) => res.json(await listMusic())));
+router.put(
+  '/music',
+  wrap(async (req, res) => res.json({ ok: true, ...(await saveMusic(req.body ?? {})) })),
 );
 
 export default router;
