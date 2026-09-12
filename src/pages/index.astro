@@ -10,10 +10,13 @@ import StatsCard from '../components/home/StatsCard.tsx';
 import TechStackCard from '../components/home/TechStackCard.astro';
 import UptimeCard from '../components/home/UptimeCard.tsx';
 
-const posts = (await getCollection('blog'))
+// 首页只展示最近 5 篇，但右栏「写下的故事」要的是**全部**已发布文章数，
+// 所以这里保留一份全量列表——之前直接把 posts.length 传给 StatsCard，
+// 而 posts 已经被 slice(0,5) 截断，导致文章数永远显示 5。
+const allPosts = (await getCollection('blog'))
   .filter((p) => !p.data.draft)
-  .sort((a, b) => b.data.pubDate.valueOf() - a.data.pubDate.valueOf())
-  .slice(0, 5);
+  .sort((a, b) => b.data.pubDate.valueOf() - a.data.pubDate.valueOf());
+const posts = allPosts.slice(0, 5);
 ---
 <Layout title="清吾 · qingwu.ink">
   <Hero client:load />
@@ -73,7 +76,7 @@ const posts = (await getCollection('blog'))
     <aside class="reveal flex flex-col gap-8">
       <CurrentTime client:only="react" />
       <VisitorCity client:only="react" />
-      <StatsCard articleCount={posts.length} client:only="react" />
+      <StatsCard articleCount={allPosts.length} client:only="react" />
       <TechStackCard />
       <UptimeCard client:only="react" />
     </aside>
