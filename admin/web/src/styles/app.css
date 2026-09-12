@@ -463,6 +463,12 @@ a:hover {
   background: rgba(232, 176, 75, 0.18);
   border: 1px solid rgba(232, 176, 75, 0.4);
 }
+/* 「待发布」用虚线边框，跟「草稿」的实线琥珀色区分开 */
+.tag-pending {
+  color: #7a5a1c;
+  background: rgba(232, 176, 75, 0.2);
+  border: 1px dashed rgba(232, 176, 75, 0.75);
+}
 
 /* ——— 原始 JSON 预览 ——— */
 .raw-tools {

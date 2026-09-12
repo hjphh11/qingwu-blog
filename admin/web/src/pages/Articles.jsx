@@ -41,7 +41,7 @@ export default function Articles({ go }) {
   const [q, setQ] = useState('');
   const [cat, setCat] = useState('');
   const [status, setStatus] = useState('');
-  const [sort, setSort] = useState('pub');
+  const [sort, setSort] = useState('pending');
   const [page, setPage] = useState(1);
   const [cats, setCats] = useState([]);
   const [pinOrder, setPinOrder] = useState([]); // 置顶区当前顺序
@@ -78,6 +78,19 @@ export default function Articles({ go }) {
     [cats],
   );
 
+  // 每篇的「待发布」状态：新增(0) → 修改(1) → 没有待发布(2)
+  // 默认排序按它分组：新增的排最上面，然后是改过的，最后是正常的文章。
+  const pendingRank = useMemo(() => {
+    const m = new Map();
+    for (const f of data?.unpublished?.files ?? []) {
+      if (!f.file.endsWith('.md')) continue; // 只管文章，src/data/*.json 不算
+      const id = f.file.replace(/^.*\//, '').replace(/\.md$/, '');
+      const rank = f.kind === 'added' ? 0 : f.kind === 'modified' || f.kind === 'renamed' ? 1 : 2;
+      m.set(id, Math.min(m.get(id) ?? 9, rank));
+    }
+    return m;
+  }, [data]);
+
   const filtered = useMemo(() => {
     if (!data) return [];
     let list = [...data.articles];
@@ -95,13 +108,18 @@ export default function Articles({ go }) {
     else if (status === 'draft') list = list.filter((a) => a.draft);
     else if (status === 'pinned') list = list.filter((a) => a.pinned);
 
-    list.sort((a, b) =>
-      sort === 'mtime'
-        ? String(b.mtime).localeCompare(String(a.mtime))
-        : String(b.pubDateText).localeCompare(String(a.pubDateText)),
-    );
+    list.sort((a, b) => {
+      // 默认：新增 → 修改 → 正常
+      if (sort === 'pending') {
+        const ra = pendingRank.get(a.id) ?? 2;
+        const rb = pendingRank.get(b.id) ?? 2;
+        if (ra !== rb) return ra - rb;
+      }
+      if (sort === 'mtime') return String(b.mtime).localeCompare(String(a.mtime));
+      return String(b.pubDateText).localeCompare(String(a.pubDateText));
+    });
     return list;
-  }, [data, q, cat, status, sort]);
+  }, [data, q, cat, status, sort, pendingRank]);
 
   const pageCount = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
   const current = Math.min(page, pageCount);
@@ -303,6 +321,7 @@ export default function Articles({ go }) {
             <option value="pinned">置顶</option>
           </select>
           <select className="select" value={sort} onChange={(e) => setSort(e.target.value)}>
+            <option value="pending">待发布排最前</option>
             <option value="pub">按发布时间</option>
             <option value="mtime">按最近修改</option>
           </select>
@@ -380,6 +399,16 @@ export default function Articles({ go }) {
                     </div>
                   </div>
                   <div className="post-pills">
+                    {pendingRank.get(a.id) === 0 && (
+                      <span className="tag tag-pending" title="新建了但还没发布">
+                        待发布 · 新增
+                      </span>
+                    )}
+                    {pendingRank.get(a.id) === 1 && (
+                      <span className="tag tag-pending" title="改过了但还没发布">
+                        待发布 · 修改
+                      </span>
+                    )}
                     {a.pinned && <span className="tag tag-rose">置顶</span>}
                     {a.draft ? (
                       <span className="tag tag-amber">草稿</span>
