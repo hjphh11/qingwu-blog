@@ -48,6 +48,22 @@ export default function Publish() {
   const [note, setNote] = useState('');
   const [schedBusy, setSchedBusy] = useState(false);
   const [articles, setArticles] = useState([]);
+  // 阶段 L：刚「跑完」的步骤 —— 给它的勾一个弹跳（只在状态真正翻转时加 400ms）
+  const [popped, setPopped] = useState([]);
+  const prevStates = useRef({});
+
+  useEffect(() => {
+    const steps = status?.job?.steps;
+    if (!steps) return;
+    const flipped = steps
+      .filter((s) => s.state === 'ok' && prevStates.current[s.key] && prevStates.current[s.key] !== 'ok')
+      .map((s) => s.key);
+    prevStates.current = Object.fromEntries(steps.map((s) => [s.key, s.state]));
+    if (flipped.length === 0) return;
+    setPopped(flipped);
+    const t = setTimeout(() => setPopped([]), 450);
+    return () => clearTimeout(t);
+  }, [status]);
 
   const loadSchedule = useCallback(async () => {
     try {
@@ -312,7 +328,7 @@ export default function Publish() {
             {schedule.jobs.map((j) => (
               <div key={j.id} className="post-item">
                 <span className="cat-icon">
-                  <MorphIcon icon={j.state === 'pending' ? Clock : CircleCheck} size={16} color="currentColor" />
+                  <MorphIcon icon={j.state === 'pending' ? Clock : CircleCheck} size={16} color="currentColor" spring="snappy" reducedMotion="user" />
                 </span>
                 <div className="post-main">
                   <div className="post-title">
@@ -436,7 +452,7 @@ export default function Publish() {
             </div>
           )}
           {job.ok === true && !job.error && (
-            <div className="alert" style={{ background: 'rgba(47,122,85,.12)', border: '1px solid rgba(47,122,85,.3)', color: '#2f7a55' }}>
+            <div className="alert alert-success-pop" style={{ background: 'rgba(47,122,85,.12)', border: '1px solid rgba(47,122,85,.3)', color: '#2f7a55' }}>
               <MorphIcon icon={CircleCheck} size={15} color="currentColor" />
               <span>已推送 —— 站点通常 1 分钟左右更新（可以刷新首页看看）。</span>
             </div>
@@ -444,7 +460,13 @@ export default function Publish() {
 
           <div className="steps">
             {job.steps.map((s) => (
-              <div key={s.key} className={`step ${s.state}`}>
+              // 阶段 L：正在跑的那步呼吸、刚跑完的那步打勾时弹一下 —— 进度看得见
+              <div
+                key={s.key}
+                className={`step ${s.state}${s.state === 'running' ? ' step-running' : ''}${
+                  popped.includes(s.key) ? ' step-done-pop' : ''
+                }`}
+              >
                 <span className="dot">{s.state === 'ok' ? '✓' : s.state === 'failed' ? '✗' : s.state === 'running' ? '…' : s.state === 'skip' ? '–' : ''}</span>
                 <span className="lbl">{s.label}</span>
                 {s.message && <span className="msg">{s.message}</span>}

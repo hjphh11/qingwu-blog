@@ -156,7 +156,7 @@ export default function Music() {
                   title={openId === s.id ? '收起' : '编辑这首歌'}
                   onClick={() => setOpenId(openId === s.id ? null : s.id)}
                 >
-                  <MorphIcon icon={openId === s.id ? Eye : MusicIcon} size={16} color="currentColor" />
+                  <MorphIcon icon={openId === s.id ? Eye : MusicIcon} size={16} color="currentColor" spring="snappy" reducedMotion="user" />
                 </button>
               </div>
             </div>

@@ -20,7 +20,7 @@ import {
 } from '../icons.js';
 
 const IconOf = ({ name, size = 16 }) => (
-  <MorphIcon icon={CATEGORY_ICONS[name] ?? DEFAULT_CATEGORY_ICON} size={size} color="currentColor" />
+  <MorphIcon icon={CATEGORY_ICONS[name] ?? DEFAULT_CATEGORY_ICON} size={size} color="currentColor" reducedMotion="user" />
 );
 
 /**

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { MorphIcon } from 'morphicons/react';
 import { api } from '../api.js';
+import { useCountUp } from '../anim.js';
 import { downloadBackup } from '../backup.js';
 import { CircleAlert, CircleCheck, Download, RefreshCw, Sparkles } from '../icons.js';
 
@@ -26,6 +27,22 @@ const fmtDate = (iso) => {
   if (Number.isNaN(d.getTime())) return '—';
   return d.toLocaleDateString('zh-CN');
 };
+
+/**
+ * 统计卡（⚠️ 必须放在组件外面 —— 组件写在组件内部会导致每次渲染都重建子树，
+ * 这也是阶段 L 之前踩过的「输入框每打一个字就丢焦点」那个坑）。
+ * 数字滚动到位（阶段 L），系统开了「减少动效」时直接显示终值。
+ */
+function StatCard({ n, label, sub }) {
+  const shown = useCountUp(n);
+  return (
+    <div className="card stat">
+      <div className="n stat-value">{shown}</div>
+      <div className="l">{label}</div>
+      {sub && <div className="sub">{sub}</div>}
+    </div>
+  );
+}
 
 export default function Overview({ go }) {
   const [data, setData] = useState(null);
@@ -148,11 +165,7 @@ export default function Overview({ go }) {
     <>
       <section className="stats">
         {stats.map((s) => (
-          <div className="card stat" key={s.l}>
-            <div className="n">{s.n}</div>
-            <div className="l">{s.l}</div>
-            {s.sub && <div className="sub">{s.sub}</div>}
-          </div>
+          <StatCard key={s.l} n={s.n} label={s.l} sub={s.sub} />
         ))}
       </section>
 
