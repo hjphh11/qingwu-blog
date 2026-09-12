@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { Suspense, lazy, useEffect, useRef, useState } from 'react';
 import { MorphIcon } from 'morphicons/react';
 import { api } from '../api.js';
 import {
@@ -38,6 +38,10 @@ import Shares from '../pages/Shares.jsx';
 import Soon from '../pages/Soon.jsx';
 import TrashPage from '../pages/Trash.jsx';
 
+// 访问统计页要带图表库（Recharts，单独一个 chunk 约 400KB）——
+// 用懒加载：只在真的点开「访问统计」时才下载，别拖慢平时的页面。
+const Stats = lazy(() => import('../pages/Stats.jsx'));
+
 // 侧栏模块（与 docs/后台界面预览.html 的划分一致）。
 // 做完了的去掉 stage 标记；没做的仍标注归属阶段。发布在**顶栏**（方案预览稿就是这样）。
 const NAV = [
@@ -51,7 +55,7 @@ const NAV = [
   { key: 'music', label: '音乐', icon: Music },
   { key: 'trash', label: '回收站', icon: Trash },
   { key: 'logs', label: '操作日志', icon: ScrollText },
-  { key: 'stats', label: '访问统计', icon: ChartNoAxesColumn, stage: '阶段 M' },
+  { key: 'stats', label: '访问统计', icon: ChartNoAxesColumn },
 ];
 
 // 顶栏标题（编辑页再按「新建 / 编辑」细分）
@@ -68,6 +72,7 @@ const TITLES = {
   publish: ['发布', '构建校验 → 提交 → 推送 → 触发重建'],
   trash: ['回收站', '可恢复的已删除内容'],
   logs: ['操作日志', '发布 / 回滚 / 审批记录'],
+  stats: ['访问统计', '访问量 / 每篇阅读 / 来源 / 地区 / 设备（Action 每 6 小时汇总）'],
 };
 
 export default function Shell({ onLogout }) {
@@ -254,6 +259,12 @@ export default function Shell({ onLogout }) {
         return <Publish />;
       case 'logs':
         return <LogsPage />;
+      case 'stats':
+        return (
+          <Suspense fallback={<section className="card panel"><div className="empty">正在加载图表…</div></section>}>
+            <Stats />
+          </Suspense>
+        );
       case 'trash':
         return <TrashPage />;
       default:
@@ -308,7 +319,7 @@ export default function Shell({ onLogout }) {
         ))}
 
         <div className="sidebar-foot">
-          阶段 L：动效与交互
+          阶段 M：访问统计
           <br />
           ⌘K 搜索 · 定时发布 · 一键备份
         </div>

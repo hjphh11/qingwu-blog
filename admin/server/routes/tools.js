@@ -1,9 +1,10 @@
-// 阶段 K 的便捷功能接口：全局搜索 / 一键导出备份 / 定时发布。
+// 阶段 K 的便捷功能接口：全局搜索 / 一键导出备份 / 定时发布。阶段 M 加了访问统计。
 import { Router } from 'express';
 import { requireAuth } from '../auth.js';
 import { buildBackup } from '../backup.js';
 import { addSchedule, cancelSchedule, clearFinished, listSchedule } from '../schedule.js';
 import { searchAll } from '../search.js';
+import { getStats, statsSummary } from '../stats.js';
 
 const router = Router();
 router.use(requireAuth);
@@ -60,5 +61,15 @@ router.post(
   '/schedule/clear',
   wrap(async (req, res) => res.json({ ok: true, ...(await clearFinished()) })),
 );
+
+/** 访问统计（阶段 M · §11 路线 B）：读私有仓库里那份由 Action 汇总的 stats.json */
+router.get(
+  '/stats',
+  wrap(async (req, res) => {
+    const force = req.query.refresh === '1' || req.query.refresh === 'true';
+    res.json(await getStats({ force }));
+  }),
+);
+router.get('/stats/summary', wrap(async (req, res) => res.json(await statsSummary())));
 
 export default router;

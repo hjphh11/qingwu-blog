@@ -5,5 +5,11 @@
     "paths": {
       "@/*": ["src/*"]
     }
-  }
+  },
+  "exclude": [
+    "dist",
+    ".vercel",
+    "node_modules",
+    "admin"
+  ]
 }

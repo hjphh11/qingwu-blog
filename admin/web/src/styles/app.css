@@ -690,6 +690,35 @@ a:hover {
   border-top: 1px solid var(--line);
 }
 
+/* ——— 阶段 M：访问统计 ——— */
+/* 两列版式（窄屏自动堆叠）*/
+.grid-2 {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: 16px;
+}
+/* 「每篇阅读数」里的横条 */
+.bar-track {
+  margin-top: 7px;
+  height: 6px;
+  overflow: hidden;
+  background: rgba(246, 165, 184, 0.2);
+  border-radius: 9999px;
+}
+.bar-fill {
+  display: block;
+  height: 100%;
+  background: linear-gradient(90deg, var(--color-rose), var(--color-crimson));
+  border-radius: 9999px;
+  transition: width var(--dur-slow) var(--ease-out);
+}
+/* recharts 的文字用主题字体与暖色，别用默认的黑灰 */
+.recharts-text,
+.recharts-legend-item-text {
+  font-family: var(--font-body);
+  fill: rgba(74, 55, 40, 0.62);
+}
+
 /* ——— 占位页 ——— */
 .soon-box {
   padding: 40px 24px;

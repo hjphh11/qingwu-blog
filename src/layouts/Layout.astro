@@ -63,6 +63,46 @@ const url = SITE.url.replace(/\/$/, '') + pathname;
 
     <Footer />
 
+    {/* 访问统计打点（方案 §11 路线 B）：每次进入页面打一个点，失败静默 —— 绝不能影响访客。
+        · 本地开发地址默认不打点（免得把本地自己的访问算进线上统计）；
+          自测时可以在页面里先设 `window.__Q_HIT_ALWAYS = true` 强制打开。
+        · 同一次访问里连打两次也没关系：服务端对「同一访客同一页 30 分钟内」只计一次。 */}
+    <script is:inline>
+      (function () {
+        if (window.__qHitWired) return;
+        window.__qHitWired = true;
+
+        function sendHit() {
+          try {
+            var h = location.hostname;
+            var local = h === 'localhost' || h === '127.0.0.1' || h === '' || h === '0.0.0.0';
+            if (local && !window.__Q_HIT_ALWAYS) return;
+
+            var payload = JSON.stringify({
+              path: location.pathname,
+              referrer: document.referrer || '',
+            });
+            if (navigator.sendBeacon) {
+              // sendBeacon 的好处：页面正在关闭/切换时也能发出去
+              navigator.sendBeacon('/api/hit', new Blob([payload], { type: 'application/json' }));
+            } else {
+              fetch('/api/hit', {
+                method: 'POST',
+                body: payload,
+                headers: { 'content-type': 'application/json' },
+                keepalive: true,
+              }).catch(function () {});
+            }
+          } catch (e) {
+            /* 打点失败不影响任何东西 */
+          }
+        }
+
+        // 客户端路由（ClientRouter）切页也会触发，正好逐页计数
+        document.addEventListener('astro:page-load', sendHit);
+      })();
+    </script>
+
     {/* 卡片聚光:全局指针追踪,把 --mx/--my(px) 写到聚光卡片,驱动 .card-spotlight 的径向光斑 */}
     <script is:inline>
       if (!window.__qCardSpotlight) {
