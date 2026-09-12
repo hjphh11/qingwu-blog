@@ -342,14 +342,14 @@ a:hover {
   padding: 22px;
   display: flex;
   flex-direction: column;
-  gap: 18px;
+  gap: 22px;
 }
 
 /* ——— 统计卡 ——— */
 .stats {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
-  gap: 14px;
+  gap: 18px;
 }
 .stat {
   padding: 16px 18px;
@@ -691,11 +691,11 @@ a:hover {
 }
 
 /* ——— 阶段 M：访问统计 ——— */
-/* 两列版式（窄屏自动堆叠）*/
+/* 两列版式（窄屏自动堆叠）；卡片之间留够空隙，别挤在一起 */
 .grid-2 {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
-  gap: 16px;
+  gap: 20px;
 }
 /* 「每篇阅读数」里的横条 */
 .bar-track {
@@ -1354,6 +1354,7 @@ a:hover {
   }
   .content {
     padding: 16px;
+    gap: 18px; /* 手机上卡片之间也要留空气，别挤成一片 */
   }
   .topbar {
     padding: 12px 16px;
@@ -1379,8 +1380,22 @@ a:hover {
   .kbd {
     display: none;
   }
+  /* 手机上按钮只留图标：不然标题被挤成一列竖字（「访问统计」会一个字一行），很难看 */
+  .search-btn-text,
+  .logout-text {
+    display: none;
+  }
+  .topbar h1 {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
   .stats {
     grid-template-columns: repeat(auto-fill, minmax(132px, 1fr));
+    gap: 14px;
+  }
+  .grid-2 {
+    gap: 16px;
   }
 }
 

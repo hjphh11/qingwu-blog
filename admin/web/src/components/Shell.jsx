@@ -382,7 +382,7 @@ export default function Shell({ onLogout }) {
           </button>
           <button type="button" className="btn btn-ghost" onClick={onLogout}>
             <MorphIcon icon={LogOut} size={16} color="currentColor" />
-            退出
+            <span className="logout-text">退出</span>
           </button>
         </header>
 
