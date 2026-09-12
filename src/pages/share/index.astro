@@ -56,18 +56,21 @@ const filters = [
               <p class="mt-3 truncate text-xs text-ink/40">{item.url}</p>
             </a>
           ) : (
-            /* 语录:3D 翻转卡(借鉴 MotionVault FlipCard,MIT,暖色)。正面=语录,背面=作者+一句标注 */
+            /* 语录:3D 翻转卡(借鉴 MotionVault FlipCard,MIT,暖色)。正面=语录,背面=作者+一句标注。
+               注意:.flip-inner 上**不能**放 glass-card 这类带 backdrop-filter 的样式,
+               那会让 preserve-3d 失效、翻转后文字镜像(见 global.css 里的说明)。
+               所以玻璃效果分给两个面各自承担。 */
             <div
               data-type="quote"
               class="flip-card h-[210px] cursor-pointer select-none"
             >
-              <div class="flip-inner glass-card h-full w-full border-l-4 border-rose/40">
-                <div class="flip-face flex flex-col p-6">
+              <div class="flip-inner h-full w-full">
+                <div class="flip-face glass-card flex flex-col border-l-4 border-rose/40 p-6">
                   <p class="font-display text-lg leading-relaxed text-ink">
                     「{item.text}」
                   </p>
                 </div>
-                <div class="flip-face flip-back flex flex-col items-center justify-center gap-1 p-6 bg-rose/20">
+                <div class="flip-face flip-back glass-card flip-back-tint flex flex-col items-center justify-center gap-1 border-l-4 border-rose/40 p-6">
                   <p class="font-display text-xl text-crimson">一句摘录</p>
                   {item.author && <p class="text-sm text-ink/70">— {item.author}</p>}
                 </div>

@@ -55,8 +55,10 @@
     border-radius: var(--radius-card);
     background: rgba(255, 255, 255, 0.55);
     border: 1px solid rgba(255, 255, 255, 0.7);
+    /* 只写标准写法:前缀交给构建的 Lightning CSS 按目标浏览器补。
+       (自己手写 -webkit- 前缀反而会被压缩器当成重复声明、把标准写法丢掉,
+       导致新版 Chrome 里模糊完全失效 —— 2026-09-12 实测踩到) */
     backdrop-filter: blur(16px) saturate(160%);
-    -webkit-backdrop-filter: blur(16px) saturate(160%);
     box-shadow: 0 10px 30px rgba(246, 165, 184, 0.16);
   }
 
@@ -241,8 +243,13 @@
   }
 
   /* 3D 翻转卡(借鉴 MotionVault「FlipCard」,MIT,按爱弥斯暖色)
-     .flip-inner 绕 Y 轴 180° 翻转,正面 .flip-front / 背面 .flip-back;
-     桌面悬停翻转,触屏用 .is-flipped 点击切换。 */
+     .flip-inner 绕 Y 轴 180° 翻转;正/背面是 .flip-face,点击加 .is-flipped 切换。
+
+     ⚠️ **玻璃效果必须放在两个面上,绝不能放在 .flip-inner 上**:
+     `backdrop-filter` / `filter` / `opacity<1` 这类「分组属性」会让元素的
+     `preserve-3d` **实际失效**(算出来的 transform-style 仍显示 preserve-3d,
+     但渲染被扁平化)→ 翻转后正面内容被 2D 镜像绘制、背面也显示不出来。
+     2026-09-12 实测踩到,详见 docs/项目Bug记录.md。 */
   .flip-card {
     perspective: 1200px;
   }
@@ -260,10 +267,15 @@
     position: absolute;
     inset: 0;
     backface-visibility: hidden;
-    -webkit-backface-visibility: hidden;
   }
   .flip-back {
     transform: rotateY(180deg);
+  }
+  /* 背面配色:等价于原来的「玻璃白 55% + 玫瑰 20%」两层叠加 */
+  .flip-back-tint {
+    background:
+      linear-gradient(rgba(246, 165, 184, 0.2), rgba(246, 165, 184, 0.2)),
+      rgba(255, 255, 255, 0.55);
   }
 
   /* 按钮波纹涟漪(借鉴 MotionVault 按钮涟漪,MIT,按爱弥斯暖色重写)
