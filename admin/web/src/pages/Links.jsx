@@ -22,6 +22,24 @@ import {
 
 const EMPTY = { name: '', avatar: '', intro: '', url: '', visible: true };
 
+/**
+ * 表单里的一行输入框。
+ *
+ * ⚠️ 必须放在**组件外面**（模块作用域）：写在 `Links()` 里面的话，每次 re-render
+ * 都会生成一个新的组件类型 → React 把整棵子树卸载重建 → **输入框每打一个字就丢焦点**。
+ * （2026-09-12 用户实测：语录/友链的输入框「一次只能输入一个字母」。）
+ */
+function Field({ label, value, onChange, placeholder, hint }) {
+  return (
+    <label className="field">
+      <span>
+        {label} {hint && <span style={{ opacity: 0.6 }}>（{hint}）</span>}
+      </span>
+      <input className="input" value={value} placeholder={placeholder} onChange={(e) => onChange(e.target.value)} />
+    </label>
+  );
+}
+
 export default function Links() {
   const [list, setList] = useState([]);
   const [dirty, setDirty] = useState(false);
@@ -112,15 +130,6 @@ export default function Links() {
       setError(err.message || '删除失败');
     }
   };
-
-  const Field = ({ label, value, onChange, placeholder, hint }) => (
-    <label className="field">
-      <span>
-        {label} {hint && <span style={{ opacity: 0.6 }}>（{hint}）</span>}
-      </span>
-      <input className="input" value={value} placeholder={placeholder} onChange={(e) => onChange(e.target.value)} />
-    </label>
-  );
 
   return (
     <>
