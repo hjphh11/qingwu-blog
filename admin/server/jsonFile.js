@@ -20,10 +20,18 @@ export async function readJsonFile(file) {
 }
 
 export async function writeJsonFile(file, data) {
+  // 换行沿用目标文件现有的（仓库在 Windows 上被检出成 CRLF、Linux 上是 LF；
+  // 一律写 LF 的话，Windows 上每保存一次都会显示成"已修改"，内容其实没变）
+  let eol = '\n';
+  try {
+    const old = await fs.readFile(file, 'utf8');
+    if (old.includes('\r\n')) eol = '\r\n';
+  } catch {
+    /* 新文件用 LF */
+  }
   const tmp = `${file}.tmp-${process.pid}-${Date.now()}`;
-  const text = `${JSON.stringify(data, null, 2)}\n`;
-  // 传字符串时 fs 不做换行转换；replace 再保险一次
-  await fs.writeFile(tmp, text.replace(/\r\n/g, '\n'), { encoding: 'utf8' });
+  const text = `${JSON.stringify(data, null, 2)}\n`.replace(/\r?\n/g, eol);
+  await fs.writeFile(tmp, text, { encoding: 'utf8' });
   await fs.rename(tmp, file);
 }
 

@@ -20,6 +20,7 @@ import ArticleEditor from '../pages/ArticleEditor.jsx';
 import Articles from '../pages/Articles.jsx';
 import Categories from '../pages/Categories.jsx';
 import Links from '../pages/Links.jsx';
+import MusicPage from '../pages/Music.jsx';
 import Overview from '../pages/Overview.jsx';
 import Shares from '../pages/Shares.jsx';
 import Soon from '../pages/Soon.jsx';
@@ -34,7 +35,7 @@ const NAV = [
   { key: 'links', label: '友链', icon: Link2 },
   { key: 'share', label: '分享 · 语录', icon: Quote },
   { key: 'about', label: '关于页', icon: User },
-  { key: 'music', label: '音乐', icon: Music, stage: '阶段 H' },
+  { key: 'music', label: '音乐', icon: Music },
   { key: 'trash', label: '回收站', icon: Trash },
   { key: 'logs', label: '操作日志', icon: ScrollText, stage: '阶段 I' },
   { key: 'stats', label: '访问统计', icon: ChartNoAxesColumn, stage: '阶段 M' },
@@ -49,6 +50,7 @@ const TITLES = {
   links: ['友链', '朋友列表'],
   share: ['分享 · 语录', '收藏与摘录'],
   about: ['关于页', '主页信息 / 信息条目 / 爱弥斯 / 联系方式'],
+  music: ['音乐', '改歌曲信息与歌词时间轴 · 保存后自动重生成 music.ts'],
   trash: ['回收站', '可恢复的已删除内容'],
 };
 
@@ -83,6 +85,8 @@ export default function Shell({ onLogout }) {
         return <Shares />;
       case 'about':
         return <AboutPage />;
+      case 'music':
+        return <MusicPage />;
       case 'trash':
         return <TrashPage />;
       default:
@@ -119,7 +123,7 @@ export default function Shell({ onLogout }) {
         ))}
 
         <div className="sidebar-foot">
-          阶段 G：友链 / 分享 / 关于
+          阶段 H：音乐管理（歌词时间轴）
           <br />
           保存只写进仓库，发布在阶段 I
         </div>

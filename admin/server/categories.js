@@ -63,9 +63,16 @@ function serialize(cats) {
 
 async function writeCategories(cats) {
   const file = CATEGORIES_FILE();
+  // 换行沿用原文件（Windows 检出是 CRLF、Linux 是 LF；一律写 LF 会产生假 diff）
+  let eol = '\n';
+  try {
+    const old = await fs.readFile(file, 'utf8');
+    if (old.includes('\r\n')) eol = '\r\n';
+  } catch {
+    /* 新文件用 LF */
+  }
   const tmp = `${file}.tmp-${process.pid}-${Date.now()}`;
-  // 传字符串时 fs 不会做换行转换；显式再保险一次
-  await fs.writeFile(tmp, serialize(cats).replace(/\r\n/g, '\n'), { encoding: 'utf8' });
+  await fs.writeFile(tmp, serialize(cats).replace(/\r?\n/g, eol), { encoding: 'utf8' });
   await fs.rename(tmp, file);
 }
 
