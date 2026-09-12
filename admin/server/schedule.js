@@ -35,19 +35,28 @@ const JobSchema = z.object({
 });
 const FileSchema = z.object({ jobs: z.array(JobSchema).default([]) });
 
-let cache = null;
+let cache = null; // { mtimeMs, data }
 let timer = null;
 
+/**
+ * 读待办文件。
+ * ⚠️ 缓存必须**认文件的修改时间**：文件可能被本进程之外的东西改掉
+ *（例如部署后从另一个 node 进程写一条待办做自检，或者将来手动还原一份 schedule.json）。
+ * 只看内存缓存的话，服务会一直用它启动时读到的那份，外界加进来的待办永远不生效 ——
+ * 这个坑是阶段 K 在服务器上做部署自检时踩到的（本地测试里待办都是走接口加的，所以没暴露）。
+ */
 async function load() {
-  if (cache) return cache;
+  const st = await fs.stat(FILE()).catch(() => null);
+  if (cache && st && st.mtimeMs === cache.mtimeMs) return cache.data;
+  let data = { jobs: [] };
   try {
-    const raw = JSON.parse(await fs.readFile(FILE(), 'utf8'));
-    const parsed = FileSchema.safeParse(raw);
-    cache = parsed.success ? parsed.data : { jobs: [] };
+    const parsed = FileSchema.safeParse(JSON.parse(await fs.readFile(FILE(), 'utf8')));
+    if (parsed.success) data = parsed.data;
   } catch {
-    cache = { jobs: [] }; // 文件不存在 / 坏了都当作空待办（宁可少一个待办，也别让后台起不来）
+    /* 文件不存在 / 坏了都当作空待办（宁可少一个待办，也别让后台起不来） */
   }
-  return cache;
+  cache = { mtimeMs: st?.mtimeMs ?? 0, data };
+  return data;
 }
 
 async function save(data) {
@@ -55,7 +64,8 @@ async function save(data) {
   const tmp = `${FILE()}.tmp`;
   await fs.writeFile(tmp, `${JSON.stringify(data, null, 2)}\n`, 'utf8');
   await fs.rename(tmp, FILE()); // 原子写：别让半个 JSON 落在盘上
-  cache = data;
+  const st = await fs.stat(FILE()).catch(() => null);
+  cache = { mtimeMs: st?.mtimeMs ?? 0, data };
 }
 
 /** 列出待办（新时间在前）*/
