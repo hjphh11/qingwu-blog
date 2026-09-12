@@ -9,14 +9,14 @@
 // 发布是**异步任务**：POST 之后立刻返回，前端轮询状态看每一步的进度
 // （构建要十几秒，同步等会超时，也看不到中间状态）。
 import { execFile } from 'node:child_process';
-import fs from 'node:fs/promises';
 import path from 'node:path';
 import { config } from './config.js';
 import { changedFiles } from './articles.js';
 import { conflict } from './jsonFile.js';
+import { appendLog } from './oplog.js';
 
 // 操作日志放在配置里的 logPath（默认 `<仓库>/.admin-logs/`，已 gitignore）
-const LOG_FILE = () => path.join(config.logPath, 'operations.jsonl');
+// （读写实现见 oplog.js）
 
 /**
  * 后台自己的运行时目录（操作日志 / 回收站）在仓库内的相对路径。
@@ -127,32 +127,8 @@ export function autoMessage(files) {
 }
 
 // ——— 操作日志（第 43 条：只记关键操作）———
-export async function appendLog(entry) {
-  await fs.mkdir(path.dirname(LOG_FILE()), { recursive: true });
-  const line = JSON.stringify({ time: new Date().toISOString(), ...entry });
-  await fs.appendFile(LOG_FILE(), `${line}\n`, 'utf8');
-}
-
-export async function readLogs(limit = 50) {
-  try {
-    const text = await fs.readFile(LOG_FILE(), 'utf8');
-    return text
-      .split('\n')
-      .filter((l) => l.trim())
-      .map((l) => {
-        try {
-          return JSON.parse(l);
-        } catch {
-          return null;
-        }
-      })
-      .filter(Boolean)
-      .reverse()
-      .slice(0, limit);
-  } catch {
-    return [];
-  }
-}
+// 实现搬到了 oplog.js —— 因为「审批友链」（阶段 J）也要往同一份日志里记。
+export { appendLog, readLogs } from './oplog.js';
 
 // ——— 发布任务（单用户后台，同时只允许一个）———
 let job = null;

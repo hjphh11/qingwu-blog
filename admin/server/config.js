@@ -61,6 +61,23 @@ export const config = {
     ),
   ),
 
+  /**
+   * 友链申请审批（阶段 J / 方案 §4.5 + 第 35/36/49 条）。
+   *
+   * 申请数据存在**私有仓库**里（含访客邮箱，绝不能进公开的博客仓库），
+   * 后台走 GitHub Contents API 读写它 —— 通过/拒绝就是把 `status` 写回去。
+   * PAT 需要该私有仓库的 **Contents: Read and write**（和 Vercel 函数用的是同一类 token）。
+   * 没配 token 时审批页只显示「没配 token」的说明，不影响其它功能。
+   */
+  applyToken: env('ADMIN_APPLY_TOKEN'),
+  applyRepo: env('ADMIN_APPLY_REPO', 'hjphh11/qingwu-link-applications'),
+  applyPath: env('ADMIN_APPLY_PATH', 'applications.json'),
+  applyRef: env('ADMIN_APPLY_REF', 'main'),
+  /** 便于本地用 mock 服务验证；默认 GitHub 官方 API */
+  applyApiBase: env('ADMIN_APPLY_API_BASE', 'https://api.github.com'),
+  /** 审批列表的服务端缓存（毫秒）。单用户后台，翻页来回切没必要每次都打 GitHub */
+  applyCacheMs: Number(env('ADMIN_APPLY_CACHE_MS', '45000')),
+
   isProd,
 
   /**

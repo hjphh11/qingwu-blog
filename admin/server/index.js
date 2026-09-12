@@ -8,6 +8,7 @@ import cookieParser from 'cookie-parser';
 import fs from 'node:fs';
 import path from 'node:path';
 import { assertConfig, config } from './config.js';
+import applicationsRoutes from './routes/applications.js';
 import articlesRoutes from './routes/articles.js';
 import authRoutes from './routes/auth.js';
 import categoriesRoutes from './routes/categories.js';
@@ -56,6 +57,7 @@ app.get('/api/health', (req, res) => {
 });
 
 app.use('/api/auth', authRoutes);
+app.use('/api', applicationsRoutes);
 app.use('/api', articlesRoutes);
 app.use('/api', categoriesRoutes);
 app.use('/api', contentRoutes);

@@ -515,6 +515,52 @@ a:hover {
   tab-size: 2;
 }
 
+/* ——— 阶段 J：友链申请审批 ——— */
+/* 侧栏「友链申请」上的待审批角标 */
+.nav-badge {
+  margin-left: auto;
+  min-width: 20px;
+  padding: 1px 6px;
+  font-size: 11px;
+  line-height: 16px;
+  text-align: center;
+  color: #fff;
+  background: var(--color-crimson);
+  border-radius: 9999px;
+}
+/* 申请里的头像预览（远程图；加载不出来就显示图标兜底）*/
+.app-avatar {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  flex: none;
+  overflow: hidden;
+  color: rgba(74, 55, 40, 0.5);
+  background: rgba(255, 255, 255, 0.7);
+  border: 1px solid var(--line);
+  border-radius: 50%;
+}
+.app-avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+/* 审批卡片里的链接（网址 / 邮箱）*/
+.post-meta a {
+  color: inherit;
+  text-decoration: none;
+  border-bottom: 1px dashed rgba(74, 55, 40, 0.25);
+}
+.post-meta a:hover {
+  color: var(--color-crimson);
+  border-bottom-color: var(--color-crimson);
+}
+.post-meta svg {
+  vertical-align: -1px;
+}
+
 /* ——— 占位页 ——— */
 .soon-box {
   padding: 40px 24px;

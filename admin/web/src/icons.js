@@ -9,6 +9,7 @@ import {
   ArrowDown,
   ArrowLeft,
   ArrowUp,
+  Ban,
   Bold,
   BookOpen,
   Building,
@@ -23,6 +24,7 @@ import {
   Compass,
   Eye,
   EyeOff,
+  ExternalLink,
   FileText,
   Flower2,
   GitBranch,
@@ -66,6 +68,7 @@ import {
   Timer,
   Trash,
   TriangleAlert,
+  Undo2,
   User,
   Wrench,
   X,
@@ -75,6 +78,7 @@ export {
   ArrowDown,
   ArrowLeft,
   ArrowUp,
+  Ban,
   Bold,
   BookOpen,
   Building,
@@ -89,6 +93,7 @@ export {
   Compass,
   Eye,
   EyeOff,
+  ExternalLink,
   FileText,
   Flower2,
   GitBranch,
@@ -132,10 +137,13 @@ export {
   Timer,
   Trash,
   TriangleAlert,
+  Undo2,
   User,
   Wrench,
   X,
 };
+
+/** 审批页要用的：`CircleCheck` / `Ban` / `Undo2` / `Mail` / `Globe` / `ExternalLink` 都在上面 */
 
 /**
  * 分类图标名 → 图标节点。
