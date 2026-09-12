@@ -23,6 +23,33 @@ const IconOf = ({ name, size = 16 }) => (
   <MorphIcon icon={ABOUT_ICONS[name] ?? DEFAULT_ABOUT_ICON} size={size} color="currentColor" />
 );
 
+/**
+ * 每个区块的标题行（标题 + 提示 + 「有改动」点 + 保存按钮）。
+ *
+ * ⚠️ 放在**组件外面**（模块作用域）：写在 `About()` 里的话，每次 re-render 都会生成
+ * 一个新的组件类型 → React 把整棵子树卸载重建（以后往里加输入框就会踩
+ * 「一次只能输入一个字母」那个坑）。
+ */
+function Head({ title, hint, isDirty, onSave }) {
+  return (
+    <div className="panel-head">
+      <h2>{title}</h2>
+      <div className="spacer" />
+      {hint && <span className="hint">{hint}</span>}
+      {isDirty && (
+        <span className="hint">
+          <span className="dirty-dot" />
+          有改动
+        </span>
+      )}
+      <button type="button" className="btn" onClick={onSave} disabled={!isDirty}>
+        <MorphIcon icon={Save} size={15} color="#fff" />
+        保存
+      </button>
+    </div>
+  );
+}
+
 function IconPicker({ value, onChange }) {
   return (
     <div className="icon-picker">
@@ -110,19 +137,6 @@ export default function About() {
     );
   }
 
-  const Head = ({ title, blockKey, hint }) => (
-    <div className="panel-head">
-      <h2>{title}</h2>
-      <div className="spacer" />
-      {hint && <span className="hint">{hint}</span>}
-      {dirty[blockKey] && <span className="hint"><span className="dirty-dot" />有改动</span>}
-      <button type="button" className="btn" onClick={() => saveBlock(blockKey, `「${title}」已保存`)} disabled={!dirty[blockKey]}>
-        <MorphIcon icon={Save} size={15} color="#fff" />
-        保存
-      </button>
-    </div>
-  );
-
   return (
     <>
       {error && (
@@ -151,7 +165,11 @@ export default function About() {
 
       {/* ① 主页信息 */}
       <section className="card panel">
-        <Head title="主页信息" blockKey="profile" />
+        <Head
+          title="主页信息"
+          isDirty={dirty.profile}
+          onSave={() => saveBlock('profile', '「主页信息」已保存')}
+        />
         <div className="form-grid">
           <label className="field">
             <span>名字</span>
@@ -178,7 +196,12 @@ export default function About() {
 
       {/* ② 信息条目 */}
       <section className="card panel">
-        <Head title="信息条目" blockKey="info" hint="图标 / 标签 / 值，可增删排序" />
+        <Head
+          title="信息条目"
+          hint="图标 / 标签 / 值，可增删排序"
+          isDirty={dirty.info}
+          onSave={() => saveBlock('info', '「信息条目」已保存')}
+        />
         <div className="post-list">
           {about.info.map((it, i) => (
             <div key={i} className="post-item" style={{ flexWrap: 'wrap' }}>
@@ -261,7 +284,12 @@ export default function About() {
 
       {/* ③ 爱弥斯 */}
       <section className="card panel">
-        <Head title="爱弥斯" blockKey="emis" hint="头像路径 + 人设段落（每段一段）" />
+        <Head
+          title="爱弥斯"
+          hint="头像路径 + 人设段落（每段一段）"
+          isDirty={dirty.emis}
+          onSave={() => saveBlock('emis', '「爱弥斯」已保存')}
+        />
         <label className="field">
           <span>头像路径</span>
           <input className="input" value={about.emis.img} onChange={(e) => setBlock('emis', { ...about.emis, img: e.target.value })} placeholder="/images/emis/portrait.png" />
@@ -316,7 +344,12 @@ export default function About() {
 
       {/* ④ 联系方式 */}
       <section className="card panel">
-        <Head title="联系方式" blockKey="contacts" hint="前台「联系我们」按钮展开的就是这些" />
+        <Head
+          title="联系方式"
+          hint="前台「联系我们」按钮展开的就是这些"
+          isDirty={dirty.contacts}
+          onSave={() => saveBlock('contacts', '「联系方式」已保存')}
+        />
         <div className="post-list">
           {about.contacts.map((c, i) => (
             <div key={i} className="post-item" style={{ flexWrap: 'wrap' }}>

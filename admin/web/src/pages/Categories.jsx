@@ -23,6 +23,31 @@ const IconOf = ({ name, size = 16 }) => (
   <MorphIcon icon={CATEGORY_ICONS[name] ?? DEFAULT_CATEGORY_ICON} size={size} color="currentColor" />
 );
 
+/**
+ * 图标选择器（一排可点的小方块）。
+ *
+ * ⚠️ 放在**组件外面**（模块作用域）：写在 `Categories()` 里的话，每次 re-render 都会
+ * 生成一个新的组件类型 → React 把整棵子树卸载重建（这里是按钮，不会丢焦点，
+ * 但重建本身是浪费，而且以后往里加输入框就会踩「一次只能输入一个字母」那个坑）。
+ */
+function IconPicker({ value, onChange }) {
+  return (
+    <div className="icon-picker">
+      {Object.keys(CATEGORY_ICONS).map((name) => (
+        <button
+          type="button"
+          key={name}
+          className={`chip${value === name ? ' on' : ''}`}
+          onClick={() => onChange(name)}
+          title={name}
+        >
+          <IconOf name={name} size={15} />
+        </button>
+      ))}
+    </div>
+  );
+}
+
 export default function Categories() {
   const [data, setData] = useState(null);
   const [order, setOrder] = useState([]);
@@ -134,22 +159,6 @@ export default function Categories() {
       setDeleting(null);
       return moved;
     }, deleting.count > 0 ? `已把 ${deleting.count} 篇文章转到「${byId[deleting.moveTo]?.label ?? deleting.moveTo}」并删掉分类` : '分类已删除');
-
-  const IconPicker = ({ value, onChange }) => (
-    <div className="icon-picker">
-      {Object.keys(CATEGORY_ICONS).map((name) => (
-        <button
-          type="button"
-          key={name}
-          className={`chip${value === name ? ' on' : ''}`}
-          onClick={() => onChange(name)}
-          title={name}
-        >
-          <IconOf name={name} size={15} />
-        </button>
-      ))}
-    </div>
-  );
 
   // 删除时「可以转移到哪些分类」= 除了自己以外的全部
   // （⚠️ 不能复用编辑态的变量 —— 删除时它一定是空的，下拉会没选项）
