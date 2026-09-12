@@ -7,13 +7,14 @@ import { config } from './config.js';
 
 export const COOKIE_NAME = 'qw_admin';
 
-/** 会话 cookie 的选项：HttpOnly + SameSite；线上（HTTPS）再加 Secure */
+/** 会话 cookie 的选项：HttpOnly + SameSite；是否加 Secure 由配置决定 */
 export function cookieOptions() {
   return {
     httpOnly: true,
     sameSite: 'lax',
-    // 本地是 http，带 Secure 浏览器不会存 —— 只在生产（tailscale serve 的 HTTPS）加
-    secure: config.isProd,
+    // 默认生产带 Secure；但走 `tailscale serve --http` 的部署必须关掉
+    // （http 下浏览器不保存 Secure cookie，登录会失效）—— 见 config.cookieSecure
+    secure: config.cookieSecure,
     path: '/',
     maxAge: config.sessionDays * 24 * 60 * 60 * 1000,
   };

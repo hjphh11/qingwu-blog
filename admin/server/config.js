@@ -9,6 +9,9 @@ const adminRoot = path.resolve(__dirname, '..');
 
 const env = (key, fallback = '') => process.env[key] ?? fallback;
 
+const isProd = env('NODE_ENV') === 'production';
+const cookieSecureEnv = env('ADMIN_COOKIE_SECURE', '').trim();
+
 export const config = {
   adminRoot,
   /** 后台程序目录（web/dist 相对它定位） */
@@ -28,7 +31,20 @@ export const config = {
   /** 会话有效期（天） */
   sessionDays: Number(env('ADMIN_SESSION_DAYS', '7')),
 
-  isProd: env('NODE_ENV') === 'production',
+  isProd,
+
+  /**
+   * 会话 cookie 是否带 `Secure` 标志。默认与 isProd 一致（生产就带）。
+   *
+   * ⚠️ 本项目的服务器**签不下 HTTPS 证书**（它访问不了 Cloudflare，而 Tailscale
+   * 的自动证书只能找 Let's Encrypt），对外走的是 `tailscale serve --http`。
+   * 浏览器在 http 下**不会保存 `Secure` cookie**，登录会失效 ——
+   * 所以这种部署把 `ADMIN_COOKIE_SECURE=0` 写进 .env。
+   * 流量依然由 WireGuard 端到端加密、且只有 tailnet 内可达，因此可以接受。
+   *
+   * 将来若换成真正的 HTTPS 访问，**必须删掉这一项**（或设为 1）恢复 Secure。
+   */
+  cookieSecure: cookieSecureEnv === '' ? isProd : cookieSecureEnv !== '0',
 };
 
 /** 启动前自检：缺关键配置就直接拒绝启动，别带着半残配置跑 */

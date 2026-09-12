@@ -45,6 +45,7 @@ npm run dev
 | `ADMIN_REPO_PATH` | 选填 | 博客仓库路径。默认 `admin/` 的上一级；服务器上按方案是 `/opt/qingwu/repo` |
 | `ADMIN_HOST` / `ADMIN_PORT` | 选填 | 默认 `127.0.0.1:3000`。**只监听本地，不要改成 0.0.0.0** |
 | `ADMIN_SESSION_DAYS` | 选填 | 登录态保留天数，默认 7 |
+| `ADMIN_COOKIE_SECURE` | 选填 | 会话 cookie 是否带 `Secure`，默认跟 `NODE_ENV`（生产就带）。**只有走明文 HTTP 时才设 `0`**（见下方「部署实况」） |
 
 `.env` 已被 `.gitignore` 忽略（`.env` 规则），**不要提交**。
 
