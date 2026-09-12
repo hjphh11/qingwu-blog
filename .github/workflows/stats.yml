@@ -32,11 +32,34 @@ jobs:
   collect:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      # v5 起官方 action 用 Node 24 运行，省掉「Node 20 is deprecated」那条警告
+      - uses: actions/checkout@v5
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           node-version: '22'
+
+      # 先把「缺哪个」一次列清楚，再去打 API。
+      # 这步专门防两种踩过的坑：① secret 名字写错（比如把值粘进了 Name 框）；
+      #                        ② 加到了 Variables 标签页而不是 Secrets（读出来会是空字符串、还不报错）。
+      # 只报**名字**，绝不打印任何值。
+      - name: 自检：三个 secrets 在不在
+        env:
+          S_URL: ${{ secrets.UPSTASH_REDIS_REST_URL }}
+          S_TOKEN: ${{ secrets.UPSTASH_REDIS_REST_TOKEN }}
+          S_STATS: ${{ secrets.STATS_TOKEN }}
+        run: |
+          missing=""
+          if [ -z "$S_URL" ]; then missing="$missing UPSTASH_REDIS_REST_URL"; fi
+          if [ -z "$S_TOKEN" ]; then missing="$missing UPSTASH_REDIS_REST_TOKEN"; fi
+          if [ -z "$S_STATS" ]; then missing="$missing STATS_TOKEN"; fi
+          if [ -n "$missing" ]; then
+            echo "::error::这些 Actions secrets 读不到：$missing"
+            echo "位置：本仓库 Settings → Secrets and variables → Actions → 标签页要选【Secrets】→ Repository secrets → New repository secret"
+            echo "提醒：名字必须逐字符一致（全大写 + 下划线）；加到 Variables 标签页是读不到的。"
+            exit 1
+          fi
+          echo "三个 secrets 都在 ✓（只确认有没有，不打印内容）"
 
       - name: 汇总并写回私有仓库
         run: node scripts/stats-collect.mjs
