@@ -4,13 +4,29 @@
     "tagline": "写技术 · 记生活 · 一个温馨二次元的小角落",
     "whyName": "「清吾」这个名字是由名字的缩写结合出来的，也正好呼应站名 qingwu.ink。",
     "whyBlog": "做这个博客，是想在网络里拥有一块完全属于自己的角落——可以慢慢写、慢慢改，配色和动效都按自己喜欢来，主要给自己和一小部分懂的人看。",
-    "whatWrite": "现在还是一个学生，目前在上学。平时会写些技术，也记录些生活与柔软。"
+    "whatWrite": "现在还是一个学生，目前在上学。平时会写些技术，也记录些生活与柔软。欢迎来到我的博客"
   },
   "info": [
-    { "icon": "map", "label": "来自", "value": "广东" },
-    { "icon": "school", "label": "身份", "value": "学生" },
-    { "icon": "code", "label": "方向", "value": "前端 / 折腾的码农" },
-    { "icon": "music", "label": "兴趣", "value": "写代码、听歌、二次元" }
+    {
+      "icon": "map",
+      "label": "来自",
+      "value": "广东"
+    },
+    {
+      "icon": "school",
+      "label": "身份",
+      "value": "学生"
+    },
+    {
+      "icon": "code",
+      "label": "方向",
+      "value": "前端 / 折腾的码农"
+    },
+    {
+      "icon": "music",
+      "label": "兴趣",
+      "value": "写代码、听歌、二次元"
+    }
   ],
   "emis": {
     "img": "/images/emis/portrait.png",
@@ -21,7 +37,17 @@
     ]
   },
   "contacts": [
-    { "icon": "mail", "label": "邮箱", "action": "copy", "value": "1454109769@qq.com" },
-    { "icon": "github", "label": "GitHub", "action": "link", "value": "https://github.com/hjphh11" }
+    {
+      "icon": "mail",
+      "label": "邮箱",
+      "action": "copy",
+      "value": "1454109769@qq.com"
+    },
+    {
+      "icon": "github",
+      "label": "GitHub",
+      "action": "link",
+      "value": "https://github.com/hjphh11"
+    }
   ]
 }
