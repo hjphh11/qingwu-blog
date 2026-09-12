@@ -1,9 +1,18 @@
 import { useState } from 'react';
 import { AnimatePresence, motion, useReducedMotion, type Transition } from 'motion/react';
 import { MorphIcon } from 'morphicons/react';
-import { Link2, Mail, Share2, MessageCircle, GitBranch, X } from '../lib/icons';
+import { Link2, Mail, Share2, MessageCircle, X } from '../lib/icons';
+import { aboutIcon } from '../lib/aboutIcons';
 
 const SPRING = { type: 'spring', stiffness: 500, damping: 25 } as const;
+
+/** 关于页的联系方式条目（来自 about.json 的 contacts）*/
+interface ContactItem {
+  icon: string;
+  label: string;
+  action: 'copy' | 'link';
+  value: string;
+}
 
 interface Props {
   /** share = 文章页分享; contact = 关于页联系我们 */
@@ -18,6 +27,8 @@ interface Props {
   email?: string;
   /** GitHub 地址(contact 用) */
   github?: string;
+  /** 联系方式列表（contact 用）。**数据来自 about.json**，为空时回落到 email + github */
+  contacts?: ContactItem[];
 }
 
 // 「分享 / 联系我们」弹性展开按钮 —— 点击后弹性展开为一排图标,逐个弹出,再点收回。
@@ -29,6 +40,7 @@ export default function ContactExpand({
   title = '',
   email = '',
   github = '',
+  contacts = [],
 }: Props) {
   const [open, setOpen] = useState(false);
   const [copiedText, setCopiedText] = useState<string | null>(null);
@@ -58,6 +70,16 @@ export default function ContactExpand({
   };
 
   const isShare = variant === 'share';
+
+  // 联系方式**由 about.json 的 contacts 驱动**（没配就回落到 email + github，
+  // 免得后台数据为空时这一块整个空掉）
+  const contactList: ContactItem[] =
+    contacts.length > 0
+      ? contacts
+      : [
+          ...(email ? [{ icon: 'mail', label: '邮箱', action: 'copy' as const, value: email }] : []),
+          ...(github ? [{ icon: 'github', label: 'GitHub', action: 'link' as const, value: github }] : []),
+        ];
 
   const channels = isShare
     ? [
@@ -93,19 +115,20 @@ export default function ContactExpand({
           },
         },
       ]
-    : [
-        { icon: Mail, label: '邮箱', run: () => copy(email, '已复制邮箱 ✓') },
-        {
-          icon: GitBranch,
-          label: 'GitHub',
-          run: () => {
+    : contactList.map((c) => ({
+        icon: aboutIcon(c.icon) as never,
+        label: c.label,
+        run: () => {
+          if (c.action === 'copy') {
+            copy(c.value, `已复制${c.label} ✓`);
+          } else {
             close();
-            window.open(github || 'https://github.com/hjphh11', '_blank');
-          },
+            window.open(c.value, '_blank');
+          }
         },
-      ];
+      }));
 
-  const collapsedIcon = isShare ? Share2 : Mail;
+  const collapsedIcon = isShare ? Share2 : (aboutIcon(contactList[0]?.icon) as never) || Mail;
 
   return (
     <div className="flex items-center justify-center">

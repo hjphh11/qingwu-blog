@@ -10,6 +10,13 @@ export interface Friend {
   avatar: string;
   intro: string;
   url: string;
+  /**
+   * 后台用：是否显示（方案第 34 条）—— **只影响后台列表，前台照旧全渲染**。
+   * 默认视作 true。
+   */
+  visible?: boolean;
+  /** 后台用：添加时间（后台自动记录，如 2026-09-12）。前台不展示 */
+  addedAt?: string;
 }
 
 const schema = z.object({
@@ -19,6 +26,8 @@ const schema = z.object({
       avatar: urlLike,
       intro: z.string(),
       url: urlLike,
+      visible: z.boolean().default(true),
+      addedAt: z.string().optional(),
     }),
   ),
 });

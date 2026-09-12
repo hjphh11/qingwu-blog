@@ -1,7 +1,7 @@
 // 后台服务端入口。
 //
-// 阶段 E 起后台**能写文件**了（文章管理），阶段 F 又加了分类管理；
-// 写范围仍受 articles.js / categories.js 里的白名单限制。
+// 阶段 E 起后台**能写文件**了（文章），阶段 F 加分类，阶段 G 加友链/分享/关于；
+// 写范围仍受各模块（articles / categories / links / shares / about）里的白名单限制。
 // 只监听 127.0.0.1；对外访问由 `tailscale serve` 转发（不开任何公网端口）。
 import express from 'express';
 import cookieParser from 'cookie-parser';
@@ -11,7 +11,9 @@ import { assertConfig, config } from './config.js';
 import articlesRoutes from './routes/articles.js';
 import authRoutes from './routes/auth.js';
 import categoriesRoutes from './routes/categories.js';
+import contentRoutes from './routes/content.js';
 import dataRoutes from './routes/data.js';
+import trashRoutes from './routes/trash.js';
 
 assertConfig();
 
@@ -55,6 +57,8 @@ app.get('/api/health', (req, res) => {
 app.use('/api/auth', authRoutes);
 app.use('/api', articlesRoutes);
 app.use('/api', categoriesRoutes);
+app.use('/api', contentRoutes);
+app.use('/api', trashRoutes);
 app.use('/api', dataRoutes);
 
 // 单端口模式：如果前端已经构建过（web/dist 存在），就一并托管

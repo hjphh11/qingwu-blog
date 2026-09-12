@@ -1,17 +1,11 @@
 ---
 import Layout from '../../layouts/Layout.astro';
 import MorphIcon from 'morphicons/astro';
-import { Mail, MapPin, GraduationCap, Laptop, Music, BookOpen } from '../../lib/icons';
-import { profile, info, emis } from '../../data/about';
+import { Mail, BookOpen } from '../../lib/icons';
+import { aboutIcon } from '../../lib/aboutIcons';
+import { profile, info, emis, contacts } from '../../data/about';
 import ContactExpand from '../../components/ContactExpand.tsx';
 import { SITE } from '../../config';
-
-const infoIcons: Record<string, unknown> = {
-  map: MapPin,
-  school: GraduationCap,
-  code: Laptop,
-  music: Music,
-};
 ---
 
 <Layout title="关于 · 清吾">
@@ -51,7 +45,7 @@ const infoIcons: Record<string, unknown> = {
         {
           info.map((it) => (
             <p class="flex items-center gap-2 text-sm text-ink/70">
-              <MorphIcon icon={infoIcons[it.icon] as never} size={16} color="currentColor" />
+              <MorphIcon icon={aboutIcon(it.icon) as never} size={16} color="currentColor" />
               <span class="text-ink/50">{it.label}</span>
               <span class="text-ink">{it.value}</span>
             </p>
@@ -92,6 +86,7 @@ const infoIcons: Record<string, unknown> = {
           label="联系我们"
           email={SITE.email}
           github="https://github.com/hjphh11"
+          contacts={contacts}
         />
       </div>
 

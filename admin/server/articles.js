@@ -14,13 +14,13 @@ import pinyinPkg from 'pinyin';
 import { z } from 'zod';
 import { config } from './config.js';
 import { readData } from './data.js';
+import { putToTrash } from './trash.js';
 
 // pinyin 是 CJS 包：ESM 默认导入拿到的是**模块对象**而不是函数，
 // 直接调用会 TypeError。这里把各种互操作情况都兼容掉。
 const pinyin = pinyinPkg.pinyin ?? pinyinPkg.default ?? pinyinPkg;
 
 const BLOG_DIR = () => path.join(config.repoPath, 'src', 'content', 'blog');
-const TRASH_DIR = () => config.trashPath;
 
 /** 文章 id：小写字母/数字开头，只含小写字母数字和 . _ - */
 const ID_RE = /^[a-z0-9][a-z0-9._-]{0,120}$/;
@@ -256,64 +256,36 @@ export async function readArticle(id) {
 }
 
 // ——— 回收站 ———
-const TRASH_ENTRY_RE = /^[a-z]+--[a-z0-9._-]+--[0-9TZ:.-]+\.json$/;
+// 实现在 server/trash.js（所有类型的软删除共用）。
+// 这里只保留「怎么把一篇文章放进去 / 怎么从条目里还原一篇文章」这类文章专属逻辑。
 
-function trashEntryPath(entry) {
-  if (typeof entry !== 'string' || !TRASH_ENTRY_RE.test(entry)) throw badRequest('回收站条目名不合法');
-  const dir = TRASH_DIR();
-  const full = path.join(dir, entry);
-  const rel = path.relative(dir, full);
-  if (rel.startsWith('..') || path.isAbsolute(rel) || rel.includes(path.sep)) {
-    throw badRequest('回收站路径越界');
-  }
-  return full;
-}
-
-async function putToTrash({ type, id, originalPath, data, body, note }) {
-  await fs.mkdir(TRASH_DIR(), { recursive: true });
-  const stamp = new Date().toISOString().replace(/[:.]/g, '-');
-  const entry = `${type}--${id}--${stamp}.json`;
-  const payload = {
-    type,
-    id,
-    originalPath,
-    deletedAt: new Date().toISOString(),
-    note: note ?? '',
+/** 把一篇文章放回收站 */
+async function trashArticle({ id, data, body, note }) {
+  return putToTrash({
+    type: 'article',
+    key: id,
+    originalPath: `src/content/blog/${id}.md`,
     data,
     body,
-  };
-  await fs.writeFile(trashEntryPath(entry), `${JSON.stringify(payload, null, 2)}\n`, 'utf8');
-  return entry;
+    note,
+  });
 }
 
-export async function listTrash() {
-  const dir = TRASH_DIR();
-  let files;
+/**
+ * 从回收站条目还原一篇文章（给 routes 的恢复分派用）。
+ * `obj` 是 trash.readTrashEntry() 的结果。
+ */
+export async function restoreArticleFromTrash(obj) {
+  const id = obj.key;
+  const target = articlePath(id);
   try {
-    files = (await fs.readdir(dir)).filter((f) => f.endsWith('.json'));
-  } catch {
-    return [];
+    await fs.access(target);
+    throw conflict(`文章 ${id} 已经存在了，先把现有的改名或删掉再恢复`);
+  } catch (e) {
+    if (e.status) throw e;
   }
-  const out = [];
-  for (const f of files) {
-    try {
-      const obj = JSON.parse(await fs.readFile(path.join(dir, f), 'utf8'));
-      out.push({
-        entry: f,
-        type: obj.type,
-        id: obj.id,
-        title: obj.data?.title ?? obj.id,
-        category: obj.data?.category ?? '',
-        note: obj.note ?? '',
-        deletedAt: obj.deletedAt,
-        bytes: Buffer.byteLength(JSON.stringify(obj.body ?? ''), 'utf8'),
-      });
-    } catch {
-      /* 坏条目直接跳过 */
-    }
-  }
-  out.sort((a, b) => String(b.deletedAt).localeCompare(String(a.deletedAt)));
-  return out;
+  await writeAtomic(target, serializeArticle(obj.data, obj.body));
+  return { ok: true, id };
 }
 
 // ——— 写：新建 / 更新 / 软删除 ———
@@ -385,10 +357,8 @@ export async function updateArticle(id, input) {
 
   if (slug !== id) {
     const old = matter(await fs.readFile(oldFile, 'utf8'));
-    await putToTrash({
-      type: 'article',
+    await trashArticle({
       id,
-      originalPath: `src/content/blog/${id}.md`,
       data: old.data ?? {},
       body: old.content ?? '',
       note: `改地址：${id} → ${slug}（旧文件留存）`,
@@ -432,10 +402,8 @@ export async function deleteArticle(id) {
   }
   const parsed = matter(text);
   const fm = parsed.data ?? {};
-  const entry = await putToTrash({
-    type: 'article',
+  const entry = await trashArticle({
     id,
-    originalPath: `src/content/blog/${id}.md`,
     data: {
       title: fm.title ?? id,
       description: fm.description ?? '',
@@ -450,41 +418,6 @@ export async function deleteArticle(id) {
   });
   await fs.rm(file, { force: true });
   return { ok: true, entry, id };
-}
-
-/** 从回收站恢复：写回原路径（已存在同名则拒绝）*/
-export async function restoreTrash(entry) {
-  const file = trashEntryPath(entry);
-  let obj;
-  try {
-    obj = JSON.parse(await fs.readFile(file, 'utf8'));
-  } catch {
-    throw notFound('回收站里没有这一条');
-  }
-  if (obj.type !== 'article') throw badRequest('目前只支持恢复文章');
-
-  const target = articlePath(obj.id);
-  try {
-    await fs.access(target);
-    throw conflict(`文章 ${obj.id} 已经存在了，先把现有的改名或删掉再恢复`);
-  } catch (e) {
-    if (e.status) throw e;
-  }
-  await writeAtomic(target, serializeArticle(obj.data, obj.body));
-  await fs.rm(file, { force: true });
-  return { ok: true, id: obj.id };
-}
-
-/** 彻底清除（不可恢复）*/
-export async function purgeTrash(entry) {
-  const file = trashEntryPath(entry);
-  try {
-    await fs.access(file);
-  } catch {
-    throw notFound('回收站里没有这一条');
-  }
-  await fs.rm(file, { force: true });
-  return { ok: true };
 }
 
 // ——— 辅助：所有历史标签（给自动补全用）———
