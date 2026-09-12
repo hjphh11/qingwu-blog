@@ -5,7 +5,7 @@
 
 ## 现在做到哪了
 
-**阶段 D + E + F + G + H + I：概览 / 文章 / 分类 / 友链 / 分享 / 关于页 / 音乐 / 回收站 / 发布 / 操作日志**
+**阶段 D ~ J：概览 / 文章 / 分类 / 友链 / 友链申请 / 分享 / 关于页 / 音乐 / 回收站 / 发布 / 操作日志**
 
 - ✅ 服务端：Express（只监听 `127.0.0.1`）+ 单用户密码登录（argon2 哈希 + 签名会话 cookie + 登录限速）
 - ✅ 前端：React + Vite 单页应用（暖色玻璃拟态，与博客前台同一套 tokens 与图标）
@@ -24,9 +24,14 @@
   · **推送失败**（断网/被拒）本地提交保留，界面上出现 **「重试推送 N 个提交」**（推出去了才算完）
   · **回滚**用 `git revert`（不改写历史）+ 构建 + 推送，失败自动还原；仓库第一个提交回滚不了（按钮已禁）
   · PAT **只经子进程环境变量**传给 git，不进命令行、不落盘
-  · **操作日志页**：只记发布 / 回滚（第 43 条），存在 `<仓库>/.admin-logs/operations.jsonl`（已 gitignore）
-- ⚠️ **写范围受限**：文章只写 `src/content/blog/*.md`；分类写 `src/data/categories.json`；友链/分享/关于分别写 `links.json` / `share.json` / `about.json`；音乐写 `src/data/music.json` + `public/music/lrc/*.lrc`（并重新生成 `src/data/music.ts`）；删除进 `.admin-trash/`（已 gitignore，**多类型共用**：文章/友链/分享）
-- ⬜ 还没做：申请审批（J）、便捷功能（K）、动效打磨（L）、统计（M）、收尾（N）
+  · **操作日志页**：只记发布 / 回滚 / **审批友链**（第 43 条），存在 `<仓库>/.admin-logs/operations.jsonl`（已 gitignore）
+- ✅ **友链申请审批（阶段 J）**：访客在 `/links/apply` 提交的申请存在**私有仓库**（含邮箱，绝不能进公开仓库）
+  · 后台「友链申请」页：待审批 / 已通过 / 已拒绝 三个筛选 · 侧栏角标显示待审批数量 · 卡片上有头像预览、站点链接、**访客邮箱**（可直接联系）、提交时间
+  · **通过** = 自动写进 `links.json`（补齐 `addedAt`/`visible`、自带同名链接去重）→ 于是它出现在**「待发布」**里，回发布页点一下就上线
+  · **拒绝** = 把状态写回私有仓库（可留原因）；点错了能**改回待审批**。状态写在仓库里，所以阶段 B 的「被拒后可以重新申请」去重逻辑仍然成立
+  · **审批也进操作日志**（第 43 条）：approve / reject / reopen
+- ⚠️ **写范围受限**：文章只写 `src/content/blog/*.md`；分类写 `src/data/categories.json`；友链/分享/关于分别写 `links.json` / `share.json` / `about.json`；音乐写 `src/data/music.json` + `public/music/lrc/*.lrc`（并重新生成 `src/data/music.ts`）；删除进 `.admin-trash/`（已 gitignore，**多类型共用**：文章/友链/分享）；**友链申请**只写私有仓库 `hjphh11/qingwu-link-applications`（**不写**博客仓库）
+- ⬜ 还没做：便捷功能（K）、动效打磨（L）、统计（M）、收尾（N）
 
 ## 本地运行
 
@@ -64,7 +69,11 @@ npm run dev
 | `ADMIN_TRASH_PATH` | 选填 | 回收站目录。默认 `<仓库>/.admin-trash/`（已 gitignore）。**删掉的文章可能从没提交过，放进公开仓库等于泄露，所以必须保持忽略** |
 | `ADMIN_GIT_TOKEN` | 发布必填 | **GitHub 细粒度 PAT**（`qingwu-blog` 仓库 `Contents: Write`），发布/回滚要用它推送。**只经子进程环境变量传给 git**，不写命令行、不落盘。不配 → 只能保存、不能发布 |
 | `ADMIN_DEPLOY_HOOK` | 选填 | **Vercel Deploy Hook URL**。配上就由后台主动触发重建（状态更明确）；不配也能用 —— Vercel 自己会检测到 push 后重建，只是慢一点 |
-| `ADMIN_LOG_PATH` | 选填 | 操作日志目录。默认 `<仓库>/.admin-logs/`（已 gitignore），里面是 `operations.jsonl`（只记发布 / 回滚） |
+| `ADMIN_LOG_PATH` | 选填 | 操作日志目录。默认 `<仓库>/.admin-logs/`（已 gitignore），里面是 `operations.jsonl`（只记发布 / 回滚 / 审批友链） |
+| `ADMIN_APPLY_TOKEN` | 审批必填 | **私有仓库** `hjphh11/qingwu-link-applications` 的 **Contents 读写** PAT —— 后台要读申请列表、并把「通过/拒绝」的状态写回去。不配 → 审批页只显示提示，其它功能不受影响 |
+| `ADMIN_APPLY_REPO` / `ADMIN_APPLY_PATH` / `ADMIN_APPLY_REF` | 选填 | 申请数据在哪。默认 `hjphh11/qingwu-link-applications` / `applications.json` / `main` |
+| `ADMIN_APPLY_API_BASE` | 选填 | GitHub API 地址，默认官方。**本地测试会指向 mock 服务**（`http://127.0.0.1:4600`），绝不会碰真私有仓库 |
+| `ADMIN_APPLY_CACHE_MS` | 选填 | 审批列表的服务端缓存毫秒数，默认 45000（单用户后台，翻来翻去不必每次打 GitHub） |
 
 `.env` 已被 `.gitignore` 忽略（`.env` 规则），**不要提交**。
 
@@ -79,12 +88,14 @@ admin/
 │  ├─ data.js              # 读博客仓库数据（白名单 + zod 校验 + frontmatter 解析）
 │  ├─ jsonFile.js          # JSON 读写（zod 校验 + 原子写 + **沿用目标文件的换行符**）
 │  ├─ articles.js          # 文章读写 + 摘要/slug + **未发布改动清单（changedFiles）**
+│  ├─ applications.js      # **阶段 J：友链申请审批**（私有仓库 Contents API 读写 + 通过则写进 links.json）
+│  ├─ oplog.js             # 操作日志（第 43 条；发布/回滚/审批共用一份）
 │  ├─ categories.js links.js shares.js about.js music.js
 │  │                       # 各模块的读写实现（白名单路径 + 校验）
 │  ├─ trash.js             # 回收站（多类型软删除 / 恢复 / 彻底清除）
 │  ├─ overview.js          # 概览统计
-│  ├─ publish.js           # **阶段 I：发布 / 回滚 / 操作日志**（构建校验 → 提交 → 拉取 → 推送 → 触发重建）
-│  └─ routes/              # auth / articles / categories / content / data / trash / publish
+│  ├─ publish.js           # **阶段 I：发布 / 回滚**（构建校验 → 提交 → 拉取 → 推送 → 触发重建）
+│  └─ routes/              # auth / articles / categories / content / data / trash / publish / applications
 ├─ web/                    # React + Vite 前端
 │  ├─ vite.config.js       # dev 时 /api 代理到 3000
 │  └─ src/{App,api,icons}.js(x) + components/ + pages/ + styles/
@@ -102,10 +113,11 @@ admin/
 | 删除 | **软删除**到回收站（默认 `仓库/.admin-trash/`，已 gitignore），可恢复或彻底清除 |
 | CSRF | 会话 cookie 是 `SameSite=Lax`，另外**所有状态变更请求还要 Origin 同源校验** |
 | 校验 | 读到的 JSON 都用 zod 校验，坏数据在后台就能看出「哪个文件、哪个字段」 |
+| 私密数据 | **友链申请**（含访客邮箱）只存**私有仓库**，后台走 GitHub Contents API 读写；博客仓库是 public，绝不写进去（第 49 条） |
 
 ## 部署（已在服务器上跑起来了）
 
-阶段 D 就部署完了：装 Node → clone 仓库到 `/opt/qingwu/repo` → Tailscale 登录 → 配 `/opt/qingwu/.env`（600 权限，**阶段 I 起要加 `ADMIN_GIT_TOKEN`**）→ `npm ci && npm run build` → systemd 常驻 → `tailscale serve --bg --http=8080 3000`。
+阶段 D 就部署完了：装 Node → clone 仓库到 `/opt/qingwu/repo` → Tailscale 登录 → 配 `/opt/qingwu/.env`（600 权限，**阶段 I 起要加 `ADMIN_GIT_TOKEN`**、**阶段 J 起要加 `ADMIN_APPLY_TOKEN`**）→ `npm ci && npm run build` → systemd 常驻 → `tailscale serve --bg --http=8080 3000`。
 
 > **实况（为什么是 http 不是 https、怎么重新部署、踩过的坑）见 `docs/部署说明.md` §7**。
 > 访问方式：`http://<服务器名>.<tailnet>.ts.net:8080`（手机/电脑都要装 Tailscale 并登录同一账号）。
