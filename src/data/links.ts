@@ -1,3 +1,10 @@
+// 友链数据。
+// **数据本体在 `links.json`**（后台按 JSON 增删改）；这里只做 zod 校验并 re-export，
+// 所以消费方依旧 `import { friends } from '../data/links'`，与迁移前完全一致。
+import { z } from 'astro/zod';
+import { parseJson, urlLike } from '../lib/validate';
+import raw from './links.json';
+
 export interface Friend {
   name: string;
   avatar: string;
@@ -5,12 +12,15 @@ export interface Friend {
   url: string;
 }
 
-// 好友列表:把朋友加进来即可。头像可用链接,url 填真实链接。
-export const friends: Friend[] = [
-  {
-    name: '朝朝听雨',
-    avatar: 'https://rainzt.cn/zzty.png',
-    intro: '物物而不物于物，念念而不念于念',
-    url: 'http://rainzt.cn',
-  },
-];
+const schema = z.object({
+  friends: z.array(
+    z.object({
+      name: z.string().min(1, '不能为空'),
+      avatar: urlLike,
+      intro: z.string(),
+      url: urlLike,
+    }),
+  ),
+});
+
+export const friends: Friend[] = parseJson(schema, raw, 'src/data/links.json').friends;

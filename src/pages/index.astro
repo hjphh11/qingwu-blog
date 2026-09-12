@@ -1,8 +1,9 @@
 ---
 import Layout from '../layouts/Layout.astro';
 import MorphIcon from 'morphicons/astro';
-import { Sparkles, Flower2 } from '../lib/icons';
-import { getCollection } from 'astro:content';
+import { categoryLabel } from '../data/categories';
+import { categoryIcon } from '../lib/categoryIcons';
+import { getPublishedPosts, HOME_RECENT } from '../lib/posts';
 import Hero from '../components/Hero.tsx';
 import CurrentTime from '../components/home/CurrentTime.tsx';
 import VisitorCity from '../components/home/VisitorCity.tsx';
@@ -13,10 +14,8 @@ import UptimeCard from '../components/home/UptimeCard.tsx';
 // 首页只展示最近 5 篇，但右栏「写下的故事」要的是**全部**已发布文章数，
 // 所以这里保留一份全量列表——之前直接把 posts.length 传给 StatsCard，
 // 而 posts 已经被 slice(0,5) 截断，导致文章数永远显示 5。
-const allPosts = (await getCollection('blog'))
-  .filter((p) => !p.data.draft)
-  .sort((a, b) => b.data.pubDate.valueOf() - a.data.pubDate.valueOf());
-const posts = allPosts.slice(0, 5);
+const allPosts = await getPublishedPosts();
+const posts = allPosts.slice(0, HOME_RECENT);
 ---
 <Layout title="清吾 · qingwu.ink">
   <Hero client:load />
@@ -38,14 +37,14 @@ const posts = allPosts.slice(0, 5);
             >
               <span class="absolute right-4 top-4" aria-hidden="true">
                 <MorphIcon
-                  icon={post.data.category === 'tech' ? Sparkles : Flower2}
+                  icon={categoryIcon(post.data.category) as never}
                   size={18}
                   color="currentColor"
                 />
               </span>
               <div class="flex items-center gap-2 text-xs text-ink/50">
                 <span class="rounded-full bg-rose/25 px-2.5 py-0.5 text-crimson">
-                  {post.data.category === 'tech' ? '技术' : '记录'}
+                  {categoryLabel(post.data.category)}
                 </span>
                 <time datetime={post.data.pubDate.toISOString()}>
                   {post.data.pubDate.toLocaleDateString('zh-CN')}

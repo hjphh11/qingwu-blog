@@ -1,0 +1,6 @@
+{
+  "categories": [
+    { "id": "tech", "label": "技术", "order": 1, "icon": "sparkles" },
+    { "id": "life", "label": "记录", "order": 2, "icon": "flower" }
+  ]
+}

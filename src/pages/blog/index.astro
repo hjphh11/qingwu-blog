@@ -1,12 +1,9 @@
 ---
 import Layout from '../../layouts/Layout.astro';
 import BlogList from '../../components/BlogList.astro';
-import { getCollection } from 'astro:content';
+import { getPublishedPosts, PAGE_SIZE } from '../../lib/posts';
 
-const PAGE_SIZE = 6;
-const ALL = (await getCollection('blog'))
-  .filter((p) => !p.data.draft)
-  .sort((a, b) => b.data.pubDate.valueOf() - a.data.pubDate.valueOf());
+const ALL = await getPublishedPosts();
 const posts = ALL.slice(0, PAGE_SIZE);
 const totalPages = Math.max(1, Math.ceil(ALL.length / PAGE_SIZE));
 ---

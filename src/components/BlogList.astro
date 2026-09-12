@@ -1,6 +1,7 @@
 ---
 import MorphIcon from 'morphicons/astro';
-import { Sparkles, Flower2 } from '../lib/icons';
+import { categories, categoryLabel } from '../data/categories';
+import { categoryIcon } from '../lib/categoryIcons';
 
 interface Props {
   posts: any[];
@@ -9,11 +10,10 @@ interface Props {
 }
 const { posts, currentPage, lastPage } = Astro.props;
 
-const catLabel = (cat: string) => (cat === 'tech' ? '技术' : '记录');
+// 筛选按钮由分类表动态生成（后台加分类后这里自动跟着变，不再写死 tech/life）
 const filters = [
   { key: 'all', label: '全部' },
-  { key: 'tech', label: '技术' },
-  { key: 'life', label: '记录' },
+  ...categories.map((c) => ({ key: c.id, label: c.label })),
 ];
 const pageHref = (n: number) => (n === 1 ? '/blog' : `/blog/page/${n}/`);
 const pages = Array.from({ length: lastPage }, (_, i) => i + 1);
@@ -54,14 +54,14 @@ const nextHref = currentPage < lastPage ? pageHref(currentPage + 1) : null;
         >
           <span class="absolute right-4 top-4" aria-hidden="true">
             <MorphIcon
-              icon={post.data.category === 'tech' ? Sparkles : Flower2}
+              icon={categoryIcon(post.data.category) as never}
               size={18}
               color="currentColor"
             />
           </span>
           <div class="flex items-center gap-2 text-xs text-ink/50">
             <span class="rounded-full bg-rose/25 px-2.5 py-0.5 text-crimson">
-              {catLabel(post.data.category)}
+              {categoryLabel(post.data.category)}
             </span>
             <time datetime={post.data.pubDate.toISOString()}>
               {post.data.pubDate.toLocaleDateString('zh-CN')}
