@@ -1,0 +1,28 @@
+{
+  "name": "qingwu-admin",
+  "private": true,
+  "version": "0.0.1",
+  "type": "module",
+  "description": "清吾博客 · 后台管理系统（阶段 D：骨架 + 登录 + 数据总览，只读）",
+  "scripts": {
+    "dev": "node scripts/dev.mjs",
+    "build": "vite build --config web/vite.config.js",
+    "start": "node server/index.js",
+    "hash-password": "node scripts/hash-password.mjs"
+  },
+  "dependencies": {
+    "@node-rs/argon2": "^2.0.2",
+    "cookie-parser": "^1.4.7",
+    "express": "^4.21.2",
+    "gray-matter": "^4.0.3",
+    "lucide": "^1.37.0",
+    "morphicons": "^1.7.1",
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0",
+    "zod": "^3.24.1"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^4.3.4",
+    "vite": "^6.0.7"
+  }
+}

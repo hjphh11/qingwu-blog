@@ -1,0 +1,25 @@
+/* 设计 tokens —— 与博客前台 src/styles/global.css 的 @theme **保持一致**，
+   这样后台和站点观感统一（方案第六节：复用站点暖色 tokens）。
+   改动时请两边一起改。 */
+:root {
+  --color-rose: #f6a5b8;
+  --color-crimson: #e0526b;
+  --color-cream: #fdf6f0;
+  --color-amber: #e8b04b;
+  --color-brown: #8b5a3c;
+  --color-ink: #4a3728;
+
+  --radius-card: 1.25rem;
+  --radius-pill: 9999px;
+  --ease-soft: cubic-bezier(0.22, 0.61, 0.36, 1);
+
+  --font-display: 'ZCOOL XiaoWei', 'Noto Serif SC', 'Songti SC', serif;
+  --font-body: 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', 'Noto Sans SC', sans-serif;
+
+  --glass-bg: rgba(255, 255, 255, 0.55);
+  --glass-border: rgba(255, 255, 255, 0.7);
+  --glass-shadow: 0 10px 30px rgba(246, 165, 184, 0.16);
+
+  --line: rgba(246, 165, 184, 0.28);
+  --line-strong: rgba(246, 165, 184, 0.5);
+}
