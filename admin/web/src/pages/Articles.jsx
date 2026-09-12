@@ -7,6 +7,7 @@ import {
   CircleAlert,
   ChevronLeft,
   ChevronRight,
+  FileText,
   Pin,
   PinOff,
   Plus,
@@ -18,6 +19,14 @@ import {
 } from '../icons.js';
 
 const PAGE_SIZE = 20;
+
+/** 未发布改动的类型 → 中文标签与配色 */
+const KIND = {
+  added: { label: '新增', cls: 'tag-ok' },
+  modified: { label: '修改', cls: 'tag-amber' },
+  deleted: { label: '删除', cls: 'tag-bad' },
+  renamed: { label: '改名', cls: 'tag-soft' },
+};
 
 const fmtDate = (iso) => {
   if (!iso) return '—';
@@ -39,6 +48,7 @@ export default function Articles({ go }) {
   const [pinDirty, setPinDirty] = useState(false);
   const [savingPin, setSavingPin] = useState(false);
   const [notice, setNotice] = useState('');
+  const [showUnpub, setShowUnpub] = useState(false);
 
   const load = useCallback(async () => {
     setBusy(true);
@@ -248,10 +258,16 @@ export default function Articles({ go }) {
         <div className="panel-head">
           <h2>文章</h2>
           <div className="spacer" />
-          {typeof data?.unpublishedChanges === 'number' && data.unpublishedChanges > 0 && (
-            <span className="tag tag-amber" title="已保存到仓库，还没提交上线（发布在阶段 I）">
-              {data.unpublishedChanges} 个文件待发布
-            </span>
+          {typeof data?.unpublished?.count === 'number' && data.unpublished.count > 0 && (
+            <button
+              type="button"
+              className="tag tag-amber"
+              style={{ cursor: 'pointer', font: 'inherit', fontSize: '11.5px' }}
+              onClick={() => setShowUnpub((v) => !v)}
+              title="点开看是哪几个文件"
+            >
+              {data.unpublished.count} 个文件待发布 {showUnpub ? '▴' : '▾'}
+            </button>
           )}
           <button type="button" className="btn btn-ghost" onClick={load} disabled={busy}>
             <MorphIcon icon={RefreshCw} size={15} color="currentColor" />
@@ -291,6 +307,47 @@ export default function Articles({ go }) {
             <option value="mtime">按最近修改</option>
           </select>
         </div>
+
+        {showUnpub && (data?.unpublished?.files?.length ?? 0) > 0 && (
+          <div className="unpub-box">
+            <div className="panel-head" style={{ marginBottom: 8 }}>
+              <h2 style={{ fontSize: 15 }}>
+                <MorphIcon icon={FileText} size={15} color="var(--color-rose)" /> 还没发布的改动
+              </h2>
+              <div className="spacer" />
+              <span className="hint">
+                这些已经写进仓库文件，但还没提交上线。「发布」在阶段 I 做
+              </span>
+            </div>
+            <div className="table-wrap">
+              <table className="table">
+                <thead>
+                  <tr>
+                    <th style={{ width: 76 }}>改动</th>
+                    <th>文件</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {data.unpublished.files.map((f) => (
+                    <tr key={f.file}>
+                      <td>
+                        <span className={`tag ${KIND[f.kind]?.cls ?? 'tag-soft'}`}>
+                          {KIND[f.kind]?.label ?? f.kind}
+                        </span>
+                      </td>
+                      <td className="mono" style={{ wordBreak: 'break-all' }}>
+                        {f.file}
+                        {f.renamedFrom && (
+                          <span style={{ opacity: 0.6 }}>（原 {f.renamedFrom}）</span>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
 
         {!data ? (
           <div className="empty">正在读取…</div>

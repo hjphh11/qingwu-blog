@@ -1,15 +1,15 @@
 // 数据总览：把「文章统计 + 数据文件健康 + 仓库信息」拼起来。
 // 单独一个文件，是为了避免 data.js 与 articles.js 互相 import 形成环。
 import { config } from './config.js';
-import { changedCount, listArticles } from './articles.js';
+import { changedFiles, listArticles } from './articles.js';
 import { dataHealth, readData } from './data.js';
 
 export async function overview() {
-  const [health, articles, cats, changes] = await Promise.all([
+  const [health, articles, cats, files] = await Promise.all([
     dataHealth(),
     listArticles(),
     readData('categories.json').catch(() => ({ categories: [] })),
-    changedCount(),
+    changedFiles(),
   ]);
 
   const arts = articles ?? [];
@@ -56,7 +56,7 @@ export async function overview() {
     },
     data: health,
     categories: cats.categories,
-    /** 已保存到仓库、但还没提交（发布）的文件数 */
-    unpublishedChanges: changes,
+    /** 已保存到仓库、但还没提交（发布）的文件 */
+    unpublished: { count: files ? files.length : null, files: files ?? [] },
   };
 }

@@ -136,7 +136,10 @@ function plainText(md) {
     .replace(/^\s{0,3}>\s?/gm, '')
     .replace(/^\s{0,3}[-*+]\s+/gm, '')
     .replace(/^\s{0,3}\d+\.\s+/gm, '')
-    .replace(/^\s*([-*_])\s*\1\s*\1[\s\S]*?$/gm, ' ')
+    // 分隔线：整行**只有**三个以上同样的 - * _ 才算（可以夹空格）。
+    // ⚠️ 不能写成 `^\s*([-*_])\s*\1\s*\1[\s\S]*?$` —— 那会把 `***粗斜体***`
+    // 这种以三个星号开头的正文整行吃掉，自动摘要就空了（2026-09-12 实测踩到）。
+    .replace(/^[ \t]*([-*_])[ \t]*(?:\1[ \t]*){2,}$/gm, ' ')
     .replace(/<[^>]+>/g, ' ')
     .replace(/[*_~]{1,3}/g, '')
     .replace(/\s+/g, ' ')
@@ -470,18 +473,61 @@ export async function allTags() {
     .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name, 'zh'));
 }
 
-/** 未发布的改动数（保存了但还没提交）—— 只读 git status，不碰仓库 */
-export function changedCount() {
-  return new Promise((resolve) => {
-    execFile(
-      'git',
-      ['-C', config.repoPath, 'status', '--porcelain', '--', 'src/content', 'src/data'],
-      { timeout: 8000 },
-      (err, stdout) => {
-        if (err) return resolve(null);
-        const n = String(stdout).split('\n').filter((l) => l.trim()).length;
-        resolve(n);
-      },
-    );
-  });
+/**
+ * 未发布的改动（保存了但还没提交到 git）—— 只读，不碰仓库。
+ *
+ * 返回 `[{ file, kind, code, renamedFrom }]`，kind 是 added / modified / deleted / renamed。
+ *
+ * ⚠️ 用 `git diff HEAD`（**按内容比**）而不是 `git status --porcelain`：
+ * 后台一律写 LF（方案 §3.3），而 Windows 上 `core.autocrlf=true` 会让 git 觉得
+ * 「工作区应该是 CRLF」，于是把 EOL 不同、**内容完全相同**的文件也报成 M。
+ * `git diff HEAD` 会做换行归一化，这种假改动不会出现。
+ * 新增文件 git diff 看不到，另用 `ls-files --others` 补上。
+ */
+export function changedFiles() {
+  const base = ['-C', config.repoPath, '-c', 'core.quotePath=false'];
+  const scope = ['--', 'src/content', 'src/data'];
+
+  const runGit = (args) =>
+    new Promise((resolve) => {
+      execFile('git', [...base, ...args], { timeout: 8000 }, (err, stdout) => {
+        resolve(err ? null : String(stdout));
+      });
+    });
+
+  return (async () => {
+    const [diffOut, otherOut] = await Promise.all([
+      runGit(['diff', 'HEAD', '--name-status', ...scope]),
+      runGit(['ls-files', '--others', '--exclude-standard', ...scope]),
+    ]);
+    if (diffOut === null || otherOut === null) return null;
+
+    const rows = [];
+    for (const line of diffOut.split('\n')) {
+      if (!line.trim()) continue;
+      const parts = line.split('\t');
+      const code = parts[0];
+      if (code.startsWith('R')) {
+        rows.push({ file: parts[2], kind: 'renamed', code, renamedFrom: parts[1] });
+      } else {
+        const kind = code.startsWith('A')
+          ? 'added'
+          : code.startsWith('D')
+            ? 'deleted'
+            : 'modified';
+        rows.push({ file: parts[1], kind, code, renamedFrom: null });
+      }
+    }
+    for (const line of otherOut.split('\n')) {
+      const f = line.trim();
+      if (f) rows.push({ file: f, kind: 'added', code: '??', renamedFrom: null });
+    }
+    return rows;
+  })();
+}
+
+/** 未发布的改动数（兼容旧调用）*/
+export async function changedCount() {
+  const rows = await changedFiles();
+  return rows ? rows.length : null;
 }

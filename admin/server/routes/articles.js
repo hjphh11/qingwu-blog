@@ -6,7 +6,7 @@ import { Router } from 'express';
 import { requireAuth } from '../auth.js';
 import {
   allTags,
-  changedCount,
+  changedFiles,
   createArticle,
   deleteArticle,
   listArticles,
@@ -34,8 +34,11 @@ router.get('/overview', wrap(async (req, res) => res.json(await overview())));
 router.get(
   '/articles',
   wrap(async (req, res) => {
-    const [articles, changes] = await Promise.all([listArticles(), changedCount()]);
-    res.json({ articles, unpublishedChanges: changes });
+    const [articles, files] = await Promise.all([listArticles(), changedFiles()]);
+    res.json({
+      articles,
+      unpublished: { count: files ? files.length : null, files: files ?? [] },
+    });
   }),
 );
 

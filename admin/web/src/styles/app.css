@@ -636,6 +636,18 @@ a:hover {
   border-color: rgba(224, 82, 107, 0.3);
 }
 
+/* 「还没发布的改动」展开框 */
+.unpub-box {
+  margin-bottom: 16px;
+  padding: 12px 14px;
+  background: rgba(232, 176, 75, 0.12);
+  border: 1px solid rgba(232, 176, 75, 0.38);
+  border-radius: 14px;
+}
+.unpub-box .table th {
+  background: rgba(232, 176, 75, 0.14);
+}
+
 /* 分页 */
 .pager {
   display: flex;
