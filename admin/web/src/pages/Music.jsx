@@ -119,6 +119,12 @@ export default function Music() {
         </p>
 
         <div className="post-list">
+          {songs.length === 0 && (
+            <div className="empty">
+              <MorphIcon icon={MusicIcon} size={16} color="currentColor" /> 歌单是空的 —— 在仓库的{' '}
+              <span className="mono">src/data/music.json</span> 里加一首歌（再放好封面与歌词），这里就能编辑了
+            </div>
+          )}
           {songs.map((s, i) => (
             <div key={s.id} className="post-item" style={{ flexWrap: 'wrap' }}>
               <div className="post-acts">

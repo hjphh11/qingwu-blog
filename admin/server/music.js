@@ -46,7 +46,7 @@ const SongSchema = z.object({
     .max(500, '歌词行数太多'),
 });
 
-const MusicSchema = z.object({ songs: z.array(SongSchema).min(1, '至少要有一首歌') });
+const MusicSchema = z.object({ songs: z.array(SongSchema) });
 
 // ——— LRC 解析 / 序列化 ———
 const LRC_LINE_RE = /^\[(\d{1,3}):(\d{2}(?:\.\d{1,3})?)\](.*)$/;
@@ -83,8 +83,10 @@ export function serializeLrc({ extras = [], lyrics = [] }, eol = '\n') {
 
 async function readMusicJson() {
   const data = await readJsonFile(MUSIC_FILE());
-  if (!data || !Array.isArray(data.songs) || data.songs.length === 0) {
-    throw badRequest('music.json 里没有 songs 数组，或它是空的', 'bad_music_file');
+  // 阶段 N：**空歌单是合法状态**（把最后一首删掉之后就会遇到），以前这里直接报错，
+  // 于是「删光歌曲」会把整个音乐页卡在错误上。
+  if (!data || !Array.isArray(data.songs)) {
+    throw badRequest('music.json 里没有 songs 数组', 'bad_music_file');
   }
   return data;
 }

@@ -369,7 +369,7 @@ export default function Articles({ go }) {
         )}
 
         {!data ? (
-          <div className="empty">正在读取…</div>
+          <div className="empty">{error ? `读取失败：${error}` : '正在读取…'}</div>
         ) : filtered.length === 0 ? (
           <div className="empty">
             <MorphIcon icon={Search} size={16} color="currentColor" /> 没有符合条件的文章
