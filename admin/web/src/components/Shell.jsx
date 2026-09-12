@@ -15,10 +15,13 @@ import {
   User,
   X,
 } from '../icons.js';
+import AboutPage from '../pages/About.jsx';
 import ArticleEditor from '../pages/ArticleEditor.jsx';
 import Articles from '../pages/Articles.jsx';
 import Categories from '../pages/Categories.jsx';
+import Links from '../pages/Links.jsx';
 import Overview from '../pages/Overview.jsx';
+import Shares from '../pages/Shares.jsx';
 import Soon from '../pages/Soon.jsx';
 import TrashPage from '../pages/Trash.jsx';
 
@@ -28,9 +31,9 @@ const NAV = [
   { key: 'dash', label: '概览', icon: LayoutDashboard },
   { key: 'posts', label: '文章', icon: FileText },
   { key: 'cats', label: '分类', icon: Settings },
-  { key: 'links', label: '友链', icon: Link2, stage: '阶段 G' },
-  { key: 'share', label: '分享 · 语录', icon: Quote, stage: '阶段 G' },
-  { key: 'about', label: '关于页', icon: User, stage: '阶段 G' },
+  { key: 'links', label: '友链', icon: Link2 },
+  { key: 'share', label: '分享 · 语录', icon: Quote },
+  { key: 'about', label: '关于页', icon: User },
   { key: 'music', label: '音乐', icon: Music, stage: '阶段 H' },
   { key: 'trash', label: '回收站', icon: Trash },
   { key: 'logs', label: '操作日志', icon: ScrollText, stage: '阶段 I' },
@@ -43,6 +46,9 @@ const TITLES = {
   posts: ['文章', '管理文章'],
   edit: ['编辑文章', 'Markdown · 实时预览'],
   cats: ['分类', '前台筛选按钮跟着它变'],
+  links: ['友链', '朋友列表'],
+  share: ['分享 · 语录', '收藏与摘录'],
+  about: ['关于页', '主页信息 / 信息条目 / 爱弥斯 / 联系方式'],
   trash: ['回收站', '可恢复的已删除内容'],
 };
 
@@ -71,6 +77,12 @@ export default function Shell({ onLogout }) {
         return <ArticleEditor id={route.params.id ?? null} go={go} />;
       case 'cats':
         return <Categories />;
+      case 'links':
+        return <Links />;
+      case 'share':
+        return <Shares />;
+      case 'about':
+        return <AboutPage />;
       case 'trash':
         return <TrashPage />;
       default:
@@ -107,7 +119,7 @@ export default function Shell({ onLogout }) {
         ))}
 
         <div className="sidebar-foot">
-          阶段 F：分类管理
+          阶段 G：友链 / 分享 / 关于
           <br />
           保存只写进仓库，发布在阶段 I
         </div>

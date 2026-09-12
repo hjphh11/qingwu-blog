@@ -376,8 +376,11 @@ a:hover {
 }
 .panel-head {
   display: flex;
+  /* 窄屏时按钮换行 —— 分享页顶栏有 4 个按钮，手机上不换行会横向溢出 */
+  flex-wrap: wrap;
   align-items: center;
   gap: 10px;
+  row-gap: 8px;
   margin-bottom: 14px;
 }
 .panel-head h2 {

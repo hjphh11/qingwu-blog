@@ -5,8 +5,8 @@ import { parseJson, urlLike } from '../lib/validate';
 import raw from './share.json';
 
 export type ShareItem =
-  | { type: 'link'; id: string; title: string; url: string; note: string }
-  | { type: 'quote'; id: string; text: string; author?: string };
+  | { type: 'link'; id: string; title: string; url: string; note: string; tags: string[] }
+  | { type: 'quote'; id: string; text: string; author?: string; tags: string[] };
 
 const schema = z.object({
   shares: z.array(
@@ -17,12 +17,15 @@ const schema = z.object({
         title: z.string(),
         url: urlLike,
         note: z.string(),
+        // 方案第 38 条：加标签，前台可按标签筛选
+        tags: z.array(z.string()).default([]),
       }),
       z.object({
         type: z.literal('quote'),
         id: z.string().min(1, '不能为空'),
         text: z.string(),
         author: z.string().optional(),
+        tags: z.array(z.string()).default([]),
       }),
     ]),
   ),

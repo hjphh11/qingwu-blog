@@ -1,28 +1,41 @@
 // 后台用到的图标（lucide 的 IconNode 数据），统一从这里取，
 // 交给 morphicons 的 MorphIcon 渲染 —— 与博客前台同一套图标方案（方案第 23 条）。
 // 注意 lucide v1.37 没有 Trash2，回收站用 Trash。
-import { BookOpen, Flower2, Laptop, Music, Sparkles } from 'lucide';
-
-export {
+//
+// ⚠️ `export { … } from 'lucide'` 只做**再导出**，不会在本文件里产生可用的变量。
+// 所以下面那些映射表（CATEGORY_ICONS / ABOUT_ICONS）用到的图标，
+// 必须在最上面用 import 真正引进来。
+import {
   ArrowDown,
   ArrowLeft,
   ArrowUp,
   Bold,
   BookOpen,
+  Building,
   ChartNoAxesColumn,
   ChevronDown,
   ChevronLeft,
   ChevronRight,
   CircleAlert,
   CircleCheck,
+  Clock,
   Code,
+  Compass,
   Eye,
   EyeOff,
   FileText,
   Flower2,
+  GitBranch,
+  Globe,
+  GraduationCap,
+  Headphones,
+  Heart,
   Heading1,
   Heading2,
+  House,
+  Image as ImageIcon,
   Inbox,
+  Info,
   Italic,
   Laptop,
   LayoutDashboard,
@@ -31,7 +44,10 @@ export {
   List,
   ListOrdered,
   LogOut,
+  Mail,
+  MapPin,
   Menu,
+  MessageSquareText,
   Minus,
   Music,
   Pencil,
@@ -44,12 +60,80 @@ export {
   Save,
   ScrollText,
   Search,
+  Send,
   Settings,
   Sparkles,
+  Timer,
   Trash,
   User,
+  Wrench,
   X,
 } from 'lucide';
+
+export {
+  ArrowDown,
+  ArrowLeft,
+  ArrowUp,
+  Bold,
+  BookOpen,
+  Building,
+  ChartNoAxesColumn,
+  ChevronDown,
+  ChevronLeft,
+  ChevronRight,
+  CircleAlert,
+  CircleCheck,
+  Clock,
+  Code,
+  Compass,
+  Eye,
+  EyeOff,
+  FileText,
+  Flower2,
+  GitBranch,
+  Globe,
+  GraduationCap,
+  Headphones,
+  Heart,
+  Heading1,
+  Heading2,
+  House,
+  ImageIcon,
+  Inbox,
+  Info,
+  Italic,
+  Laptop,
+  LayoutDashboard,
+  Link,
+  Link2,
+  List,
+  ListOrdered,
+  LogOut,
+  Mail,
+  MapPin,
+  Menu,
+  MessageSquareText,
+  Minus,
+  Music,
+  Pencil,
+  Pin,
+  PinOff,
+  Plus,
+  Quote,
+  RefreshCw,
+  RotateCcw,
+  Save,
+  ScrollText,
+  Search,
+  Send,
+  Settings,
+  Sparkles,
+  Timer,
+  Trash,
+  User,
+  Wrench,
+  X,
+};
 
 /**
  * 分类图标名 → 图标节点。
@@ -65,3 +149,36 @@ export const CATEGORY_ICONS = {
 };
 
 export const DEFAULT_CATEGORY_ICON = Sparkles;
+
+/**
+ * 关于页（info / contacts）的图标名 → 图标节点。
+ * **必须与博客前台 `src/lib/aboutIcons.ts` 的名单一致**（那边认不出会回落成默认图标）。
+ */
+export const ABOUT_ICONS = {
+  map: MapPin,
+  school: GraduationCap,
+  code: Laptop,
+  music: Music,
+  mail: Mail,
+  github: GitBranch,
+  globe: Globe,
+  house: House,
+  building: Building,
+  book: BookOpen,
+  heart: Heart,
+  flower: Flower2,
+  sparkles: Sparkles,
+  link: Link2,
+  message: MessageSquareText,
+  send: Send,
+  info: Info,
+  clock: Clock,
+  compass: Compass,
+  wrench: Wrench,
+  headphones: Headphones,
+  image: ImageIcon,
+  chart: ChartNoAxesColumn,
+  timer: Timer,
+};
+
+export const DEFAULT_ABOUT_ICON = Info;

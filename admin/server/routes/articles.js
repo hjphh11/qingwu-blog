@@ -1,6 +1,7 @@
-// 文章 & 概览接口：读取 + **写入**（后台唯一的写入口）。
+// 文章 & 概览接口。
 //
-// 数据文件（src/data/*.json）的只读接口在 routes/data.js，两边路径不重叠。
+// 数据文件（src/data/*.json）的只读接口在 routes/data.js；
+// 友链 / 分享 / 关于在 routes/content.js；回收站在 routes/trash.js（所有类型共用）。
 // 全部要求登录；写操作还要过 index.js 里的 Origin 校验。
 import { Router } from 'express';
 import { requireAuth } from '../auth.js';
@@ -10,10 +11,7 @@ import {
   createArticle,
   deleteArticle,
   listArticles,
-  listTrash,
-  purgeTrash,
   readArticle,
-  restoreTrash,
   slugify,
   updateArticle,
 } from '../articles.js';
@@ -78,17 +76,6 @@ router.get(
   }),
 );
 
-// ——— 回收站 ———
-router.get('/trash', wrap(async (req, res) => res.json({ items: await listTrash() })));
-
-router.post(
-  '/trash/:entry/restore',
-  wrap(async (req, res) => res.json(await restoreTrash(req.params.entry))),
-);
-
-router.post(
-  '/trash/:entry/purge',
-  wrap(async (req, res) => res.json(await purgeTrash(req.params.entry))),
-);
+// 回收站接口已移到 routes/trash.js（现在要支持文章/友链/分享三种类型）
 
 export default router;
