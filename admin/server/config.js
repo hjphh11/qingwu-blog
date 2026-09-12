@@ -78,6 +78,14 @@ export const config = {
   /** 审批列表的服务端缓存（毫秒）。单用户后台，翻页来回切没必要每次都打 GitHub */
   applyCacheMs: Number(env('ADMIN_APPLY_CACHE_MS', '45000')),
 
+  /**
+   * 访问统计（阶段 M · 方案 §11 路线 B）：GitHub Action 每 6 小时把 Upstash 里的计数
+   * 汇总成 `stats.json` 写进**私有仓库**，后台读它画图（零跨境）。
+   * 复用上面那个私有仓库与 token（同一个库、不同文件）。
+   */
+  statsPath: env('ADMIN_STATS_PATH', 'stats.json'),
+  statsCacheMs: Number(env('ADMIN_STATS_CACHE_MS', '300000')),
+
   isProd,
 
   /**

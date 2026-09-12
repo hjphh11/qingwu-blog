@@ -5,7 +5,7 @@
 
 ## 现在做到哪了
 
-**阶段 D ~ L：概览 / 文章 / 分类 / 友链 / 友链申请 / 分享 / 关于页 / 音乐 / 回收站 / 发布 / 操作日志 / 备份与搜索 / 动效打磨**
+**阶段 D ~ M：概览 / 文章 / 分类 / 友链 / 友链申请 / 分享 / 关于页 / 音乐 / 回收站 / 发布 / 操作日志 / 备份与搜索 / 动效打磨 / 访问统计**
 
 - ✅ 服务端：Express（只监听 `127.0.0.1`）+ 单用户密码登录（argon2 哈希 + 签名会话 cookie + 登录限速）
 - ✅ 前端：React + Vite 单页应用（暖色玻璃拟态，与博客前台同一套 tokens 与图标）
@@ -43,8 +43,15 @@
   · **手机端手势**：从左缘往右拖拉开抽屉（跟手，过半自动开）、往左拖收起、`Esc` 也能关
   · **键盘手感**：编辑器里 `Cmd/Ctrl+S` 保存、`+B` 加粗、`+I` 斜体、`+1/2` 标题；新建文章自动聚焦标题；焦点圈只在键盘操作时出现
   · **概览数字滚动**到位；**系统开了「减少动效」就一键全关**（CSS 全局压掉 + 数字直接给终值 + morphicons `reducedMotion="user"`）
+- ✅ **访问统计（阶段 M · 方案 §11 路线 B）**：访客 → 站内 `/api/hit`（Vercel 函数）→ Upstash 计数 → **GitHub Action 每 6 小时汇总** → 私有仓库的 `stats.json` → 后台这一页读它画图
+  · **总访问量 / 独立访客 / 今日 / 近 7 天 / 近 30 天** 四张卡 + **30 天趋势折线**（PV + UV）
+  · **来源**（direct / google / github…）· **地区**（按访客国家/地区）· **设备**（手机 / 平板 / 电脑）三张图 + **每篇阅读数**（带横条、降序）
+  · 隐私：**不存明文 IP** —— IP+UA 用 `APPLY_IP_SALT` 做 HMAC 再截断成匿名标识；独立访客用 HyperLogLog 估基数，不存访客集合
+  · 去重：同一访客同一页 **30 分钟内只算一次**（刷新不涨）；**爬虫 / 监控 UA 直接跳过**
+  · 图表库 **Recharts**（方案 §7 指定）做成**按需加载**：只在打开这一页时才下载图表 chunk
+  · 顶栏写明「数据到哪一天、什么时候汇总的」—— 数据最多滞后 6 小时，不装作实时
 - ⚠️ **写范围受限**：文章只写 `src/content/blog/*.md`；分类写 `src/data/categories.json`；友链/分享/关于分别写 `links.json` / `share.json` / `about.json`；音乐写 `src/data/music.json` + `public/music/lrc/*.lrc`（并重新生成 `src/data/music.ts`）；删除进 `.admin-trash/`（已 gitignore，**多类型共用**：文章/友链/分享）；**友链申请**只写私有仓库 `hjphh11/qingwu-link-applications`（**不写**博客仓库）；**定时待办**写在 `.admin-logs/schedule.json`（后台自己的待办，不进公开仓库）
-- ⬜ 还没做：统计（M）、收尾（N）
+- ⬜ 还没做：收尾（N）
 
 ## 本地运行
 
@@ -87,6 +94,8 @@ npm run dev
 | `ADMIN_APPLY_REPO` / `ADMIN_APPLY_PATH` / `ADMIN_APPLY_REF` | 选填 | 申请数据在哪。默认 `hjphh11/qingwu-link-applications` / `applications.json` / `main` |
 | `ADMIN_APPLY_API_BASE` | 选填 | GitHub API 地址，默认官方。**本地测试会指向 mock 服务**（`http://127.0.0.1:4600`），绝不会碰真私有仓库 |
 | `ADMIN_APPLY_CACHE_MS` | 选填 | 审批列表的服务端缓存毫秒数，默认 45000（单用户后台，翻来翻去不必每次打 GitHub） |
+| `ADMIN_STATS_PATH` | 选填 | 统计文件在私有仓库里的路径，默认 `stats.json`（由 GitHub Action 汇总生成）。**读取用的还是 `ADMIN_APPLY_TOKEN`** |
+| `ADMIN_STATS_CACHE_MS` | 选填 | 统计文件的缓存毫秒数，默认 300000（5 分钟）—— 数据本来就 6 小时才更新一次 |
 
 `.env` 已被 `.gitignore` 忽略（`.env` 规则），**不要提交**。
 
@@ -106,6 +115,7 @@ admin/
 │  ├─ search.js            # **阶段 K：全局搜索索引**（文章含正文 / 友链 / 语录 / 歌曲 / 申请 / 页面 / 动作）
 │  ├─ backup.js + zip.js   # **阶段 K：一键导出备份**（自己按 ZIP 格式打包，不加依赖）
 │  ├─ schedule.js          # **阶段 K：定时发布**（待办存 .admin-logs/schedule.json，到点自动发布，重启会补跑）
+│  ├─ stats.js             # **阶段 M：访问统计**（读私有仓库里由 Action 汇总的 stats.json，派生今日/近 7 天/近 30 天）
 │  ├─ categories.js links.js shares.js about.js music.js
 │  │                       # 各模块的读写实现（白名单路径 + 校验）
 │  ├─ trash.js             # 回收站（多类型软删除 / 恢复 / 彻底清除）

@@ -1,0 +1,49 @@
+# 访问统计汇总（方案 §11 路线 B）
+#
+#   访客 → /api/hit（Vercel 函数）→ Upstash Redis 计数
+#                                        ↓ 就是这个 Action（跑在境外，无跨境问题）
+#                                   私有仓库的 stats.json
+#                                        ↓ 后台「访问统计」页读它画图（零跨境）
+#
+# 需要在仓库 Settings → Secrets and variables → Actions 里加（都是 Actions secrets）：
+#   UPSTASH_REDIS_REST_URL    Upstash 的 REST 地址（和限流用的是同一个库）
+#   UPSTASH_REDIS_REST_TOKEN  同上（读写 token）
+#   STATS_TOKEN               能写私有仓库 hjphh11/qingwu-link-applications 的 PAT
+#                             （Contents: Read and write；可以直接复用友链申请那个 APPLY_TOKEN）
+#
+# 数据落在**私有仓库**：来源 / 地区 / 设备这些分析数据不公开，也不会给博客仓库造提交、
+# 不触发 Vercel 重建。
+name: 统计汇总
+
+on:
+  schedule:
+    # 每 6 小时一次（错开整点，别和别的高峰挤一起）
+    - cron: '17 3,9,15,21 * * *'
+  workflow_dispatch: {} # 想立刻刷新就在 Actions 页面点一下
+
+permissions:
+  contents: read # 只读本仓库（统计写的是私有仓库，用 STATS_TOKEN）
+
+concurrency:
+  group: stats-collect
+  cancel-in-progress: false
+
+jobs:
+  collect:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: 汇总并写回私有仓库
+        run: node scripts/stats-collect.mjs
+        env:
+          UPSTASH_REDIS_REST_URL: ${{ secrets.UPSTASH_REDIS_REST_URL }}
+          UPSTASH_REDIS_REST_TOKEN: ${{ secrets.UPSTASH_REDIS_REST_TOKEN }}
+          STATS_TOKEN: ${{ secrets.STATS_TOKEN }}
+          STATS_REPO: hjphh11/qingwu-link-applications
+          STATS_PATH: stats.json
+          STATS_REF: main
