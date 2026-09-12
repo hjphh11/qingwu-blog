@@ -1,18 +1,27 @@
 ---
 import Layout from '../../layouts/Layout.astro';
 import MorphIcon from 'morphicons/astro';
-import { ChevronRight } from '../../lib/icons';
+import { ChevronRight, Send } from '../../lib/icons';
 import { friends } from '../../data/links';
 ---
 
 <Layout title="友链 · 清吾">
   <div class="mx-auto max-w-4xl px-6 pb-20 pt-28">
-    <header class="mb-8">
-      <h1 class="flex items-center gap-3 font-display text-3xl text-ink">
-        <span class="h-6 w-1.5 rounded-full bg-crimson"></span>
-        友链
-      </h1>
-      <p class="mt-2 text-sm text-ink/60">在互联网的小角落，遇见彼此 ~</p>
+    <header class="mb-8 flex flex-wrap items-end justify-between gap-4">
+      <div>
+        <h1 class="flex items-center gap-3 font-display text-3xl text-ink">
+          <span class="h-6 w-1.5 rounded-full bg-crimson"></span>
+          友链
+        </h1>
+        <p class="mt-2 text-sm text-ink/60">在互联网的小角落，遇见彼此 ~</p>
+      </div>
+      <a
+        href="/links/apply"
+        class="btn-ripple inline-flex items-center gap-2 rounded-full bg-crimson px-5 py-2.5 text-sm font-medium text-white shadow-[0_6px_18px_rgba(224,82,107,0.35)] transition-transform hover:scale-105 active:scale-95"
+      >
+        <MorphIcon icon={Send} size={16} color="#fff" />
+        申请友链
+      </a>
     </header>
 
     {
@@ -48,16 +57,16 @@ import { friends } from '../../data/links';
         <div class="glass-card grid place-items-center p-12 text-center">
           <p class="font-hand text-2xl text-crimson">友链还没开张 ~</p>
           <p class="mt-2 text-sm text-ink/60">
-            暂时没有互链。想成为朋友?欢迎在
-            <a href="/about" class="text-crimson underline-offset-2 hover:underline">关于</a>
-            页联系我。
+            暂时没有互链。想成为朋友?欢迎
+            <a href="/links/apply" class="text-crimson underline-offset-2 hover:underline">申请友链</a>
+            ，或在<a href="/about" class="text-crimson underline-offset-2 hover:underline">关于</a>页联系我。
           </p>
         </div>
       )
     }
 
     <p class="mt-10 text-center text-sm text-ink/50">
-      想互换友链吗?欢迎在<a href="/about" class="text-crimson underline-offset-2 hover:underline">关于</a>页联系我 ~
+      想互换友链吗?<a href="/links/apply" class="text-crimson underline-offset-2 hover:underline">填写申请表</a>，或在<a href="/about" class="text-crimson underline-offset-2 hover:underline">关于</a>页联系我 ~
     </p>
   </div>
 </Layout>

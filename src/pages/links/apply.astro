@@ -1,0 +1,36 @@
+---
+import Layout from '../../layouts/Layout.astro';
+import MorphIcon from 'morphicons/astro';
+import { ArrowLeft } from '../../lib/icons';
+import LinkApply from '../../components/LinkApply.tsx';
+
+// Turnstile 站点密钥是**公开**的(设计如此)，走 PUBLIC_ 前缀让构建时注入到前端
+const turnstileSiteKey = import.meta.env.PUBLIC_TURNSTILE_SITE_KEY ?? '';
+---
+
+<Layout
+  title="友链申请 · 清吾"
+  description="和清吾互换友链：填好站点名称、网址、头像与一句介绍，审核通过后会出现在友链页。"
+>
+  <div class="mx-auto max-w-4xl px-6 pb-20 pt-28">
+    <a
+      href="/links"
+      class="reveal mb-6 inline-flex items-center gap-1 text-sm text-ink/60 transition-colors hover:text-crimson"
+    >
+      <MorphIcon icon={ArrowLeft} size={16} color="currentColor" />
+      返回友链
+    </a>
+
+    <header class="reveal mb-6">
+      <h1 class="flex items-center gap-3 font-display text-3xl text-ink">
+        <span class="h-6 w-1.5 rounded-full bg-crimson"></span>
+        友链申请
+      </h1>
+      <p class="mt-2 text-sm text-ink/60">
+        填好下面这张表，我审核通过后就把你加进「友链」页 ~
+      </p>
+    </header>
+
+    <LinkApply client:load siteKey={turnstileSiteKey} />
+  </div>
+</Layout>
