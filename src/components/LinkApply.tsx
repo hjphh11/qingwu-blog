@@ -96,7 +96,13 @@ const MY_INFO = [
   { label: 'RSS 地址', value: `${SITE.url}/rss.xml` },
 ];
 
-type Status = 'editing' | 'submitting' | 'sent' | 'fallback';
+// 'fallback' 只用于「这次没能存进去」；'duplicate' 是「已经收到过了」——
+// 两者文案完全相反，必须分开。早期把 409 也塞进 fallback，结果弹出
+// 「通道还在建设中，请邮件发我」，和「已收到你的申请」自相矛盾。
+type Status = 'editing' | 'submitting' | 'sent' | 'duplicate' | 'fallback';
+
+/** fallback 的两种语气：通道本来就没开 vs 这一次操作失败了 */
+type FallbackKind = 'building' | 'error';
 
 export default function LinkApply({ siteKey = '' }: { siteKey?: string }) {
   const reduce = useReducedMotion();
@@ -110,6 +116,7 @@ export default function LinkApply({ siteKey = '' }: { siteKey?: string }) {
   const [token, setToken] = useState('');
   const [turnstileMsg, setTurnstileMsg] = useState('');
   const [serverMessage, setServerMessage] = useState('');
+  const [fallbackKind, setFallbackKind] = useState<FallbackKind>('building');
 
   const turnstileBox = useRef<HTMLDivElement>(null);
   const widgetId = useRef<string | null>(null);
@@ -254,6 +261,7 @@ export default function LinkApply({ siteKey = '' }: { siteKey?: string }) {
     // 服务端还没能力收 → 走诚实兜底，不假装提交成功
     if (enabled !== true) {
       setServerMessage('');
+      setFallbackKind('building');
       setStatus('fallback');
       return;
     }
@@ -299,11 +307,29 @@ export default function LinkApply({ siteKey = '' }: { siteKey?: string }) {
         return;
       }
 
-      // 重复提交 / 通道未开放 / 存储出错 → 诚实兜底 + 服务端给的话术
+      // 已经收到过这份申请(同邮箱/同站点/24h 内重复)——这是**好消息**，不是失败。
+      // 绝对不能弹「通道还在建设中，请邮件发我」：东西早就收到了。
+      if (data.error === 'duplicate') {
+        setServerMessage(data.message || '');
+        setStatus('duplicate');
+        return;
+      }
+
+      // 通道压根没开(503)—— 只有这种才可以说「还在建设中」
+      if (data.error === 'unavailable') {
+        setServerMessage(data.message || '');
+        setFallbackKind('building');
+        setStatus('fallback');
+        return;
+      }
+
+      // 存储失败(502)/其它 —— 这一次确实没存进去，用「没能提交」的语气
       setServerMessage(data.message || '');
+      setFallbackKind('error');
       setStatus('fallback');
     } catch {
       setServerMessage('网络好像出了点问题');
+      setFallbackKind('error');
       setStatus('fallback');
     }
   };
@@ -389,6 +415,43 @@ export default function LinkApply({ siteKey = '' }: { siteKey?: string }) {
                 想补充或修改？直接回一封邮件给我也行：{SITE.email}
               </p>
             </motion.div>
+          ) : status === 'duplicate' ? (
+            /* 已经收到过这份申请 —— 这不是失败，别推邮件、别提「建设中」 */
+            <motion.div
+              initial={reduce ? false : { opacity: 0, y: 12 }}
+              animate={reduce ? {} : { opacity: 1, y: 0 }}
+              transition={{ duration: 0.45, ease: [0.16, 1, 0.3, 1] }}
+              className="glass-card p-7 text-center"
+            >
+              <span className="mx-auto grid h-14 w-14 place-items-center rounded-full bg-rose/25 text-crimson">
+                <MorphIcon icon={CircleCheck} size={26} color="currentColor" />
+              </span>
+              <h2 className="mt-4 font-display text-2xl text-ink">已经收到过你的申请啦</h2>
+              <p className="mt-2 text-sm leading-relaxed text-ink/70">
+                {serverMessage || '这份申请已经在列表里了 ~'}
+              </p>
+              <p className="mt-3 text-xs leading-relaxed text-ink/50">
+                不用重复提交 —— 我会尽快看，通过了就加进
+                <a href="/links" className="mx-1 text-crimson underline-offset-2 hover:underline">
+                  友链页
+                </a>
+                。
+              </p>
+              <div className="mt-6 flex flex-wrap items-center justify-center gap-3">
+                <a href="/links" className={primaryBtn}>
+                  <MorphIcon icon={Link2} size={16} color="#fff" />
+                  回到友链页
+                </a>
+                <button
+                  type="button"
+                  onClick={resetToEditing}
+                  className="inline-flex items-center gap-1.5 rounded-full px-4 py-2.5 text-sm text-ink/60 transition-colors hover:text-crimson"
+                >
+                  <MorphIcon icon={ArrowLeft} size={15} color="currentColor" />
+                  换一个站点提交
+                </button>
+              </div>
+            </motion.div>
           ) : status === 'fallback' ? (
             <motion.div
               initial={reduce ? false : { opacity: 0, y: 12 }}
@@ -399,9 +462,14 @@ export default function LinkApply({ siteKey = '' }: { siteKey?: string }) {
               <span className="mx-auto grid h-14 w-14 place-items-center rounded-full bg-rose/25 text-crimson">
                 <MorphIcon icon={CircleCheck} size={26} color="currentColor" />
               </span>
-              <h2 className="mt-4 font-display text-2xl text-ink">信息检查完毕</h2>
+              <h2 className="mt-4 font-display text-2xl text-ink">
+                {fallbackKind === 'building' ? '信息检查完毕' : '这次没能提交成功'}
+              </h2>
               <p className="mt-2 text-sm leading-relaxed text-ink/70">
-                {serverMessage || '表单校验全部通过，看起来没什么问题 ~'}
+                {serverMessage ||
+                  (fallbackKind === 'building'
+                    ? '表单校验全部通过，看起来没什么问题 ~'
+                    : '不好意思，刚才没能把你的申请收进来。')}
               </p>
 
               <div className="mt-5 flex items-start gap-2.5 rounded-[var(--radius-card)] border border-amber/40 bg-amber/15 p-4 text-left text-sm text-ink/80">
@@ -409,8 +477,17 @@ export default function LinkApply({ siteKey = '' }: { siteKey?: string }) {
                   <MorphIcon icon={Info} size={17} color="currentColor" />
                 </span>
                 <p className="leading-relaxed">
-                  <span className="font-medium">在线提交通道还在建设中</span>
-                  —— 现在请先用下面的按钮把信息发给我，我一定看得到。
+                  {fallbackKind === 'building' ? (
+                    <>
+                      <span className="font-medium">在线提交通道还在建设中</span>
+                      —— 现在请先用下面的按钮把信息发给我，我一定看得到。
+                    </>
+                  ) : (
+                    <>
+                      <span className="font-medium">可以稍后再试一次</span>
+                      ，或者直接用下面的按钮把信息发给我 —— 我一定会看到。
+                    </>
+                  )}
                 </p>
               </div>
 
