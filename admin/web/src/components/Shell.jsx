@@ -17,6 +17,7 @@ import {
 } from '../icons.js';
 import ArticleEditor from '../pages/ArticleEditor.jsx';
 import Articles from '../pages/Articles.jsx';
+import Categories from '../pages/Categories.jsx';
 import Overview from '../pages/Overview.jsx';
 import Soon from '../pages/Soon.jsx';
 import TrashPage from '../pages/Trash.jsx';
@@ -26,11 +27,11 @@ import TrashPage from '../pages/Trash.jsx';
 const NAV = [
   { key: 'dash', label: '概览', icon: LayoutDashboard },
   { key: 'posts', label: '文章', icon: FileText },
+  { key: 'cats', label: '分类', icon: Settings },
   { key: 'links', label: '友链', icon: Link2, stage: '阶段 G' },
   { key: 'share', label: '分享 · 语录', icon: Quote, stage: '阶段 G' },
   { key: 'about', label: '关于页', icon: User, stage: '阶段 G' },
   { key: 'music', label: '音乐', icon: Music, stage: '阶段 H' },
-  { key: 'cats', label: '分类', icon: Settings, stage: '阶段 F' },
   { key: 'trash', label: '回收站', icon: Trash },
   { key: 'logs', label: '操作日志', icon: ScrollText, stage: '阶段 I' },
   { key: 'stats', label: '访问统计', icon: ChartNoAxesColumn, stage: '阶段 M' },
@@ -41,6 +42,7 @@ const TITLES = {
   dash: ['概览', '清清的小屋 · 内容与发布'],
   posts: ['文章', '管理文章'],
   edit: ['编辑文章', 'Markdown · 实时预览'],
+  cats: ['分类', '前台筛选按钮跟着它变'],
   trash: ['回收站', '可恢复的已删除内容'],
 };
 
@@ -67,6 +69,8 @@ export default function Shell({ onLogout }) {
         return <Articles go={go} />;
       case 'edit':
         return <ArticleEditor id={route.params.id ?? null} go={go} />;
+      case 'cats':
+        return <Categories />;
       case 'trash':
         return <TrashPage />;
       default:
@@ -103,7 +107,7 @@ export default function Shell({ onLogout }) {
         ))}
 
         <div className="sidebar-foot">
-          阶段 E：文章管理
+          阶段 F：分类管理
           <br />
           保存只写进仓库，发布在阶段 I
         </div>

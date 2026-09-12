@@ -642,6 +642,49 @@ a:hover {
   border-color: rgba(224, 82, 107, 0.3);
 }
 
+/* ——— 行内编辑 / 删除确认框（分类管理用）——— */
+.inline-box {
+  flex-basis: 100%;
+  margin: 8px 0 4px;
+  padding: 12px 14px;
+  background: rgba(255, 255, 255, 0.6);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+}
+.inline-box.danger {
+  background: rgba(224, 82, 107, 0.07);
+  border-color: rgba(224, 82, 107, 0.3);
+}
+
+/* 图标选择器 */
+.icon-picker {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 4px 0;
+}
+.icon-picker .chip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 30px;
+  padding: 0;
+}
+
+/* 分类行里的小图标 */
+.cat-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  flex: none;
+  color: var(--color-crimson);
+  background: rgba(246, 165, 184, 0.22);
+  border-radius: 10px;
+}
+
 /* 「还没发布的改动」展开框 */
 .unpub-box {
   margin-bottom: 16px;
