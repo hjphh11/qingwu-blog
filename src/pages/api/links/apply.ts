@@ -72,7 +72,12 @@ async function verifyTurnstile(token: string, ip: string | null): Promise<boolea
 }
 
 export const GET: APIRoute = async () => {
-  return json({ enabled: ENABLED }, 200, { 'cache-control': 'no-store' });
+  // rateLimit 只说明「限流有没有配好」,不暴露任何密钥 ——
+  // 用来排查「Upstash 变量写错/带引号 → 静默 fail-open」这种情况。
+  const rateLimitReady = Boolean(rateLimitConfig() && APPLY_IP_SALT);
+  return json({ enabled: ENABLED, rateLimit: rateLimitReady }, 200, {
+    'cache-control': 'no-store',
+  });
 };
 
 export const POST: APIRoute = async ({ request, clientAddress }) => {
