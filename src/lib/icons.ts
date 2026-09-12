@@ -41,4 +41,10 @@ export {
   Share2,
   MessageCircle,
   Send,
+  // 友链申请页(阶段 A)用到的图标
+  Image as ImageIcon,
+  MessageSquareText,
+  CircleCheck,
+  CircleAlert,
+  Info,
 } from 'lucide';
