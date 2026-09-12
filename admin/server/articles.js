@@ -398,6 +398,30 @@ export async function updateArticle(id, input) {
   return readArticle(slug);
 }
 
+/**
+ * **只改 frontmatter 里的 `category` 一行**，正文与其它字段逐字节不动。
+ * 给「删除分类时批量迁移文章」用 —— 比走 updateArticle 全量重写安全得多
+ * （全量重写会把没识别的 frontmatter 字段丢掉，也会让 diff 变大）。
+ */
+export async function patchArticleCategory(id, category) {
+  const file = articlePath(id);
+  let text;
+  try {
+    text = await fs.readFile(file, 'utf8');
+  } catch {
+    throw notFound();
+  }
+  if (!/^category:[ \t]*\S+/m.test(text)) {
+    throw badRequest(`文章 ${id} 的 frontmatter 里没有 category 行，无法迁移`);
+  }
+  if (!/^category:[^\n]*$/m.test(text)) {
+    throw badRequest(`文章 ${id} 的 category 行格式异常，无法安全迁移`);
+  }
+  const next = text.replace(/^category:[^\n]*$/m, `category: ${category}`);
+  await writeAtomic(file, next);
+  return { id, category };
+}
+
 export async function deleteArticle(id) {
   const file = articlePath(id);
   let text;

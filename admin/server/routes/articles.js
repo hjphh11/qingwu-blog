@@ -17,7 +17,6 @@ import {
   slugify,
   updateArticle,
 } from '../articles.js';
-import { readData } from '../data.js';
 import { overview } from '../overview.js';
 
 const router = Router();
@@ -68,15 +67,6 @@ router.post(
 // ——— 编辑器要的辅助数据 ———
 /** 历史标签（自动补全用）*/
 router.get('/tags', wrap(async (req, res) => res.json({ tags: await allTags() })));
-
-/** 分类表（编辑器下拉用）*/
-router.get(
-  '/categories',
-  wrap(async (req, res) => {
-    const { categories } = await readData('categories.json');
-    res.json({ categories });
-  }),
-);
 
 /** 标题 → slug 预览（拼音在服务端算，前端不用装拼音库）*/
 router.get(
