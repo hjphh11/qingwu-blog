@@ -48,7 +48,7 @@ const q = (s) =>
 const entries = songs
   .map((s, idx) => {
     const n = Number.isFinite(s.id) ? s.id : idx + 1;
-    const cover = s.cover || `/music/covers/cover-${n}.jpg`;
+    const cover = s.cover || `/music/covers/cover-${n}.webp`;
     const audio = s.audio || `/music/audio/song-${n}.mp3`;
     // 反引号与 ${ 需要转义,否则会破坏模板字符串
     const lrc = readLrc(s.lrc).replace(/`/g, '\\`').replace(/\$\{/g, '\\${');
@@ -74,7 +74,9 @@ const content = `export type Song = {
 
 // 本文件由 scripts/gen.mjs 从 src/data/music.json 生成,**不要手改** ——
 // 改歌曲信息请改 music.json 再跑 \`node scripts/gen.mjs\`。
-// 《鸣潮》音乐(本地自托管):音频/封面/歌词在 public/music/。
+// 《鸣潮》音乐:音频与封面托管在对象存储(雨云 · 浙江宁波,国内节点),
+// 歌词仍在仓库 public/music/lrc/,占位封面在 public/music/covers/*.svg。
+// 地址写法与换服务商的办法见 public/music/README.md。
 export const playlist: Song[] = [
 ${entries}
 ];

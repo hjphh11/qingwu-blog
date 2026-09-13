@@ -9,13 +9,15 @@ export type Song = {
 
 // 本文件由 scripts/gen.mjs 从 src/data/music.json 生成,**不要手改** ——
 // 改歌曲信息请改 music.json 再跑 `node scripts/gen.mjs`。
-// 《鸣潮》音乐(本地自托管):音频/封面/歌词在 public/music/。
+// 《鸣潮》音乐:音频与封面托管在对象存储(雨云 · 浙江宁波,国内节点),
+// 歌词仍在仓库 public/music/lrc/,占位封面在 public/music/covers/*.svg。
+// 地址写法与换服务商的办法见 public/music/README.md。
 export const playlist: Song[] = [
   {
     title: "Waking of a World",
     artist: "TerryZhong钟天利 / 炎明熹",
-    cover: '/music/covers/cover-1.jpg',
-    audio: '/music/audio/song-1.mp3',
+    cover: 'https://qingwu.cn-nb1.rains3.com/music/covers/cover-1.webp',
+    audio: 'https://qingwu.cn-nb1.rains3.com/music/audio/song-1.mp3',
     note: "《鸣潮》公测主题曲",
     lrc: `{"t":0,"c":[{"tx":"特别呈现: "},{"tx":"先约电台"}]}
 {"t":1000,"c":[{"tx":"制作人: "},{"tx":"Terry Zhong钟天利"}]}
@@ -72,8 +74,8 @@ export const playlist: Song[] = [
   {
     title: "愿戴荣光坠入天渊",
     artist: "jixwang / VISION SOUND",
-    cover: '/music/covers/cover-2.jpg',
-    audio: '/music/audio/song-2.mp3',
+    cover: 'https://qingwu.cn-nb1.rains3.com/music/covers/cover-2.webp',
+    audio: 'https://qingwu.cn-nb1.rains3.com/music/audio/song-2.mp3',
     note: "卡提希娅主题曲",
     lrc: `{"t":0,"c":[{"tx":"作词 Lyricist: "},{"tx":"Xulai"}]}
 {"t":1000,"c":[{"tx":"作曲 Composer: "},{"tx":"jixwang","li":"http://p1.music.126.net/BPFwKES7L6_QtLs0IcqMtw==/109951165820162174.jpg","or":"orpheus://nm/artist/home?id=13005455&type=artist"}]}
@@ -137,8 +139,8 @@ export const playlist: Song[] = [
   {
     title: "涤罪的咏叹调",
     artist: "十音",
-    cover: '/music/covers/cover-3.jpg',
-    audio: '/music/audio/song-3.mp3',
+    cover: 'https://qingwu.cn-nb1.rains3.com/music/covers/cover-3.webp',
+    audio: 'https://qingwu.cn-nb1.rains3.com/music/audio/song-3.mp3',
     note: "罗蕾莱 Boss 主题曲",
     lrc: `{"t":0,"c":[{"tx":"作曲 Composer: "},{"tx":"十音"},{"tx":"/"},{"tx":"jixwang"}]}
 {"t":416,"c":[{"tx":"编曲 Arranger: "},{"tx":"十音"}]}
@@ -157,8 +159,8 @@ export const playlist: Song[] = [
   {
     title: "今州鸾鸣",
     artist: "梨华rika / 不要杀我!",
-    cover: '/music/covers/cover-4.jpg',
-    audio: '/music/audio/song-4.mp3',
+    cover: 'https://qingwu.cn-nb1.rains3.com/music/covers/cover-4.webp',
+    audio: 'https://qingwu.cn-nb1.rains3.com/music/audio/song-4.mp3',
     note: "长离与今汐师徒印象曲",
     lrc: `{"t":0,"c":[{"tx":"作词: "},{"tx":"梨华rika","li":"http://p1.music.126.net/8ztNf4L7coEkdBl_YaQjtA==/109951165018020054.jpg","or":"orpheus://nm/artist/home?id=28187377&type=artist"}]}
 [00:01.710]今州鸾鸣
@@ -217,8 +219,8 @@ export const playlist: Song[] = [
   {
     title: "持续瞬间的永恒",
     artist: "jixwang / markmilian",
-    cover: '/music/covers/cover-5.jpg',
-    audio: '/music/audio/song-5.mp3',
+    cover: 'https://qingwu.cn-nb1.rains3.com/music/covers/cover-5.webp',
+    audio: 'https://qingwu.cn-nb1.rains3.com/music/audio/song-5.mp3',
     note: "尤诺 BGM",
     lrc: `{"t":0,"c":[{"tx":"作曲 Composer: "},{"tx":"jixwang"}]}
 {"t":766,"c":[{"tx":"编曲 Arranger: "},{"tx":"jixwang"}]}
@@ -270,8 +272,8 @@ export const playlist: Song[] = [
   {
     title: "悠忽舞于梦中",
     artist: "jixwang / VISION SOUND",
-    cover: '/music/covers/cover-6.jpg',
-    audio: '/music/audio/song-6.mp3',
+    cover: 'https://qingwu.cn-nb1.rains3.com/music/covers/cover-6.webp',
+    audio: 'https://qingwu.cn-nb1.rains3.com/music/audio/song-6.mp3',
     note: "罗蕾莱云海隐藏约会曲",
     lrc: `{"t":0,"c":[{"tx":"作曲 Composer: "},{"tx":"jixwang"}]}
 {"t":562,"c":[{"tx":"编曲 Arranger: "},{"tx":"jixwang"}]}
@@ -323,8 +325,8 @@ export const playlist: Song[] = [
   {
     title: "尘外客",
     artist: "蔡明希(不才) / 宫阁",
-    cover: '/music/covers/cover-7.jpg',
-    audio: '/music/audio/song-7.mp3',
+    cover: 'https://qingwu.cn-nb1.rains3.com/music/covers/cover-7.webp',
+    audio: 'https://qingwu.cn-nb1.rains3.com/music/audio/song-7.mp3',
     note: "",
     lrc: `{"t":0,"c":[{"tx":"出品: "},{"tx":"鸣潮先约电台"}]}
 {"t":1000,"c":[{"tx":"演唱: "},{"tx":"蔡明希（不才）"}]}
@@ -384,8 +386,8 @@ export const playlist: Song[] = [
   {
     title: "定玄",
     artist: "黄霄雲 / 杨秉音",
-    cover: '/music/covers/cover-8.jpg',
-    audio: '/music/audio/song-8.mp3',
+    cover: 'https://qingwu.cn-nb1.rains3.com/music/covers/cover-8.webp',
+    audio: 'https://qingwu.cn-nb1.rains3.com/music/audio/song-8.mp3',
     note: "",
     lrc: `{"t":-1000,"c":[{"tx":"出品: "},{"tx":"鸣潮先约电台"}]}
 {"t":-965,"c":[{"tx":"演唱: "},{"tx":"黄霄雲"}]}
@@ -462,8 +464,8 @@ export const playlist: Song[] = [
   {
     title: "玄翎谣",
     artist: "jkinss / 薄荷Miint",
-    cover: '/music/covers/cover-9.jpg',
-    audio: '/music/audio/song-9.mp3',
+    cover: 'https://qingwu.cn-nb1.rains3.com/music/covers/cover-9.webp',
+    audio: 'https://qingwu.cn-nb1.rains3.com/music/audio/song-9.mp3',
     note: "",
     lrc: `{"t":0,"c":[{"tx":"作词: "},{"tx":"冉语优","li":"http://p1.music.126.net/VTaVMTrMCzI8iEP_G4ojAA==/109951163596197517.jpg","or":"orpheus://nm/artist/home?id=34875386&type=artist"}]}
 {"t":717,"c":[{"tx":"作曲: "},{"tx":"jkinss","li":"http://p1.music.126.net/pd6qh284zi4vsS44vLQeuA==/109951165321518435.jpg","or":"orpheus://nm/artist/home?id=36778576&type=artist"}]}
@@ -534,8 +536,8 @@ export const playlist: Song[] = [
   {
     title: "小小奇迹",
     artist: "jixwang / 飞行雪绒",
-    cover: '/music/covers/cover-10.jpg',
-    audio: '/music/audio/song-10.mp3',
+    cover: 'https://qingwu.cn-nb1.rains3.com/music/covers/cover-10.webp',
+    audio: 'https://qingwu.cn-nb1.rains3.com/music/audio/song-10.mp3',
     note: "",
     lrc: `{"t":0,"c":[{"tx":"作曲 Composer: "},{"tx":"jixwang"}]}
 {"t":1000,"c":[{"tx":"编曲 Arranger: "},{"tx":"jixwang"}]}
@@ -599,8 +601,8 @@ export const playlist: Song[] = [
   {
     title: "那颗星梦见的春日",
     artist: "jixwang / 小林未郁",
-    cover: '/music/covers/cover-11.jpg',
-    audio: '/music/audio/song-11.mp3',
+    cover: 'https://qingwu.cn-nb1.rains3.com/music/covers/cover-11.webp',
+    audio: 'https://qingwu.cn-nb1.rains3.com/music/audio/song-11.mp3',
     note: "",
     lrc: `{"t":0,"c":[{"tx":"作曲 Composer: "},{"tx":"jixwang"}]}
 {"t":754,"c":[{"tx":"编曲 Arranger: "},{"tx":"jixwang"}]}
@@ -674,8 +676,8 @@ export const playlist: Song[] = [
   {
     title: "纸飞机",
     artist: "飞行雪绒",
-    cover: '/music/covers/cover-12.jpg',
-    audio: '/music/audio/song-12.mp3',
+    cover: 'https://qingwu.cn-nb1.rains3.com/music/covers/cover-12.webp',
+    audio: 'https://qingwu.cn-nb1.rains3.com/music/audio/song-12.mp3',
     note: "",
     lrc: `{"t":0,"c":[{"tx":"出品: "},{"tx":"鸣潮先约电台"}]}
 {"t":1000,"c":[{"tx":"演唱: "},{"tx":"飞行雪绒"}]}
@@ -730,8 +732,8 @@ export const playlist: Song[] = [
   {
     title: "远航星的告别",
     artist: "jixwang / Tarokiki / Emi Evans",
-    cover: '/music/covers/cover-13.jpg',
-    audio: '/music/audio/song-13.mp3',
+    cover: 'https://qingwu.cn-nb1.rains3.com/music/covers/cover-13.webp',
+    audio: 'https://qingwu.cn-nb1.rains3.com/music/audio/song-13.mp3',
     note: "",
     lrc: `{"t":0,"c":[{"tx":"作曲 Composer: "},{"tx":"jixwang"}]}
 {"t":1000,"c":[{"tx":"编曲 Arranger: "},{"tx":"jixwang"}]}
