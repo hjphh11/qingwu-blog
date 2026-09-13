@@ -114,8 +114,7 @@ export default function Music() {
         </div>
 
         <p className="hint" style={{ marginTop: -6, marginBottom: 12 }}>
-          顺序就是前台歌单顺序（上下箭头调整）。保存时会<strong>自动重跑 <span className="mono">scripts/gen.mjs</span>
-          重新生成 music.ts</strong>。按方案只改现有 {songs.length} 首 —— 不做新增歌曲、不做音频上传。
+          上下箭头调整前台显示顺序。共 {songs.length} 首；保存后自动同步到站点。
         </p>
 
         <div className="post-list">

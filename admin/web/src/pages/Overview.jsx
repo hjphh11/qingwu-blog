@@ -122,15 +122,15 @@ export default function Overview({ go }) {
         l: '篇文章',
         sub: `已发布 ${a.published} · 草稿 ${a.drafts}`,
       },
-      { n: a.pinned, l: '置顶', sub: a.broken > 0 ? `⚠ ${a.broken} 篇解析失败` : 'frontmatter 正常' },
-      { n: links?.count ?? '—', l: '位友链', sub: links?.ok ? 'links.json 正常' : 'links.json 有问题' },
+      { n: a.pinned, l: '置顶', sub: a.broken > 0 ? `⚠ ${a.broken} 篇格式有问题` : '' },
+      { n: links?.count ?? '—', l: '位友链', sub: links?.ok ? '' : 'links.json 有问题' },
       {
         n: share?.count ?? '—',
         l: '条分享 / 语录',
         sub: share?.extra ? `收藏 ${share.extra.收藏} · 语录 ${share.extra.语录}` : '',
       },
-      { n: music?.count ?? '—', l: '首歌曲', sub: 'music.json' },
-      { n: cats?.count ?? '—', l: '个分类', sub: 'categories.json' },
+      { n: music?.count ?? '—', l: '首歌曲', sub: '' },
+      { n: cats?.count ?? '—', l: '个分类', sub: '' },
     ];
   }, [data]);
 
@@ -159,7 +159,11 @@ export default function Overview({ go }) {
   }
 
   const a = data.articles;
+  const repo = data.repo ?? {};
   const bad = data.data.filter((d) => !d.ok);
+  // ⚠️ 这两个字段在服务端的 repo 里（不是 articles 里）。读错层级会让条件恒真、
+  //    页面上一直挂着一个**空白的警告框**（阶段 N 收尾后发现的）。
+  const articleWarn = (!repo.articlesOk && repo.articlesError) || bad.length > 0;
 
   return (
     <>
@@ -169,15 +173,14 @@ export default function Overview({ go }) {
         ))}
       </section>
 
-      {(!a.articlesOk || bad.length > 0) && (
+      {articleWarn && (
         <div className="alert alert-warn" role="alert">
           <MorphIcon icon={CircleAlert} size={15} color="currentColor" />
           <span>
-            {!a.articlesOk && <>{a.articlesError}　</>}
+            {!repo.articlesOk && repo.articlesError ? <>{repo.articlesError}　</> : null}
             {bad.length > 0 && (
               <>
-                有 {bad.length} 个数据文件有问题：{bad.map((b) => b.file).join('、')} ——
-                这会让站点<strong>构建失败</strong>，下面「数据文件健康」里有具体原因。
+                {bad.length} 个数据文件有问题（会<strong>导致构建失败</strong>）：{bad.map((b) => b.file).join('、')}
               </>
             )}
           </span>
@@ -189,7 +192,7 @@ export default function Overview({ go }) {
           <MorphIcon icon={Sparkles} size={17} color="var(--color-rose)" />
           <h2>数据文件健康</h2>
           <div className="spacer" />
-          <span className="hint">后台只读，不会改动它们</span>
+          <span className="hint">后台只读</span>
           <button type="button" className="btn btn-ghost" onClick={load} disabled={busy}>
             <MorphIcon icon={RefreshCw} size={15} color="currentColor" />
             {busy ? '刷新中…' : '刷新'}
@@ -238,13 +241,13 @@ export default function Overview({ go }) {
         <div className="panel-head">
           <h2>分类分布</h2>
           <div className="spacer" />
-          <span className="hint">分类改 categories.json，前台筛选会自动跟着变</span>
+          <span className="hint">前台筛选会自动跟着变</span>
         </div>
         <div className="raw-tools" style={{ marginBottom: 0 }}>
           {a.byCategory.length === 0 && <span className="empty">还没有文章</span>}
           {a.byCategory.map((c) => (
-            <span className="tag tag-rose" key={c.id}>
-              {c.label} · {c.count} 篇 <span style={{ opacity: 0.6 }}>({c.id})</span>
+            <span className="tag tag-rose" key={c.id} title={c.id}>
+              {c.label} · {c.count} 篇
             </span>
           ))}
           {data.categories

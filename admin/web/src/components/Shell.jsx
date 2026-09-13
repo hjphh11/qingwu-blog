@@ -72,7 +72,7 @@ const TITLES = {
   publish: ['发布', '构建校验 → 提交 → 推送 → 触发重建'],
   trash: ['回收站', '可恢复的已删除内容'],
   logs: ['操作日志', '发布 / 回滚 / 审批记录'],
-  stats: ['访问统计', '访问量 / 每篇阅读 / 来源 / 地区 / 设备（Action 每 6 小时汇总）'],
+  stats: ['访问统计', '访问量 · 阅读数 · 来源 · 地区 · 设备'],
 };
 
 export default function Shell({ onLogout }) {
@@ -318,11 +318,6 @@ export default function Shell({ onLogout }) {
           </button>
         ))}
 
-        <div className="sidebar-foot">
-          阶段 M：访问统计
-          <br />
-          ⌘K 搜索 · 定时发布 · 一键备份
-        </div>
       </aside>
 
       <div className="main">

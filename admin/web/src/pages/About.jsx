@@ -154,7 +154,7 @@ export default function About() {
 
       <div className="panel-head" style={{ marginBottom: 0 }}>
         <span className="hint">
-          改完每块点它自己的「保存」。保存只写进仓库文件，上线要等「发布」（阶段 I）。
+          改完每块点它自己的「保存」，之后到「发布」才会上线。
         </span>
         <div className="spacer" />
         <button type="button" className="btn btn-ghost" onClick={load} disabled={busy}>

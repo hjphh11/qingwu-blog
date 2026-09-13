@@ -133,7 +133,7 @@ export default function Applications() {
         </div>
 
         <p className="hint" style={{ marginTop: -6, marginBottom: 12 }}>
-          访客在 <span className="mono">/links/apply</span> 提交的申请会落到私有仓库（带邮箱，所以不进公开仓库）。
+          访客在友链申请页提交的申请会存到私有仓库（带邮箱，不进公开仓库）。
           「通过」会直接写进 <span className="mono">links.json</span> —— 之后回<strong>发布页</strong>点发布，友链才真正上线。
           「拒绝」会标记回去，对方之后可以重新申请。
         </p>
