@@ -80,7 +80,7 @@ export async function getStats({ force = false } = {}) {
       empty: true,
       repo: config.applyRepo,
       path: config.statsPath,
-      reason: '没配 ADMIN_APPLY_TOKEN —— 读不到私有仓库里的统计文件',
+      reason: '还没配读取令牌，读不到私有仓库里的统计文件',
     };
   }
 
@@ -93,7 +93,7 @@ export async function getStats({ force = false } = {}) {
       empty: true,
       repo: config.applyRepo,
       path: config.statsPath,
-      reason: `私有仓库里还没有 ${config.statsPath} —— GitHub Action「统计汇总」还没跑过（第一次跑完就有了）`,
+      reason: '还没有汇总文件 —— 自动汇总还没跑过第一次，跑完就有了',
       totals: { pv: 0, uv: 0 },
       days: [],
       pages: [],

@@ -335,7 +335,7 @@ export default function Articles({ go }) {
               </h2>
               <div className="spacer" />
               <span className="hint">
-                这些已经写进仓库文件，但还没提交上线。「发布」在阶段 I 做
+                这些已保存到仓库，还没发布上线
               </span>
             </div>
             <div className="table-wrap">

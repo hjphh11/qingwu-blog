@@ -201,7 +201,7 @@ export default function Categories() {
         </div>
 
         <p className="hint" style={{ marginTop: -6, marginBottom: 12 }}>
-          顺序就是前台 /blog 筛选按钮的顺序。用上下箭头调整后点「保存顺序」。
+          上下箭头调整顺序，改完点「保存顺序」。
         </p>
 
         {creating && (

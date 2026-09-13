@@ -59,7 +59,7 @@ export default function Logs() {
         <div className="panel-head">
           <h2>操作日志</h2>
           <div className="spacer" />
-          <span className="hint">只记关键操作：发布 / 回滚 / 审批友链 / 定时发布。存在服务器本地（已 gitignore）</span>
+          <span className="hint">只记关键操作 · 存在服务器本地</span>
           <button type="button" className="btn btn-ghost" onClick={load} disabled={busy}>
             <MorphIcon icon={RefreshCw} size={15} color="currentColor" />
             {busy ? '刷新中…' : '刷新'}

@@ -429,7 +429,7 @@ export default function ArticleEditor({ id, go }) {
           </button>
           <div className="spacer" />
           <span className="hint">
-            {form.body.replace(/\s/g, '').length} 字 · 保存只写进仓库，上线要等「发布」（阶段 I）
+            {form.body.replace(/\s/g, '').length} 字 · 保存只写进仓库，要「发布」才上线
           </span>
         </div>
       </section>

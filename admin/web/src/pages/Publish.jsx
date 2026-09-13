@@ -216,12 +216,13 @@ export default function Publish() {
           </button>
         </div>
 
-        <p className="hint" style={{ marginTop: -6, marginBottom: 10 }}>
-          发布 = <b>构建校验</b>（先跑一次 <span className="mono">npm run build</span>，不过就拒绝推送）
-          → 提交 → 拉取变基 → 推送 → 触发 Vercel 重建。
-          {!status?.hasToken && ' ⚠ 没配 ADMIN_GIT_TOKEN，现在只能保存不能发布。'}
-          {status?.hasToken && !status?.hasDeployHook && ' （没配 Deploy Hook：Vercel 会自己检测到 push 后重建，稍慢）'}
-        </p>
+        {/* 只留真正需要看的一句话：正常情况不用解释「发布」是什么 */}
+        {(!status?.hasToken || !status?.hasDeployHook) && (
+          <p className="hint" style={{ marginTop: -6, marginBottom: 10 }}>
+            {!status?.hasToken && <strong>还没配「发布令牌」，现在只能保存、不能发布。</strong>}
+            {status?.hasToken && !status?.hasDeployHook && '站点会在推送后自己重建，稍慢一点。'}
+          </p>
+        )}
 
         {/* 窄屏时表格自己横向滚动（.table 有 min-width，不套 .table-wrap 会把整页撑宽）*/}
         <div className="table-wrap">
@@ -276,11 +277,10 @@ export default function Publish() {
         <div className="panel-head">
           <h2>定时发布</h2>
           <div className="spacer" />
-          <span className="hint">服务器每 15 秒检查一次；重启后过期的待办会补跑</span>
+          <span className="hint">每 15 秒检查一次，重启后会补跑</span>
         </div>
         <p className="hint" style={{ marginTop: -6, marginBottom: 10 }}>
-          到点自动跑一遍和上面「发布」<strong>完全一样</strong>的流程（构建校验 → 提交 → 推送）。
-          指定一篇文章时，会先把它的<strong>草稿</strong>改成已发布再发 —— 这就是「定时上线」。
+          到点自动发一次；指定文章时，会先把<strong>草稿</strong>改成已发布再发。
         </p>
 
         <div className="form-grid">
@@ -483,7 +483,7 @@ export default function Publish() {
         <div className="panel-head">
           <h2>发布历史</h2>
           <div className="spacer" />
-          <span className="hint">回滚 = 把那次提交 revert 掉，再走一遍构建与推送（不改写历史）</span>
+          <span className="hint">回滚 = 撤销那次提交再发一遍（不改写历史）</span>
         </div>
         <div className="post-list">
           {history.map((h) => (

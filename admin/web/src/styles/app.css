@@ -352,7 +352,11 @@ a:hover {
   gap: 18px;
 }
 .stat {
-  padding: 16px 18px;
+  padding: 18px;
+  text-align: center; /* 数字与说明居中，一排卡片看着齐 */
+}
+.stat .l {
+  justify-content: center;
 }
 .stat .n {
   font-family: var(--font-display);
@@ -1356,6 +1360,9 @@ a:hover {
     padding: 16px;
     gap: 18px; /* 手机上卡片之间也要留空气，别挤成一片 */
   }
+  .page-enter {
+    gap: 16px;
+  }
   .topbar {
     padding: 12px 16px;
     gap: 8px;
@@ -1428,7 +1435,12 @@ a:hover {
 }
 
 /* ——— 页面切换：内容轻轻上浮 + 淡入（换页时「知道自己换了地方」）——— */
+/* ⚠️ 卡片之间的**上下间隙**要加在这一层：阶段 L 之后所有卡片都包在 .page-enter 里，
+   外层 .content 的 gap 已经管不到它们了（曾经因此卡片上下贴在一起）。*/
 .page-enter {
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
   animation: page-in var(--dur-slow) var(--ease-out) both;
 }
 @keyframes page-in {
