@@ -253,11 +253,14 @@
 .bar-failed { position: absolute; inset: 0 0 auto 0; background: var(--red); opacity: .78; }
 .bar-readout {
   position: absolute;
-  top: 0;
+  top: auto;
+  /* 贴在柱顶上方 6px：柱子高度由 BarChart 通过 --bar-h 传进来。原来固定 top:0（槽位顶部），柱子接近满高时读数会和柱子叠在一起 */
+  bottom: calc(var(--bar-h, 0%) + 6px);
   left: 50%;
   translate: -50% 0;
   font-family: var(--font-mono);
-  font-size: 10.5px;
+  white-space: nowrap;
+  font-size: 12px;
   font-weight: 650;
   color: var(--ink);
 }

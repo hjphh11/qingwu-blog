@@ -20,10 +20,14 @@ export default function BarChart({ values = [], labels = [], failed = [], highli
   return (
     <div className={cls('bars')} style={{ height: `${height}px` }} onPointerLeave={() => setHover(null)}>
       <div className="bars-plot" role="img" aria-label={`柱状图，最高 ${Math.max(0, ...values)}${unit}`}>
-        {values.map((v, i) => (
+        {values.map((v, i) => {
+          // 柱子高度算一次：给柱子，也作为 CSS 变量让读数贴在柱顶上方
+          const pct = Math.max(v ? 4 : 2, (v / max) * 100);
+          return (
           <div
             key={i}
             className={cls('bar-slot', hover === i && 'is-hover')}
+            style={{ '--bar-h': `${pct}%` }}
             onPointerEnter={() => setHover(i)}
           >
             {/* 悬停时只显示该柱读数；没悬停时在峰顶显示一次，避免整排数字喧宾夺主 */}
@@ -35,7 +39,7 @@ export default function BarChart({ values = [], labels = [], failed = [], highli
             ) : null}
             <div
               className={cls('bar-col', i === highlight && 'is-highlight')}
-              style={{ height: `${Math.max(v ? 4 : 2, (v / max) * 100)}%` }}
+              style={{ height: `${pct}%` }}
             >
               {/* 失败段最多铺满整根柱子；v 为 0 时按 1 兜底，避免除零得到 Infinity */}
               {failed[i] ? (
@@ -46,7 +50,8 @@ export default function BarChart({ values = [], labels = [], failed = [], highli
               ) : null}
             </div>
           </div>
-        ))}
+          );
+        })}
       </div>
       <div className="bars-labels">
         {labels.map((l, i) => (
