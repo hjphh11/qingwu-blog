@@ -13,7 +13,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { cls } from '../cls.js';
 
 /* 绘图内边距：四周留白固定，坐标一律按内区算 */
-const PAD = { top: 18, right: 14, bottom: 28, left: 38 };
+const PAD = { top: 18, right: 20, bottom: 28, left: 38 };
 
 /* 纵轴取整：至少留 15% 顶部余量，刻度步长取 1 / 2 / 5 × 10ⁿ */
 function niceStep(raw) {
@@ -193,7 +193,7 @@ export default function TrendChart({
             </text>
           ))}
           {xLabels.map((l) => (
-            <text key={`x${l.i}`} x={target[l.i]?.x} y={height - 8} textAnchor="middle">
+            <text key={`x${l.i}`} x={target[l.i]?.x} y={height - 8} textAnchor={l.i === 0 ? 'start' : l.i === n - 1 ? 'end' : 'middle'}>
               {l.label}
             </text>
           ))}

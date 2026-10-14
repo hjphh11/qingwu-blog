@@ -258,7 +258,7 @@ export default function Stats() {
               <MetricNote icon={Sparkles}>访客 {n(data.last30?.uv)}</MetricNote>
             </Metric>
           </div>
-          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 14 }}>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 18 }}>
             <Tag tone="info">今日访客 {n(data.today?.uv)}</Tag>
             <Tag>近 7 天访客 {n(data.last7?.uv)}</Tag>
             <Tag>近 30 天访客 {n(data.last30?.uv)}</Tag>
