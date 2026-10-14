@@ -113,7 +113,7 @@ const TITLES = {
 };
 
 /** 已经迁到珍珠玻璃的页面名。其它的暂时套一层暖色容器（下一轮再迁） */
-const PEARL_PAGES = new Set(['dash', 'posts', 'edit', 'cats', 'links', 'share', 'trash', 'logs', 'stats', 'publish']);
+const PEARL_PAGES = new Set(['dash', 'posts', 'edit', 'cats', 'links', 'share', 'about', 'trash', 'logs', 'stats', 'publish']);
 
 export default function PearlShell({ onLogout }) {
   const [route, setRoute] = useState({ name: 'dash', params: {} });

@@ -735,3 +735,75 @@ body:has(.overlay) .menu-pop {
   padding-top: 4px;
   padding-bottom: 12px;
 }
+
+/* ── 16. 关于页（About）自己的三件东西 ───────────────────────────
+ * 这页原来是暖色皮肤：四块内容都是 `section.card.panel`（头是 `.panel-head` + `.hint` +
+ * `.dirty-dot` + `.btn`），条目列表是 app.css 的 `.post-list / .post-item`（顺序按钮 +
+ * 图标 + 标题 + 元信息 + 操作），新增 / 编辑是插在卡片里的两处内联 `.inline-box`
+ * （`.form-grid` + `.field` + `.input` / `.textarea`）。
+ * 组件级重做后：四块走 Panel（保存按钮留在各自面板头上）、条目列表走 DataTable
+ * （复用 `.cell-main / .cell-title / .cell-sub` 与概览页那枚 `.quick-ico` 玻璃小槽，
+ * 与分享·语录页同一写法）、新增 / 编辑走居中 Modal（图标选择器复用 `.perm-chip`）。
+ * 这里只补 scaffold 没有、也借不到现成件的三样：
+ *   ① `.about-cell`：条目格是两行（标签 + 值）—— DataTable 的 `.cell-sub` 本身是**行内**
+ *      元素，只靠"前一个兄弟是 block"换行不稳（标签一空就会和值挤在同一行），
+ *      所以在这里显式给两块 `display: block`（`.cell-sub` 的省略号也因此才生效）；
+ *   ② `.about-rows` / `.about-row`：人设段落行（上下移动 + 可编辑段落 + 删除）。
+ *      scaffold 没有"一行里放一个可编辑 textarea"的现成件，旧的 `.post-item` 是暖色的；
+ *   ③ `.about-row-acts`：行首 / 行尾那两组图标按钮，排法与 `.row-actions` 一致
+ *      （区别是它不靠右，`.row-actions` 带 `justify-content: flex-end`）。
+ * 面板内距：主页信息 / 爱弥斯两块的内容都包在 `.panel-body` 正文层里，信息条目 /
+ * 联系方式两块只有通宽的表格（`.table-wrap` 本来就被第 12 节的兜底排除），所以这里
+ * 不存在"正文层 + 兜底"叠成两层内距的情况。 */
+.about-cell {
+  display: block;
+  min-width: 0;
+}
+.about-cell .cell-title,
+.about-cell .cell-sub {
+  display: block;
+}
+
+.about-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.about-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+}
+/* 段落自己吃掉中间那段宽度，两侧的按钮组固定宽度 */
+.about-row .input-shell {
+  flex: 1;
+  min-width: 0;
+}
+.about-row-acts {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  flex: none;
+}
+/* 窄屏（与全站 820 断点对齐）：按钮组挪到段落下面，段落占满整行 */
+@media (max-width: 820px) {
+  .about-row {
+    flex-wrap: wrap;
+  }
+  .about-row .input-shell {
+    order: 2;
+    flex-basis: 100%;
+  }
+  .about-row-acts {
+    order: 1;
+  }
+}
+
+/* ── 17. 弹窗标题收进字号阶梯 ────────────────────────────────────
+ * scaffold 的 `.modal-title` 是 16px，不在全站 12/13/14/18/28 阶梯上；
+ * 而审计脚本不打开弹窗，所以一直没被发现（关于页迁移时被抓出来）。
+ * 影响分享 / 友链 / 发布 / 音乐 / 分类 / 关于 六处弹窗，统一收到 18。 */
+.modal-title {
+  font-size: 18px;
+}
