@@ -456,3 +456,28 @@ h2.is-danger::before {
   }
 }
 
+
+/* ── 12. 面板正文的内距兜底 ──────────────────────────────────────
+ * 珍珠的 `Panel` 把内距放在**正文层**（`.panel-body`）上，面板本身是 0 内距。
+ * 页面若把内容直接挂在 `.p-panel` 下（访问统计页就是这样），
+ * 内容离边框只剩 1px —— 首元素 top/left/right=1、末元素 bottom=1，看着"贴边、挤在一起"。
+ * 这里只兜**没有正文层**的情况（`:not(.panel-body)`），已经包好正文层的页面不受影响；
+ * 表格/行列表照旧通宽（它们靠内部单元格自带内距）。
+ * 另外 `.activity-list` 自带 -7px 负外边距（scaffold 的活动流组件），会把内容顶出面板，这里按回 0。 */
+.p-panel > :not(.p-panel-head):not(.panel-body):not(.table-wrap):not(.post-list):not(.stats):not(.bento-grid) {
+  padding-left: 20px;
+  padding-right: 20px;
+}
+.p-panel > :last-child:not(.p-panel-head):not(.table-wrap) {
+  padding-bottom: 20px;
+}
+.p-panel > .activity-list {
+  margin-left: 0;
+  margin-right: 0;
+}
+.p-panel > .trend,
+.p-panel > .bars,
+.p-panel > .ring-wrap,
+.p-panel > .rank-list {
+  padding-top: 2px;
+}
