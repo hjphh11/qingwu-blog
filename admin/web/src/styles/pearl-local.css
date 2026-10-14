@@ -893,3 +893,50 @@ body:has(.overlay) .menu-pop {
 .p-panel > .apply-filters {
   margin-bottom: 16px;
 }
+
+/* ── 19. 登录页（Login）—— 外壳之外的整屏独立页 ──────────────────
+ * 这页原来是暖色皮肤：`.login-wrap`（居中）+ `.card.login-card`（380 宽）+ `.login-brand` /
+ * `.login-sub` / `.field` / `.input` / `.btn.btn-block` / `.alert`。
+ * 珍珠玻璃版整页复用 **scaffold 早就搬进来的那套登录样式**（styles/pearl/pages.css 第 5 节）：
+ * 外层 `.login`（`--stage` 底色 + 100dvh）→ `.login-side`（居中）→ `.p-login-card`
+ * （宽度 / 圆角）→ `.login-card-inner`（32px 内距）→ `.login-form`（竖排 + 16px 间距，
+ * 输入框外壳钉在 42px）。
+ *
+ * 这里只补三件 scaffold 没有、也借不到现成件的东西：
+ *   ① **卡片标题收进字号阶梯**：scaffold 的 `.login-card-title` 是 26px，不在 12/13/14/18/28 上。
+ *      这页没有用那条类（标题走 `.section-mark-title` = 18px），这条规则是**兜底**：
+ *      以后谁再引用它，也不会把 26px 带回页面。
+ *   ② **说明与下面内容的间距**：scaffold 的 `.login-card-sub` 只有 `margin-top: 4px`
+ *      （原设计里它下面紧跟着表单区，现在中间还可能夹一条「登录已过期」提示）→ 补 18px 下间距，
+ *      与 `.stack` 的 18px 竖向节奏一致。
+ *   ③ **提交按钮**：`.login-submit` 是 scaffold 为登录按钮准备的规格（46px 高 / 14px 字），
+ *      高度与 `.p-btn` 同层，靠 pearl-local 的加载顺序压过 `var(--control-h)`；
+ *      宽度不用管（`.login-card-inner` 是块级容器，`.p-btn-block` 的 100% 已经让它通栏）。
+ * 卡片材质不在这里写：JSX 上直接给 `.m-surface`（阅读面那一档，比在这里加背景色更直白）。
+ * 其余（品牌横排、品牌方牌、字段、输入框、按钮、提示）全部是现成类，不在这里重写。 */
+.login-submit {
+  height: 46px;
+}
+.login-card-title {
+  font-size: 18px;
+}
+.login-card-sub {
+  margin-bottom: 18px;
+}
+
+/* ── 20. 登录页：桌面宽度下卡片要居中 + 品牌名收进字号阶梯 ──────────
+ * ① scaffold 的登录页本来是「左视觉 + 右表单」两栏；本项目只渲染表单那栏，
+ *    于是 .login-side 只占半屏、卡片在左半区里居中 —— 1440px 实测卡片中心 ≠ 视口中心
+ *    （820/390 窄屏由媒体查询收成单栏，反而是居中的）。
+ *    让表单栏占满并居中，两种情况都对齐。
+ * ② `.p-login-brand .brand-name` 是 scaffold 的 16px，不在 12/13/14/18/28 阶梯上
+ *    （登录页在壳外，audit-pages.py 按侧栏路由扫，扫不到它）。
+ * ③ `.login-submit` 46px / `.input-shell` 42px 是 scaffold 给登录页的规格，
+ *    比全站控件 36px 大一圈 —— 这是「登录页主行动」的设计取向，先保留（见 HANDOFF）。 */
+.login .login-side {
+  flex: 1 1 100%;
+  justify-content: center;
+}
+.p-login-brand .brand-name {
+  font-size: 18px;
+}
