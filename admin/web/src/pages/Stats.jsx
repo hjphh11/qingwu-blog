@@ -239,7 +239,7 @@ export default function Stats() {
 
       <div className={cls('stack')}>
         {/* 四张概览读数卡（原来是 section.stats 里的 4 个 .card.stat） */}
-        <Panel head={<SectionLabel title="访问概览" as="h2" />} meta={trendMeta}>
+        <Panel head={<SectionLabel title="访问概览" as="h2" />}>
           <div className="readout-strip">
             <Metric value={data.totals?.pv} label="总访问量" size="m">
               <MetricNote icon={Eye}>独立访客 {n(data.totals?.uv)}</MetricNote>
@@ -270,7 +270,7 @@ export default function Stats() {
         <Panel
           className={cls('bento-hero', 'm-glow')}
           title="访问趋势"
-          meta={trendMeta}
+          meta={`最近 ${trendDays.length} 天`}
           status={trendDays.length ? 'ok' : undefined}
           tools={
             <Button variant="ghost" size="sm" icon={RefreshCw} disabled={busy} onClick={() => load(true)}>
