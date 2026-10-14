@@ -481,3 +481,39 @@ h2.is-danger::before {
 .p-panel > .rank-list {
   padding-top: 2px;
 }
+
+/* ── 13. 发布页（Publish）自己的三处收敛 ─────────────────────────
+ * 这页原来是暖色皮肤：发布状态是小表格、步骤流是 app.css 的 `.steps/.step`、
+ * 定时表单内联在页面里。组件级重做后：状态走 `.kv-grid` 只读读数块、步骤走
+ * scaffold 的 `.pipe-steps/.pipe-step`（instruments.css 里现成的步骤条）、
+ * 表单进 Modal。这里只补三件事：
+ *   ① `.kv-label`（11px）与 `.pipe-step-n`（11px）不在 12/13/14/18/28 阶梯上 → 收到 12；
+ *   ② `.pipe-step` 在 scaffold 里是可点的（cursor:pointer），本页只是看进度 → 改回默认；
+ *   ③ 刚跑完的那一步编号弹一下：原来靠 app.css 的 `.step-done-pop`，那份样式随旧暖色
+ *      一起弃用，这里按同样的时机重写一份（只有状态真正翻转时才加 `.is-popped`）。 */
+.kv-label,
+.pipe-step-n {
+  font-size: 12px;
+}
+.pipe-steps .pipe-step {
+  cursor: default;
+}
+.pipe-step.is-popped .pipe-step-n {
+  animation: pearl-step-pop 0.45s var(--ease-premium);
+}
+@keyframes pearl-step-pop {
+  0% {
+    transform: scale(1);
+  }
+  35% {
+    transform: scale(1.3);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .pipe-step.is-popped .pipe-step-n {
+    animation: none;
+  }
+}
