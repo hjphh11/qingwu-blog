@@ -716,13 +716,6 @@ a:hover {
   border-radius: 9999px;
   transition: width var(--dur-slow) var(--ease-out);
 }
-/* recharts 的文字用主题字体与暖色，别用默认的黑灰 */
-.recharts-text,
-.recharts-legend-item-text {
-  font-family: var(--font-body);
-  fill: rgba(74, 55, 40, 0.62);
-}
-
 /* ——— 占位页 ——— */
 .soon-box {
   padding: 40px 24px;

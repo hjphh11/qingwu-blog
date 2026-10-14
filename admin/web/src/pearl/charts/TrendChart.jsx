@@ -40,6 +40,8 @@ export default function TrendChart({
   labels = [],
   secondary,
   secondaryLabel = '失败',
+  // 副曲线色调：默认 red（语义是"失败"）；流量类页面（PV/UV 都不是失败）传 ink
+  secondaryTone = 'red',
   primaryLabel = '数值',
   height = 220,
   unit = '',
@@ -154,7 +156,7 @@ export default function TrendChart({
   return (
     <div
       ref={boxRef}
-      className={cls('trend', `tone-${tone}`)}
+      className={cls('trend', `tone-${tone}`, `sec-tone-${secondaryTone}`)}
       style={{ height: `${height}px` }}
       onPointerMove={onMove}
       onPointerLeave={onLeave}

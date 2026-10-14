@@ -280,6 +280,7 @@ export default function Stats() {
             <EmptyState title="还没有数据" desc="等第一次汇总跑完就有了" icon={ChartNoAxesColumn} />
           ) : (
             <TrendChart
+            secondaryTone="ink"
               values={trendPv}
               secondary={trendUv}
               labels={trendLabels}

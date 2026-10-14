@@ -192,9 +192,9 @@
 .trend-base { stroke: var(--p-line-strong); }
 .trend-tick { fill: var(--tick); }
 .trend-stem { stroke: var(--trend-ink); stroke-width: 2; stroke-linecap: round; }
-.trend-stem.is-secondary { stroke: var(--red); stroke-width: 1.6; stroke-dasharray: 3 3; }
+.trend-stem.is-secondary { stroke: var(--trend-sec); stroke-width: 1.6; stroke-dasharray: 3 3; }
 .trend-stem-label { font-family: var(--font-mono); font-size: 11px; font-weight: 600; fill: var(--ink); }
-.trend-line-2 { fill: none; stroke: var(--red); stroke-width: 1.6; stroke-dasharray: 4 4; stroke-linecap: round; opacity: .8; }
+.trend-line-2 { fill: none; stroke: var(--trend-sec); stroke-width: 1.6; stroke-dasharray: 4 4; stroke-linecap: round; opacity: .8; }
 .trend-band { opacity: .9; }
 .hatch-line { stroke: var(--hatch-ink); stroke-width: 1.6; }
 .trend-nodes circle { fill: var(--surface-solid); stroke: var(--trend-ink); stroke-width: 2; }
@@ -1221,3 +1221,10 @@ button.trace-crumb:hover { color: var(--blue); }
 @media (max-width: 899px) { .ladder-card { display: none; } }
 .org-link.is-active { stroke: color-mix(in srgb, var(--cat-ink, var(--blue)) 85%, transparent); stroke-width: 2; }
 .org-pulse { fill: var(--cat-ink, var(--blue)); opacity: 0; stroke: var(--pulse-halo); stroke-width: 6; paint-order: stroke; pointer-events: none; }
+
+/* ── 副曲线色（TrendChart 的 secondary）─────────────────────────
+ * 原来副线固定 var(--red)，而红色的语义是"失败"；PV/UV 这类流量数据不是失败，
+ * 由 JSX 的 secondaryTone 传类名切换：ink（中性，默认给流量）/ blue / 留空=red（失败）。 */
+.trend { --trend-sec: var(--red); }
+.trend.sec-tone-ink { --trend-sec: var(--ink-soft); }
+.trend.sec-tone-blue { --trend-sec: var(--blue); }
