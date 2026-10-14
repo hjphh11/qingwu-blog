@@ -707,3 +707,31 @@ body:has(.overlay) .menu-pop {
 .page .segmented button {
   font-size: 13px;
 }
+
+/* ── 15. 分享 · 语录（Shares）的内容列 ────────────────────────────
+ * 这页原来是暖色皮肤：列表是 app.css 的 `.post-list / .post-item`（每行一条，
+ * 顺序按钮 + 类型图标 + 标题 + 元信息 + 类型标签 + 操作）。组件级重做后整列表走
+ * DataTable（scaffold 现成的列式表格），内容列复用它的 `.cell-main / .cell-title /
+ * .cell-sub` 结构（图标用概览页那枚 `.quick-ico` 玻璃小槽）。这里只补一件事：
+ * 单元格是 `white-space: nowrap`，而地址 / 标签那行可能很长 —— 给副行一个宽度上限，
+ * 否则一行长 URL 会把整张表撑出横向滚动（与 `.p-table .cell-text` 的 420px 同一口径）。 */
+.p-table .cell-sub {
+  max-width: 420px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* 标题同理（旧版 `.post-title` 就是这么收的）：语录正文可能是一整段 */
+.p-table .cell-title {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* 这页的面板正文只有一行说明，它下面就是通宽的表格：
+ * 头↔正文的间距收成 4px、正文↔表格的间距给 12px（scaffold 原本是 20/20，
+ * 表格自带 12px 行内距，照原值会把说明和表头推得太开）。 */
+.p-panel .panel-body:first-child {
+  padding-top: 4px;
+  padding-bottom: 12px;
+}
