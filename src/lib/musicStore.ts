@@ -14,6 +14,15 @@ const S = {
 
 let currentIndex = 0;
 let isPlaying = false;
+/**
+ * 音频是不是正在「等数据」(网络没跟上 / 卡了)。
+ *
+ * 之前界面只看 isPlaying:只要 play() 的 promise 一 resolve 唱片就转起来,
+ * 但那时音频往往还在 buffering —— 视觉上已经在「播」,听感上却没有声音。
+ * 补上这个字段之后,唱片降速、声波降幅、外圈琥珀缓冲环都读它,
+ * 状态与事实才一致(见 docs/开屏与全部加载动画-完整设计文档.html 第 04 节 ④)。
+ */
+let isBuffering = false;
 let currentTime = 0;
 let duration = 0;
 let volume = 0.8;
@@ -49,6 +58,20 @@ function getAudio(): HTMLAudioElement {
       emit();
     });
     audio.addEventListener('ended', onEnded);
+
+    // —— 缓冲态:只在这里判一次,MusicClient / MiniPlayer 都只读 isBuffering,
+    //    不各写一套(否则两处的「正在缓冲」会在不同时刻亮灭)。
+    const setBuffering = (on: boolean) => {
+      if (isBuffering === on) return;
+      isBuffering = on;
+      emit();
+    };
+    audio.addEventListener('waiting', () => setBuffering(true));
+    audio.addEventListener('stalled', () => setBuffering(true));
+    audio.addEventListener('playing', () => setBuffering(false));
+    audio.addEventListener('canplay', () => setBuffering(false));
+    // 暂停 / 换源之后不该还挂着缓冲环
+    audio.addEventListener('pause', () => setBuffering(false));
   }
   return audio;
 }
@@ -91,6 +114,8 @@ function ensure(index: number) {
     a.src = playlist[index].audio;
     a.volume = isMuted ? 0 : volume;
     loadedIndex = index;
+    // 换源相当于重新开始等数据,先把这个状态清掉(新源真的卡住时会再触发 waiting)
+    isBuffering = false;
   }
 }
 
@@ -212,6 +237,7 @@ function getState() {
     currentIndex,
     currentSong: currentSong(),
     isPlaying,
+    isBuffering,
     currentTime,
     duration,
     volume,

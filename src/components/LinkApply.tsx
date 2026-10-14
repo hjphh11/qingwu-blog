@@ -375,7 +375,7 @@ export default function LinkApply({ siteKey = '' }: { siteKey?: string }) {
           initial={reduce ? false : { opacity: 0, y: 8 }}
           animate={reduce ? {} : { opacity: 1, y: 0 }}
           transition={{ duration: 0.4, ease: [0.16, 1, 0.3, 1] }}
-          className="flex items-start gap-2.5 rounded-[var(--radius-card)] border border-amber/40 bg-amber/15 p-4 text-sm text-ink/80"
+          className="flex items-start gap-2.5 rounded-[var(--radius-card)] border border-amber/40 bg-amber/15 p-4 text-sm text-ink/85"
         >
           <span className="mt-0.5 shrink-0 text-amber">
             <MorphIcon icon={Info} size={17} color="currentColor" />
@@ -402,10 +402,10 @@ export default function LinkApply({ siteKey = '' }: { siteKey?: string }) {
                 <MorphIcon icon={CircleCheck} size={26} color="currentColor" />
               </span>
               <h2 className="mt-4 font-display text-2xl text-ink">申请已提交</h2>
-              <p className="mt-2 text-sm leading-relaxed text-ink/70">
+              <p className="mt-2 text-sm leading-relaxed text-muted">
                 收到啦，谢谢你来敲门 ~ 我会尽快查看，
                 通过了就加进
-                <a href="/links" className="mx-1 text-crimson underline-offset-2 hover:underline">
+                <a href="/links" className="mx-0.5 inline-block px-1.5 py-2 text-crimson underline-offset-2 hover:underline">
                   友链页
                 </a>
                 。
@@ -413,7 +413,7 @@ export default function LinkApply({ siteKey = '' }: { siteKey?: string }) {
               <dl className="mt-5 space-y-2 rounded-[var(--radius-card)] border border-rose/20 bg-white/40 p-4 text-left text-sm">
                 {FIELDS.map((f) => (
                   <div key={f.key} className="flex gap-3">
-                    <dt className="w-20 shrink-0 text-ink/50">{f.label}</dt>
+                    <dt className="w-20 shrink-0 text-subtle">{f.label}</dt>
                     <dd className="min-w-0 flex-1 break-all text-ink">{norm[f.key]}</dd>
                   </div>
                 ))}
@@ -431,7 +431,7 @@ export default function LinkApply({ siteKey = '' }: { siteKey?: string }) {
                   {copied === 'sent' ? '已复制 ✓' : '复制申请信息'}
                 </button>
               </div>
-              <p className="mt-4 text-xs text-ink/50">
+              <p className="mt-4 text-xs text-subtle">
                 想补充或修改？直接回一封邮件给我也行：{SITE.email}
               </p>
             </motion.div>
@@ -447,12 +447,12 @@ export default function LinkApply({ siteKey = '' }: { siteKey?: string }) {
                 <MorphIcon icon={CircleCheck} size={26} color="currentColor" />
               </span>
               <h2 className="mt-4 font-display text-2xl text-ink">已经收到过你的申请啦</h2>
-              <p className="mt-2 text-sm leading-relaxed text-ink/70">
+              <p className="mt-2 text-sm leading-relaxed text-muted">
                 {serverMessage || '这份申请已经在列表里了 ~'}
               </p>
-              <p className="mt-3 text-xs leading-relaxed text-ink/50">
+              <p className="mt-3 text-xs leading-relaxed text-subtle">
                 不用重复提交 —— 我会尽快看，通过了就加进
-                <a href="/links" className="mx-1 text-crimson underline-offset-2 hover:underline">
+                <a href="/links" className="mx-0.5 inline-block px-1.5 py-2 text-crimson underline-offset-2 hover:underline">
                   友链页
                 </a>
                 。
@@ -465,7 +465,7 @@ export default function LinkApply({ siteKey = '' }: { siteKey?: string }) {
                 <button
                   type="button"
                   onClick={resetToEditing}
-                  className="inline-flex items-center gap-1.5 rounded-full px-4 py-2.5 text-sm text-ink/60 transition-colors hover:text-crimson"
+                  className="inline-flex items-center gap-1.5 rounded-full px-4 py-2.5 text-sm text-muted transition-colors hover:text-crimson"
                 >
                   <MorphIcon icon={ArrowLeft} size={15} color="currentColor" />
                   换一个站点提交
@@ -486,11 +486,11 @@ export default function LinkApply({ siteKey = '' }: { siteKey?: string }) {
               <h2 className="mt-4 font-display text-2xl text-ink">
                 {limitScope.startsWith('global') ? '暂时停止接收申请' : '提交有点频繁啦'}
               </h2>
-              <p className="mt-2 text-sm leading-relaxed text-ink/70">
+              <p className="mt-2 text-sm leading-relaxed text-muted">
                 {serverMessage || '请稍等一会儿再试 ~'}
               </p>
 
-              <div className="mt-5 flex items-start gap-2.5 rounded-[var(--radius-card)] border border-amber/40 bg-amber/15 p-4 text-left text-sm text-ink/80">
+              <div className="mt-5 flex items-start gap-2.5 rounded-[var(--radius-card)] border border-amber/40 bg-amber/15 p-4 text-left text-sm text-ink/85">
                 <span className="mt-0.5 shrink-0 text-amber">
                   <MorphIcon icon={Info} size={17} color="currentColor" />
                 </span>
@@ -502,7 +502,7 @@ export default function LinkApply({ siteKey = '' }: { siteKey?: string }) {
               <dl className="mt-5 space-y-2 rounded-[var(--radius-card)] border border-rose/20 bg-white/40 p-4 text-left text-sm">
                 {FIELDS.map((f) => (
                   <div key={f.key} className="flex gap-3">
-                    <dt className="w-20 shrink-0 text-ink/50">{f.label}</dt>
+                    <dt className="w-20 shrink-0 text-subtle">{f.label}</dt>
                     <dd className="min-w-0 flex-1 break-all text-ink">{norm[f.key]}</dd>
                   </div>
                 ))}
@@ -523,7 +523,7 @@ export default function LinkApply({ siteKey = '' }: { siteKey?: string }) {
                 <button
                   type="button"
                   onClick={resetToEditing}
-                  className="inline-flex items-center gap-1.5 rounded-full px-4 py-2.5 text-sm text-ink/60 transition-colors hover:text-crimson"
+                  className="inline-flex items-center gap-1.5 rounded-full px-4 py-2.5 text-sm text-muted transition-colors hover:text-crimson"
                 >
                   <MorphIcon icon={ArrowLeft} size={15} color="currentColor" />
                   返回修改
@@ -543,14 +543,14 @@ export default function LinkApply({ siteKey = '' }: { siteKey?: string }) {
               <h2 className="mt-4 font-display text-2xl text-ink">
                 {fallbackKind === 'building' ? '信息检查完毕' : '这次没能提交成功'}
               </h2>
-              <p className="mt-2 text-sm leading-relaxed text-ink/70">
+              <p className="mt-2 text-sm leading-relaxed text-muted">
                 {serverMessage ||
                   (fallbackKind === 'building'
                     ? '表单校验全部通过，看起来没什么问题 ~'
                     : '不好意思，刚才没能把你的申请收进来。')}
               </p>
 
-              <div className="mt-5 flex items-start gap-2.5 rounded-[var(--radius-card)] border border-amber/40 bg-amber/15 p-4 text-left text-sm text-ink/80">
+              <div className="mt-5 flex items-start gap-2.5 rounded-[var(--radius-card)] border border-amber/40 bg-amber/15 p-4 text-left text-sm text-ink/85">
                 <span className="mt-0.5 shrink-0 text-amber">
                   <MorphIcon icon={Info} size={17} color="currentColor" />
                 </span>
@@ -572,7 +572,7 @@ export default function LinkApply({ siteKey = '' }: { siteKey?: string }) {
               <dl className="mt-5 space-y-2 rounded-[var(--radius-card)] border border-rose/20 bg-white/40 p-4 text-left text-sm">
                 {FIELDS.map((f) => (
                   <div key={f.key} className="flex gap-3">
-                    <dt className="w-20 shrink-0 text-ink/50">{f.label}</dt>
+                    <dt className="w-20 shrink-0 text-subtle">{f.label}</dt>
                     <dd className="min-w-0 flex-1 break-all text-ink">{norm[f.key]}</dd>
                   </div>
                 ))}
@@ -593,7 +593,7 @@ export default function LinkApply({ siteKey = '' }: { siteKey?: string }) {
                 <button
                   type="button"
                   onClick={resetToEditing}
-                  className="inline-flex items-center gap-1.5 rounded-full px-4 py-2.5 text-sm text-ink/60 transition-colors hover:text-crimson"
+                  className="inline-flex items-center gap-1.5 rounded-full px-4 py-2.5 text-sm text-muted transition-colors hover:text-crimson"
                 >
                   <MorphIcon icon={ArrowLeft} size={15} color="currentColor" />
                   返回修改
@@ -632,7 +632,7 @@ export default function LinkApply({ siteKey = '' }: { siteKey?: string }) {
                 </span>
                 填写你的站点信息
               </h2>
-              <p className="mt-1.5 text-sm text-ink/60">带 * 的是必填，其余都可以慢慢来 ~</p>
+              <p className="mt-1.5 text-sm text-muted">带 * 的是必填，其余都可以慢慢来 ~</p>
 
               <div className="mt-6 flex flex-col gap-5">
                 {FIELDS.map((f) => {
@@ -642,7 +642,7 @@ export default function LinkApply({ siteKey = '' }: { siteKey?: string }) {
                     <div key={f.key} className="flex flex-col gap-1.5">
                       <label
                         htmlFor={`apply-${f.key}`}
-                        className="flex items-center gap-2 text-sm font-medium text-ink/80"
+                        className="flex items-center gap-2 text-sm font-medium text-ink/85"
                       >
                         <span className="text-rose">
                           <MorphIcon icon={f.icon as never} size={16} color="currentColor" />
@@ -650,7 +650,7 @@ export default function LinkApply({ siteKey = '' }: { siteKey?: string }) {
                         {f.label}
                         <span className="text-crimson">*</span>
                         {f.maxLength && (
-                          <span className="ml-auto text-xs font-normal text-ink/40 tabular-nums">
+                          <span className="ml-auto text-xs font-normal text-subtle tabular-nums">
                             {values[f.key].length} / {f.maxLength}
                           </span>
                         )}
@@ -688,7 +688,7 @@ export default function LinkApply({ siteKey = '' }: { siteKey?: string }) {
                           {bad}
                         </p>
                       ) : (
-                        <p className="pl-1 text-xs text-ink/40">{f.hint}</p>
+                        <p className="pl-1 text-xs text-subtle">{f.hint}</p>
                       )}
                     </div>
                   );
@@ -698,7 +698,7 @@ export default function LinkApply({ siteKey = '' }: { siteKey?: string }) {
               {/* 人机验证(仅在服务端具备接收能力、且配了站点密钥时出现) */}
               {enabled === true && siteKey && (
                 <div className="mt-6 flex flex-col gap-2">
-                  <span className="text-sm font-medium text-ink/80">人机验证</span>
+                  <span className="text-sm font-medium text-ink/85">人机验证</span>
                   <div ref={turnstileBox} />
                   {turnstileMsg && (
                     <p role="alert" className="flex items-center gap-1.5 text-xs text-crimson">
@@ -710,7 +710,14 @@ export default function LinkApply({ siteKey = '' }: { siteKey?: string }) {
               )}
 
               <div className="mt-7 flex flex-wrap items-center gap-4">
-                <button type="submit" disabled={status === 'submitting'} className={primaryBtn}>
+                {/* 提交态:按钮底部一条扫光(见 global.css 的 .q-submit-sweep)。
+                    它不动按钮尺寸、不改变文案位置,所以不会引起布局抖动;
+                    原来那个转圈图标保留着 —— 少一个图标会让文案左移 24px。 */}
+                <button
+                  type="submit"
+                  disabled={status === 'submitting'}
+                  className={`${primaryBtn}${status === 'submitting' ? ' q-submit-sweep' : ''}`}
+                >
                   {status === 'submitting' ? (
                     <>
                       <span className="animate-spin">
@@ -725,9 +732,9 @@ export default function LinkApply({ siteKey = '' }: { siteKey?: string }) {
                     </>
                   )}
                 </button>
-                <p className="text-xs leading-relaxed text-ink/50">
+                <p className="text-xs leading-relaxed text-subtle">
                   我会尽快看，通过了就加进
-                  <a href="/links" className="mx-1 text-crimson underline-offset-2 hover:underline">
+                  <a href="/links" className="mx-0.5 inline-block px-1.5 py-2 text-crimson underline-offset-2 hover:underline">
                     友链页
                   </a>
                   ~
@@ -735,7 +742,7 @@ export default function LinkApply({ siteKey = '' }: { siteKey?: string }) {
               </div>
 
               {/* 透明说明：限流会用到匿名标识，写清楚比藏着好 */}
-              <p className="mt-4 text-[11px] leading-relaxed text-ink/40">
+              <p className="mt-4 text-[11px] leading-relaxed text-subtle">
                 为防刷，提交时会记录一个不可逆的匿名标识（不含明文 IP），仅用于限制提交频率，
                 24 小时后自动失效。
               </p>
@@ -758,7 +765,7 @@ export default function LinkApply({ siteKey = '' }: { siteKey?: string }) {
           className="flex flex-col gap-6"
         >
           <div className="glass-card p-5">
-            <p className="text-sm font-medium text-ink/70">你的卡片会长这样</p>
+            <p className="text-sm font-medium text-muted">你的卡片会长这样</p>
             <div className="mt-4 flex flex-col items-center gap-3 text-center">
               <img
                 src={norm.avatar || '/images/default-avatar.svg'}
@@ -772,25 +779,25 @@ export default function LinkApply({ siteKey = '' }: { siteKey?: string }) {
                 }}
               />
               <p className="font-display text-lg text-ink">{norm.name || '你的站点名称'}</p>
-              <p className="text-sm text-ink/60">
+              <p className="text-sm text-muted">
                 {norm.intro || '一句话介绍会显示在这里'}
               </p>
-              <span className="text-xs text-rose">
+              <span className="text-xs text-subtle">
                 {norm.url ? norm.url.replace(/^https?:\/\//i, '') : 'example.com'}
               </span>
             </div>
           </div>
 
           <div className="glass-card p-5">
-            <p className="flex items-center gap-2 text-sm font-medium text-ink/70">
+            <p className="flex items-center gap-2 text-sm font-medium text-muted">
               <MorphIcon icon={Link2} size={16} color="currentColor" />
               也把我加进你的友链吧
             </p>
             <dl className="mt-3 space-y-1.5 text-xs">
               {MY_INFO.map((it) => (
                 <div key={it.label} className="flex gap-2">
-                  <dt className="w-16 shrink-0 text-ink/45">{it.label}</dt>
-                  <dd className="min-w-0 flex-1 break-all text-ink/80">{it.value}</dd>
+                  <dt className="w-16 shrink-0 text-subtle">{it.label}</dt>
+                  <dd className="min-w-0 flex-1 break-all text-ink/85">{it.value}</dd>
                 </div>
               ))}
             </dl>

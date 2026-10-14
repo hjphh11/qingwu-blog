@@ -9,7 +9,7 @@ const totalPages = Math.max(1, Math.ceil(ALL.length / PAGE_SIZE));
 ---
 
 <Layout title="文章 · 清吾">
-  <div class="mx-auto max-w-4xl px-6 pb-20 pt-28">
+  <div class="page-shell">
     <BlogList posts={posts} currentPage={1} lastPage={totalPages} />
   </div>
 </Layout>

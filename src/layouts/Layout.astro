@@ -9,6 +9,7 @@ import Navbar from '../components/Navbar.tsx';
 import Footer from '../components/Footer.astro';
 import BackgroundDecor from '../components/BackgroundDecor.tsx';
 import MiniPlayer from '../components/MiniPlayer.tsx';
+import Splash from '../components/Splash.tsx';
 
 interface Props {
   title?: string;
@@ -33,9 +34,60 @@ const url = SITE.url.replace(/\/$/, '') + pathname;
 
     <ClientRouter />
 
+    {/* 开屏阶段的立绘要立刻可用 —— 否则爱弥斯是「先空着、图到了才浮出来」。
+        只在首页预加载:开屏也只在首页播,别的页面白下载 400KB 没有意义。 */}
+    {pathname === '/' && (
+      <link
+        rel="preload"
+        as="image"
+        href="/images/emis/full.webp"
+        type="image/webp"
+        fetchpriority="high"
+      />
+    )}
+
     {/* 滚动揭示启用标记:让 .reveal 只在 JS 可用时才隐藏,避免无 JS 时内容缺失 */}
     <script is:inline>
       document.documentElement.classList.add('qjs');
+    </script>
+
+    {/* 开屏:在第一次绘制之前就判定这次要不要播,并给 <html> 打标记 ——
+        铺奶油幕布、先把首页立绘藏起来、锁住滚动。这三件事必须早于首帧,
+        否则会出现「首页已经画出来了 → 开屏层才盖上来」的闪一下。
+        ⚠️ 判定条件必须与 components/Splash.tsx 完全一致,否则会出现
+        「幕布铺上了但没人来收」—— 访客被锁在没有立绘、不能滚动的页面上。 */}
+    <script is:inline>
+      (function () {
+        try {
+          if (location.pathname !== '/') return;
+          if (sessionStorage.getItem('qingwu:splash')) return;
+          var root = document.documentElement;
+          root.classList.add('q-splash-pending');
+          // 兜底:万一开屏层没能接管(脚本报错 / 被拦 / 打包失败),5 秒后自己
+          // 把幕布撤掉。宁可少播一次开屏,也不能把访客锁死在空白页上。
+          setTimeout(function () {
+            if (!window.__qSplashTaken) root.classList.remove('q-splash-pending');
+          }, 5000);
+        } catch (e) {
+          /* sessionStorage 不可用(隐私模式等)就直接看首页,不播开屏 */
+        }
+      })();
+    </script>
+
+    {/* 后台标签页时暂停所有持续动画(樱花 canvas / 氛围光斑 / 唱片 / 声波):
+        切走之后没人看,继续跑只是白烧 CPU 和电量。 */}
+    <script is:inline>
+      (function () {
+        if (window.__qVisibility) return;
+        window.__qVisibility = true;
+        var root = document.documentElement;
+        var sync = function () {
+          root.classList.toggle('qhidden', document.hidden);
+          window.dispatchEvent(new CustomEvent('qingwu:visibility', { detail: !document.hidden }));
+        };
+        document.addEventListener('visibilitychange', sync);
+        sync();
+      })();
     </script>
 
     <title>{title}</title>
@@ -55,7 +107,17 @@ const url = SITE.url.replace(/\/$/, '') + pathname;
     <meta name="twitter:image" content={SITE.url.replace(/\/$/, '') + image} />
   </head>
   <body>
+    {/* 路由切换进度条(样式见 global.css 的 .q-route):ClientRouter 早就在跑,
+        但切页时界面完全没反应 —— 点「文章」到新内容出现之间是静默的。
+        这条 2px 绯红→琥珀的线明确「跳转发生了」。 */}
+    <div class="q-route" aria-hidden="true">
+      <div class="q-route__bar" id="q-route-bar"></div>
+    </div>
+
     <Navbar pathname={pathname} client:load />
+    {/* 开屏:只在首页播、每会话一次,三阶段总时长 2.0s(见 Splash.tsx 顶部说明)。
+        改动只在这一个 prop 上 —— 1600 更紧凑、2400 更舒展,都不影响正确性。 */}
+    <Splash client:load dur={2000} />
     <BackgroundDecor client:only="react" />
     <MiniPlayer client:only="react" />
 
@@ -100,6 +162,70 @@ const url = SITE.url.replace(/\/$/, '') + pathname;
 
         // 客户端路由（ClientRouter）切页也会触发，正好逐页计数
         document.addEventListener('astro:page-load', sendHit);
+      })();
+    </script>
+
+    {/* 路由进度条驱动。⚠️ 进度条元素每次切页都会被换掉(ClientRouter 会替换 body),
+        所以 listen 一次、每次用 getElementById 重新取,不能把元素引用缓存下来。 */}
+    <script is:inline>
+      (function () {
+        if (window.__qRoute) return;
+        window.__qRoute = true;
+
+        // 只有「发生了跳转」才画这条线 —— astro:page-load 在首次进入时也会触发,
+        // 不区分的话每次打开页面都会在顶上闪一条 100% 的线。
+        var navigating = false;
+        var tail = [];
+
+        function bar() {
+          return document.getElementById('q-route-bar');
+        }
+        function clearTail() {
+          tail.forEach(clearTimeout);
+          tail = [];
+        }
+        function setRoute(pct) {
+          var el = bar();
+          if (!el) return;
+          clearTail();
+          if (pct >= 100) {
+            // 到 100% 之后延迟归零,否则会残留一条线挂在顶上
+            el.style.width = '100%';
+            el.style.opacity = '1';
+            tail.push(
+              setTimeout(function () {
+                el.style.opacity = '0';
+                tail.push(
+                  setTimeout(function () {
+                    el.style.transition = 'none';
+                    el.style.width = '0';
+                    tail.push(
+                      setTimeout(function () {
+                        el.style.transition = '';
+                      }, 60),
+                    );
+                  }, 300),
+                );
+              }, 260),
+            );
+            return;
+          }
+          el.style.width = pct + '%';
+          el.style.opacity = '1';
+        }
+
+        document.addEventListener('astro:before-preparation', function () {
+          navigating = true;
+          setRoute(30);
+        });
+        document.addEventListener('astro:after-swap', function () {
+          if (navigating) setRoute(88);
+        });
+        document.addEventListener('astro:page-load', function () {
+          if (!navigating) return;
+          navigating = false;
+          setRoute(100);
+        });
       })();
     </script>
 
@@ -150,6 +276,40 @@ const url = SITE.url.replace(/\/$/, '') + pathname;
           { passive: true },
         );
       }
+    </script>
+
+    {/* 图片占位淡出:给 .q-media 在图片加载完成时打上 is-loaded(样式见 global.css)。
+        ⚠️ 三个必须:
+        · 用**捕获阶段**的 load 监听 —— load 事件不冒泡,但会在捕获阶段经过 document。
+        · 必须补扫一次 img.complete —— 命中缓存的图在脚本挂上之前就已经加载完了,
+          那个 load 事件永远不会再触发,不补扫就会永远停在占位层上。
+        · **不要碰 React 拥有的容器**(带 data-media-self 的),那些由组件自己管 ——
+          水合前改它的 class 会触发 React 的 hydration mismatch 警告
+          (实测:`<picture>` 上报 `q-media` vs `q-media is-loaded`)。 */}
+    <script is:inline>
+      (function () {
+        if (window.__qMedia) return;
+        window.__qMedia = true;
+
+        function mark(el) {
+          if (!(el instanceof HTMLImageElement)) return;
+          var box = el.closest('.q-media');
+          if (!box || box.hasAttribute('data-media-self')) return;
+          box.classList.add('is-loaded');
+        }
+        function scan() {
+          document.querySelectorAll('.q-media:not([data-media-self]) img').forEach(function (img) {
+            if (img.complete && img.naturalWidth > 0) mark(img);
+          });
+        }
+
+        document.addEventListener('load', function (e) { mark(e.target); }, true);
+        // 图挂了也把占位层撤掉:一张加载失败的图应该看得见(诚实),而不是
+        // 永远停在一个看着像「还在加载」的粉色块上。
+        document.addEventListener('error', function (e) { mark(e.target); }, true);
+        scan();
+        document.addEventListener('astro:page-load', scan);
+      })();
     </script>
 
     {/* 滚动揭示:全局 IntersectionObserver,进入视口给 .reveal 上淡入 */}

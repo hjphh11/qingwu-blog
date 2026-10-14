@@ -125,13 +125,19 @@ export default function Navbar({ pathname = '/' }: Props) {
         {/* 品牌(头像 + 名字)→ 左侧,始终显示 */}
         <a className="relative z-10 flex items-center gap-2 text-ink" href="/">
           <span className="grid h-8 w-8 place-items-center overflow-hidden rounded-full ring-2 ring-white/70">
-            <img
-              src="/images/avatar.jpg"
-              alt="清吾头像"
-              width={32}
-              height={32}
-              className="h-full w-full object-cover"
-            />
+            {/* 原来直接挂 avatar.jpg(734KB / 1259px)只显示 32px。
+                webp 版 16KB,首屏省下约 700KB。 */}
+            <picture>
+              <source srcSet="/images/avatar.webp" type="image/webp" />
+              <img
+                src="/images/avatar.jpg"
+                alt="清吾头像"
+                width={32}
+                height={32}
+                decoding="async"
+                className="h-full w-full object-cover"
+              />
+            </picture>
           </span>
           <span className="font-hand text-2xl font-bold leading-none">清吾</span>
         </a>
@@ -157,7 +163,7 @@ export default function Navbar({ pathname = '/' }: Props) {
                   itemRefs.current[i] = el;
                 }}
                 className={`relative z-10 block rounded-full px-3.5 py-1.5 text-base font-medium transition-colors duration-200 active:scale-95 ${
-                  active ? 'text-crimson' : 'text-ink/70 hover:text-crimson'
+                  active ? 'text-crimson' : 'text-muted hover:text-crimson'
                 }`}
               >
                 {item.label}
@@ -204,7 +210,7 @@ export default function Navbar({ pathname = '/' }: Props) {
                 className={`rounded-xl px-4 py-2.5 text-base font-medium transition active:scale-95 ${
                   isActive(item.href)
                     ? 'bg-rose/25 text-crimson'
-                    : 'text-ink/80 hover:bg-rose/15'
+                    : 'text-ink/85 hover:bg-rose/15'
                 }`}
               >
                 {item.label}

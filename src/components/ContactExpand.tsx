@@ -185,7 +185,7 @@ export default function ContactExpand({
                 type="button"
                 aria-label="收起"
                 onClick={close}
-                className="flex h-9 w-9 cursor-pointer items-center justify-center rounded-full text-ink/40 transition-colors hover:bg-white hover:text-crimson"
+                className="flex h-9 w-9 cursor-pointer items-center justify-center rounded-full text-subtle transition-colors hover:bg-white hover:text-crimson"
                 initial={{ scale: 0, opacity: 0 }}
                 animate={{ scale: 1, opacity: 1 }}
                 exit={{ scale: 0, opacity: 0 }}

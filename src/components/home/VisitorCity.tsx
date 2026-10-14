@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { MorphIcon } from 'morphicons/react';
 import { MapPin, Building, House } from '../../lib/icons';
+import { CardShell, Skel, SkelHead } from './CardShell';
 
 type Status = 'idle' | 'loading' | 'granted' | 'unknown';
 
@@ -52,6 +53,8 @@ async function ipCity(): Promise<string | null> {
 export default function VisitorCity() {
   const [status, setStatus] = useState<Status>('idle');
   const [city, setCity] = useState('');
+  // 首帧渲染骨架:localStorage 只有客户端拿得到,直接渲染会与 HTML 对不上。
+  const [ready, setReady] = useState(false);
 
   const persist = (name: string) => {
     setCity(name);
@@ -104,23 +107,40 @@ export default function VisitorCity() {
     if (localStorage.getItem(OK_KEY) === '1') {
       locate(true);
     }
+    setReady(true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   return (
-    <div className="glass-card p-5">
-      <div className="flex items-center gap-2 text-sm text-ink/70">
+    <CardShell
+      pending={!ready}
+      skeleton={
+        <>
+          <SkelHead className="w-[10.5rem]" />
+          {/* 与「同意定位」态同高:一行说明 + 一个 36px 高的按钮 */}
+          <div className="mt-2.5">
+            <p className="text-sm">
+              <Skel className="h-5 w-[11rem]" />
+            </p>
+            <div className="mt-3">
+              <Skel className="h-9 w-[5.5rem] rounded-full" />
+            </div>
+          </div>
+        </>
+      }
+    >
+      <div className="flex items-center gap-2 text-sm text-muted">
         <MorphIcon icon={MapPin} size={17} className="shrink-0" color="currentColor" />
         <span className="font-medium">猜猜你在哪座城 ˶ᵔ ᵕ ᵔ˶</span>
       </div>
 
       {status === 'idle' && (
-        <div className="mt-2">
-          <p className="text-sm text-ink/70">愿意让我看看你在哪座城市吗?</p>
+        <div className="mt-2.5">
+          <p className="text-sm text-muted">愿意让我看看你在哪座城市吗?</p>
           <button
             type="button"
             onClick={() => locate(false)}
-            className="mt-3 rounded-full bg-rose/70 px-4 py-1.5 text-sm text-ink transition-colors hover:bg-rose"
+            className="mt-3 min-h-9 rounded-full bg-rose/70 px-4 text-sm text-ink transition-all duration-200 hover:bg-rose hover:shadow-[0_4px_14px_rgba(246,165,184,0.4)] active:scale-95"
           >
             同意定位
           </button>
@@ -128,21 +148,25 @@ export default function VisitorCity() {
       )}
 
       {status === 'loading' && (
-        <p className="mt-3 text-sm text-ink/50">定位中…</p>
+        <p className="mt-3 flex items-center gap-2 text-sm text-subtle" role="status">
+          {/* 通用加载指示的行内尺寸(见 global.css 的 .q-spin) */}
+          <span className="q-spin q-spin--ink" aria-hidden="true" />
+          定位中…
+        </p>
       )}
 
       {status === 'granted' && (
-        <p className="mt-3 flex items-center gap-2 font-display text-xl text-crimson">
+        <p className="mt-3 flex items-center gap-2 font-display text-xl text-accent">
           <MorphIcon icon={Building} size={18} color="currentColor" /> {city}
         </p>
       )}
 
       {status === 'unknown' && (
-        <p className="mt-3 flex items-center gap-2 text-sm text-ink/50">
-          <MorphIcon icon={House} size={16} color="currentColor" /> 未知 &nbsp;
+        <p className="mt-3 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-subtle">
+          <MorphIcon icon={House} size={16} color="currentColor" /> 未知
           <span className="text-xs">(可在浏览器允许定位后重试)</span>
         </p>
       )}
-    </div>
+    </CardShell>
   );
 }

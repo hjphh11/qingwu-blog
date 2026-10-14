@@ -24,7 +24,7 @@ export default function MiniPlayer() {
     };
   }, []);
 
-  const { currentSong, isPlaying, currentLyric } = state;
+  const { currentSong, isPlaying, isBuffering, currentLyric } = state;
 
   // 首页与音乐页隐藏(音乐页已有完整播放器)
   if (pathname === '/' || pathname === '/music') return null;
@@ -49,16 +49,26 @@ export default function MiniPlayer() {
             boxShadow: '0 12px 36px rgba(246, 165, 184, 0.28)',
           }}
         >
-          <img
-            src={currentSong?.cover ?? '/music/covers/cover-1.svg'}
-            alt={currentSong?.title ?? '暂无播放'}
-            width={44}
-            height={44}
-            className={`h-11 w-11 shrink-0 rounded-full object-cover ${isPlaying ? 'disc playing' : 'disc'}`}
-          />
+          {/* q-media = 占位底 + 加载完淡入,同时给缓冲环当定位父级 */}
+          <span className="q-media grid h-11 w-11 shrink-0 place-items-center rounded-full">
+            <img
+              src={currentSong?.cover ?? '/music/covers/cover-1.svg'}
+              alt={currentSong?.title ?? '暂无播放'}
+              width={44}
+              height={44}
+              className={`h-full w-full rounded-full object-cover ${
+                isPlaying ? 'disc playing' : 'disc'
+              } ${isBuffering ? 'is-buffering' : ''}`}
+            />
+            {/* 缓冲环:与音乐馆里那颗是同一套状态(musicStore.isBuffering) */}
+            <span
+              className={`q-buf-ring q-buf-ring--tight ${isBuffering ? 'is-on' : ''}`}
+              aria-hidden="true"
+            />
+          </span>
           <div className="min-w-0 flex-1">
             <p className="truncate text-sm text-ink">{currentSong?.title ?? '暂无播放'}</p>
-            <p className="truncate text-xs text-ink/50">
+            <p className="truncate text-xs text-subtle">
               {currentLyric || currentSong?.artist || '去音乐馆挑一首'}
             </p>
           </div>
@@ -74,7 +84,7 @@ export default function MiniPlayer() {
             type="button"
             aria-label="下一首"
             onClick={() => music.nextSong()}
-            className="grid h-9 w-9 shrink-0 place-items-center rounded-full text-ink/70 transition-transform hover:scale-110 active:scale-95"
+            className="grid h-9 w-9 shrink-0 place-items-center rounded-full text-muted transition-transform hover:scale-110 active:scale-95"
           >
             <MorphIcon icon={SkipForward} size={17} color="currentColor" />
           </button>

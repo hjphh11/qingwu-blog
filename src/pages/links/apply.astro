@@ -12,21 +12,18 @@ const turnstileSiteKey = import.meta.env.PUBLIC_TURNSTILE_SITE_KEY ?? '';
   title="友链申请 · 清吾"
   description="和清吾互换友链：填好站点名称、网址、头像与一句介绍，审核通过后会出现在友链页。"
 >
-  <div class="mx-auto max-w-4xl px-6 pb-20 pt-28">
+  <div class="page-shell max-w-[62rem]">
     <a
       href="/links"
-      class="reveal mb-6 inline-flex items-center gap-1 text-sm text-ink/60 transition-colors hover:text-crimson"
+      class="reveal mb-6 -ml-2 inline-flex items-center gap-1.5 px-2 py-2 text-sm text-muted transition-colors hover:text-accent"
     >
       <MorphIcon icon={ArrowLeft} size={16} color="currentColor" />
       返回友链
     </a>
 
-    <header class="reveal mb-6">
-      <h1 class="flex items-center gap-3 font-display text-3xl text-ink">
-        <span class="h-6 w-1.5 rounded-full bg-crimson"></span>
-        友链申请
-      </h1>
-      <p class="mt-2 text-sm text-ink/60">
+    <header class="page-head reveal">
+      <h1 class="page-head__title">友链申请</h1>
+      <p class="page-head__sub">
         填好下面这张表，我审核通过后就把你加进「友链」页 ~
       </p>
     </header>

@@ -1,0 +1,61 @@
+---
+/**
+ * 通用加载指示 · 三片花瓣依次舒展 + 底盘缓慢自转
+ *
+ * 目的:给「还在处理、请稍等」一个**能被认出属于这个站**的图形。三片花瓣取自
+ * 爱弥斯的暖色(玫瑰粉 / 琥珀金 / 绯红),比一个通用圆环更贴站点气质;小而低调,
+ * 不抢内容。
+ *
+ * 尺寸约定(见 docs/开屏与全部加载动画-完整设计文档.html 第 04 节 ②):
+ * - 页面级 pending:48–64px(默认 56),单独占一块地方居中放。
+ * - 行内 pending:不用这个组件 —— 15px 那个尺寸用 global.css 里的 `.q-spin`
+ *   (纯 CSS 圆环,不用 SVG),放在文字旁边更轻。
+ *
+ * 当前站内还没有「页面级 pending」的场景,所以这个组件先备着:等到某个页面
+ * 真的需要整块等待时再用,不要为了用它而造场景。
+ */
+interface Props {
+  /** 边长(px)。约定 48–64。 */
+  size?: number;
+  /** 无障碍名称。默认「加载中」。 */
+  label?: string;
+  class?: string;
+}
+
+const { size = 56, label = '加载中', class: className = '' } = Astro.props;
+---
+
+<svg
+  class={`q-petal ${className}`}
+  width={size}
+  height={size}
+  viewBox="0 0 40 40"
+  role="img"
+  aria-label={label}
+>
+  <circle cx="20" cy="20" r="17" fill="none" stroke="rgba(194,58,85,0.2)" stroke-width="1"></circle>
+  <!-- ⚠️ 三个花瓣的 rotate 必须写在**外层 <g>** 的 transform 属性上:
+       如果写在各片 path 上,CSS 的 transform(呼吸缩放)会整体覆盖它 → 三片叠一起。 -->
+  <g class="hub">
+    <g transform="rotate(0 20 20)">
+      <path
+        class="petal petal--a"
+        d="M20,2.5 C26.2,9 26.2,16 20,21.5 C13.8,16 13.8,9 20,2.5 Z"
+        fill="#f6a5b8"></path>
+    </g>
+    <g transform="rotate(120 20 20)">
+      <path
+        class="petal petal--b"
+        d="M20,2.5 C26.2,9 26.2,16 20,21.5 C13.8,16 13.8,9 20,2.5 Z"
+        fill="#e8b04b"></path>
+    </g>
+    <g transform="rotate(240 20 20)">
+      <path
+        class="petal petal--c"
+        d="M20,2.5 C26.2,9 26.2,16 20,21.5 C13.8,16 13.8,9 20,2.5 Z"
+        fill="#c23a55"></path>
+    </g>
+  </g>
+  <circle cx="20" cy="20" r="2.6" fill="#fdf6f0" stroke="rgba(74,55,40,0.22)" stroke-width="0.6"
+  ></circle>
+</svg>
