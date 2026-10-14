@@ -2,56 +2,67 @@
 const year = new Date().getFullYear();
 ---
 
-<footer class="mt-24 bg-gradient-to-b from-transparent to-cream/85 py-10">
-  <div class="mx-auto flex max-w-4xl flex-col items-center gap-5 px-6 text-center">
-    <p class="font-hand text-2xl text-crimson">欢迎来到清吾的小屋</p>
+<footer class="mt-24 bg-gradient-to-b from-transparent to-cream/85 pb-12 pt-14">
+  <div class="mx-auto flex max-w-[1080px] flex-col items-center gap-6 px-6 text-center">
+    <p class="font-hand text-2xl text-accent">欢迎来到清吾的小屋</p>
 
-    <div class="flex flex-wrap items-center justify-center gap-x-6 gap-y-2 text-sm text-ink/70">
-      <a href="/about" class="transition-colors hover:text-crimson">关于</a>
-      <a href="/links" class="transition-colors hover:text-crimson">友链</a>
-      <a href="/share" class="transition-colors hover:text-crimson">分享</a>
-      <a href="/blog" class="transition-colors hover:text-crimson">文章</a>
-      <span class="hidden h-1 w-1 rounded-full bg-rose/40 sm:block" />
+    {/* 页脚导航:每个链接都撑到 ≥44px 的可点高度(mobile 上原来只有 28×20px) */}
+    <nav
+      aria-label="页脚导航"
+      class="-my-2 flex flex-wrap items-center justify-center gap-x-5 gap-y-0 text-sm text-muted"
+    >
+      <a href="/about" class="inline-flex min-h-11 items-center px-1 transition-colors hover:text-accent"
+        >关于</a
+      >
+      <a href="/links" class="inline-flex min-h-11 items-center px-1 transition-colors hover:text-accent"
+        >友链</a
+      >
+      <a href="/share" class="inline-flex min-h-11 items-center px-1 transition-colors hover:text-accent"
+        >分享</a
+      >
+      <a href="/blog" class="inline-flex min-h-11 items-center px-1 transition-colors hover:text-accent"
+        >文章</a
+      >
+      <span class="hidden h-1 w-1 rounded-full bg-rose/60 sm:block" aria-hidden="true"></span>
       <a
         href="https://github.com/hjphh11"
         target="_blank"
         rel="noreferrer"
-        class="transition-colors hover:text-crimson"
-        >GitHub</a
+        class="inline-flex min-h-11 items-center px-1 transition-colors hover:text-accent">GitHub</a
       >
       <button
         type="button"
         data-copy="1454109769@qq.com"
-        class="transition-colors hover:text-crimson"
+        class="inline-flex min-h-11 cursor-pointer items-center px-1 transition-colors hover:text-accent"
       >
         邮箱
       </button>
-    </div>
+    </nav>
 
-    <p class="text-xs text-ink/50">
+    <p class="text-xs text-subtle">
       © {year} 清吾 · 由
       <a
         href="https://astro.build/"
         target="_blank"
         rel="noreferrer"
-        class="text-crimson/70 underline-offset-2 hover:underline"
-        >Astro</a
+        class="inline-flex min-h-9 items-center px-1 text-accent underline-offset-2 hover:underline">Astro</a
       >
       构建
     </p>
 
-    <p class="text-xs text-ink/50">
+    <p class="text-xs text-subtle">
       <a
         href="https://icp.gov.moe/?keyword=20260495"
         target="_blank"
         rel="noreferrer"
-        class="inline-flex items-center gap-1 transition-colors hover:text-crimson"
+        class="inline-flex items-center gap-1.5 py-2 transition-colors hover:text-accent"
       >
         <img
           src="/images/moeicp.svg"
-          alt="萌ICP备"
+          alt=""
           width="14"
           height="14"
+          loading="lazy"
           class="h-3.5 w-3.5 shrink-0"
         />
         萌ICP备20260495号

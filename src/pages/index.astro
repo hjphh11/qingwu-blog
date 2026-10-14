@@ -20,42 +20,38 @@ const posts = allPosts.slice(0, HOME_RECENT);
 <Layout title="清吾 · qingwu.ink">
   <Hero client:load />
 
-  <div class="mx-auto grid max-w-5xl gap-10 px-6 pb-20 md:grid-cols-[1fr_300px]">
+  <div class="page-shell grid gap-10 lg:grid-cols-[minmax(0,1fr)_300px] lg:gap-14">
     {/* 中央:文章流 */}
-    <section class="reveal">
-      <h2 class="mb-6 flex items-center gap-2 font-display text-2xl text-ink">
-        <span class="h-5 w-1.5 rounded-full bg-crimson"></span>
-        最近文章
-      </h2>
+    <section class="reveal min-w-0">
+      <h2 class="section-head mb-6">最近文章</h2>
 
       <div class="flex flex-col gap-6">
         {
           posts.map((post) => (
             <a
               href={`/blog/${post.id}`}
-              class="glass-card card-spotlight relative block p-6 transition-all hover:-translate-y-1"
+              class="glass-card card-spotlight group relative block p-6 card-lift sm:p-7"
             >
-              <span class="absolute right-4 top-4" aria-hidden="true">
+              <span
+                class="absolute right-5 top-5 text-rose transition-colors group-hover:text-crimson"
+                aria-hidden="true"
+              >
                 <MorphIcon
                   icon={categoryIcon(post.data.category) as never}
                   size={18}
                   color="currentColor"
                 />
               </span>
-              <div class="flex items-center gap-2 text-xs text-ink/50">
-                <span class="rounded-full bg-rose/25 px-2.5 py-0.5 text-crimson">
-                  {categoryLabel(post.data.category)}
-                </span>
+              <div class="list-card-meta">
+                <span class="chip chip--category">{categoryLabel(post.data.category)}</span>
                 <time datetime={post.data.pubDate.toISOString()}>
                   {post.data.pubDate.toLocaleDateString('zh-CN')}
                 </time>
               </div>
-              <h3 class="mt-3 font-display text-xl text-ink">{post.data.title}</h3>
-              <p class="mt-2 line-clamp-2 text-sm text-ink/60">{post.data.description}</p>
-              <div class="mt-4 flex flex-wrap gap-x-3 gap-y-1 text-xs">
-                {
-                  post.data.tags.map((tag) => <span class="text-ink/50">#{tag}</span>)
-                }
+              <h3 class="list-card-title pr-8">{post.data.title}</h3>
+              <p class="list-card-desc line-clamp-2">{post.data.description}</p>
+              <div class="list-card-foot">
+                {post.data.tags.map((tag) => <span class="chip chip--tag">#{tag}</span>)}
               </div>
             </a>
           ))
@@ -64,20 +60,26 @@ const posts = allPosts.slice(0, HOME_RECENT);
 
       <a
         href="/blog"
-        class="group mt-6 inline-flex items-center gap-1 text-sm text-ink/60 transition-colors hover:text-crimson"
+        class="group mt-7 inline-flex items-center gap-1.5 py-2.5 text-sm text-muted transition-colors hover:text-accent"
       >
         查看全部文章
-        <span aria-hidden="true" class="transition-transform group-hover:translate-x-0.5">→</span>
+        <span aria-hidden="true" class="transition-transform duration-300 group-hover:translate-x-1"
+          >→</span
+        >
       </a>
     </section>
 
-    {/* 右栏卡片 */}
-    <aside class="reveal flex flex-col gap-8">
-      <CurrentTime client:only="react" />
-      <VisitorCity client:only="react" />
-      <StatsCard articleCount={allPosts.length} client:only="react" />
+    {/* 右栏卡片
+        这四张卡的数据都只能到客户端才有(时间/定位/localStorage/运行时长),
+        之前一律 client:only —— 服务端渲染为空,整栏会在 JS 到位后一起弹出来。
+        改成 client:load 后它们会参与服务端渲染:先出骨架,数据到位再换成真实
+        内容(见 components/home/CardShell.tsx)。TechStackCard 是静态的,不需要壳。 */}
+    <aside class="reveal flex min-w-0 flex-col gap-6">
+      <CurrentTime client:load />
+      <VisitorCity client:load />
+      <StatsCard articleCount={allPosts.length} client:load />
       <TechStackCard />
-      <UptimeCard client:only="react" />
+      <UptimeCard client:load />
     </aside>
   </div>
 </Layout>

@@ -9,75 +9,83 @@ import { SITE } from '../../config';
 ---
 
 <Layout title="关于 · 清吾">
-  <div class="mx-auto max-w-3xl px-6 pb-20 pt-28">
-    <header class="mb-8">
-      <h1 class="flex items-center gap-3 font-display text-3xl text-ink">
-        <span class="h-6 w-1.5 rounded-full bg-crimson"></span>
-        关于
-      </h1>
-      <p class="mt-2 text-sm text-ink/60">这里是清吾的小屋，和你打个招呼 ~</p>
+  <div class="page-shell max-w-[62rem]">
+    <header class="page-head">
+      <h1 class="page-head__title">关于</h1>
+      <p class="page-head__sub">这里是清吾的小屋，和你打个招呼 ~</p>
     </header>
 
     {/* ① 我是清吾 */}
-    <div class="glass-card reveal p-8">
-      <div class="flex flex-col items-center gap-4 sm:flex-row sm:items-start">
-        <img
-          src="/images/avatar.jpg"
-          alt={profile.name}
-          width={80}
-          height={80}
-          class="h-20 w-20 shrink-0 rounded-full object-cover ring-2 ring-white/70"
-        />
+    <div class="glass-card reveal p-7 sm:p-9">
+      <div class="flex flex-col items-center gap-5 sm:flex-row sm:items-start">
+        {/* 头像 webp 版 16KB(原 jpg 734KB),立绘用 webp 同上 */}
+        <picture class="q-media block h-20 w-20 shrink-0 rounded-full ring-2 ring-white/70">
+          <source srcset="/images/avatar.webp" type="image/webp" />
+          <img
+            src="/images/avatar.jpg"
+            alt={profile.name}
+            width={80}
+            height={80}
+            loading="lazy"
+            decoding="async"
+            class="h-full w-full rounded-full object-cover"
+          />
+        </picture>
         <div class="text-center sm:text-left">
-          <h2 class="font-display text-2xl text-ink">{profile.name}</h2>
-          <p class="mt-1 text-sm text-ink/60">{profile.tagline}</p>
+          <h2 class="card-head">{profile.name}</h2>
+          <p class="mt-1.5 text-sm text-muted">{profile.tagline}</p>
         </div>
       </div>
 
-      <div class="mt-6 space-y-3 leading-relaxed text-ink/80">
+      <div class="mt-7 space-y-3.5 leading-[1.85] text-ink/85">
         <p>{profile.whyName}</p>
         <p>{profile.whyBlog}</p>
         <p>{profile.whatWrite}</p>
       </div>
 
       {/* 信息条目 */}
-      <div class="mt-6 space-y-2 border-t border-rose/20 pt-5">
+      <dl class="mt-7 grid gap-2.5 border-t border-rose/20 pt-6 sm:grid-cols-2">
         {
           info.map((it) => (
-            <p class="flex items-center gap-2 text-sm text-ink/70">
-              <MorphIcon icon={aboutIcon(it.icon) as never} size={16} color="currentColor" />
-              <span class="text-ink/50">{it.label}</span>
-              <span class="text-ink">{it.value}</span>
-            </p>
+            <div class="flex items-center gap-2 text-sm">
+              <span class="text-crimson/80">
+                <MorphIcon icon={aboutIcon(it.icon) as never} size={16} color="currentColor" />
+              </span>
+              <dt class="text-subtle">{it.label}</dt>
+              <dd class="text-ink">{it.value}</dd>
+            </div>
           ))
         }
-      </div>
+      </dl>
     </div>
 
     {/* ② 爱弥斯 */}
-    <div class="glass-card reveal mt-6 flex flex-col gap-6 p-8 sm:flex-row">
-      <img
-        src={emis.img}
-        alt="爱弥斯"
-        width={180}
-        height={180}
-        class="mx-auto h-[180px] w-[180px] shrink-0 rounded-2xl object-cover sm:mx-0"
-      />
-      <div>
-        <h2 class="font-display text-xl text-crimson">爱弥斯</h2>
-        <div class="mt-3 space-y-3 leading-relaxed text-ink/80">
-          {emis.persona.map((p) => (
-            <p>{p}</p>
-          ))}
+    <div class="glass-card reveal mt-6 flex flex-col gap-7 p-7 sm:flex-row sm:p-9">
+      <picture class="q-media mx-auto h-[180px] w-[180px] shrink-0 rounded-2xl sm:mx-0">
+        <source srcset="/images/emis/portrait.webp" type="image/webp" />
+        <img
+          src={emis.img}
+          alt="爱弥斯"
+          width={180}
+          height={180}
+          loading="lazy"
+          decoding="async"
+          class="h-full w-full rounded-2xl object-cover"
+        />
+      </picture>
+      <div class="min-w-0">
+        <h2 class="card-head text-accent">爱弥斯</h2>
+        <div class="mt-4 space-y-3.5 leading-[1.85] text-ink/85">
+          {emis.persona.map((p) => <p>{p}</p>)}
         </div>
       </div>
     </div>
 
     {/* ③ 联系 / 社交 + 刷题(左右两半) */}
-    <div class="glass-card reveal mt-6 grid gap-6 p-8 sm:grid-cols-2">
+    <div class="glass-card reveal mt-6 grid gap-8 p-7 sm:grid-cols-2 sm:p-9">
       {/* 左半:联系 / 社交 */}
-      <div class="flex flex-col items-center gap-5">
-        <h2 class="flex w-full items-center gap-2 font-display text-xl text-ink">
+      <div class="flex flex-col items-center gap-6">
+        <h2 class="card-head flex w-full items-center gap-2">
           <MorphIcon icon={Mail} size={18} color="currentColor" /> 联系 / 社交
         </h2>
         <ContactExpand
@@ -91,20 +99,26 @@ import { SITE } from '../../config';
       </div>
 
       {/* 右半:刷题入口 */}
-      <div class="flex flex-col items-center gap-5 sm:border-l sm:border-rose/20 sm:pl-6">
-        <h2 class="flex w-full items-center gap-2 font-display text-xl text-ink">
+      <div class="flex flex-col items-center gap-6 sm:border-l sm:border-rose/20 sm:pl-8">
+        <h2 class="card-head flex w-full items-center gap-2">
           <MorphIcon icon={BookOpen} size={18} color="currentColor" /> 刷题
         </h2>
         <a
           href="/quiz/"
-          class="group flex w-full flex-col items-center gap-2 rounded-[var(--radius-card)] border border-rose/25 bg-white/40 p-6 text-center transition-colors hover:border-rose/50 hover:bg-rose/10"
+          class="group card-lift flex w-full flex-col items-center gap-2.5 rounded-[var(--radius-card)] border border-rose/25 bg-white/40 p-6 text-center hover:border-rose/50 hover:bg-rose/10"
         >
           <MorphIcon icon={BookOpen} size={24} color="currentColor" />
-          <span class="font-display text-lg text-ink transition-colors group-hover:text-crimson">
+          <span class="font-display text-lg text-ink transition-colors group-hover:text-accent">
             Python 二级刷题
           </span>
-          <span class="text-xs text-ink/60">选择题 · 随机抽题 · 自动判分与解析</span>
-          <span class="mt-1 text-sm text-crimson">进入题库 →</span>
+          <span class="text-xs text-muted">选择题 · 随机抽题 · 自动判分与解析</span>
+          <span class="mt-1 inline-flex items-center gap-1 text-sm text-accent">
+            进入题库
+            <span
+              aria-hidden="true"
+              class="transition-transform duration-300 group-hover:translate-x-1">→</span
+            >
+          </span>
         </a>
       </div>
     </div>

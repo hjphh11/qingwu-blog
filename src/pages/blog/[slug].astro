@@ -29,45 +29,46 @@ const toc = headings.filter((h) => h.depth === 2 || h.depth === 3);
 <Layout title={`${post.data.title} · 清吾`}>
   <ReadingProgress client:load />
 
-  <div class="mx-auto grid max-w-5xl gap-10 px-6 pb-20 pt-28 md:grid-cols-[1fr_240px]">
+  <div class="page-shell grid gap-12 lg:grid-cols-[minmax(0,1fr)_220px]">
     {/* 正文 */}
     <article class="min-w-0">
-      <header class="mb-8">
+      <header class="mb-10">
         <button
           id="back-btn"
           type="button"
-          class="mb-4 inline-flex cursor-pointer items-center gap-1 text-sm text-ink/60 transition-colors hover:text-crimson"
+          class="mb-5 -ml-2 inline-flex cursor-pointer items-center gap-1.5 px-2 py-2 text-sm text-muted transition-colors hover:text-accent"
         >
           <span aria-hidden="true">
             <MorphIcon icon={ArrowLeft} size={16} color="currentColor" />
           </span>
           返回
         </button>
-        <div class="flex flex-wrap items-center gap-2 text-xs text-ink/50">
-          <span class="rounded-full bg-rose/25 px-2.5 py-0.5 text-crimson">{catLabel}</span>
+        <div class="list-card-meta">
+          <span class="chip chip--category">{catLabel}</span>
           <time datetime={post.data.pubDate.toISOString()}>
             {post.data.pubDate.toLocaleDateString('zh-CN')}
           </time>
-          <span>· 阅读约 {readMin} 分钟</span>
+          <span aria-hidden="true">·</span>
+          <span>阅读约 {readMin} 分钟</span>
         </div>
-        <h1 class="mt-4 font-display text-3xl leading-tight text-ink md:text-4xl">
+        <h1 class="mt-5 font-display text-[length:var(--text-display)] leading-[1.2] text-ink">
           {post.data.title}
         </h1>
-        <div class="mt-4 flex flex-wrap gap-2">
+        <div class="mt-5 flex flex-wrap gap-x-3 gap-y-1">
           {
             post.data.tags.map((tag) => (
-              <span class="text-xs text-amber-700/70">#{tag}</span>
+              <span class="text-[length:var(--text-label)] text-subtle">#{tag}</span>
             ))
           }
         </div>
       </header>
 
-      <div class="prose">
+      <div class="prose max-w-[68ch]">
         <Content />
       </div>
 
       {/* 分享 · 展开按钮 */}
-      <div class="mt-10 flex justify-center">
+      <div class="mt-14 flex justify-center">
         <ContactExpand
           client:load
           variant="share"
@@ -80,19 +81,19 @@ const toc = headings.filter((h) => h.depth === 2 || h.depth === 3);
     </article>
 
     {/* 右侧目录 */}
-    <aside class="hidden md:block">
-      <nav class="sticky top-24 self-start">
-        <div class="mb-3 flex items-center gap-2 text-sm font-medium text-ink/70">
+    <aside class="hidden lg:block">
+      <nav class="sticky top-28 self-start">
+        <div class="mb-3 flex items-center gap-2 text-sm font-medium text-muted">
           <MorphIcon icon={List} size={16} color="currentColor" />
           目录
         </div>
-        <ul class="space-y-1 border-l border-rose/25 pl-4 text-sm">
+        <ul class="space-y-1.5 border-l border-rose/25 pl-4 text-sm">
           {
             toc.map((h) => (
               <li class={`${h.depth === 3 ? 'pl-4' : ''}`}>
                 <a
                   href={`#${h.slug}`}
-                  class="text-ink/60 transition-colors hover:text-crimson"
+                  class="block py-0.5 text-muted transition-colors hover:text-accent"
                 >
                   {h.text}
                 </a>

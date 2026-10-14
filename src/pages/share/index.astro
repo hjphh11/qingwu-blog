@@ -18,23 +18,21 @@ const tagsOf = (item: { tags?: string[] }) => (item.tags ?? []).join('|');
 ---
 
 <Layout title="分享 · 清吾">
-  <div class="mx-auto max-w-4xl px-6 pb-20 pt-28">
-    <header class="mb-8">
-      <h1 class="flex items-center gap-3 font-display text-3xl text-ink">
-        <span class="h-6 w-1.5 rounded-full bg-crimson"></span>
-        分享
-      </h1>
-      <p class="mt-2 text-sm text-ink/60">收藏的好东西 + 打动的句子，都放在这里 ~</p>
+  <div class="page-shell">
+    <header class="page-head">
+      <h1 class="page-head__title">分享</h1>
+      <p class="page-head__sub">收藏的好东西 + 打动的句子，都放在这里 ~</p>
     </header>
 
     {/* 类型 + 标签筛选 */}
-    <div class="mb-4 flex flex-wrap gap-2" data-share-filters>
+    <div class="mb-3 flex flex-wrap gap-2" data-share-filters role="group" aria-label="按类型筛选">
       {
-        filters.map((f) => (
+        filters.map((f, i) => (
           <button
             type="button"
             data-filter={f.key}
-            class="btn-ripple rounded-full border border-rose/25 bg-white/50 px-4 py-1.5 text-sm text-ink/70 transition-all hover:border-rose/50 hover:text-crimson hover:shadow-[0_6px_18px_rgba(246,165,184,0.28)] active:scale-95"
+            aria-pressed={i === 0 ? 'true' : 'false'}
+            class:list={['filter-chip btn-ripple', { 'is-active': i === 0 }]}
           >
             {f.label}
           </button>
@@ -44,13 +42,14 @@ const tagsOf = (item: { tags?: string[] }) => (item.tags ?? []).join('|');
 
     {
       allTags.length > 0 && (
-        <div class="mb-8 flex flex-wrap items-center gap-2" data-share-tags>
-          <span class="text-xs text-ink/45">按标签：</span>
+        <div class="mb-10 flex flex-wrap items-center gap-2" data-share-tags>
+          <span class="text-[length:var(--text-label)] text-subtle">按标签：</span>
           {allTags.map((t) => (
             <button
               type="button"
               data-tag={t}
-              class="rounded-full border border-rose/20 bg-white/40 px-3 py-1 text-xs text-ink/60 transition-all hover:border-rose/50 hover:text-crimson active:scale-95"
+              aria-pressed="false"
+              class="chip chip--tag border border-rose/20 bg-white/40 px-3 py-1.5 transition-all hover:border-rose/50 hover:text-accent active:scale-95"
             >
               #{t}
             </button>
@@ -59,8 +58,24 @@ const tagsOf = (item: { tags?: string[] }) => (item.tags ?? []).join('|');
       )
     }
 
-    {/* 混排内容 */}
-    <div data-share-list class="reveal grid gap-6 sm:grid-cols-2">
+    {/* 空态:分享页原来没有空态 —— 内容清空后只剩两排筛选按钮,访客停在原地。
+        补一个带真实去处的空态(见 global.css 的 .q-empty*)。 */}
+    {
+      shares.length === 0 && (
+        <div class="glass-card q-empty p-12">
+          <p class="q-empty__hand">这里还很空 ~</p>
+          <p class="q-empty__sub">收藏和语录都还在攒，先去友链认识几个新朋友？</p>
+          <a href="/links" class="q-empty-btn">
+            去友链看看
+          </a>
+        </div>
+      )
+    }
+
+    {/* 混排内容 —— 用 CSS 多列做成瀑布流:
+        收藏卡(矮)和语录卡(高)混排时,等宽的 grid 会把矮卡那一行整体拉到
+        最高卡的高度,于是每张语录卡下面都留一截空白。多列布局让每张卡各按内容取高。 */}
+    <div data-share-list class="reveal gap-6 sm:columns-2 [&>*]:mb-6 [&>*]:break-inside-avoid">
       {
         shares.map((item) =>
           item.type === 'link' ? (
@@ -70,21 +85,21 @@ const tagsOf = (item: { tags?: string[] }) => (item.tags ?? []).join('|');
               rel="noreferrer"
               data-type="link"
               data-tags={tagsOf(item)}
-              class="glass-card card-spotlight block p-6 transition-all hover:-translate-y-1"
+              class="glass-card card-spotlight group block p-6 card-lift"
             >
-              <div class="flex items-center gap-2 text-xs text-rose">
+              <div class="flex items-center gap-2 text-[length:var(--text-label)] text-accent">
                 <MorphIcon icon={Bookmark} size={14} color="currentColor" /> 收藏
               </div>
-              <p class="mt-2 font-display text-lg text-ink">{item.title}</p>
-              <p class="mt-1 text-sm text-ink/60">{item.note}</p>
-              <p class="mt-3 truncate text-xs text-ink/40">{item.url}</p>
+              <p class="list-card-title">{item.title}</p>
+              <p class="list-card-desc">{item.note}</p>
+              <p class="mt-4 text-[length:var(--text-label)] text-subtle">
+                <span class="block truncate">{item.url}</span>
+              </p>
               {
                 (item.tags ?? []).length > 0 && (
                   <div class="mt-3 flex flex-wrap gap-1.5">
                     {item.tags.map((t: string) => (
-                      <span class="rounded-full bg-rose/15 px-2 py-0.5 text-[11px] text-ink/50">
-                        #{t}
-                      </span>
+                      <span class="chip chip--tag bg-rose/15 px-2">#{t}</span>
                     ))}
                   </div>
                 )
@@ -94,32 +109,36 @@ const tagsOf = (item: { tags?: string[] }) => (item.tags ?? []).join('|');
             /* 语录:3D 翻转卡(借鉴 MotionVault FlipCard,MIT,暖色)。正面=语录,背面=作者+一句标注。
                注意:.flip-inner 上**不能**放 glass-card 这类带 backdrop-filter 的样式,
                那会让 preserve-3d 失效、翻转后文字镜像(见 global.css 里的说明)。
-               所以玻璃效果分给两个面各自承担。 */
+               所以玻璃效果分给两个面各自承担。
+               高度不再写死:按内容自然撑开(min-h 保证短句也有一张卡的样子),
+               两面用 grid 叠在一起,高度始终跟正面走。 */
             <div
               data-type="quote"
               data-tags={tagsOf(item)}
-              class="flip-card h-[210px] cursor-pointer select-none"
+              class="flip-card min-h-[9.5rem] cursor-pointer select-none"
+              tabindex="0"
+              role="button"
+              aria-label={`语录卡片,点击查看出处:${item.text}`}
             >
-              <div class="flip-inner h-full w-full">
+              <div class="flip-inner grid">
                 <div class="flip-face glass-card flex flex-col border-l-4 border-rose/40 p-6">
-                  <p class="font-display text-lg leading-relaxed text-ink">
+                  <p class="font-display text-lg leading-[1.75] text-ink">
                     「{item.text}」
                   </p>
                   {
                     (item.tags ?? []).length > 0 && (
-                      <div class="mt-auto flex flex-wrap gap-1.5 pt-3">
+                      <div class="mt-auto flex flex-wrap gap-1.5 pt-4">
                         {item.tags.map((t: string) => (
-                          <span class="rounded-full bg-rose/15 px-2 py-0.5 text-[11px] text-ink/50">
-                            #{t}
-                          </span>
+                          <span class="chip chip--tag bg-rose/15 px-2">#{t}</span>
                         ))}
                       </div>
                     )
                   }
                 </div>
-                <div class="flip-face flip-back glass-card flip-back-tint flex flex-col items-center justify-center gap-1 border-l-4 border-rose/40 p-6">
-                  <p class="font-display text-xl text-crimson">一句摘录</p>
-                  {item.author && <p class="text-sm text-ink/70">— {item.author}</p>}
+                <div class="flip-face flip-back glass-card flip-back-tint flex flex-col items-center justify-center gap-1.5 border-l-4 border-rose/40 p-6">
+                  <p class="font-display text-xl text-accent">一句摘录</p>
+                  {item.author && <p class="text-sm text-muted">— {item.author}</p>}
+                  <p class="mt-1.5 text-[length:var(--text-label)] text-subtle">点击翻回</p>
                 </div>
               </div>
             </div>
@@ -145,15 +164,25 @@ const tagsOf = (item: { tags?: string[] }) => (item.tags ?? []).join('|');
       const typeOk = activeType === 'all' || card.getAttribute('data-type') === activeType;
       const tags = (card.getAttribute('data-tags') || '').split('|').filter(Boolean);
       const tagOk = !activeTag || tags.includes(activeTag);
-      card.style.display = typeOk && tagOk ? '' : 'none';
+      card.classList.toggle('is-hidden', !(typeOk && tagOk));
+    });
+  };
+
+  // 选中态统一走 aria-pressed + .is-active,不再靠临时拼 Tailwind 类名
+  // （旧写法 classList.remove('bg-rose/70') 里的斜杠会被当成普通字符，
+  //   实际能不能生效全看构建出的类名，脆而且初始态完全没有高亮）
+  const markActive = (btn: Element | null | undefined) => {
+    filters.forEach((b) => {
+      const on = b === btn;
+      b.setAttribute('aria-pressed', on ? 'true' : 'false');
+      b.classList.toggle('is-active', on);
     });
   };
 
   filters.forEach((btn) => {
     btn.addEventListener('click', () => {
       activeType = btn.getAttribute('data-filter') || 'all';
-      filters.forEach((b) => b.classList.remove('bg-rose/70', 'text-ink'));
-      btn.classList.add('bg-rose/70', 'text-ink');
+      markActive(btn);
       apply();
     });
   });
@@ -165,17 +194,22 @@ const tagsOf = (item: { tags?: string[] }) => (item.tags ?? []).join('|');
       activeTag = activeTag === tag ? null : tag;
       tagBtns.forEach((b) => {
         const on = b.getAttribute('data-tag') === activeTag;
-        b.classList.toggle('bg-rose/70', on);
-        b.classList.toggle('text-ink', on);
+        b.setAttribute('aria-pressed', on ? 'true' : 'false');
+        b.classList.toggle('is-active', on);
       });
       apply();
     });
   });
 
-  // 点击切换翻转(桌面 + 触屏统一)
-  document
-    .querySelectorAll<HTMLElement>('.flip-card[data-type="quote"]')
-    .forEach((card) => {
-      card.addEventListener('click', () => card.classList.toggle('is-flipped'));
+  // 点击 / 回车 / 空格 都能翻转(桌面 + 触屏 + 键盘统一)
+  document.querySelectorAll<HTMLElement>('.flip-card[data-type="quote"]').forEach((card) => {
+    const flip = () => card.classList.toggle('is-flipped');
+    card.addEventListener('click', flip);
+    card.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        flip();
+      }
     });
+  });
 </script>

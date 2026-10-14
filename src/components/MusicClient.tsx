@@ -29,6 +29,7 @@ export default function MusicClient() {
     currentIndex,
     currentSong,
     isPlaying,
+    isBuffering,
     currentTime,
     duration,
     volume,
@@ -75,12 +76,16 @@ export default function MusicClient() {
     return (
       <div className="flex flex-col gap-8">
         <header>
-          <h1 className="font-hand text-4xl text-crimson md:text-5xl">音乐馆</h1>
-          <p className="mt-2 text-sm text-ink/60">在旋律里，找到片刻安静 ~</p>
+          {/* 与正常态用同一套标题,空态不该是另一套字号 */}
+          <h1 className="font-hand text-[length:var(--text-section)] leading-none text-crimson">
+            音乐馆
+          </h1>
+          <p className="mt-3 text-sm text-muted">在旋律里，找到片刻安静 ~</p>
         </header>
-        <div className="glass-card grid place-items-center p-12 text-center">
-          <p className="font-hand text-2xl text-crimson">音乐馆还没开张 ~</p>
-          <p className="mt-2 text-sm text-ink/60">歌曲等主人慢慢添进来，稍后再来听。</p>
+        <div className="glass-card q-empty p-12">
+          <p className="q-empty__hand">音乐馆还没开张 ~</p>
+          <p className="q-empty__sub">歌曲等主人慢慢添进来，先去别处逛逛？</p>
+          <a href="/blog" className="q-empty-btn">去文章逛逛</a>
         </div>
       </div>
     );
@@ -101,26 +106,37 @@ export default function MusicClient() {
       )}
 
       <header>
-        <h1 className="font-hand text-4xl text-crimson md:text-5xl">音乐馆</h1>
-        <p className="mt-2 text-sm text-ink/60">在旋律里，找到片刻安静 ~</p>
+        <h1 className="font-hand text-[length:var(--text-section)] leading-none text-crimson">
+          音乐馆
+        </h1>
+        <p className="mt-3 text-sm text-muted">在旋律里，找到片刻安静 ~</p>
       </header>
 
       <div className="grid gap-6 md:grid-cols-[minmax(0,1fr)_minmax(0,1.15fr)]">
         {/* 左:播放控制台 */}
-        <div className="glass-card flex h-[560px] flex-col items-center gap-4 p-6">
+        <div className="glass-card flex flex-col items-center gap-5 p-6 md:h-[560px] md:gap-4">
           {/* 旋转光盘 */}
           <div className="relative grid place-items-center">
-            <div className="absolute h-72 w-72 rounded-full bg-rose/25 blur-2xl" />
-            <img
-              src={currentSong?.cover ?? '/music/covers/cover-1.svg'}
-              alt={currentSong?.title ?? '封面'}
-              width={280}
-              height={280}
-              className={`disc relative h-64 w-64 object-cover shadow-[0_10px_30px_rgba(246,165,184,0.35)] ${
-                isPlaying ? 'playing' : ''
-              }`}
-            />
-            <div className="absolute h-16 w-16 rounded-full border-4 border-white/80 bg-cream/90" />
+            <div className="absolute h-64 w-64 rounded-full bg-rose/25 blur-2xl md:h-72 md:w-72" />
+            {/* q-media = 占位底 + 加载完淡入,同时充当缓冲环的定位父级。
+                它自带 position:relative,所以这颗盘仍然盖在外圈光晕之上
+                (和原来在 img 上写 relative 是同一个作用)。 */}
+            <span className="q-media grid h-52 w-52 place-items-center rounded-full md:h-64 md:w-64">
+              <img
+                src={currentSong?.cover ?? '/music/covers/cover-1.svg'}
+                alt={currentSong?.title ?? '封面'}
+                width={280}
+                height={280}
+                decoding="async"
+                className={`disc relative h-full w-full object-cover shadow-[0_10px_30px_rgba(246,165,184,0.35)] ${
+                  isPlaying ? 'playing' : ''
+                } ${isBuffering ? 'is-buffering' : ''}`}
+              />
+              {/* 缓冲环:琥珀色,只在音频真的在等数据时才亮(读 musicStore 的 isBuffering)。
+                  位置与外圈尺寸对齐,所以左缘不会因为「环出现」而移动。 */}
+              <span className={`q-buf-ring ${isBuffering ? 'is-on' : ''}`} aria-hidden="true" />
+            </span>
+            <div className="absolute h-14 w-14 rounded-full border-4 border-white/80 bg-cream/90 md:h-16 md:w-16" />
           </div>
 
           <div className="text-center">
@@ -134,20 +150,35 @@ export default function MusicClient() {
             >
               {currentSong?.title ?? '未选择歌曲'}
             </motion.p>
-            <p className="mt-1 text-sm text-ink/50">{currentSong?.artist ?? ''}</p>
+            <p className="mt-1 text-sm text-subtle">{currentSong?.artist ?? ''}</p>
           </div>
 
-          {/* 进度条 */}
+          {/* 进度条:可键盘操作(方向键 ±5s),补上 tabindex 与数值语义 */}
           <div className="w-full">
             <div
-              className="h-2 w-full cursor-pointer rounded-full bg-rose/20"
+              className="group h-2 w-full cursor-pointer rounded-full bg-rose/20"
               onClick={seek}
+              onKeyDown={(e) => {
+                if (!duration) return;
+                if (e.key === 'ArrowRight') music.handleSeek(Math.min(duration, currentTime + 5));
+                if (e.key === 'ArrowLeft') music.handleSeek(Math.max(0, currentTime - 5));
+              }}
               role="slider"
+              tabIndex={0}
               aria-label="播放进度"
+              aria-valuemin={0}
+              aria-valuemax={Math.round(duration)}
+              aria-valuenow={Math.round(currentTime)}
+              aria-valuetext={`${fmt(currentTime)} / ${fmt(duration)}`}
             >
-              <div className="h-2 rounded-full bg-crimson" style={{ width: `${pct}%` }} />
+              <div
+                className="relative h-2 rounded-full bg-crimson transition-[width] duration-150 ease-linear"
+                style={{ width: `${pct}%` }}
+              >
+                <span className="absolute -right-1.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 rounded-full bg-crimson opacity-0 shadow-[0_2px_8px_rgba(194,58,85,0.4)] transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100" />
+              </div>
             </div>
-            <div className="mt-1 flex justify-between text-xs text-ink/40 tabular-nums">
+            <div className="mt-1.5 flex justify-between text-xs text-subtle tabular-nums">
               <span>{fmt(currentTime)}</span>
               <span>{fmt(duration)}</span>
             </div>
@@ -176,7 +207,7 @@ export default function MusicClient() {
             <button
               type="button"
               onClick={() => music.setMuted(!isMuted)}
-              className="text-lg text-ink/70 transition-colors hover:text-crimson"
+              className="grid h-11 w-11 shrink-0 place-items-center rounded-full text-lg text-muted transition-colors hover:text-crimson"
               aria-label="静音"
             >
               <MorphIcon icon={isMuted || volume === 0 ? VolumeX : Volume2} size={20} color="currentColor" />
@@ -193,7 +224,7 @@ export default function MusicClient() {
             <button
               type="button"
               onClick={() => music.togglePlayMode()}
-              className="grid h-9 w-9 place-items-center rounded-full border border-rose/30 text-ink/70 transition-colors hover:border-rose/60 hover:text-crimson"
+              className="grid h-9 w-9 place-items-center rounded-full border border-rose/30 text-muted transition-colors hover:border-rose/60 hover:text-crimson"
               title={`播放模式: ${modeText[playMode]}`}
               aria-label={`播放模式: ${modeText[playMode]}`}
             >
@@ -207,15 +238,18 @@ export default function MusicClient() {
         </div>
 
         {/* 右:歌词 / 歌单 */}
-        <div className="glass-card flex h-[560px] flex-col p-6">
+        <div className="glass-card flex flex-col p-6 md:h-[560px]">
           <div className="flex gap-2">
             {(['lrc', 'list'] as const).map((t) => (
               <button
                 key={t}
                 type="button"
                 onClick={() => setTab(t)}
-                className={`rounded-full px-4 py-1.5 text-sm transition-colors ${
-                  tab === t ? 'bg-rose/25 text-crimson' : 'text-ink/60 hover:text-crimson'
+                aria-pressed={tab === t}
+                className={`min-h-9 rounded-full px-4 text-sm transition-colors duration-200 ${
+                  tab === t
+                    ? 'bg-rose/30 font-medium text-crimson'
+                    : 'text-muted hover:bg-rose/10 hover:text-crimson'
                 }`}
               >
                 {t === 'lrc' ? '歌词' : '歌单'}
@@ -224,7 +258,7 @@ export default function MusicClient() {
           </div>
 
           {tab === 'lrc' ? (
-            <div className="relative mt-4 w-full flex min-h-0 flex-1">
+            <div className="relative mt-4 flex min-h-[18rem] w-full flex-1 md:min-h-0">
               {lrcLines.length ? (
                 <div
                   ref={lyricsRef}
@@ -239,7 +273,7 @@ export default function MusicClient() {
                       className={`block w-full py-2.5 text-center transition-all ${
                         i === activeLyricIndex
                           ? 'scale-105 rounded-xl bg-rose/10 font-display text-xl text-crimson'
-                          : 'text-sm text-ink/50 hover:text-ink/80'
+                          : 'text-sm text-subtle hover:text-ink/85'
                       }`}
                     >
                       {ln.text}
@@ -247,7 +281,7 @@ export default function MusicClient() {
                   ))}
                 </div>
               ) : (
-                <div className="grid h-full place-items-center text-sm text-ink/40">
+                <div className="grid h-full place-items-center text-sm text-subtle">
                   暂无歌词
                 </div>
               )}
@@ -262,7 +296,7 @@ export default function MusicClient() {
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
                 placeholder="搜索歌名 / 作者…"
-                className="mb-4 w-full rounded-full border border-rose/25 bg-white/50 px-4 py-2 text-sm text-ink outline-none placeholder:text-ink/40 focus:border-rose/60"
+                className="mb-4 w-full rounded-full border border-rose/25 bg-white/50 px-4 py-2 text-sm text-ink outline-none placeholder:text-subtle focus:border-rose/60"
               />
               <div className="no-scrollbar flex-1 space-y-2 overflow-y-auto pr-1">
                 {filtered.map((s) => {
@@ -288,12 +322,15 @@ export default function MusicClient() {
                         <p className={`truncate text-sm ${active ? 'font-medium text-crimson' : 'text-ink'}`}>
                           {s.title}
                         </p>
-                        <p className="truncate text-xs text-ink/50">
+                        <p className="truncate text-xs text-subtle">
                           {s.artist} · {s.note ?? ''}
                         </p>
                       </div>
                       {active && isPlaying && (
-                        <span className="flex items-end gap-0.5" aria-hidden="true">
+                        <span
+                          className={`flex items-end gap-0.5 ${isBuffering ? 'is-buffering' : ''}`}
+                          aria-hidden="true"
+                        >
                           <span className="wave-bar h-3" />
                           <span className="wave-bar h-4" />
                           <span className="wave-bar h-3" />

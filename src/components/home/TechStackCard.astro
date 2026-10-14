@@ -12,29 +12,30 @@ const stack = [
 ---
 
 <div class="glass-card p-5">
-  <div class="flex items-center gap-2 text-sm text-ink/70">
+  <div class="flex items-center gap-2 text-sm text-muted">
     <MorphIcon icon={Wrench} size={17} class="shrink-0" color="currentColor" />
     <span class="flex items-center gap-1 font-medium">
       本站搭起来的小家伙 <MorphIcon icon={Sparkles} size={14} color="currentColor" />
     </span>
   </div>
 
-  <div class="mt-4 flex flex-wrap gap-2">
+  <ul class="mt-4 flex flex-wrap gap-2">
     {
       stack.map((item) => (
-        <span
-          class="flex items-center gap-2 rounded-full border border-rose/20 bg-white/50 px-3 py-1.5 text-sm text-ink transition-all hover:-translate-y-0.5 hover:border-rose/50 hover:shadow-[0_6px_18px_rgba(246,165,184,0.28)]"
+        <li
+          class="flex items-center gap-2 rounded-full border border-rose/20 bg-white/50 px-3 py-1.5 text-sm text-ink transition-colors duration-300 hover:border-rose/50 hover:shadow-[0_6px_18px_rgba(246,165,184,0.28)]"
         >
           <span
-            class="h-2.5 w-2.5 rounded-full"
+            class="h-2.5 w-2.5 shrink-0 rounded-full"
             style={`background:${item.color}`}
+            aria-hidden="true"
           >
           </span>
           {item.name}
-        </span>
+        </li>
       ))
     }
-  </div>
+  </ul>
 
-  <p class="mt-4 text-xs text-ink/50">这个博客就是用它们搭起来的 ~</p>
+  <p class="mt-4 text-xs text-subtle">这个博客就是用它们搭起来的 ~</p>
 </div>

@@ -131,6 +131,15 @@ export default function BackgroundDecor() {
     init();
     window.addEventListener('resize', onResize);
 
+    // 切到后台就停掉 rAF —— 之前切走之后这个循环一直跑,rAF 虽被浏览器降频,
+    // 但每帧仍要 clearRect 整个视口 + 重画 26 花瓣 64 星光,纯属白烧电。
+    const onVisibility = () => {
+      if (reduce) return;
+      cancelAnimationFrame(raf);
+      if (!document.hidden) raf = requestAnimationFrame(frame);
+    };
+    document.addEventListener('visibilitychange', onVisibility);
+
     if (reduce) {
       // 降级:静态绘制一次,不逐帧动画
       for (const star of stars) drawStar(star, 0);
@@ -142,6 +151,7 @@ export default function BackgroundDecor() {
     return () => {
       cancelAnimationFrame(raf);
       window.removeEventListener('resize', onResize);
+      document.removeEventListener('visibilitychange', onVisibility);
     };
   }, []);
 

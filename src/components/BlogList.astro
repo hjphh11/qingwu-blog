@@ -21,21 +21,19 @@ const prevHref = currentPage > 1 ? pageHref(currentPage - 1) : null;
 const nextHref = currentPage < lastPage ? pageHref(currentPage + 1) : null;
 ---
 
-<header class="mb-8 reveal">
-  <h1 class="flex items-center gap-3 font-display text-3xl text-ink">
-    <span class="h-6 w-1.5 rounded-full bg-crimson"></span>
-    文章
-  </h1>
-  <p class="mt-2 text-sm text-ink/60">写下的故事，都收在这里 ~</p>
+<header class="page-head reveal">
+  <h1 class="page-head__title">文章</h1>
+  <p class="page-head__sub">写下的故事，都收在这里 ~</p>
 </header>
 
-<div class="mb-8 flex gap-2" id="post-filters">
+<div class="mb-10 flex flex-wrap gap-2" id="post-filters" role="group" aria-label="按分类筛选">
   {
     filters.map((f) => (
       <button
         type="button"
         data-filter={f.key}
-        class="btn-ripple rounded-full border border-rose/25 bg-white/50 px-4 py-1.5 text-sm text-ink/70 transition-all hover:border-rose/50 hover:text-crimson hover:shadow-[0_6px_18px_rgba(246,165,184,0.28)] active:scale-95"
+        aria-pressed={f.key === 'all' ? 'true' : 'false'}
+        class="filter-chip btn-ripple"
       >
         {f.label}
       </button>
@@ -50,49 +48,51 @@ const nextHref = currentPage < lastPage ? pageHref(currentPage + 1) : null;
         <a
           href={`/blog/${post.id}`}
           data-category={post.data.category}
-          class="glass-card card-spotlight relative block p-6 transition-all hover:-translate-y-1"
+          class="glass-card card-spotlight group relative block p-6 card-lift sm:p-7"
         >
-          <span class="absolute right-4 top-4" aria-hidden="true">
+          <span
+            class="absolute right-5 top-5 text-rose transition-colors group-hover:text-crimson"
+            aria-hidden="true"
+          >
             <MorphIcon
               icon={categoryIcon(post.data.category) as never}
               size={18}
               color="currentColor"
             />
           </span>
-          <div class="flex items-center gap-2 text-xs text-ink/50">
-            <span class="rounded-full bg-rose/25 px-2.5 py-0.5 text-crimson">
-              {categoryLabel(post.data.category)}
-            </span>
+          <div class="list-card-meta">
+            <span class="chip chip--category">{categoryLabel(post.data.category)}</span>
             <time datetime={post.data.pubDate.toISOString()}>
               {post.data.pubDate.toLocaleDateString('zh-CN')}
             </time>
           </div>
-          <h2 class="mt-3 font-display text-xl text-ink">{post.data.title}</h2>
-          <p class="mt-2 line-clamp-2 text-sm text-ink/60">{post.data.description}</p>
-          <div class="mt-4 flex flex-wrap gap-x-3 gap-y-1 text-xs">
-            {post.data.tags.map((tag: string) => <span class="text-ink/50">#{tag}</span>)}
+          <h2 class="list-card-title pr-8">{post.data.title}</h2>
+          <p class="list-card-desc line-clamp-2">{post.data.description}</p>
+          <div class="list-card-foot">
+            {post.data.tags.map((tag: string) => <span class="chip chip--tag">#{tag}</span>)}
           </div>
         </a>
       ))}
     </div>
   ) : (
-    <div class="glass-card grid place-items-center p-12 text-center">
-      <p class="font-hand text-2xl text-crimson">这里还很空 ~</p>
+    /* 空态是构建期内容决定的,「重新加载」给不出任何出口 —— 所以按钮指向
+       一个真实去处,而不是假装刷新一下(见 global.css 的 .q-empty*)。 */
+    <div class="glass-card q-empty p-12">
+      <p class="q-empty__hand">这里还很空 ~</p>
+      <p class="q-empty__sub">内容还在路上，稍后再来逛逛</p>
+      <a href="/" class="q-empty-btn">回首页看看</a>
     </div>
   )
 }
 
-<nav aria-label="分页" class="mt-12 flex items-center justify-center gap-2">
+<nav aria-label="分页" class="mt-14 flex items-center justify-center gap-2">
   {
     prevHref ? (
-      <a
-        href={prevHref}
-        class="rounded-full border border-rose/25 bg-white/50 px-4 py-1.5 text-sm text-ink/70 transition-colors hover:border-rose/50 hover:text-crimson"
-      >
+      <a href={prevHref} class="page-link page-link--edge">
         上一页
       </a>
     ) : (
-      <span class="rounded-full border border-rose/25 bg-white/30 px-4 py-1.5 text-sm text-ink/40">
+      <span class="page-link page-link--edge page-link--disabled" aria-disabled="true">
         上一页
       </span>
     )
@@ -101,11 +101,8 @@ const nextHref = currentPage < lastPage ? pageHref(currentPage + 1) : null;
     pages.map((n) => (
       <a
         href={pageHref(n)}
-        class={`rounded-full px-3.5 py-1.5 text-sm transition-colors ${
-          n === currentPage
-            ? 'bg-rose/70 text-ink'
-            : 'text-ink/60 hover:text-crimson'
-        }`}
+        aria-current={n === currentPage ? 'page' : undefined}
+        class={`page-link${n === currentPage ? ' page-link--current' : ''}`}
       >
         {n}
       </a>
@@ -113,14 +110,11 @@ const nextHref = currentPage < lastPage ? pageHref(currentPage + 1) : null;
   }
   {
     nextHref ? (
-      <a
-        href={nextHref}
-        class="rounded-full border border-rose/25 bg-white/50 px-4 py-1.5 text-sm text-ink/70 transition-colors hover:border-rose/50 hover:text-crimson"
-      >
+      <a href={nextHref} class="page-link page-link--edge">
         下一页
       </a>
     ) : (
-      <span class="rounded-full border border-rose/25 bg-white/30 px-4 py-1.5 text-sm text-ink/40">
+      <span class="page-link page-link--edge page-link--disabled" aria-disabled="true">
         下一页
       </span>
     )
@@ -131,19 +125,21 @@ const nextHref = currentPage < lastPage ? pageHref(currentPage + 1) : null;
   const list = document.getElementById('post-list');
   const buttons = Array.from(document.querySelectorAll('#post-filters button'));
 
-  buttons.forEach((btn) => {
-    btn.addEventListener('click', () => {
-      const key = btn.getAttribute('data-filter');
-      buttons.forEach((b) => {
-        b.classList.remove('bg-rose/70', 'text-ink');
-      });
-      btn.classList.add('bg-rose/70', 'text-ink');
-
-      if (!list) return;
-      list.querySelectorAll<HTMLElement>('[data-category]').forEach((card) => {
-        const cat = card.getAttribute('data-category');
-        card.style.display = key === 'all' || cat === key ? '' : 'none';
-      });
+  const setActive = (key: string) => {
+    buttons.forEach((b) => {
+      const on = b.getAttribute('data-filter') === key;
+      b.setAttribute('aria-pressed', on ? 'true' : 'false');
+      b.classList.toggle('is-active', on);
     });
+    if (!list) return;
+    list.querySelectorAll<HTMLElement>('[data-category]').forEach((card) => {
+      const cat = card.getAttribute('data-category');
+      const show = key === 'all' || cat === key;
+      card.style.display = show ? '' : 'none';
+    });
+  };
+
+  buttons.forEach((btn) => {
+    btn.addEventListener('click', () => setActive(btn.getAttribute('data-filter') || 'all'));
   });
 </script>
