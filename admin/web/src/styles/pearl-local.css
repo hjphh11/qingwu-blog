@@ -517,3 +517,13 @@ h2.is-danger::before {
     animation: none;
   }
 }
+
+/* ── 13. 弹窗里的下拉浮层要盖在弹窗之上 ──────────────────────────
+ * `.select-menu` 是 position:fixed + z-index:120，而且 portal 到 document.body；
+ * 弹窗遮罩是 var(--layer-overlay)=200 —— 所以在「加一条定时」这类弹窗里点下拉，
+ * 菜单会跑到弹窗**后面**（用户截图）。
+ * 用 :has() 在弹窗打开时把 body 上的浮层抬到 210：盖住弹窗(200)，仍低于 toast(400)。 */
+body:has(.overlay) .select-menu,
+body:has(.overlay) .menu-pop {
+  z-index: calc(var(--layer-overlay) + 10);
+}
