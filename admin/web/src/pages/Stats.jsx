@@ -94,7 +94,10 @@ function RankRows({ items }) {
             {it.label}
           </span>
           <span className="rank-track">
-            <i style={{ width: `${Math.max(3, Math.round((Number(it.value ?? 0) / max) * 100))}%` }} />
+            {/* 宽度开方缩放，不是线性：榜单是长尾的（中国 1421 / 台湾 6），
+                  线性归一会让第 2–8 名全被压到 3% 下限、条一样长，等于没信息。
+                  开方后 86→25%、44→18%、21→12%、9→8%，可读；精确次数仍在右侧。 */}
+              <i style={{ width: `${Math.max(4, Math.round(Math.sqrt(Number(it.value ?? 0) / max) * 100))}%` }} />
           </span>
           <span className="rank-value tnum">{n(it.value)} 次</span>
         </li>
