@@ -924,19 +924,75 @@ body:has(.overlay) .menu-pop {
   margin-bottom: 18px;
 }
 
-/* ── 20. 登录页：桌面宽度下卡片要居中 + 品牌名收进字号阶梯 ──────────
- * ① scaffold 的登录页本来是「左视觉 + 右表单」两栏；本项目只渲染表单那栏，
- *    于是 .login-side 只占半屏、卡片在左半区里居中 —— 1440px 实测卡片中心 ≠ 视口中心
- *    （820/390 窄屏由媒体查询收成单栏，反而是居中的）。
- *    让表单栏占满并居中，两种情况都对齐。
- * ② `.p-login-brand .brand-name` 是 scaffold 的 16px，不在 12/13/14/18/28 阶梯上
- *    （登录页在壳外，audit-pages.py 按侧栏路由扫，扫不到它）。
- * ③ `.login-submit` 46px / `.input-shell` 42px 是 scaffold 给登录页的规格，
- *    比全站控件 36px 大一圈 —— 这是「登录页主行动」的设计取向，先保留（见 HANDOFF）。 */
-.login .login-side {
-  flex: 1 1 100%;
-  justify-content: center;
-}
+/* ── 20. 登录页：品牌名收进字号阶梯 ──────────────────────────────
+ * `.p-login-brand .brand-name` 是 scaffold 的 16px，不在 12/13/14/18/28 阶梯上
+ * （登录页在壳外，audit-pages.py 按侧栏路由扫，扫不到它）。
+ * 「桌面 1440px 卡片不居中」那条补丁（`.login .login-side { flex: 1 1 100% }`）已经删掉：
+ * 它对 `display: grid` 的栅格项本来就不生效（flex-basis 在 grid 里无效），
+ * 真正的修法是第 21 节 —— 把 scaffold 的左栏画布补回来，两栏自己成立。
+ * `.login-submit` 46px / `.input-shell` 42px 是 scaffold 给登录页的规格，
+ * 比全站控件 36px 大一圈 —— 这是「登录页主行动」的设计取向，先保留（见 HANDOFF）。 */
 .p-login-brand .brand-name {
   font-size: 18px;
+}
+
+/* ── 21. 登录页左栏：爱弥斯画布 ──────────────────────────────────
+ * scaffold 的 `pages.css` 第 5 节整套是「左深色画布 + 右表单」，两栏由 `.login` 的
+ * `grid-template-columns: minmax(0, 1.35fr) minmax(400px, 1fr)` 定，卡片靠 `.login-side`
+ * 自己的 `place-items: center` 在右栏居中（≤960px 收成一栏、`.login-canvas` 隐掉）。
+ * 那一节一条都不用改，这里只补 scaffold 没有、也借不到现成件的四件事：
+ *
+ * ① 立绘：`.login-canvas` 里没有放图的位置。`.canvas-main` 的第二列原本是刻度盘
+ *    `.login-dial`（≤1180px 会 display: none），拿它放立绘正好；高度用 `dvh` 钉住、
+ *    宽度由 `aspect-ratio` 反推 —— 画布是「一屏内不滚动」的盒子
+ *    （`min-height: calc(100dvh - 28px)` + `overflow: hidden`），高度驱动的图在任何
+ *    视口比例下都不会把底部的 `.login-foot` 顶出画布。兜底（换源 / 只留文字）在 JSX 的
+ *    onError 里，样式不掺和。
+ * ② 字号收进 12/13/14/18/28 阶梯：画布上用到四条 scaffold 值 —— `.eyebrow` 11.5px、
+ *    `.login-title` clamp(34px, 3.5vw, 58px)、`.login-lead` 14.5px、`.login-foot` 10.5px。
+ *    登录页在壳外，audit-pages.py 按侧栏路由扫，扫不到它，只能在这里自查收口。
+ * ③ 入场：scaffold 那组 `.login:not(.is-entrance-ready) …` 只覆盖品牌 / hero-line /
+ *    cap-item / 铭牌 / 刻度盘 / 卡片，画布上的文案与立绘不在里面 —— 补一条，跟卡片同一拍
+ *    出现（`is-entrance-ready` 仍然只由 JSX 的 state 拼，见 pearl/useEntrance.js）。 */
+.login-canvas .eyebrow { font-size: 12px; }        /* scaffold 11.5px */
+.login-canvas .login-title { font-size: 28px; }    /* scaffold clamp(34px, 3.5vw, 58px) */
+.login-canvas .login-lead { font-size: 14px; }     /* scaffold 14.5px */
+.login-canvas .login-foot { font-size: 12px; }     /* scaffold 10.5px */
+
+/* ④ 顺手修一处**可见缺陷**：`.p-login-brand` 那套颜色（名字 #fff / 副标 rgba(255,255,255,.5) /
+   方牌 rgba(255,255,255,.08)）是 scaffold 为**左栏深色画布**写的，可这页把品牌横排放在浅色
+   `.m-surface` 卡片里 —— 1440 实测卡片顶上只剩一个青柠点，站点名与副标完全看不见。
+   这里只在卡片范围内换回侧栏那套墨色标识：方牌用基础的 `--dark-surface`（`.p-brand-mark`
+   本来就是深色方牌 + 青柠点，见 pearl/layout.css 第 53 行），文字回到 `--ink` / `--ink-soft`。
+   想恢复 scaffold 原样、或改成把品牌横排挪进左栏画布，删掉这三条即可。 */
+.login-side .p-login-brand .brand-name { color: var(--ink); }
+.login-side .p-login-brand .brand-sub { color: var(--ink-soft); }
+.login-side .p-login-brand .p-brand-mark { background: var(--dark-surface); }
+
+.login-portrait {
+  margin: 0;
+  height: clamp(180px, 42dvh, 420px);
+  aspect-ratio: 360 / 497;    /* portrait.webp 的原生比例（360×497，透明底） */
+  justify-self: center;       /* 960–1180px 画布收成一列时立绘居中 */
+  flex: none;
+}
+.login-portrait img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;        /* 兜底的剪影更细长，宁可留白也不裁掉头脚 */
+  filter: drop-shadow(0 18px 36px rgba(0, 0, 0, .5));
+}
+
+/* 画布上的文案与立绘跟卡片同一拍入场（上面第 ③ 条） */
+.login-canvas .canvas-main,
+.login-canvas .login-foot {
+  transition: opacity .5s var(--ease-premium);
+}
+.login:not(.is-entrance-ready) .login-canvas .canvas-main,
+.login:not(.is-entrance-ready) .login-canvas .login-foot {
+  opacity: 0;
+}
+@media (prefers-reduced-motion: reduce) {
+  .login-canvas .canvas-main,
+  .login-canvas .login-foot { transition: none; }
 }

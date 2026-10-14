@@ -3,14 +3,22 @@
 // 这一页**在珍珠外壳之外**：App.jsx 在 `phase === 'out'` 时直接渲染它，没有侧栏与顶栏，
 // 所以它和前面八页的做法不同：
 //   · 不套 `.page`（那是外壳内容区的容器，会带上外壳页的内距与纵向节奏）；
-//   · 页面自己就是一个整屏舞台 —— 用 scaffold 早就搬进来的 `.login` / `.login-side`
-//     一整套（styles/pearl/pages.css 第 5 节），外层 `.login` 自带 `--stage` 底色 +
-//     `100dvh`，里面的 `.login-side` 负责把卡片居中；
+//   · 页面自己就是一个整屏舞台 —— 用 scaffold 早就搬进来的 `.login` / `.login-canvas` /
+//     `.login-side` 一整套（styles/pearl/pages.css 第 5 节）。
+//     scaffold 的登录页本来就是「左深色画布 + 右表单」两栏：`.login` 的
+//     `grid-template-columns: minmax(0, 1.35fr) minmax(400px, 1fr)` 定两栏，左栏 `.login-canvas`
+//     是深色画布、右栏 `.login-side` 用 `place-items: center` 把卡片在**自己那一栏**里居中。
+//     之前只渲染了右栏，卡片就落在 grid 的第一列（1.35fr 那栏）里居中 —— 桌面 1440px 实测偏左；
+//     现在把左栏补回来，居中由这两条现成规则自己成立，页面不再需要任何补丁。
+//     ≤960px 时 scaffold 把 grid 收成一栏、`.login-canvas { display: none }`，只剩卡片通栏居中。
 //   · 卡片材质用珍珠玻璃的 `.m-surface`（阅读面：卡片 / 表格容器 / 弹窗那一档）。
 //     ⚠️ `.p-login-card` 在 scaffold 里只有「宽度 / 圆角 / 3D 容器」三件事，**没有材质**
 //     （原版那块玻璃是 Vue 的组件自己画的），所以材质这一档由这里显式给 `.m-surface`。
 //     唯一的例外：`max-width` 取 scaffold 的 420px 而不是新版 380px（不写内联宽度，
 //     也不为了 40px 去改 scaffold 的样式）。
+//   · 左栏画布放站点角色爱弥斯：背景两层 `.canvas-grid`（网格）/ `.canvas-glow`（光晕），
+//     中间 `.canvas-main` 是「左文案 + 右立绘」的两列栅格（`.canvas-copy` / `.login-title` /
+//     `.login-lead`），底部一行 `.login-foot`。立绘三级兜底见下面的 PORTRAITS。
 //
 // 逻辑与旧暖色版**逐行一致**（一行没动）：
 //   · POST /api/auth/login { password }（服务端逻辑一行没碰），成功后调 onSuccess()；
@@ -36,6 +44,14 @@ import Field from '../pearl/ui/Field.jsx';
 import TextInput from '../pearl/ui/TextInput.jsx';
 
 /**
+ * 左栏立绘的兜底顺序（两个文件都在 web/public/images/emis/ 下，未登录也能加载）：
+ * 首选 `portrait.webp`（360×497，透明底，69.6KB）；它挂了退 `silhouette.webp`；
+ * 再挂就整个 `<figure>` 都不渲染 —— 只剩文字，绝不出现裂图。
+ * 游标由 `onError` 推进，走到头（= 数组长度）即停。
+ */
+const PORTRAITS = ['/images/emis/portrait.webp', '/images/emis/silhouette.webp'];
+
+/**
  * `notice` = 回到登录页的原因（会话过期、服务器换了密钥…）。
  * 阶段 N 加的：以前会话过期只会把「请先登录」当普通错误显示在坏掉的页面上，
  * 现在直接回登录页并说明为什么。
@@ -44,9 +60,12 @@ export default function Login({ onSuccess, notice = '' }) {
   const [password, setPassword] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  // 立绘兜底游标：0 = portrait.webp，1 = silhouette.webp，2 = 不渲染（见 PORTRAITS）
+  const [portrait, setPortrait] = useState(0);
 
-  // `.login:not(.is-entrance-ready) .p-login-brand / .p-login-card` 是 opacity:0，
-  // 入场类必须由 state 拼（见 pearl/useEntrance.js：手写 classList 会被 React 抹掉）
+  // `.login:not(.is-entrance-ready) .p-login-brand / .hero-line / .cap-item / .login-plate /
+  // .login-dial / .p-login-card` 是 opacity:0，入场类必须由 state 拼
+  // （见 pearl/useEntrance.js：手写 classList 会被 React 抹掉）
   const ready = useEntrance();
 
   const submit = async (e) => {
@@ -67,7 +86,46 @@ export default function Login({ onSuccess, notice = '' }) {
 
   return (
     <div className={cls('login', ready && 'is-entrance-ready')}>
-      {/* 整屏舞台上的登录位：卡片的居中、`place-items: center` 与 100dvh 都在这条类里 */}
+      {/* 左栏：爱弥斯画布（深色面，浅 / 深两态都是深色）。
+          `.canvas-grid` / `.canvas-glow` 是 scaffold 给画布准备的两层背景，绝对定位在
+          z-index: -1，靠 `.login-canvas` 的 isolation 关在自己那一层里（不进 flex 布局）。 */}
+      <aside className={cls('login-canvas')}>
+        <div className={cls('canvas-grid')} aria-hidden="true" />
+        <div className={cls('canvas-glow')} aria-hidden="true" />
+
+        {/* `.canvas-main` 是「左文案 + 右立绘」的栅格（`minmax(0,1fr) auto`，≤1180px 收成一列）。
+            立绘原来那一格在 scaffold 里是刻度盘 `.login-dial`（≤1180px 直接 display: none），
+            这里换成角色立绘，宽度由高度 + 比例反推。 */}
+        <div className={cls('canvas-main')}>
+          <div className={cls('canvas-copy')}>
+            <span className={cls('eyebrow')}>站点角色</span>
+            <h1 className={cls('login-title')}>爱弥斯</h1>
+            {/* 文案逐字取自站点数据 `src/data/about.json` 的 `emis.persona[0]`
+                （关于页「爱弥斯」那一块的默认文案），没有另编 */}
+            <p className={cls('login-lead')}>
+              爱弥斯是《鸣潮》中的五星热熔属性共鸣者。一头粉发如暮色浸染，玩家们唤她「飞行雪绒」，却不知她还有一个令人心碎的名字——「电子幽灵」。
+            </p>
+          </div>
+
+          {portrait < PORTRAITS.length && (
+            <figure className={cls('login-portrait')}>
+              <img
+                src={PORTRAITS[portrait]}
+                alt="爱弥斯"
+                onError={() => setPortrait((step) => step + 1)}
+              />
+            </figure>
+          )}
+        </div>
+
+        {/* 画布底部那行等宽小字（scaffold 的 `.login-foot`） */}
+        <p className={cls('login-foot')}>qingwu.ink — 内容与发布后台</p>
+      </aside>
+
+      {/* 右栏：登录卡片那一栏。卡片在**自己这一栏**里居中（scaffold 的 `place-items: center`），
+          整页是两栏布局，所以卡片中心 = 右栏中心，而不是视口中心。
+          ≤960px 时这一栏是唯一一栏（`.login-canvas` 被隐藏、`.login` 收成一列），
+          卡片就通栏水平垂直居中。 */}
       <div className={cls('login-side')}>
         <form className={cls('m-surface', 'p-login-card')} onSubmit={submit}>
           <div className={cls('login-card-inner')}>
@@ -78,11 +136,11 @@ export default function Login({ onSuccess, notice = '' }) {
             <div className={cls('stack')}>
               <div className={cls('p-login-brand')}>
                 <span className={cls('brand-mark')} aria-hidden="true">
-                  <span className="brand-dot" />
+                  <span className={cls('brand-dot')} />
                 </span>
-                <div className="brand-text">
-                  <div className="brand-name">清吾后台</div>
-                  <div className="brand-sub">内容与发布</div>
+                <div className={cls('brand-text')}>
+                  <div className={cls('brand-name')}>清吾后台</div>
+                  <div className={cls('brand-sub')}>内容与发布</div>
                 </div>
               </div>
 
