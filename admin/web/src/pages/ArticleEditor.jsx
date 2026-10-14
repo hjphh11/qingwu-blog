@@ -270,7 +270,7 @@ export default function ArticleEditor({ id, go }) {
 
   if (loading) {
     return (
-      <div className="card panel" style={{ textAlign: 'center', color: 'rgba(74,55,40,.55)' }}>
+      <div className="card panel" style={{ textAlign: 'center', color: 'var(--ink-soft)' }}>
         正在读取文章…
       </div>
     );

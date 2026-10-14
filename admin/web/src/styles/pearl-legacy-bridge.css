@@ -1,0 +1,786 @@
+/* ============================================================
+   旧页面兼容皮肤（珍珠玻璃）
+   ============================================================
+   还有 8 个页面（友链申请 / 分享·语录 / 关于页 / 音乐 / 操作日志 / 访问统计 /
+   发布 / 文章编辑器）仍在用旧暖色的类名（.card / .panel / .table / .btn / .tag …），
+   它们的样式来自 `styles/app.css`（暖色）。
+
+   与其一次性重写 8 个页面（每个 12–20KB），这里先把这些**旧类名整体映射到珍珠玻璃
+   的令牌与材质**上：一次改动，全部页面视觉统一。之后每页再按
+   `pearl/PORTING.md` 升级成真组件（那时就会用 `.p-*` 与 pearl 组件，不再依赖这一层）。
+
+   ⚠️ 这一层只碰**旧类名**。pearl 自己的组件用的是 `p-panel` / `p-table` / `p-btn` 等
+   带前缀的名字，两边不会互相覆盖。等所有页面迁完，删掉本文件与 app.css 即可。
+   ============================================================ */
+
+/* ── 1. 页面容器：**内距必须与珍珠页的 .page 完全一致** ────────────
+   实测：珍珠页 .page 是 `26px 28px 40px`（内容左缘 278px），而这里原来是 22px
+   （左缘 272px）—— 切页时标题会横跳 6px。对齐成同一组数值，顺带把竖向间隔
+   从 22 收到 18（与 .stack / .bento-grid 一致）。 */
+.legacy-slot {
+  padding: 26px 28px 40px;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  font-size: 14px;
+  line-height: 1.6;
+  color: var(--ink);
+}
+/* 外壳给皮肤页补的页面头：间距交给 .legacy-slot 的 gap，别再叠一层 margin */
+.legacy-slot > .page-head {
+  margin-bottom: 0;
+}
+
+/* 旧页面里还在用暖色字号的零碎元素（审计脚本按页抓出来的），统一到 5 档阶梯 */
+.legacy-slot .sub,
+.legacy-slot .l,
+.legacy-slot .lbl,
+.legacy-slot .msg,
+.legacy-slot .num,
+.legacy-slot .sep,
+.legacy-slot .lrc-head,
+.legacy-slot .lrc-acts {
+  font-size: 13px;
+}
+/* 音乐页的行操作是纯文字箭头（↑ ↓），旧样式给到 10px */
+.legacy-slot .post-acts span,
+.legacy-slot .post-acts button,
+.legacy-slot .iconbtn,
+.legacy-slot .steps,
+.legacy-slot .lrc-rows {
+  font-size: 13px;
+}
+
+/* ── 2. 卡片 / 面板 ───────────────────────────────────────────── */
+.legacy-slot .card,
+.legacy-slot .panel {
+  background: var(--surface);
+  border: 1px solid var(--p-line);
+  border-radius: var(--r-lg);
+  box-shadow: var(--edge), var(--e1);
+  padding: 0;
+  color: var(--ink);
+}
+
+.legacy-slot .panel-head {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px 12px;
+  min-height: 60px;
+  padding: 14px 20px;
+  border-bottom: 1px solid var(--p-line);
+}
+.legacy-slot .panel-head h2 {
+  font-size: 18px;
+  font-weight: 680;
+  letter-spacing: -0.015em;
+  margin: 0;
+}
+.legacy-slot .panel-head .spacer {
+  flex: 1;
+}
+.legacy-slot .panel-head .hint,
+.legacy-slot .hint {
+  font-size: 13px;
+  color: var(--ink-soft);
+}
+.legacy-slot .panel-body {
+  padding: 16px 20px 20px;
+}
+
+/* ── 3. 表格 ─────────────────────────────────────────────────── */
+.legacy-slot .table-wrap {
+  overflow-x: auto;
+  border-radius: 0 0 var(--r-lg) var(--r-lg);
+}
+.legacy-slot .table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+}
+.legacy-slot .table th {
+  font-size: 12px;
+  font-weight: 620;
+  color: var(--ink-soft);
+  text-align: left;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--p-line);
+  white-space: nowrap;
+}
+.legacy-slot .table td {
+  height: 48px;
+  padding: 8px 16px;
+  border-bottom: 1px solid var(--p-line);
+  vertical-align: middle;
+}
+.legacy-slot .table tbody tr:hover {
+  background: var(--hover-bg);
+}
+.legacy-slot .table tbody tr:last-child td {
+  border-bottom: 0;
+}
+.legacy-slot .table .num,
+.legacy-slot .table .right {
+  font-variant-numeric: tabular-nums;
+}
+.legacy-slot .table .right {
+  text-align: right;
+}
+
+/* ── 4. 按钮 ─────────────────────────────────────────────────── */
+.legacy-slot .btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  height: 36px;
+  padding: 0 14px;
+  border: 0;
+  border-radius: var(--r-xs);
+  background: var(--blue);
+  color: #fff;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 620;
+  cursor: pointer;
+  transition: background 0.15s ease, box-shadow 0.2s ease, opacity 0.15s ease;
+}
+.legacy-slot .btn:hover:not(:disabled) {
+  background: var(--blue-hover);
+}
+.legacy-slot .btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.legacy-slot .btn-ghost {
+  background: var(--surface-solid);
+  color: var(--ink);
+  border: 1px solid var(--p-line-strong);
+  border-radius: 999px;
+  box-shadow: var(--edge);
+}
+.legacy-slot .btn-ghost:hover:not(:disabled) {
+  background: var(--hover-bg);
+}
+.legacy-slot .iconbtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border: 0;
+  border-radius: var(--r-xs);
+  background: transparent;
+  color: var(--ink-soft);
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+.legacy-slot .iconbtn:hover:not(:disabled) {
+  background: var(--hover-bg);
+  color: var(--ink);
+}
+.legacy-slot .iconbtn.danger:hover:not(:disabled) {
+  color: var(--red-text);
+}
+.legacy-slot .iconbtn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+/* ── 5. 标签（旧 tone 名 → 珍珠玻璃四色）───────────────────────── */
+.legacy-slot .tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 22px;
+  padding: 0 9px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+  background: rgba(var(--shade), 0.06);
+  color: var(--ink-muted);
+  white-space: nowrap;
+}
+.legacy-slot .tag-ok,
+.legacy-slot .tag-success {
+  background: var(--lime-soft);
+  color: var(--leaf-text);
+}
+.legacy-slot .tag-rose,
+.legacy-slot .tag-pending,
+.legacy-slot .tag-soft,
+.legacy-slot .tag-amber {
+  background: var(--blue-soft);
+  color: var(--blue);
+}
+.legacy-slot .tag-bad,
+.legacy-slot .tag-danger {
+  background: var(--red-soft);
+  color: var(--red-text);
+}
+
+/* ── 6. 表单控件 ─────────────────────────────────────────────── */
+.legacy-slot .input,
+.legacy-slot .select,
+.legacy-slot .textarea {
+  height: 36px;
+  padding: 0 12px;
+  border: 1px solid var(--p-line-strong);
+  border-radius: var(--r-xs);
+  background: var(--surface-solid);
+  color: var(--ink);
+  font: inherit;
+  font-size: 14px;
+  box-shadow: var(--edge);
+}
+.legacy-slot .textarea {
+  height: auto;
+  padding: 9px 12px;
+  line-height: 1.6;
+  resize: vertical;
+}
+.legacy-slot .input:focus-visible,
+.legacy-slot .select:focus-visible,
+.legacy-slot .textarea:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 1px;
+}
+.legacy-slot .field label,
+.legacy-slot .field .lbl {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--ink-soft);
+}
+/* 旧页面的字段标签实际是 `<label class="field"><span>名字</span>` ——
+   上面那条选不到它（.field 本身就是 label），于是它一直吃 app.css 的暖棕
+   `rgba(74,55,40,.7)`（合成到近白底上只有约 4.0:1，低于 4.5:1，看着发灰发脏）。
+   这里按"每组字段的第一个 span 就是标签"来命中，与珍珠玻璃 `Field` 的标签一致。 */
+.legacy-slot .field > span:first-child {
+  display: block;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink-soft);
+  margin-bottom: 6px;
+}
+/* ── 2b. 面板内容的内距（实测：旧页面内容左右各贴边框 1px）──────────
+ * 珍珠玻璃的面板把内容包在 `.panel-body`（padding 0 20px 20px）里；
+ * 旧页面没有这一层，内容直接是面板的子元素，于是标签与输入框**紧贴左右边框**。
+ * 这里给「除了不该内缩的那些」统一补 20px 侧内距：
+ *   · .panel-head 自己已有 14px 20px；
+ *   · .table-wrap / .post-list 该通宽（它们内部每行/每格已有自己的内距）。
+ * 另外排除 `.stat`（访问统计/发布页的读数卡是 .card，卡片自己有 padding，
+ * 再加一层会挤成双层内距）。 */
+.legacy-slot .panel > :not(.panel-head):not(.table-wrap):not(.post-list),
+.legacy-slot .card:not(.stat) > :not(.panel-head):not(.table-wrap):not(.post-list) {
+  padding-left: 20px;
+  padding-right: 20px;
+}
+
+/* 面板内容贴底：旧页面把 form-grid 直接放在面板里，最后一个控件离下边框只剩 1px */
+.legacy-slot .panel > :last-child:not(.panel-head):not(.table-wrap),
+.legacy-slot .card > :last-child:not(.panel-head):not(.table-wrap) {
+  margin-bottom: 20px;
+}
+.legacy-slot .form-grid {
+  display: grid;
+  gap: 14px 16px;
+  /* 旧布局是 minmax(190px, 1fr)，在 1114px 的内容宽里排出 5 列，
+     结果「标语」这种长文本输入框只有 ~420px，内容被截断（实测截在"一个温馨二"）。
+     放宽到 320px 起步，同一行只排 2–3 个字段，长文本也放得下。 */
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+}
+.legacy-slot .form-actions {
+  display: flex;
+  gap: 10px;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+}
+.legacy-slot .filter-bar,
+.legacy-slot .toolbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--p-line);
+}
+.legacy-slot .filter-bar .grow {
+  flex: 1;
+  min-width: 200px;
+}
+.legacy-slot .chip {
+  height: 28px;
+  padding: 0 12px;
+  border-radius: 999px;
+  border: 1px solid var(--p-line-strong);
+  background: var(--surface-solid);
+  color: var(--ink-muted);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+.legacy-slot .chip.on {
+  background: var(--blue-soft);
+  border-color: transparent;
+  color: var(--blue);
+  font-weight: 620;
+}
+
+/* ── 7. 行式列表（分享 / 友链 / 音乐等旧页面的 post-list）────────── */
+.legacy-slot .post-list {
+  display: flex;
+  flex-direction: column;
+}
+.legacy-slot .post-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 56px;
+  padding: 10px 20px;
+  border-top: 1px solid var(--p-line);
+}
+.legacy-slot .post-list > .post-item:first-child {
+  border-top: 0;
+}
+.legacy-slot .post-item:hover {
+  background: var(--hover-bg);
+}
+.legacy-slot .post-main {
+  flex: 1;
+  min-width: 0;
+}
+.legacy-slot .post-title {
+  font-size: 14px;
+  font-weight: 620;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.legacy-slot .post-meta {
+  margin-top: 3px;
+  font-size: 13px;
+  color: var(--ink-soft);
+}
+.legacy-slot .post-meta .sep {
+  margin: 0 6px;
+  color: var(--ink-faint);
+}
+.legacy-slot .post-acts {
+  display: inline-flex;
+  gap: 2px;
+  flex: none;
+}
+.legacy-slot .post-pills {
+  display: inline-flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  flex: none;
+}
+
+/* ── 8. 统计卡（概览之外的旧页面偶有用到）────────────────────── */
+.legacy-slot .stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 12px;
+}
+.legacy-slot .stat {
+  padding: 14px 16px;
+  border-radius: var(--r-md);
+  background: var(--surface);
+  border: 1px solid var(--p-line);
+  box-shadow: var(--edge), var(--e1);
+}
+.legacy-slot .stat .l {
+  font-size: 12px;
+  color: var(--ink-soft);
+}
+.legacy-slot .stat-value,
+.legacy-slot .stat .n {
+  font-family: var(--font-mono);
+  font-size: 28px;
+  font-weight: 700;
+  letter-spacing: -0.03em;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── 9. 行内提示（旧 alert）→ 珍珠玻璃的软色块 ─────────────────── */
+.legacy-slot .alert {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 12px 14px;
+  border-radius: var(--r-md);
+  background: var(--blue-soft);
+  color: var(--blue);
+  font-size: 13px;
+  line-height: 1.6;
+}
+.legacy-slot .alert-error {
+  background: var(--red-soft);
+  color: var(--red-text);
+}
+.legacy-slot .alert-warn {
+  background: var(--lime-soft);
+  color: var(--leaf-text);
+}
+
+/* ── 10. 空态 / 分页 / 裸 JSON 预览 / 其它零碎 ────────────────── */
+.legacy-slot .empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 28px 16px;
+  color: var(--ink-soft);
+  font-size: 14px;
+  text-align: center;
+}
+.legacy-slot .pager {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 14px 20px;
+  border-top: 1px solid var(--p-line);
+  color: var(--ink-soft);
+  font-size: 13px;
+}
+.legacy-slot .raw {
+  margin: 0;
+  max-height: 340px;
+  overflow: auto;
+  padding: 14px;
+  border-radius: var(--r-md);
+  background: var(--groove-bg);
+  color: var(--ink-muted);
+  font-family: var(--font-mono);
+  font-size: 13px;
+  line-height: 1.65;
+}
+.legacy-slot .unpub-box {
+  margin: 0 0 14px;
+  padding: 14px 16px;
+  border-radius: var(--r-md);
+  border: 1px solid var(--p-line);
+  background: var(--blue-soft);
+}
+.legacy-slot .mono {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  color: var(--ink-muted);
+}
+.legacy-slot .preview {
+  border-radius: var(--r-md);
+  border: 1px solid var(--p-line);
+  background: var(--surface-solid);
+}
+.legacy-slot .editor-pane {
+  border-radius: var(--r-md);
+  border: 1px solid var(--p-line);
+  background: var(--surface-solid);
+}
+.legacy-slot .toolbar {
+  border-bottom: 1px solid var(--p-line);
+}
+.legacy-slot .steps {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.legacy-slot .lrc-row,
+.legacy-slot .grid-2,
+.legacy-slot .inline-box {
+  border-radius: var(--r-sm);
+}
+.legacy-slot .lrc-row {
+  border: 1px solid var(--p-line);
+  background: var(--surface-solid);
+}
+.legacy-slot .lrc-head {
+  font-size: 12px;
+  font-weight: 620;
+  color: var(--ink-soft);
+}
+.legacy-slot .bar-track {
+  background: var(--groove-bg);
+  border-radius: 999px;
+  overflow: hidden;
+}
+.legacy-slot .bar-fill {
+  background: var(--blue);
+  border-radius: 999px;
+}
+.legacy-slot .icon-picker button:hover {
+  background: var(--hover-bg);
+}
+.legacy-slot .dirty-dot {
+  background: var(--blue);
+}
+
+/* ── 12. 旧页面里的同级盒子之间要有间距 ───────────────────────────
+ * 实测（新建文章页）：两块 `.card panel` 是兄弟节点，外层那个 div 没有 gap，
+ * 两块盒子直接贴在一起（编辑器页 gap=0）；`.legacy-slot` 的 gap 只管它的**直接子元素**，
+ * 管不到里层。这里用相邻兄弟规则补上统一节奏（18px，与全站一致）。 */
+.legacy-slot .card + .card,
+.legacy-slot .panel + .panel,
+.legacy-slot .card + .panel,
+.legacy-slot .panel + .card {
+  margin-top: 18px;
+}
+/* 各页里包裹多个盒子的普通 div：也给它一个竖向节奏，避免里层盒子贴在一起 */
+.legacy-slot > div:not([class]) {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+/* 新建文章页左「编辑区」右「预览」是并排的两栏，实测中间间距是 0（贴着）。
+   给它 16px：两栏都是 1fr，会自动各自让出 8px，不会横向溢出。 */
+.legacy-slot .editor-pane + .preview,
+.legacy-slot .preview + .editor-pane {
+  margin-left: 16px;
+}
+/* 工具栏与编辑区之间也别贴着 */
+.legacy-slot .toolbar + .editor-pane,
+.legacy-slot .toolbar + .preview {
+  margin-top: 12px;
+}
+
+/* ── 13. 弹窗作用域：旧页面的表单搬进 Modal 之后 ─────────────────────
+ * Modal 是 portal 到 `document.body` 的，**不在 `.legacy-slot` 里**，上面那些
+ * `.legacy-slot .xxx` 规则一概够不到 —— 所以把表单相关的规则镜像一份到 `.modal`。
+ * （分享·语录页的「加收藏 / 加语录 / 编辑」用的就是这一套旧类名。） */
+.modal .form-grid {
+  display: grid;
+  gap: 14px 16px;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+}
+.modal .form-grid .full {
+  grid-column: 1 / -1;
+}
+.modal .field > span:first-child {
+  display: block;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink-soft);
+  margin-bottom: 6px;
+}
+.modal .input,
+.modal .select,
+.modal .textarea {
+  width: 100%;
+  height: 36px;
+  padding: 0 12px;
+  border: 1px solid var(--p-line-strong);
+  border-radius: var(--r-xs);
+  background: var(--surface-solid);
+  color: var(--ink);
+  font: inherit;
+  font-size: 14px;
+  box-shadow: var(--edge);
+}
+.modal .textarea {
+  height: auto;
+  padding: 9px 12px;
+  line-height: 1.6;
+  resize: vertical;
+}
+.modal .input:focus-visible,
+.modal .select:focus-visible,
+.modal .textarea:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 1px;
+}
+.modal .form-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+.modal .hint {
+  font-size: 13px;
+  color: var(--ink-soft);
+}
+.modal .btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  height: 36px;
+  padding: 0 14px;
+  border: 0;
+  border-radius: var(--r-xs);
+  background: var(--blue);
+  color: #fff;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 620;
+  cursor: pointer;
+}
+.modal .btn:hover:not(:disabled) {
+  background: var(--blue-hover);
+}
+.modal .btn-ghost {
+  background: var(--surface-solid);
+  color: var(--ink);
+  border: 1px solid var(--p-line-strong);
+  border-radius: 999px;
+  box-shadow: var(--edge);
+}
+.modal .btn-ghost:hover:not(:disabled) {
+  background: var(--hover-bg);
+}
+.modal .iconbtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border: 0;
+  border-radius: var(--r-xs);
+  background: transparent;
+  color: var(--ink-soft);
+  cursor: pointer;
+}
+.modal .iconbtn:hover:not(:disabled) {
+  background: var(--hover-bg);
+  color: var(--ink);
+}
+.modal .iconbtn.danger:hover:not(:disabled) {
+  color: var(--red-text);
+}
+.modal .tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 22px;
+  padding: 0 9px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+  background: var(--blue-soft);
+  color: var(--blue);
+}
+.modal .tag-ok,
+.modal .tag-success {
+  background: var(--lime-soft);
+  color: var(--leaf-text);
+}
+.modal .tag-bad,
+.modal .tag-danger {
+  background: var(--red-soft);
+  color: var(--red-text);
+}
+.modal .empty {
+  padding: 20px 0;
+  color: var(--ink-soft);
+  font-size: 13px;
+  text-align: center;
+}
+
+/* ── 14. 旧页面里的暖色残留（脚本实测抓出来的）──────────────────────
+ * 新建文章页上仍有一批旧暖色：工具栏底 rgba(246,165,184,.1)（玫瑰）、
+ * 12 个工具按钮的字色 rgba(74,55,40,.75)（暖棕）、选中芯片底 rose + 字 rgb(224,82,107)、
+ * 文本框字色 rgb(74,55,40)、字段提示 rgba(74,55,40,.7)。一律换珍珠玻璃令牌。 */
+.legacy-slot .toolbar {
+  background: transparent;
+}
+.legacy-slot .toolbar button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 32px;
+  height: 32px;
+  padding: 0 8px;
+  border: 1px solid var(--p-line);
+  border-radius: var(--r-xs);
+  background: var(--surface-solid);
+  color: var(--ink-muted);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+.legacy-slot .toolbar button:hover:not(:disabled) {
+  background: var(--hover-bg);
+  color: var(--ink);
+}
+.legacy-slot .toolbar button.on {
+  background: var(--blue-soft);
+  color: var(--blue);
+  border-color: transparent;
+  font-weight: 620;
+}
+.legacy-slot textarea,
+.legacy-slot input,
+.legacy-slot select {
+  color: var(--ink);
+}
+/* 字段里除标签之外的 span（提示 / 错误）走次级字色，别再是暖棕。
+   旧样式用的是 `.form-grid .field span + span`（暖棕 .7），特异性更高，所以这里也带上层级。 */
+.legacy-slot .field > span:not(:first-child),
+.legacy-slot .form-grid .field > span:not(:first-child),
+.legacy-slot .form-grid .field span + span {
+  color: var(--ink-soft);
+}
+.legacy-slot .form-actions {
+  border-color: var(--p-line);
+}
+/* 勾选框的强调色跟着主色（旧样式是绯红） */
+input[type='checkbox'] {
+  accent-color: var(--blue);
+}
+/* 字段里的所有 span（标签 / 提示 / 错误）统一到次级字色。
+   这里用 !important 是**故意**的：旧样式里这些提示是 `.form-grid .field span` 一类的
+   高特异性选择器 + 内联 opacity 组合出来的暖棕（rgba(74,55,40,.7)），
+   逐条去猜特异性不如一次按死；这一层本来就是兼容层，页面迁完就删。 */
+.legacy-slot .field span,
+.legacy-slot .form-grid .field span {
+  color: var(--ink-soft) !important;
+}
+
+/* 弹窗里也可能有 .panel-head（音乐页的「歌词时间轴」小标题就是），
+   同样要按珍珠玻璃的尺寸来，否则会退回旧暖色的 0 内距 + 17px 标题 */
+.modal .panel-head {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px 12px;
+  margin: 4px 0 10px;
+}
+.modal .panel-head h2 {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 680;
+  letter-spacing: -0.015em;
+}
+.modal .panel-head .spacer {
+  flex: 1;
+}
+.modal .lrc-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border-radius: var(--r-sm);
+}
+.modal .lrc-row + .lrc-row {
+  border-top: 1px solid var(--p-line);
+}
+.modal .lrc-row .input {
+  flex: 1;
+}
+.modal .lrc-head {
+  font-size: 12px;
+  font-weight: 620;
+  color: var(--ink-soft);
+}
+.modal .lrc-acts {
+  display: inline-flex;
+  gap: 2px;
+}
+.modal .form-actions {
+  justify-content: flex-start;
+}

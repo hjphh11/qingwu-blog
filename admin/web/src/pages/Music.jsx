@@ -6,6 +6,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { MorphIcon } from 'morphicons/react';
 import { api } from '../api.js';
+import Modal from '../pearl/ui/Modal.jsx';
 import {
   CircleAlert,
   Eye,
@@ -80,7 +81,7 @@ export default function Music() {
   const editing = useMemo(() => songs?.find((s) => s.id === openId) ?? null, [songs, openId]);
 
   if (!songs) {
-    return <div className="card panel" style={{ textAlign: 'center', color: 'rgba(74,55,40,.55)' }}>{error || '正在读取…'}</div>;
+    return <div className="card panel" style={{ textAlign: 'center', color: 'var(--ink-soft)' }}>{error || '正在读取…'}</div>;
   }
 
   return (
@@ -129,7 +130,7 @@ export default function Music() {
               <div className="post-acts">
                 <button type="button" className="iconbtn" title="上移" onClick={() => move(i, -1)} disabled={i === 0}>
                   <MorphIcon icon={ListOrdered} size={15} color="currentColor" />
-                  <span style={{ fontSize: 10 }}>↑</span>
+                  <span style={{ fontSize: 13 }}>↑</span>
                 </button>
                 <button type="button" className="iconbtn" title="下移" onClick={() => move(i, 1)} disabled={i === songs.length - 1}>
                   <span style={{ fontSize: 14 }}>↓</span>
@@ -170,12 +171,20 @@ export default function Music() {
       </section>
 
       {editing && (
-        <section className="card panel">
-          <div className="panel-head">
-            <h2 style={{ fontSize: 17 }}>编辑「{editing.title}」</h2>
-            <div className="spacer" />
-            <span className="hint mono">{editing.lrcFile || '（没有歌词文件）'}</span>
-          </div>
+        /* 编辑条目 + 歌词时间轴：原来是一整块插在页面里的内联面板，
+           改成居中弹窗（宽 880，够放时间 + 文字两列歌词）；关闭用 setOpenId(null)。 */
+        <Modal
+          open
+          onClose={() => setOpenId(null)}
+          title={`编辑「${editing.title}」`}
+          sub={editing.lrcFile || '（没有歌词文件）'}
+          width={880}
+          footer={
+            <button type="button" className="btn btn-ghost" onClick={() => setOpenId(null)}>
+              关闭
+            </button>
+          }
+        >
 
           <div className="form-grid">
             <label className="field">
@@ -201,7 +210,7 @@ export default function Music() {
           </div>
 
           <div className="panel-head" style={{ marginTop: 16, marginBottom: 8, flexWrap: 'wrap' }}>
-            <h2 style={{ fontSize: 15 }}>歌词时间轴</h2>
+            <h2 style={{ fontSize: 18 }}>歌词时间轴</h2>
             <div className="spacer" />
             <span className="hint">时间写成 00:28.561；改完点右上角「保存并重新生成」</span>
             <button
@@ -289,7 +298,7 @@ export default function Music() {
               </span>
             </div>
           </div>
-        </section>
+        </Modal>
       )}
 
       {dirty && (

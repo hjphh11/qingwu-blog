@@ -6,6 +6,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { MorphIcon } from 'morphicons/react';
 import { api } from '../api.js';
 import TagInput from '../components/TagInput.jsx';
+import Modal from '../pearl/ui/Modal.jsx';
 import {
   ArrowDown,
   ArrowUp,
@@ -212,16 +213,27 @@ export default function Shares() {
         </p>
 
         {draft && (
-          <div className="inline-box">
-            <div className="panel-head" style={{ marginBottom: 10 }}>
-              <h2 style={{ fontSize: 15 }}>{draft.type === 'link' ? '加一条收藏' : '加一句语录'}</h2>
-            </div>
+          /* 加收藏 / 加语录：居中弹窗（原来是插在列表上方的内联块，用户要求改成弹窗）。
+             Modal 走 portal，所以这里面的旧类名要靠 pearl-legacy-bridge.css 的 `.modal` 作用域兜住。 */
+          <Modal
+            open
+            onClose={() => { setDraft(null); setNewType(''); }}
+            title={draft.type === 'link' ? '加一条收藏' : '加一句语录'}
+            sub={draft.type === 'link' ? '标题与链接建议都填 · 保存后前台立刻能看到' : '一句想留下来的话；作者 / 出处可留空'}
+            width={720}
+            footer={
+              <>
+                <button type="button" className="btn btn-ghost" onClick={() => { setDraft(null); setNewType(''); }}>
+                  取消
+                </button>
+                <button type="button" className="btn" onClick={add}>
+                  添加
+                </button>
+              </>
+            }
+          >
             <TypeFields item={draft} onChange={setDraft} knownTags={knownTags} />
-            <div className="form-actions" style={{ marginTop: 12 }}>
-              <button type="button" className="btn" onClick={add}>添加</button>
-              <button type="button" className="btn btn-ghost" onClick={() => { setDraft(null); setNewType(''); }}>取消</button>
-            </div>
-          </div>
+          </Modal>
         )}
 
         {list.length === 0 ? (
@@ -278,20 +290,37 @@ export default function Shares() {
                   </button>
                 </div>
 
-                {editing?.index === i && (
-                  <div className="inline-box" style={{ flexBasis: '100%' }}>
-                    <TypeFields item={editing} onChange={(v) => setEditing({ ...v, index: i })} knownTags={knownTags} />
-                    <div className="form-actions" style={{ marginTop: 10 }}>
-                      <button type="button" className="btn" onClick={saveEdit}>保存</button>
-                      <button type="button" className="btn btn-ghost" onClick={() => setEditing(null)}>取消</button>
-                      <div className="spacer" />
-                      <span className="hint">类型（收藏/语录）与 id 不给改：换类型请删掉重建</span>
-                    </div>
-                  </div>
-                )}
+                {editing?.index === i && null}
               </div>
             ))}
           </div>
+        )}
+
+        {/* 编辑条目：同样改成居中弹窗（放在列表外面，只渲染一次） */}
+        {editing && (
+          <Modal
+            open
+            onClose={() => setEditing(null)}
+            title={editing.type === 'link' ? `编辑收藏「${editing.title || '（没写标题）'}」` : '编辑语录'}
+            sub="类型（收藏 / 语录）与 id 不给改：换类型请删掉重建"
+            width={720}
+            footer={
+              <>
+                <button type="button" className="btn btn-ghost" onClick={() => setEditing(null)}>
+                  取消
+                </button>
+                <button type="button" className="btn" onClick={saveEdit}>
+                  保存
+                </button>
+              </>
+            }
+          >
+            <TypeFields
+              item={editing}
+              onChange={(v) => setEditing((s) => ({ ...v, index: s.index }))}
+              knownTags={knownTags}
+            />
+          </Modal>
         )}
 
         {dirty && (

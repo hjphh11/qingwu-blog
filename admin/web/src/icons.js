@@ -8,6 +8,7 @@
 import {
   ArrowDown,
   ArrowLeft,
+  ArrowRight,
   ArrowUp,
   Ban,
   Bold,
@@ -80,6 +81,7 @@ import {
 export {
   ArrowDown,
   ArrowLeft,
+  ArrowRight,
   ArrowUp,
   Ban,
   Bold,

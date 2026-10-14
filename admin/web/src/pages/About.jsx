@@ -131,7 +131,7 @@ export default function About() {
 
   if (!about) {
     return (
-      <div className="card panel" style={{ textAlign: 'center', color: 'rgba(74,55,40,.55)' }}>
+      <div className="card panel" style={{ textAlign: 'center', color: 'var(--ink-soft)' }}>
         {error || '正在读取…'}
       </div>
     );

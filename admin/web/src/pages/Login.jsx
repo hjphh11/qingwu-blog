@@ -38,7 +38,7 @@ export default function Login({ onSuccess, notice = '' }) {
           </span>
           <div>
             <div className="name">清吾后台</div>
-            <small style={{ fontSize: 11, color: 'rgba(74,55,40,.45)' }}>内容与发布</small>
+            <small style={{ fontSize: 12, color: 'var(--ink-soft)' }}>内容与发布</small>
           </div>
         </div>
         <p className="login-sub">输入密码进入 —— 只有你自己的设备（Tailscale 私网）能打开这一页。</p>

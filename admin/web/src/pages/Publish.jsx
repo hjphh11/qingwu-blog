@@ -513,7 +513,7 @@ export default function Publish() {
       </section>
 
       {job?.ok === true && !job.running && (
-        <div className="alert" style={{ background: 'rgba(246,165,184,.16)', border: '1px solid var(--line)', color: 'var(--color-ink)' }}>
+        <div className="alert" style={{ background: 'var(--blue-soft)', border: '1px solid var(--line)', color: 'var(--color-ink)' }}>
           <MorphIcon icon={Sparkles} size={15} color="currentColor" />
           <span>想确认线上？打开 <a href="https://www.qingwu.ink" target="_blank" rel="noreferrer">www.qingwu.ink</a> 看一眼即可（Vercel 大约 1 分钟生效）。</span>
         </div>

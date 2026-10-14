@@ -1,0 +1,378 @@
+/* 本后台自己的补充层 —— 只放"从 Vue 搬到 React 之后需要补的东西"。
+ *
+ * 为什么单独一个文件：styles/pearl/*.css 是从 scaffold 逐字搬来的（见
+ * admin/web/scripts/sync-pearl-css.mjs），要能随时重跑同步覆盖；
+ * 所以**不往那七个文件里加东西**，React 特有的补丁都写在这里。
+ *
+ * 目前只有两类补丁：
+ *   1. 滑动高亮胶囊（侧栏 .nav-thumb / 命令面板 .cmd-thumb）：scaffold 用 GSAP
+ *      的 slideThumb 补间，React 版改成"量位置 + CSS 过渡"，所以要给过渡。
+ *   2. 入场淡入：scaffold 由 GSAP 时间线加 .is-entrance-ready 并补间；
+ *      React 版由 useEntrance() 加类，这里给 .reveal / 侧栏 / 顶栏补上过渡，
+ *      否则类一加就是硬切（不报错，但少了那点手感）。
+ */
+
+/* ── 1. 滑动胶囊 ─────────────────────────────────────────────── */
+.nav-thumb,
+.cmd-thumb,
+.seg-thumb {
+  transition:
+    transform 0.3s cubic-bezier(0.22, 0.61, 0.36, 1),
+    width 0.24s cubic-bezier(0.22, 0.61, 0.36, 1),
+    height 0.24s cubic-bezier(0.22, 0.61, 0.36, 1);
+}
+
+/* ── 2. 入场淡入 ─────────────────────────────────────────────── */
+.reveal {
+  transition: opacity 0.32s ease, translate 0.32s ease;
+}
+.page:not(.is-entrance-ready) .reveal {
+  translate: 0 6px;
+}
+
+.rail-brand,
+.nav-group,
+.p-topbar > * {
+  transition: opacity 0.3s ease;
+}
+
+/* ── 3. 提示牌堆进出场（scaffold 用 GSAP TransitionGroup）──────── */
+.toast-slot {
+  animation: pearl-toast-in 0.28s ease both;
+}
+@keyframes pearl-toast-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* ── 4. 还没迁移的页面：临时容器 ───────────────────────────────
+ * 旧页面（分类 / 友链 / 分享 / 关于 / 音乐 / 回收站 / 日志 / 统计 / 发布 / 编辑器）
+ * 依赖旧外壳 .content 的 22px 内距与 22px 竖向间隔。它们暂时套在这一层里，
+ * 保证"换了外壳但不换内容"时版式不塌；等这些页面按珍珠玻璃重做完，这层就删掉。 */
+.legacy-slot {
+  padding: 22px;
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
+}
+
+/* ── 5. 可读性修正：文字对比度 ≥ 4.5:1 ─────────────────────────
+ * scaffold 的珍珠玻璃为了"仪器化"观感，把次级字色调得很淡。实测（近白阅读面 #fbfcfc）：
+ *   --ink-soft  #7e888c ≈ 3.5:1   --ink-faint #99a2a5 ≈ 2.5:1
+ *   --leaf-text #58a021 ≈ 3.2:1   --red-text   #e0443b ≈ 4.0:1
+ *   危险按钮：白字压在 --red #ff5a50 上 ≈ 3.1:1
+ * 本项目 docs/设计规范.md 第 6 节的硬约束是「全站所有文字实测 ≥ 4.5:1」，
+ * 所以这里只调这几个**字色 / 白字底色**令牌（不动布局、材质、圆角与其余色彩）：
+ *   --ink-soft  → #636b6f ≈ 5.8:1     --ink-faint → #6f7477 ≈ 4.9:1
+ *   --leaf-text → #3f7d14 ≈ 4.9:1     --red-text  → #cf3a31 ≈ 4.8:1
+ *   --red       → #d13a30（白字 ≈ 4.8:1）
+ * 想恢复 scaffold 原色：删掉这一段即可，原值都在 styles/pearl/tokens.css 里。
+ * 用 :root:not([data-theme='dark']) 限定浅色，避免盖掉（目前未启用的）深色主题。 */
+:root:not([data-theme='dark']) {
+  --ink-soft: #636b6f;
+  --ink-faint: #646a6d;
+  --leaf-text: #38700f;
+  --red-text: #cf3a31;
+  --red: #d13a30;
+}
+
+/* ── 6. 排版收敛与放大（2026-10-12 实测后调整）──────────────────
+ * 实测（1440 宽，概览页）出现过 **14 个不同字号**：
+ *   10 / 10.4 / 10.5 / 11 / 11.5 / 12 / 12.5 / 12.8 / 13 / 15 / 17.9 / 28 / 40 / 56
+ * 其中 9 个档位挤在 10–13px 内，相邻层差只有 1.04 倍 —— 而 docs/设计规范.md §3
+ * 要求「相邻层差 ≥1.25 倍」，所以层级分不开、看着不精致；正文 12–13px 在后台里也偏小。
+ *
+ * 这里收敛成 **5 档**（主层级满足 ≥1.25 倍）：
+ *   28 页面标题 ─ 1.56 → 18 区块标题 ─ 1.29 → 14 正文/表格/输入框/按钮
+ *   ─ 1.08 → 13 次级与元信息 ─ 1.08 → 12 最小信息（表头、标签、铭牌、单位）
+ * 另把中文行高从 1.5 提到 1.6，并放松三处竖向间距（页头↔内容 20→24、
+ * 卡片之间 16→18、面板头↔内容 14→20）。
+ * 想回到 scaffold 原始尺寸：删掉这一段即可（原值都在 styles/pearl/ 里）。 */
+body {
+  font-size: 14px;
+  line-height: 1.6;
+}
+.p-mono {
+  font-size: 13px;
+}
+.p-table {
+  font-size: 14px;
+}
+.p-table td {
+  line-height: 1.6;
+}
+.p-table th {
+  font-size: 12px;
+}
+.p-table .cell-text {
+  max-width: 420px;
+}
+.section-mark-title,
+.section-label,
+.p-panel-head .section-label,
+.p-panel-head .panel-title {
+  font-size: 18px;
+}
+.page-desc {
+  font-size: 14px;
+  line-height: 1.6;
+}
+.page-date,
+.pager-info,
+.p-panel-head .panel-meta,
+.p-empty,
+.select-empty {
+  font-size: 13px;
+}
+.crumbs,
+.cmd-trigger .cmd-text {
+  font-size: 13px;
+}
+.bento-meta,
+.metric-label,
+.p-tag,
+.spec-title,
+.spec-row dt,
+.hero-readouts dt {
+  font-size: 12px;
+}
+.nav-group-title {
+  font-size: 12px;
+  letter-spacing: 0.02em;
+}
+.brand-sub {
+  font-size: 12px;
+  letter-spacing: 0.04em;
+}
+.spec-row dt {
+  letter-spacing: 0.02em;
+}
+.quick-title {
+  font-size: 14px;
+}
+.quick-sub {
+  font-size: 13px;
+}
+.hero-readouts dd,
+.ring-readouts dd {
+  font-size: 14px;
+}
+/* ── 竖向节奏：中文界面比英文需要更松的呼吸 ── */
+.page-head {
+  margin-bottom: 24px;
+}
+.stack,
+.bento-grid {
+  gap: 18px;
+}
+.search-form {
+  gap: 14px 18px;
+}
+.p-panel-head + * {
+  margin-top: 6px;
+}
+
+/* 漏网的零碎档位（诊断脚本逐个抓出来的：都是"相对字号"或更具体的选择器，
+   用 .page 前缀把特异性抬上去，一次收进 12 / 13 两档） */
+.page .share-value small,
+.page .bar-readout,
+.page .mono-time,
+.page .spec-plate,
+.page .spec-row dd,
+.page .field-hint {
+  font-size: 12px;
+}
+.page .pg-btn,
+.page .pill-btn,
+.page .side-label,
+.page .share-label,
+.page .share-value {
+  font-size: 13px;
+}
+/* 小按钮：scaffold 是 12.5px（不在阶梯上），收到 13 档 */
+.p-btn.btn-sm {
+  font-size: 13px;
+}
+/* 刻度环与柱状图的标签：scaffold 用 10–12.5px，收进 12 档 */
+.page .tick-ring-label,
+.page .ring-readouts dt,
+.bars span {
+  font-size: 12px;
+}
+/* 活动列表（数据文件健康明细）整行提到 13 档 */
+.page .activity,
+.page .activity-main {
+  font-size: 13px;
+}
+/* 图表的轴标签与读数：scaffold 原来是 10–10.5px，这里统一到最小档 12px */
+.hero-chart svg text,
+.bars svg text,
+.ring-wrap svg text,
+.trend-axis text {
+  font-size: 12px;
+}
+/* 页内标题：h2 比 .section-label 多一个元素特异性，这里用 .page 前缀压过去 */
+.page h2.section-label,
+.page .section-mark-title,
+.page .p-panel-head h2 {
+  font-size: 18px;
+}
+
+/* ── 7. 表格密度：紧凑时收掉单元格里的第二行与开关文字 ───────────
+ * scaffold 的 --row-h 只是**最小行高**；文章的标题格是两行（标题 + slug），
+ * 状态格是「标签 + 置顶开关」，内容本身就把行撑到 59px，所以切「紧凑」看不出变化
+ * （实测 59 → 59）。紧凑档隐藏副行与开关文字，行高才真的回到 40px。 */
+:root[data-density='compact'] .p-table td .p-mono,
+:root[data-density='compact'] .p-table td .faint {
+  display: none;
+}
+:root[data-density='compact'] .p-table .switch-label {
+  display: none;
+}
+/* 表格里的开关按中线对齐：inline-flex 默认按基线对齐，紧凑档会偏离行中线几像素 */
+.p-table td .switch {
+  vertical-align: middle;
+}
+:root[data-density='compact'] .p-table .p-tag {
+  font-size: 11px;
+}
+/* 两行单元格（标题 + slug）在标准档就有 59px，比 scaffold 的 48 基础行高更高；
+   宽松档再抬到 64px，三档才看得出区别 */
+:root[data-density='comfy'] {
+  --row-h: 64px;
+}
+
+/* ── 8. 面板标题的「状态灯」（把 scaffold 那个无条件装饰点改成有含义的）──
+ * scaffold 在 `.section-label::before` 上画了个 7px 青柠点 + 5px 光晕，
+ * **每个**面板标题前都有 —— 但它的设计规范自己写着「表达读数、区间、当前位置，
+ * 不作装饰」。所以这里改成：**默认不画**，只有标题带上 `is-ok / is-info / is-danger`
+ * 才亮，颜色对应真实状态（正常 / 待处理 / 有问题）。几何照抄 scaffold 的原始取值。 */
+h2.section-label::before,
+h2.section-mark-title::before {
+  content: none;
+}
+h2.section-label.is-ok::before,
+h2.section-label.is-info::before,
+h2.section-label.is-danger::before,
+h2.section-mark-title.is-ok::before,
+h2.section-mark-title.is-info::before,
+h2.section-mark-title.is-danger::before {
+  content: '';
+  display: inline-block;
+  flex: none;
+  width: 7px;
+  height: 7px;
+  border-radius: 999px;
+}
+/* .section-label 本身是 inline-flex + gap:10px，间距由 gap 给；
+   .section-mark-title 是块级标题，点自己带右边距 */
+h2.section-mark-title.is-ok::before,
+h2.section-mark-title.is-info::before,
+h2.section-mark-title.is-danger::before {
+  margin-right: 10px;
+}
+h2.is-ok::before {
+  background: var(--lime);
+  box-shadow: 0 0 0 5px var(--lime-soft);
+}
+h2.is-info::before {
+  background: var(--blue);
+  box-shadow: 0 0 0 5px var(--blue-soft);
+}
+h2.is-danger::before {
+  background: var(--red);
+  /* 光晕跟着新红走：--red-soft 还是旧的 #ff5a50 那一版，配深红会发飘 */
+  box-shadow: 0 0 0 5px rgba(209, 58, 48, 0.12);
+}
+
+/* ── 9. 顶栏用户牌：名字与身份要竖排 ────────────────────────────
+ * scaffold 的 Vue 版在这两个 span 上写了内联 `display:block`，搬成 React 时漏了，
+ * 于是「清吾」和「内容与发布」并排贴在一起（用户截图指出）。
+ * 只在 ≥1081px 生效：≤1080px 时 layout.css 的 `.user-chip .user-meta { display:none }`
+ * 本来就要把它藏起来，而本文件在 layout.css 之后加载，不加媒体查询会把它顶回去。 */
+@media (min-width: 1081px) {
+  .user-chip .user-meta {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    min-width: 0;
+  }
+}
+/* 顺带把顶栏/导航轨里不在 5 档阶梯上的字号收进来（审计脚本原来只扫 main，漏了外壳） */
+.user-chip .user-name {
+  font-size: 13px;
+}
+.user-chip .user-role {
+  font-size: 12px;
+}
+.brand-name {
+  font-size: 14px;
+}
+.p-kbd {
+  font-size: 12px;
+}
+.rail-foot .nav-label {
+  font-size: 12px;
+}
+@media (prefers-reduced-motion: reduce) {
+  .nav-thumb,
+  .cmd-thumb,
+  .seg-thumb,
+  .reveal,
+  .rail-brand,
+  .nav-group,
+  .p-topbar > * {
+    transition: none;
+  }
+  .page:not(.is-entrance-ready) .reveal {
+    translate: none;
+  }
+  .toast-slot {
+    animation: none;
+  }
+}
+
+/* ── 10. 泳道（Swimlane）内部文字 ───────────────────────────────
+ * scaffold 的泳道用了 10 / 11 / 12.5px 三档（紧凑仪表盘取向），
+ * 收进全站的 12 / 13 两档：刻度与读数 12，泳道名 13。 */
+.swim-body *,
+.swim-foot *,
+.swim-zoom,
+.swim-axis text,
+.swim-body svg text {
+  font-size: 12px;
+}
+.swim-name {
+  font-size: 13px;
+}
+
+/* 泳道里还漏了一个 10px（不在 .swim-body 下的那部分，比如刻度层）——这里按整个泳道子树收口 */
+.swim-body,
+.swim-body *,
+.swim-foot,
+.swim-foot *,
+.swim-head,
+.swim-head *,
+.swim-lane,
+.swim-lane *,
+.swim-scroll,
+.swim-scroll * {
+  font-size: 12px;
+}
+.swim-name {
+  font-size: 13px;
+}
+
+/* 泳道时间轴的刻度标签：`.ruler-labels span` 的特异性 (0,1,1) 比 `.swim-head *` 高，
+   所以单独点出来收进 12 档（原样式是 10px） */
+.ruler-labels span,
+.ruler-marker-label,
+.ruler {
+  font-size: 12px;
+}

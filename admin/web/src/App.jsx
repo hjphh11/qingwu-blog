@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useState } from 'react';
 import { api } from './api.js';
 import Login from './pages/Login.jsx';
-import Shell from './components/Shell.jsx';
+// 珍珠玻璃外壳（React 版，对应 scaffold 的 layout/AppShell.vue）。
+// 旧的 components/Shell.jsx（暖色）保留在仓库里作为参考，下一轮全部迁完后删除。
+import PearlShell from './pearl/layout/PearlShell.jsx';
 
 export default function App() {
   const [phase, setPhase] = useState('checking'); // checking | out | in
@@ -55,7 +57,7 @@ export default function App() {
           }}
         />
       )}
-      {phase === 'in' && <Shell onLogout={logout} />}
+      {phase === 'in' && <PearlShell onLogout={logout} />}
     </>
   );
 }

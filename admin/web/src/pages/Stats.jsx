@@ -24,7 +24,19 @@ import { api } from '../api.js';
 import { ChartNoAxesColumn, CircleAlert, Eye, RefreshCw, Sparkles, Timer, User } from '../icons.js';
 
 // 站点暖色调（和主题一致），图表里循环用
-const COLORS = ['#e0526b', '#f6a5b8', '#e8b04b', '#8b5a3c', '#c98ba0', '#7ba05b', '#6b8cae', '#b07bb0'];
+// 图表配色：珍珠玻璃的分类色令牌（-ink 深色版，适合做线/柱实色）。
+// 原来是站点暖色的写死值（绯红/玫瑰/琥珀/暖棕…），与后台其余部分不一致。
+// 顺序仍是「沙 → 天 → 丁香 → 玫瑰 → 薄荷」，只用于区分类别（来源/地区/设备/每页），不表示状态。
+const COLORS = [
+  'var(--cat-1-ink)',
+  'var(--cat-2-ink)',
+  'var(--cat-3-ink)',
+  'var(--cat-4-ink)',
+  'var(--cat-5-ink)',
+  'var(--cat-1-ink)',
+  'var(--cat-2-ink)',
+  'var(--cat-3-ink)',
+];
 
 const DEVICE_LABEL = { mobile: '手机', tablet: '平板', desktop: '电脑', other: '其它' };
 /** 来源里的英文占位换成中文（看着才像中文后台）*/
@@ -155,11 +167,11 @@ export default function Stats() {
           <div style={{ width: '100%', height: 260 }}>
             <ResponsiveContainer>
               <LineChart data={trend} margin={{ top: 8, right: 12, bottom: 0, left: -18 }}>
-                <CartesianGrid stroke="rgba(246,165,184,.35)" vertical={false} />
-                <XAxis dataKey="d" tick={{ fontSize: 11 }} tickFormatter={(d) => String(d).slice(5)} minTickGap={24} />
-                <YAxis tick={{ fontSize: 11 }} allowDecimals={false} />
+                <CartesianGrid stroke="var(--p-line-strong)" vertical={false} />
+                <XAxis dataKey="d" tick={{ fontSize: 12 }} tickFormatter={(d) => String(d).slice(5)} minTickGap={24} />
+                <YAxis tick={{ fontSize: 12 }} allowDecimals={false} />
                 <Tooltip
-                  contentStyle={{ borderRadius: 12, border: '1px solid rgba(246,165,184,.5)', fontSize: 12 }}
+                  contentStyle={{ borderRadius: 12, border: '1px solid var(--p-line-strong)', fontSize: 12 }}
                   labelFormatter={(d) => `日期 ${d}`}
                 />
                 <Legend wrapperStyle={{ fontSize: 12 }} />
@@ -187,7 +199,7 @@ export default function Stats() {
                   margin={{ top: 4, right: 16, bottom: 0, left: 8 }}
                 >
                   <XAxis type="number" hide />
-                  <YAxis type="category" dataKey="r" width={130} tick={{ fontSize: 11 }} />
+                  <YAxis type="category" dataKey="r" width={130} tick={{ fontSize: 12 }} />
                   <Tooltip contentStyle={{ borderRadius: 12, fontSize: 12 }} />
                   <Bar dataKey="pv" name="访问量" radius={[0, 8, 8, 0]}>
                     {data.referrers.slice(0, 8).map((_, i) => (
@@ -217,7 +229,7 @@ export default function Stats() {
                   margin={{ top: 4, right: 16, bottom: 0, left: 8 }}
                 >
                   <XAxis type="number" hide />
-                  <YAxis type="category" dataKey="name" width={96} tick={{ fontSize: 11 }} />
+                  <YAxis type="category" dataKey="name" width={96} tick={{ fontSize: 12 }} />
                   <Tooltip contentStyle={{ borderRadius: 12, fontSize: 12 }} />
                   <Bar dataKey="pv" name="访问量" radius={[0, 8, 8, 0]}>
                     {countries.slice(0, 8).map((_, i) => (
