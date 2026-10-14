@@ -181,6 +181,9 @@ export default function Splash({ dur = 2000, text = GREET, reveal = 'flip' }: Pr
     const heroImg = document.querySelector<HTMLImageElement>('[data-emis-hero]');
     const timers: number[] = [];
     let finished = false;
+    // 「跳过」的入口有两处(整层点击 + 下方按钮,点按钮时事件会冒泡到整层),
+    // 再加用户可能连点 —— 没有这个标记就会重复进 FLIP,并在验收日志里留下两条 skip。
+    let skipping = false;
 
     // 事件日志:验收要按时间戳核对「三档总时长」「问候先写完再位移」这些,
     // 所以每个阶段都打一个点(见 docs 第 07 节验收清单)。
@@ -220,7 +223,8 @@ export default function Splash({ dur = 2000, text = GREET, reveal = 'flip' }: Pr
 
     /** 跳过:从点击那一刻算起 ≤ 900ms 完成归位(文档实测 669ms)。 */
     const skipNow = () => {
-      if (finished) return;
+      if (finished || skipping) return;
+      skipping = true;
       clearTimers();
       mark('skip');
       // ⚠️ 必须先摘掉 is-nod:CSS 动画的 transform 会整体盖掉 inline 的 FLIP。
