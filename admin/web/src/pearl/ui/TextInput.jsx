@@ -27,6 +27,13 @@ export default function TextInput({
   maxlength,
   autocomplete,
   onEnter,
+  // 本项目补充的三个口子（scaffold 的 Vue 版没有，性质同 Switch 的 ariaLabel）：
+  // 文章编辑器的「标签」要自己处理按键（上下键选建议、退格删一个、逗号分隔）与焦点开合，
+  // 「标题」在新建文章时要自动聚焦。都是可选透传，不传时行为与以前完全一致。
+  onKeyDown,
+  onFocus,
+  onBlur,
+  autoFocus = false,
   className,
   style,
 }) {
@@ -71,8 +78,12 @@ export default function TextInput({
           readOnly={readonly}
           rows={rows}
           maxLength={maxlength}
+          autoFocus={autoFocus}
           aria-invalid={invalid || undefined}
           onChange={handleInput}
+          onKeyDown={onKeyDown}
+          onFocus={onFocus}
+          onBlur={onBlur}
         />
       ) : (
         <input
@@ -84,10 +95,14 @@ export default function TextInput({
           readOnly={readonly}
           maxLength={maxlength}
           autoComplete={autocomplete}
+          autoFocus={autoFocus}
           aria-invalid={invalid || undefined}
           onChange={handleInput}
+          onFocus={onFocus}
+          onBlur={onBlur}
           onKeyDown={(event) => {
-            // Vue 用 @keydown.enter；这里保持同一触发条件（不拦 IME 组合）
+            // 页面自己的按键处理先跑（可以 preventDefault），再走 Vue 的 @keydown.enter
+            onKeyDown?.(event);
             if (event.key === 'Enter') onEnter?.();
           }}
         />

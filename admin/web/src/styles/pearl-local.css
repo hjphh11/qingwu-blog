@@ -527,3 +527,183 @@ body:has(.overlay) .select-menu,
 body:has(.overlay) .menu-pop {
   z-index: calc(var(--layer-overlay) + 10);
 }
+
+/* ── 14. 文章编辑器（新建 / 编辑）自己的四件东西 ───────────────────
+ * 这页原来是暖色皮肤：工具栏是 app.css 的 `.toolbar button`（玫瑰底、暖棕字、选中绯红）、
+ * 两栏是 `.editwrap`（1fr 1fr，**栏间 0 间距**）、预览是 `.md`（14.5 / 22 / 19px +
+ * 玫瑰引用块 + 绯红链接，字号也不在 12/13/14/18/28 阶梯上）。
+ * 组件级重做后：工具栏走 IconButton + Segmented，两栏走 scaffold 现成的 `.bento-grid`
+ * （12 栅格；栏间 18px 由本文件 §6 的 `.bento-grid { gap: 18px }` 给）+ `.bento-half`（对半），
+ * 预览的 Markdown 排版按珍珠令牌重写。这里只补 scaffold 没有的四件东西
+ * （它的组件清单里没有编辑器这一件，见 pearl/PORTING.md 第一节）：
+ *   ① `.edit-pane`：两栏各自的玻璃槽（材质沿用 .m-groove，这里只加内距 / 圆角 / 高度 /
+ *      单栏态的收起），间距与折行交给栅格；
+ *   ② `.edit-shell` + `.edit-input`：编辑用 textarea（等宽、460px 起、纵向可拉）。外壳就是
+ *      珍珠的 `.input-shell.is-multiline`，字号 / 颜色 / 焦点环全部继承它的规则；
+ *   ③ `.md-preview`：预览排版。字号收进 12 / 13 / 14 / 18 四档，颜色只用珍珠令牌；
+ *   ④ `.edit-tags` / `.edit-suggest`：标签建议浮层。旧的 `components/TagInput.jsx` 全是暖色
+ *      类名（.tag .tag-rose .input .suggest），这里已选标签用 `.perm-chips` / `.perm-chip`、
+ *      建议项用 `.select-option`，只新补一个定位容器与浮层盒子。
+ * 面板内距：正文都包在 `.panel-body` 正文层里，所以本文件 §12 的兜底**不会**再叠一层。 */
+
+.edit-pane {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+  min-height: 460px;
+  padding: 12px 14px;
+  border-radius: var(--r-lg);
+}
+/* 预览是「阅读面」：浅色实底，Markdown 正文不压在凹槽底色上 */
+.edit-pane.is-preview {
+  max-height: 70vh;
+  overflow: auto;
+  background: var(--surface-solid);
+}
+/* 单栏态：另一栏不显示、剩下那栏铺满（旧版是 .editwrap.only-edit .preview { display:none }） */
+.edit-area.is-only-edit > .edit-pane:last-child,
+.edit-area.is-only-view > .edit-pane:first-child {
+  display: none;
+}
+.edit-area.is-only-edit > .edit-pane:first-child,
+.edit-area.is-only-view > .edit-pane:last-child {
+  grid-column: 1 / -1;
+}
+
+.edit-shell {
+  min-height: 460px;
+}
+.input-shell .edit-input {
+  min-height: 460px;
+  font-family: var(--font-mono);
+  font-size: 13px;
+  line-height: 1.6;
+  resize: vertical;
+  tab-size: 2;
+}
+
+/* 预览排版：与全站同一套 12 / 13 / 14 / 18 档，颜色全部走令牌 */
+.md-preview {
+  font-size: 14px;
+  line-height: 1.75;
+  color: var(--ink);
+  overflow-wrap: break-word;
+}
+.md-preview > :first-child {
+  margin-top: 0;
+}
+.md-preview h1,
+.md-preview h2,
+.md-preview h3,
+.md-preview h4 {
+  margin: 1.2em 0 0.6em;
+  font-weight: 680;
+  line-height: 1.4;
+  letter-spacing: -0.01em;
+}
+.md-preview h1,
+.md-preview h2 {
+  font-size: 18px;
+}
+.md-preview h2 {
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--p-line);
+}
+.md-preview h3,
+.md-preview h4 {
+  font-size: 14px;
+}
+.md-preview p {
+  margin: 0.9em 0;
+}
+.md-preview ul,
+.md-preview ol {
+  margin: 0.9em 0;
+  padding-left: 1.4em;
+}
+.md-preview li {
+  margin: 0.3em 0;
+}
+/* 引用不是状态：用中性凹槽，不借青柠 / 蓝 / 红三色 */
+.md-preview blockquote {
+  margin: 1em 0;
+  padding: 8px 14px;
+  color: var(--ink-muted);
+  background: var(--groove-bg);
+  border-left: 3px solid var(--p-line-strong);
+  border-radius: 0 var(--r-sm) var(--r-sm) 0;
+}
+.md-preview code {
+  padding: 2px 6px;
+  font-family: var(--font-mono);
+  font-size: 13px;
+  background: var(--groove-bg);
+  border-radius: 6px;
+}
+.md-preview pre {
+  margin: 1em 0;
+  padding: 12px 14px;
+  overflow-x: auto;
+  background: var(--dark-surface);
+  border-radius: var(--r-md);
+}
+.md-preview pre code {
+  padding: 0;
+  font-size: 13px;
+  color: var(--plate-ink);
+  background: none;
+}
+.md-preview a {
+  color: var(--blue);
+}
+.md-preview hr {
+  height: 1px;
+  margin: 1.6em 0;
+  border: none;
+  background: var(--p-line-strong);
+}
+.md-preview img {
+  max-width: 100%;
+  border-radius: var(--r-md);
+}
+.md-preview table {
+  width: 100%;
+  margin: 1em 0;
+  font-size: 13px;
+}
+.md-preview th,
+.md-preview td {
+  padding: 7px 10px;
+  border: 1px solid var(--p-line);
+}
+
+/* 标签输入：容器只负责给浮层定位；行样式复用 .select-option，不另造一套 */
+.edit-tags {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+.edit-suggest {
+  position: absolute;
+  left: 0;
+  right: 0;
+  /* 建议项是「名字 + 用过 N 次」，铺满整栏会让次数飘到 1000px 外 —— 收到一栏宽足够 */
+  max-width: 340px;
+  top: calc(100% + 4px);
+  z-index: 30;
+  max-height: 240px;
+  padding: 6px;
+  border-radius: var(--r-md);
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+}
+/* Segmented 的选项是 scaffold 的 12.5px，不在 12/13/14/18/28 阶梯上 —— 收到 13 档
+ * （与本文件 §6 里 `.p-btn.btn-sm` 的处理同一个理由：小控件也是正文级文字）。
+ * 只在页面里收口：外壳里那个「表格密度」分段控件不在这页，别顺手改掉外壳的量。 */
+.page .segmented button {
+  font-size: 13px;
+}
