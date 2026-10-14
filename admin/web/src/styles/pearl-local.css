@@ -126,6 +126,8 @@ body {
 .page-date,
 .pager-info,
 .p-panel-head .panel-meta,
+/* 友链申请页页头里那行「数据在私有仓库 …」与面板副标题同一档 */
+.apply-meta,
 .p-empty,
 .select-empty {
   font-size: 13px;
@@ -806,4 +808,81 @@ body:has(.overlay) .menu-pop {
  * 影响分享 / 友链 / 发布 / 音乐 / 分类 / 关于 六处弹窗，统一收到 18。 */
 .modal-title {
   font-size: 18px;
+}
+
+/* ── 18. 友链申请（Applications）自己的一处东西 ──────────────────
+ * 这页原来是暖色皮肤：一张 `section.card.panel`（头是 `.panel-head` + `.hint` + `.btn`），
+ * 列表是 app.css 的 `.post-list / .post-item`（头像 + 标题 + 状态标签 + 元信息 + 操作），
+ * 拒绝理由是插在该行下面的内联 `.inline-box`，筛选是老 `.chip`，结果反馈走 toast。
+ * 组件级重做后：外层 `.page` + `PageHeader`、一块 `Panel`（正文不套 `.panel-body`）、
+ * 列表走 `DataTable`（复用 `.cell-main / .cell-title / .cell-sub` 与 `.quick-ico` 玻璃小槽）、
+ * 筛选复用 `.perm-chip` / `.is-on`（本来就是「一排可切换的小圆片」）、
+ * 拒绝理由走居中 Modal（Field + TextInput）。
+ * 这里只补 scaffold 没有、也借不到现成件的一件东西：
+ *   · `.quick-img`：头像图要**盖在**那枚地球图标上（图挂了就藏掉它、露出图标兜底）。
+ *     概览页的 `.quick-ico` 只是「图标 + 底色」，自己不是定位祖先，所以这里显式补
+ *     `position: relative`，图按 36×36 铺满、圆角与外壳对齐。
+ * 其余那几行（正文说明 / 筛选行 / 告警 / 拒绝弹窗里那句提示）都借 `.p-panel > *` 第 12 节
+ * 的兜底内距与 `gap`，所以本页不再写任何内联 margin。 */
+.quick-ico {
+  position: relative;
+}
+.quick-ico .quick-img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: inherit;
+}
+
+/* 正文里那段「通过 / 拒绝说明」与筛选行、告警之间：说明自己成段（行间 1.7），
+   筛选行与告警是横排的（`.apply-total` 自己推到最右，对应旧版的 `.spacer` + `.hint`） */
+.p-panel > .apply-desc {
+  /* `.p-panel-head + *` 已经给了 6px 上边距；底边距归零，让它与筛选行只隔第 12 节
+     兜底给的那 20px（旧版这里两行之间是 10px，本来就贴着放） */
+  margin: 0;
+  color: var(--ink-muted);
+  line-height: 1.7;
+}
+.p-panel > .apply-filters,
+.p-panel > .apply-warn {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+/* 筛选用的是 `.perm-chip`（26px 高、12px 字）—— 与它同一行的读数收到 13 档 */
+.p-panel > .apply-filters .apply-total {
+  margin-left: auto;
+  color: var(--ink-soft);
+  font-size: 13px;
+}
+/* 拒绝弹窗里的那句说明：12px，与 Field 的 hint 同一档 */
+.apply-reject-note {
+  margin: 0;
+  color: var(--ink-muted);
+  font-size: 12px;
+  line-height: 1.7;
+}
+
+/* 申请信息格：`.cell-main` 已经是「图标槽 + 文字块」的横排，这里只需要给中间那段
+   文字块一个 `min-width: 0`（否则 `.ellipsis` 的省略号不生效、长 URL 会把整张表撑宽）。
+   名字与状态标签同一行：状态标签不吃省略号（`flex: none`），名字自己截断。 */
+.apply-info {
+  display: block;
+  min-width: 0;
+}
+.apply-name {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.apply-name .p-tag {
+  flex: none;
+}
+/* 链接与邮箱之间的分隔点（旧版是 `.post-meta .sep`，那个是暖色类名，这里另起一个） */
+.apply-sep {
+  margin: 0 6px;
+  color: var(--ink-faint);
 }
