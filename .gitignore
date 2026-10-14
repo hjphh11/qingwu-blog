@@ -3,6 +3,10 @@ node_modules/
 npm-debug.log*
 .npm-cache/
 
+# Python
+__pycache__/
+*.pyc
+
 # Astro
 dist/
 .astro/
@@ -53,3 +57,29 @@ docs/架构图/
 .vscode/
 .idea/
 .vercel
+
+# 设计审计时用无头浏览器批量截的对比图（本地自检用，不进仓库）
+.dsh-shots/
+
+# 设计审计产物：截图体积大、report.json 是某一次本地运行的快照，而 *.cjs 脚本里
+# 硬编码了本机 puppeteer 绝对路径(含 Windows 用户名)且依赖已被忽略的 .workbuddy/ ——
+# 对外既跑不起来、又泄漏本机信息。整个目录只留本地。
+docs/review/
+docs/界面重做对比/
+
+# 内部规划/调研文档与界面预览稿（不推送到公开仓库，保留本地）
+docs/后台界面重做方案.md
+docs/后台界面重做方案-v3-科技蓝.md
+docs/后台界面预览-v2.html
+docs/后台界面预览-v3-科技蓝.html
+docs/后台界面预览-v4-参考布局.html
+docs/界面预览-v3.css
+docs/开屏与全部加载动画-完整设计文档.html
+docs/清吾-页面评审与升级方案.html
+docs/admin-ui-framework-research.md
+docs/调研-后台界面设计与组件.md
+docs/调研-Git型CMS与内容后台.md
+docs/后台升级-开源方案调研.md
+
+# AI 助手工作记忆目录（个人笔记，不进仓库）
+.workbuddy/
