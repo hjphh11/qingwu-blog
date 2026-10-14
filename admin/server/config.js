@@ -85,6 +85,8 @@ export const config = {
    */
   statsPath: env('ADMIN_STATS_PATH', 'stats.json'),
   statsCacheMs: Number(env('ADMIN_STATS_CACHE_MS', '300000')),
+  /** 本地开发预览用：设了这个路径就直接读本地 mock，不走 GitHub（见 scripts/fixtures/stats.mock.json）*/
+  statsMockFile: env('ADMIN_STATS_MOCK_FILE', ''),
 
   isProd,
 
