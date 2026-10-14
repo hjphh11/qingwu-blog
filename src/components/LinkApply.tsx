@@ -363,7 +363,7 @@ export default function LinkApply({ siteKey = '' }: { siteKey?: string }) {
     }`;
 
   const primaryBtn =
-    'btn-ripple inline-flex items-center gap-2 rounded-full bg-crimson px-5 py-2.5 text-sm font-medium text-white shadow-[0_6px_18px_rgba(224,82,107,0.35)] transition-transform hover:scale-105 active:scale-95 disabled:cursor-not-allowed disabled:opacity-70 disabled:hover:scale-100';
+    'btn-ripple inline-flex items-center gap-2 rounded-full bg-crimson px-5 py-2.5 text-sm font-medium text-white shadow-[0_6px_18px_rgba(194,58,85,0.35)] transition-transform hover:scale-105 active:scale-95 disabled:cursor-not-allowed disabled:opacity-70 disabled:hover:scale-100';
 
   const savedBody = FIELDS.map((f) => `${f.label}：${norm[f.key]}`).join('\n');
 

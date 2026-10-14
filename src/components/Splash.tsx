@@ -153,14 +153,18 @@ export default function Splash({ dur = 2000, text = GREET, reveal = 'flip' }: Pr
   useEffect(() => {
     let play = false;
     try {
-      play = window.location.pathname === HOME && !sessionStorage.getItem(KEY);
+      // 第三个条件是「幕布还在」。Layout 那段脚本的 5 秒兜底会自己把幕布撤掉 ——
+      // 水合慢到超过 5 秒时,首页其实已经露出来了,此时再开屏就成了「闪一下又盖上」。
+      // 所以幕布不在了就当已看过,不播。
+      play =
+        window.location.pathname === HOME &&
+        !sessionStorage.getItem(KEY) &&
+        document.documentElement.classList.contains('q-splash-pending');
       if (play) sessionStorage.setItem(KEY, '1');
     } catch {
       // sessionStorage 不可用(隐私模式等):当作已看过,直接看内容,不冒险播。
       play = false;
     }
-    // 告诉 Layout 那段关键脚本:开屏层已经接管,兜底定时器可以放心了。
-    (window as SplashWindow).__qSplashTaken = true;
     if (play) setShow(true);
     else document.documentElement.classList.remove('q-splash-pending');
   }, []);
@@ -171,12 +175,19 @@ export default function Splash({ dur = 2000, text = GREET, reveal = 'flip' }: Pr
     const splash = splashRef.current;
     const emis = emisRef.current;
     const greet = greetRef.current;
-    if (!splash || !emis || !greet) return;
+    if (!splash || !emis || !greet) {
+      // 拿不到节点就别把幕布留下 —— 否则首页立绘被 visibility 藏、滚动被锁,没人来收。
+      document.documentElement.classList.remove('q-splash-pending', 'q-splash-running');
+      setShow(false);
+      return;
+    }
 
     const root = document.documentElement;
     // 幕布交还给开屏层:撤掉关键脚本铺的奶油底,改由 .q-splash 承接。
     root.classList.remove('q-splash-pending');
     root.classList.add('q-splash-running');
+    // 到这一步才算真正接管:此刻起 Layout 那段 5 秒兜底可以安心交班(见下面的硬兜底)。
+    (window as SplashWindow).__qSplashTaken = true;
 
     const heroImg = document.querySelector<HTMLImageElement>('[data-emis-hero]');
     const timers: number[] = [];
@@ -209,6 +220,10 @@ export default function Splash({ dur = 2000, text = GREET, reveal = 'flip' }: Pr
       root.classList.remove('q-splash-running');
       setShow(false);
     };
+    // 硬兜底:接管之后 Layout 的 5 秒兜底就交班了,这里必须自己保证「幕布一定会被收掉」。
+    // 正常路径在 dur 时刻收尾;dur 很小时 moveAt 有 300ms 下限、收尾会晚于 dur,
+    // 所以取 max(dur + 800, 2000):既留足余量,又不会反过来把动画提前切断。
+    later(finish, Math.max(dur + 800, 2000));
 
     /** 位移归位。返回 false 表示量不到落点(理论上不会发生),调用方改走淡出。 */
     const handoff = (ms: number) => {

@@ -139,7 +139,7 @@ export default function ContactExpand({
           'flex h-11 items-center overflow-hidden rounded-full ' +
           (open
             ? 'gap-1 border border-rose/30 bg-cream/80 p-1 shadow-[0_6px_18px_rgba(246,165,184,0.3)]'
-            : 'bg-crimson text-white shadow-[0_6px_18px_rgba(224,82,107,0.35)]')
+            : 'bg-crimson text-white shadow-[0_6px_18px_rgba(194,58,85,0.35)]')
         }
       >
         <AnimatePresence mode="popLayout" initial={false}>

@@ -25,7 +25,7 @@ Tailwind v4 用 `@theme` 定义设计 token，把「语义化的颜色」直接�
 ```css
 @theme {
   --color-rose: #f6a5b8;    /* 主色 · 玫瑰粉(发色/裙) */
-  --color-crimson: #e0526b; /* 强调色 · 绯红(蝴蝶结) */
+  --color-crimson: #c23a55; /* 强调色 · 绯红(蝴蝶结;原 #e0526b 对比度不足,已加深) */
   --color-cream: #fdf6f0;   /* 底色 · 奶油白(衬衫/背景) */
   --color-amber: #e8b04b;   /* 点睛 · 琥珀金(眼睛) */
   --color-brown: #8b5a3c;   /* 暖棕 · 皮质(包/鞋) */

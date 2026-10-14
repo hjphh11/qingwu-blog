@@ -291,7 +291,12 @@
   .filter-chip:hover {
     border-color: color-mix(in oklab, var(--color-rose) 60%, transparent);
     color: var(--color-accent);
-    transform: translateY(-1px);
+  }
+  /* 抬升只在「有 hover 且不禁用动效」时生效 —— 与 .q-empty-btn 同一做法 */
+  @media (hover: hover) and (prefers-reduced-motion: no-preference) {
+    .filter-chip:hover {
+      transform: translateY(-1px);
+    }
   }
   .filter-chip[aria-pressed='true'],
   .filter-chip.is-active {
@@ -1001,8 +1006,8 @@
       transform: translateY(-1px);
     }
   }
-  /* 触屏没有 hover:用按下时的轻微内缩给反馈 */
-  @media (hover: none) {
+  /* 触屏没有 hover:用按下时的轻微内缩给反馈(同样尊重「减少动效」) */
+  @media (hover: none) and (prefers-reduced-motion: no-preference) {
     .q-empty-btn:active {
       transform: scale(0.985);
     }
@@ -1211,8 +1216,8 @@
     left: 14vmax;
     background: radial-gradient(
       circle,
-      rgba(224, 82, 107, 0.34) 0%,
-      rgba(224, 82, 107, 0.12) 46%,
+      rgba(194, 58, 85, 0.34) 0%,
+      rgba(194, 58, 85, 0.12) 46%,
       transparent 70%
     );
     animation: aurora-c 40s ease-in-out infinite alternate;
