@@ -886,3 +886,10 @@ body:has(.overlay) .menu-pop {
   margin: 0 6px;
   color: var(--ink-faint);
 }
+
+/* 筛选行（待审批/已通过/已拒绝/全部）与下面的表格头之间要有间距。
+   第 12 节兜底只给了左右 20px 内距，没有下边距，实测筛选行直接贴着
+   「申请信息」表头（用户截图）。16px 与全站节奏一致。 */
+.p-panel > .apply-filters {
+  margin-bottom: 16px;
+}
