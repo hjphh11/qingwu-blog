@@ -1,16 +1,38 @@
-// 文章编辑器：表单 + Markdown 工具栏 + 实时预览（方案 §4.2）
-// 「保存」= 写进仓库文件；真正上线（git push + Deploy Hook）是阶段 I 的事。
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+// 文章编辑器（新建 / 编辑）—— 珍珠玻璃版（方案 §4.2）。
+//
+// 数据链路与逻辑**与旧暖色版逐行一致**（只换呈现层）：
+//   GET  /api/categories · GET /api/tags（分类下拉 + 历史标签建议）
+//   GET  /api/articles/:id（编辑时读文章）· GET /api/slug?title&date（新建时按标题生成 slug）
+//   POST /api/articles（新建）· PUT /api/articles/:id（保存）
+//   「保存」只写进仓库文件；真正上线（git push + Deploy Hook）是发布页的事。
+//   另外保留：加载态、错误与成功提示、未保存改动提示（含 beforeunload）、
+//   Markdown 工具栏（含包选 / 行首前缀两组逻辑）、实时预览、视图三态、字数统计、
+//   Cmd/Ctrl+S / B / I / 1 / 2 快捷键（不抢全局的 Cmd+K）。
+//
+// 呈现层（组件级）：
+//   · 页根 .page + useEntrance()（入场类只能由 state 拼，见 pearl/useEntrance.js）；
+//   · 页头 PageHeader —— 「保存 / 返回列表」挪到页头右侧主操作位（与发布页一致）；
+//   · 两块 Panel：① 文章信息（Field + TextInput / Select / Switch）② 正文（工具栏 + 两栏）；
+//   · 工具栏 10 个 IconButton（原 .toolbar button 的暖色样式弃用）+ 珍珠 Segmented（旧版 3 个 button.on）；
+//   · 两栏用 scaffold 现成的 12 栅格 .bento-grid + .bento-half 对半（栏间 18px，见 pearl-local.css §6），
+//     单栏态由 .edit-area.is-only-* 收起另一栏（对应旧版 .editwrap.only-edit / .only-view）；
+//   · 预览换 MarkdownPreview 的 .md-preview（旧 .md 是暖色排版：14.5 / 22 / 19px + 玫瑰引用块 + 绯红链接）；
+//   · 标签输入不再用 components/TagInput.jsx（那套是暖色类名 .tag .tag-rose .input .suggest），
+//     改成珍珠的 .perm-chips / .perm-chip + TextInput + .edit-suggest 建议浮层，键盘行为逐条照抄旧组件。
+//   · 离开确认走 pearl/ui/confirm.js（不再用 window.confirm）。
+// 页面独有的补丁样式（两栏玻璃槽 / 编辑用 textarea / Markdown 预览排版 / 标签建议浮层）都在
+// styles/pearl-local.css 第 14 节，并在那里写明「为什么 scaffold 缺这几件」。
+// 类名一律走 cls()；页内不再出现 .card / .panel / .btn / .tag / .hint / .alert / .spacer /
+// .form-grid / .toolbar / .editor-pane / .preview 这类旧暖色类名。
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { MorphIcon } from 'morphicons/react';
 import { api } from '../api.js';
 import MarkdownPreview from '../components/MarkdownPreview.jsx';
-import TagInput from '../components/TagInput.jsx';
 import {
   ArrowLeft,
   Bold,
   CircleAlert,
   Code,
-  Eye,
   Heading1,
   Heading2,
   Italic,
@@ -19,9 +41,24 @@ import {
   ListOrdered,
   Minus,
   Quote,
+  RefreshCw,
   Save,
   Sparkles,
+  X,
 } from '../icons.js';
+import { cls } from '../pearl/cls.js';
+import { useEntrance } from '../pearl/useEntrance.js';
+import Button from '../pearl/ui/Button.jsx';
+import { confirm } from '../pearl/ui/confirm.js';
+import EmptyState from '../pearl/ui/EmptyState.jsx';
+import Field from '../pearl/ui/Field.jsx';
+import IconButton from '../pearl/ui/IconButton.jsx';
+import PageHeader from '../pearl/ui/PageHeader.jsx';
+import Panel from '../pearl/ui/Panel.jsx';
+import Segmented from '../pearl/ui/Segmented.jsx';
+import Select from '../pearl/ui/Select.jsx';
+import Switch from '../pearl/ui/Switch.jsx';
+import TextInput from '../pearl/ui/TextInput.jsx';
 
 const today = () => new Date().toISOString().slice(0, 10);
 
@@ -38,7 +75,16 @@ const EMPTY = {
   body: '',
 };
 
+/** 视图三态（旧版是工具栏里 3 个带 .on 的按钮，文案照旧：编辑 / 分栏 / 预览） */
+const VIEW_OPTIONS = [
+  { label: '编辑', value: 'edit' },
+  { label: '分栏', value: 'split' },
+  { label: '预览', value: 'view' },
+];
+
 export default function ArticleEditor({ id, go }) {
+  const ready = useEntrance();
+
   const [form, setForm] = useState(EMPTY);
   const [cats, setCats] = useState([]);
   const [tags, setTags] = useState([]);
@@ -49,8 +95,11 @@ export default function ArticleEditor({ id, go }) {
   const [view, setView] = useState('split'); // split | edit | view
   const [slugTouched, setSlugTouched] = useState(Boolean(id));
   const [dirty, setDirty] = useState(false);
+  // 标签输入自己的三个状态（对应旧 TagInput 内部的 text / open / active）
+  const [tagText, setTagText] = useState('');
+  const [tagOpen, setTagOpen] = useState(false);
+  const [tagActive, setTagActive] = useState(0);
   const taRef = useRef(null);
-  const titleRef = useRef(null);
 
   const set = (patch) => {
     setForm((f) => ({ ...f, ...patch }));
@@ -189,6 +238,52 @@ export default function ArticleEditor({ id, go }) {
     { icon: Minus, title: '分割线', fn: () => wrapSel('\n\n---\n\n', '', '') },
   ];
 
+  // ——— 标签（行为逐条照抄旧 TagInput：回车/逗号加、退格删一个、上下键选建议、Esc 收建议）———
+  const tagSuggestions = useMemo(() => {
+    const q = tagText.trim().toLowerCase();
+    return tags
+      .filter((s) => !form.tags.includes(s.name))
+      .filter((s) => (q ? String(s.name).toLowerCase().includes(q) : true))
+      .slice(0, 8);
+  }, [tags, form.tags, tagText]);
+
+  const addTag = (raw) => {
+    const t = String(raw ?? '').trim();
+    if (t && !form.tags.includes(t)) set({ tags: [...form.tags, t] });
+    setTagText('');
+    setTagActive(0);
+  };
+
+  const removeTag = (t) => set({ tags: form.tags.filter((x) => x !== t) });
+
+  const onTagKeyDown = (e) => {
+    // 逗号也当分隔符（中文逗号一起收）
+    if (e.key === 'Enter' || e.key === ',' || e.key === '，') {
+      e.preventDefault();
+      if (tagOpen && tagSuggestions[tagActive] && (e.key === 'Enter' || !tagText.trim())) {
+        addTag(tagSuggestions[tagActive].name);
+      } else {
+        addTag(tagText);
+      }
+      return;
+    }
+    if (e.key === 'Backspace' && !tagText && form.tags.length > 0) {
+      e.preventDefault();
+      set({ tags: form.tags.slice(0, -1) });
+      return;
+    }
+    if (!tagOpen || tagSuggestions.length === 0) return;
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      setTagActive((i) => (i + 1) % tagSuggestions.length);
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      setTagActive((i) => (i - 1 + tagSuggestions.length) % tagSuggestions.length);
+    } else if (e.key === 'Escape') {
+      setTagOpen(false);
+    }
+  };
+
   const submit = async (e) => {
     e?.preventDefault();
     if (saving) return;
@@ -226,15 +321,19 @@ export default function ArticleEditor({ id, go }) {
     }
   };
 
-  const backToList = () => {
-    if (dirty && !window.confirm('有改动还没保存，确定离开吗？')) return;
+  // 旧版是 window.confirm；珍珠玻璃走统一的确认浮层（文案照旧）
+  const backToList = async () => {
+    if (dirty) {
+      const ok = await confirm({
+        title: '离开编辑页',
+        message: '有改动还没保存，确定离开吗？',
+        confirmText: '离开',
+        danger: true,
+      });
+      if (!ok) return;
+    }
     go('posts');
   };
-
-  // 阶段 L：新文章直接把光标放到标题上（少点一下，写作更顺）
-  useEffect(() => {
-    if (!id) titleRef.current?.focus();
-  }, [id]);
 
   // 阶段 L：写作时的键盘手感（编辑器里最常用的几下）
   //   Cmd/Ctrl+S 保存 · Cmd/Ctrl+B 加粗 · Cmd/Ctrl+I 斜体 · Cmd/Ctrl+1/2 标题
@@ -263,225 +362,251 @@ export default function ArticleEditor({ id, go }) {
   });
 
   const title = id ? '编辑文章' : '新建文章';
-  const excerptHint = useMemo(
+  const summaryHint = useMemo(
     () => (form.description.trim() ? '' : '留空会自动取正文开头约 80 字'),
     [form.description],
   );
+  // 正文字数（去掉所有空白，与旧版同一个算法）
+  const bodyChars = form.body.replace(/\s/g, '').length;
+  const categoryOptions = [
+    { label: '请选择…', value: '' },
+    ...cats.map((c) => ({ label: `${c.id} · ${c.label}`, value: c.id })),
+  ];
 
   if (loading) {
     return (
-      <div className="card panel" style={{ textAlign: 'center', color: 'rgba(74,55,40,.55)' }}>
-        正在读取文章…
+      <div className={cls('page', ready && 'is-entrance-ready')}>
+        <PageHeader title={title} desc="标题 · 分类 · 标签 · 摘要 · 正文（Markdown 实时预览）" />
+        <Panel>
+          <EmptyState title="正在读取文章…" desc="从仓库里读这篇的 frontmatter 与正文" icon={RefreshCw} />
+        </Panel>
       </div>
     );
   }
 
   return (
-    <form onSubmit={submit}>
+    <form className={cls('page', ready && 'is-entrance-ready')} onSubmit={submit}>
+      <PageHeader
+        title={title}
+        desc="标题 · 分类 · 标签 · 摘要 · 正文（Markdown 实时预览）· 保存只写进仓库"
+        actions={
+          <>
+            <Button variant="ghost" icon={ArrowLeft} onClick={backToList}>
+              返回列表
+            </Button>
+            {/* 主操作原来是信息卡底部那排按钮，现在跟发布页一样放在页头右侧 */}
+            <Button variant="primary" type="submit" icon={Save} disabled={saving}>
+              {saving ? '保存中…' : id ? '保存修改' : '创建文章'}
+            </Button>
+          </>
+        }
+      />
+
+      {/* 错误提示：旧版是页面最上方那条 alert-error，文案与 role="alert" 都照旧 */}
       {error && (
-        <div className="alert alert-error" role="alert">
+        <div
+          className={cls('alert-calm', 'reveal')}
+          role="alert"
+          style={{ background: 'var(--red-soft)', color: 'var(--red-text)', marginBottom: 18 }}
+        >
           <MorphIcon icon={CircleAlert} size={15} color="currentColor" />
           <span>{error}</span>
         </div>
       )}
       {notice && !error && (
-        <div
-          className="alert"
-          style={{ background: 'rgba(47,122,85,.12)', border: '1px solid rgba(47,122,85,.3)', color: '#2f7a55' }}
-        >
+        <div className={cls('alert-calm', 'reveal')} style={{ marginBottom: 18 }}>
           <MorphIcon icon={Sparkles} size={15} color="currentColor" />
           <span>{notice}</span>
         </div>
       )}
 
-      <section className="card panel">
-        <div className="panel-head">
-          <h2>{title}</h2>
-          <div className="spacer" />
-          {dirty && (
-            <span className="hint">
-              <span className="dirty-dot" />
-              有未保存的改动
-            </span>
-          )}
-        </div>
-
-        <div className="form-grid">
-          <label className="field full">
-            <span>标题</span>
-            <input
-              className="input"
-              ref={titleRef}
-              value={form.title}
-              onChange={(e) => set({ title: e.target.value })}
-              placeholder="文章标题"
-            />
-          </label>
-
-          <label className="field">
-            <span>分类</span>
-            <select
-              className="select"
-              value={form.category}
-              onChange={(e) => set({ category: e.target.value })}
-            >
-              <option value="">请选择…</option>
-              {cats.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.id} · {c.label}
-                </option>
-              ))}
-            </select>
-          </label>
-
-          <label className="field">
-            <span>发布日期</span>
-            <input
-              className="input"
-              type="date"
-              value={form.pubDate}
-              onChange={(e) => set({ pubDate: e.target.value })}
-            />
-          </label>
-
-          <label className="field">
-            <span>文章地址（slug）</span>
-            <input
-              className="input"
-              value={form.slug}
-              onChange={(e) => {
-                setSlugTouched(true);
-                set({ slug: e.target.value });
-              }}
-              placeholder="留空会按标题自动生成"
-            />
-          </label>
-
-          <div className="field full">
-            <span>标签</span>
-            <TagInput
-              value={form.tags}
-              onChange={(v) => set({ tags: v })}
-              suggestions={tags}
-              placeholder="输入标签后回车，会从用过的标签里提示"
-            />
-          </div>
-
-          <label className="field full">
-            <span>
-              摘要 {excerptHint && <span style={{ opacity: 0.6 }}>（{excerptHint}）</span>}
-            </span>
-            <textarea
-              className="textarea"
-              rows={2}
-              value={form.description}
-              onChange={(e) => set({ description: e.target.value })}
-              placeholder="一句话介绍，会显示在列表和分享卡片上"
-            />
-          </label>
-
-          <div className="field full">
-            <div className="checks">
-              <label className="check">
-                <input
-                  type="checkbox"
-                  checked={form.draft}
-                  onChange={(e) => set({ draft: e.target.checked })}
+      <div className={cls('stack')}>
+        {/* ① 文章信息：原来那张 card.panel（标题 / 分类 / 日期 / slug / 标签 / 摘要 / 草稿 / 置顶） */}
+        <Panel
+          className={cls('reveal')}
+          title="文章信息"
+          meta={dirty ? '有未保存的改动' : undefined}
+          status={dirty ? 'info' : undefined}
+        >
+          <div className={cls('panel-body')}>
+            <div className={cls('form-grid')}>
+              <Field label="标题" span>
+                <TextInput
+                  value={form.title}
+                  onChange={(v) => set({ title: v })}
+                  placeholder="文章标题"
+                  // 阶段 L：新文章直接把光标放到标题上（少点一下，写作更顺）
+                  autoFocus={!id}
                 />
-                草稿（不展示）
-              </label>
-              <label className="check">
-                <input
-                  type="checkbox"
-                  checked={form.pinned}
-                  onChange={(e) => set({ pinned: e.target.checked })}
+              </Field>
+
+              <Field label="分类">
+                <Select
+                  value={form.category}
+                  options={categoryOptions}
+                  onChange={(v) => set({ category: v })}
                 />
-                置顶
-              </label>
-              {form.pinned && (
-                <label className="check">
-                  置顶顺序
-                  <input
-                    className="input"
-                    style={{ width: 76, padding: '5px 10px' }}
-                    type="number"
-                    min="0"
-                    value={form.pinOrder ?? ''}
-                    onChange={(e) =>
-                      set({ pinOrder: e.target.value === '' ? null : Number(e.target.value) })
-                    }
+              </Field>
+
+              <Field label="发布日期">
+                <TextInput type="date" value={form.pubDate} onChange={(v) => set({ pubDate: v })} />
+              </Field>
+
+              <Field label="文章地址（slug）">
+                <TextInput
+                  value={form.slug}
+                  onChange={(v) => {
+                    setSlugTouched(true);
+                    set({ slug: v });
+                  }}
+                  placeholder="留空会按标题自动生成"
+                />
+              </Field>
+
+              <Field label="标签" span hint="回车或逗号添加，会从用过的标签里提示（退格删最后一个）">
+                <div className={cls('edit-tags')}>
+                  {form.tags.length > 0 && (
+                    <div className={cls('perm-chips')}>
+                      {form.tags.map((t) => (
+                        <button
+                          key={t}
+                          type="button"
+                          className={cls('perm-chip')}
+                          title={`删除标签「${t}」`}
+                          aria-label={`删除标签 ${t}`}
+                          onClick={() => removeTag(t)}
+                        >
+                          {t}
+                          <MorphIcon icon={X} size={12} color="currentColor" reducedMotion="user" />
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                  <TextInput
+                    value={tagText}
+                    onChange={(v) => {
+                      setTagText(v);
+                      setTagOpen(true);
+                      setTagActive(0);
+                    }}
+                    placeholder="输入标签后回车，会从用过的标签里提示"
+                    onKeyDown={onTagKeyDown}
+                    onFocus={() => setTagOpen(true)}
+                    onBlur={() => setTimeout(() => setTagOpen(false), 150)}
                   />
-                  <span className="hint">（也可以用列表页的置顶区上下移动）</span>
-                </label>
+                  {tagOpen && tagSuggestions.length > 0 && (
+                    <div className={cls('edit-suggest', 'm-float')} role="listbox" aria-label="用过的标签">
+                      {tagSuggestions.map((s, i) => (
+                        <div
+                          key={s.name}
+                          role="option"
+                          aria-selected={i === tagActive}
+                          className={cls('select-option', i === tagActive && 'is-active')}
+                          onMouseEnter={() => setTagActive(i)}
+                          onMouseDown={(e) => {
+                            e.preventDefault();
+                            addTag(s.name);
+                          }}
+                        >
+                          <span className={cls('opt-label')}>{s.name}</span>
+                          <span className={cls('faint')}>用过 {s.count} 次</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </Field>
+
+              <Field label="摘要" span hint={summaryHint || undefined}>
+                <TextInput
+                  multiline
+                  rows={2}
+                  value={form.description}
+                  onChange={(v) => set({ description: v })}
+                  placeholder="一句话介绍，会显示在列表和分享卡片上"
+                />
+              </Field>
+
+              <Field span group>
+                <div className={cls('band-tools')}>
+                  <Switch
+                    checked={form.draft}
+                    label="草稿（不展示）"
+                    onChange={(v) => set({ draft: v })}
+                  />
+                  <Switch checked={form.pinned} label="置顶" onChange={(v) => set({ pinned: v })} />
+                </div>
+              </Field>
+
+              {form.pinned && (
+                <Field label="置顶顺序" hint="也可以用列表页的置顶区上下移动">
+                  <TextInput
+                    type="number"
+                    value={form.pinOrder}
+                    onChange={(v) => set({ pinOrder: v })}
+                    // 只占一小格：顺序是个位数，铺满半栏反而看不清（旧版是 76px 宽的输入框）
+                    style={{ maxWidth: 140 }}
+                  />
+                </Field>
               )}
             </div>
           </div>
-        </div>
+        </Panel>
 
-        <div className="form-actions">
-          <button type="submit" className="btn" disabled={saving}>
-            <MorphIcon icon={Save} size={16} color="#fff" />
-            {saving ? '保存中…' : id ? '保存修改' : '创建文章'}
-          </button>
-          <button type="button" className="btn btn-ghost" onClick={backToList}>
-            <MorphIcon icon={ArrowLeft} size={16} color="currentColor" />
-            返回列表
-          </button>
-          <div className="spacer" />
-          <span className="hint">
-            {form.body.replace(/\s/g, '').length} 字 · 保存只写进仓库，要「发布」才上线
-          </span>
-        </div>
-      </section>
+        {/* ② 正文：工具栏 + 两栏（左 Markdown 编辑 / 右实时预览） */}
+        <Panel
+          className={cls('reveal')}
+          title="正文"
+          meta={`${bodyChars} 字 · 保存只写进仓库，要「发布」才上线`}
+        >
+          <div className={cls('panel-body')}>
+            {/* 工具栏：左 10 个标记按钮（IconButton），右视图切换（Segmented）。
+                旧版是 .toolbar button（玫瑰底 + 暖棕字），已整体弃用。 */}
+            <div className={cls('drawer-toolbar')}>
+              <div className={cls('band-tools')}>
+                {TOOLS.map((t) => (
+                  <IconButton key={t.title} icon={t.icon} label={t.title} size={16} onClick={t.fn} />
+                ))}
+              </div>
+              <Segmented
+                label="显示方式"
+                value={view}
+                options={VIEW_OPTIONS}
+                onChange={setView}
+              />
+            </div>
 
-      <section className="card" style={{ padding: 0, overflow: 'hidden' }}>
-        <div className="toolbar">
-          {TOOLS.map((t) => (
-            <button type="button" key={t.title} title={t.title} onClick={t.fn}>
-              <MorphIcon icon={t.icon} size={16} color="currentColor" />
-            </button>
-          ))}
-          <span className="spacer" />
-          <button
-            type="button"
-            className={view === 'edit' ? 'on' : ''}
-            onClick={() => setView('edit')}
-            title="只显示编辑"
-          >
-            编辑
-          </button>
-          <button
-            type="button"
-            className={view === 'split' ? 'on' : ''}
-            onClick={() => setView('split')}
-            title="左右分栏"
-          >
-            分栏
-          </button>
-          <button
-            type="button"
-            className={view === 'view' ? 'on' : ''}
-            onClick={() => setView('view')}
-            title="只显示预览"
-          >
-            <MorphIcon icon={Eye} size={15} color="currentColor" /> 预览
-          </button>
-        </div>
-        <div className={`editwrap${view === 'edit' ? ' only-edit' : ''}${view === 'view' ? ' only-view' : ''}`}>
-          <div className="editor-pane">
-            <textarea
-              ref={taRef}
-              value={form.body}
-              onChange={(e) => set({ body: e.target.value })}
-              placeholder={'正文（Markdown）\n\n## 小标题\n\n写点什么…'}
-              spellCheck={false}
-            />
+            {/* 两栏：scaffold 的 12 栅格对半（栏间 18px）；单栏态把另一栏 display:none，
+                与旧版 .editwrap.only-edit / .only-view 的行为一致 */}
+            <div
+              className={cls(
+                'bento-grid',
+                'edit-area',
+                view === 'edit' && 'is-only-edit',
+                view === 'view' && 'is-only-view',
+              )}
+            >
+              <div className={cls('edit-pane', 'bento-half', 'm-groove')}>
+                {/* 编辑框复用珍珠输入外壳（.input-shell.is-multiline），里面是裸 textarea ——
+                    工具栏要读写 selectionStart/End，必须拿得到真实 DOM 节点 */}
+                <div className={cls('input-shell', 'is-multiline', 'edit-shell')}>
+                  <textarea
+                    ref={taRef}
+                    className={cls('edit-input')}
+                    value={form.body}
+                    onChange={(e) => set({ body: e.target.value })}
+                    placeholder={'正文（Markdown）\n\n## 小标题\n\n写点什么…'}
+                    spellCheck={false}
+                  />
+                </div>
+              </div>
+              <div className={cls('edit-pane', 'is-preview', 'bento-half', 'm-groove')}>
+                <MarkdownPreview source={form.body} className={cls('md-preview')} />
+              </div>
+            </div>
           </div>
-          <div className="preview">
-            <MarkdownPreview source={form.body} />
-          </div>
-        </div>
-      </section>
+        </Panel>
+      </div>
     </form>
   );
 }

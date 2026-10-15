@@ -70,11 +70,22 @@ async function fetchStats() {
   return check.data;
 }
 
+/** 本地开发：读 mock 文件（`ADMIN_STATS_MOCK_FILE`）而不是 GitHub，
+ *  校验规则与线上那份完全一致，免得 mock 造出一份线上根本不接受的数据。 */
+async function readMock() {
+  const { readFile } = await import('node:fs/promises');
+  const path = await import('node:path');
+  const file = path.resolve(process.cwd(), config.statsMockFile);
+  const parsed = JSON.parse(await readFile(file, 'utf8'));
+  const check = StatsSchema.safeParse(parsed);
+  if (!check.success) throw httpError(500, `mock 统计文件格式不对：${check.error.issues[0].message}`, 'stats_mock_bad');
+  return check.data;
+}
 const sumDays = (days) => days.reduce((acc, d) => ({ pv: acc.pv + d.pv, uv: acc.uv + d.uv }), { pv: 0, uv: 0 });
 
 /** 统计总览（给「访问统计」页用）*/
 export async function getStats({ force = false } = {}) {
-  if (!config.applyToken) {
+  if (!config.applyToken && !config.statsMockFile) {
     return {
       enabled: false,
       empty: true,
@@ -86,7 +97,7 @@ export async function getStats({ force = false } = {}) {
 
   if (!force && cache.data && Date.now() - cache.at < config.statsCacheMs) return cache.data;
 
-  const raw = await fetchStats();
+  const raw = config.statsMockFile ? await readMock() : await fetchStats();
   if (!raw) {
     const empty = {
       enabled: true,
