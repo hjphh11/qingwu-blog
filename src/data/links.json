@@ -7,6 +7,14 @@
       "url": "http://rainzt.cn",
       "visible": true,
       "addedAt": "2026-09-12"
+    },
+    {
+      "name": "吴彦祖论坛",
+      "avatar": "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcT6i-iJtfNNcwwK4IxdoEMMCJWYoAek7_RSc0xGhv7CJ0r9Uc9jplzFU_Np&s=10",
+      "intro": "综合性网站",
+      "url": "https://hty.rest",
+      "visible": true,
+      "addedAt": "2026-10-14"
     }
   ]
 }
