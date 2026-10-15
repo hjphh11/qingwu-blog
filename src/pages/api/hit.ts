@@ -79,7 +79,7 @@ async function forwardToWorker(request: Request, body: HitBody, clientIp: string
     return json({
       ok: data?.ok === true,
       reason: typeof data?.reason === 'string' ? data.reason : undefined,
-      mode: 'worker',
+      mode: 'worker', build: 'probe-v1',
       counted: data?.counted === true,
     });
   } catch (err) {
@@ -92,6 +92,10 @@ async function forwardToWorker(request: Request, body: HitBody, clientIp: string
 export const GET: APIRoute = async () => json({ enabled: ENABLED });
 
 export const POST: APIRoute = async ({ request, clientAddress }) => {
+  // ⚠️ 临时探针（定位转发为何不生效，定位完删除）：
+  //   目的 1：验证这个函数的 console 输出到底会不会进 Vercel 运行日志
+  //   目的 2：直接打印 WORKER_URL 的真值，不再靠推断
+  console.log('[hit-probe] alive workerUrl=', JSON.stringify(WORKER_URL));
   if (!ENABLED) return json({ ok: false, reason: 'disabled' });
 
   // ⚠️ 别写 `as typeof body`：那时 body 被收窄成 null，类型会变成 null（astro check 会报 never）。
@@ -118,7 +122,7 @@ export const POST: APIRoute = async ({ request, clientAddress }) => {
     const forwarded = await forwardToWorker(request, body ?? {}, ip);
     if (forwarded) return forwarded;
     // 转发失败：如果旧路也没配，就只能回 error（依旧是 200，访客无感）
-    if (!LEGACY_ENABLED) return json({ ok: false, reason: 'error', mode: 'worker' });
+    if (!LEGACY_ENABLED) return json({ ok: false, reason: 'error', mode: 'worker', build: 'probe-v1' });
   }
 
   // ② 旧路：Upstash（保留原行为，未配置 HIT_WORKER_URL 时完全等价于迁移前）
@@ -134,10 +138,10 @@ export const POST: APIRoute = async ({ request, clientAddress }) => {
       },
       SALT,
     );
-    return json({ ok: r.counted, reason: r.reason, mode: 'upstash' });
+    return json({ ok: r.counted, reason: r.reason, mode: 'upstash', build: 'probe-v1' });
   } catch (err) {
     // 计数失败只记服务端日志：访客那边什么都看不到
     console.error('[hit] 采集失败:', err);
-    return json({ ok: false, reason: 'error', mode: 'upstash' });
+    return json({ ok: false, reason: 'error', mode: 'upstash', build: 'probe-v1' });
   }
 };
