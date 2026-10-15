@@ -18,6 +18,11 @@ dist/
 .env
 .env.*
 !.env.example
+# Cloudflare Worker 本地开发密钥（含 HIT_IP_SALT / ADMIN_STATS_TOKEN，绝不能进仓库）
+worker/.dev.vars
+# wrangler 的本地状态（本地 SQLite 复刻的 D1 数据）与构建缓存
+worker/.wrangler/
+worker/node_modules/
 
 # OS
 .DS_Store

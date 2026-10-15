@@ -34,6 +34,17 @@ npm run check    # 类型检查
 
 > 部署的更多细节与备注，保存在**本地** `docs/部署说明.md`，不随仓库公开。
 
+## 📈 访问统计
+访客打点走**同源** `/api/hit`，正常情况下站点不会直接对外暴露接口：
+
+- 默认（未配 `HIT_WORKER_URL`）：打点写 Upstash Redis，由 GitHub Action 定时汇总。
+- 配了 `HIT_WORKER_URL`（例如 `https://api.qingwu.ink`）：`/api/hit` 变成一层**薄转发**，
+  由 Cloudflare Worker 写 D1；后台改读 Worker 的 `GET /stats`。
+  转发失败会自动退回 Upstash，不会丢数据；删掉这个变量即可回退。
+
+> Worker 的部署步骤、migration、secret 与历史数据迁移见 **`worker/README.md`**。
+> 完整方案见 `docs/后台迁移-Cloudflare方案.md`。
+
 ## 📝 内容
 - 文章：`src/content/blog/*.md`（分类见 `src/data/categories.json`）
 - 音乐：`src/data/music.json` + `public/music/`（改完跑 `node scripts/gen.mjs` 重新生成 `src/data/music.ts`）
