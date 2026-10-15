@@ -16,6 +16,13 @@ name = "qingwu-api"
 main = "src/index.ts"
 # 打包产物类型；wrangler 直接打包 TS，不需要额外的构建步骤。
 compatibility_date = "2025-04-01"
+
+# ——— 自定义域名 ———
+# workers.dev 在中国大陆访问不稳（实测 TCP 443 超时），给 Worker 绑自己 zone 上的域名。
+# 注意：routes 必须放在**顶层**（不能落在 [vars] 等表段里，否则会被当成普通变量）。
+routes = [
+  { pattern = "api.qingwu.ink", custom_domain = true }
+]
 # nodejs_compat 现在用不到（代码里只用 Web 标准 API）；将来第 3 步要跑 git/加密库时再打开。
 # compatibility_flags = ["nodejs_compat"]
 
@@ -24,7 +31,7 @@ compatibility_date = "2025-04-01"
 binding = "DB" # 代码里 env.DB
 database_name = "qingwu"
 # ⚠️ 手工步骤：`wrangler d1 create qingwu` 之后把真实 id 填进来（见 README.md）
-database_id = "REPLACE_WITH_D1_DATABASE_ID"
+database_id = "b4bba833-5587-4cd0-bf7a-316913933adf"
 # 本地 `wrangler dev` 会用 .wrangler/state 下的本地 SQLite 复刻这份 schema；
 # migrations_dir 让 `wrangler d1 migrations apply` 知道去哪找建表 SQL。
 migrations_dir = "migrations"
