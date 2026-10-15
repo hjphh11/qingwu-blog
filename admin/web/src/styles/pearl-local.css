@@ -996,3 +996,112 @@ body:has(.overlay) .menu-pop {
   .login-canvas .canvas-main,
   .login-canvas .login-foot { transition: none; }
 }
+
+/* ── 22. 音乐页（Music）的歌词时间轴 ─────────────────────────────
+ * 这页原来是暖色皮肤（也是侧栏里最后一个还靠兼容皮肤的页面）：歌曲列表是 app.css 的
+ * `.post-list / .post-item`（顺序按钮 + 封面 + 标题 + 元信息 + 编辑），编辑与歌词时间轴
+ * 是弹窗里的 `.form-grid / .field / .input` 加 `.lrc-rows / .lrc-row / .lrc-head / .lrc-acts`
+ * —— 后四个类名的镜像样式只写在 pearl-legacy-bridge.css 里（弹窗 portal 到 body，
+ * 皮肤够不到页面，所以当初单独补了一份）。
+ * 组件级重做后：歌曲列表走 DataTable（复用 `.cell-main / .cell-title / .cell-sub` 与
+ * 概览页那枚 `.quick-ico` 玻璃小槽 + `.quick-img` 封面，与友链申请页的头像同一写法），
+ * 编辑与歌词编辑走居中 Modal（Field + TextInput + IconButton + Button + SectionLabel）——
+ * **本页不再依赖桥接层那套旧歌词行镜像**。
+ * 这里只补 scaffold 没有、也借不到现成件的五样：
+ *   ① `.lyric-rows / .lyric-head / .lyric-row / .lyric-acts`：歌词是「时间 + 文字」两列
+ *      + 行内两个按钮的**逐行可编辑**列表，scaffold 里没有这种"表格形状的输入行"
+ *      （`.p-table` 的单元格是只读的）。用 CSS Grid 把三列钉成
+ *      「时间 116px / 文字自适应 / 按钮 72px」，各行才对得齐；`minmax(0, 1fr)` 是必需的，
+ *      否则长歌词行会把弹窗撑宽（与 `.p-table .cell-text` 的 420px 同一口径）。
+ *   ② `.lyric-bar / .lyric-bar-acts / .lyric-tip`：小标题 + 提示 + 两个工具的横排
+ *      （旧版是 `.panel-head` + `.spacer` + `.hint`，那三个都是暖色类名）。
+ *   ③ `.lyric-foot / .lyric-total`：「在末尾加一行」与右下角的行数统计
+ *      （旧版是 `.form-actions` + `.spacer` + `.hint`）。
+ *   ④ `.music-cell`：歌曲格是两行（标题 + 元信息）—— 与关于页 `.about-cell` 同一个理由，
+ *      `.cell-sub` 是行内元素，只靠"前一个兄弟是 block"换行不稳，这里显式给 block。
+ *   ⑤ `.music-order`：顺序格里的上下移动按钮组（`.row-actions` 带
+ *      `justify-content: flex-end`，会把按钮推到格子右缘贴着下一列，不适合居中列）。
+ * 面板 / 弹窗的内距：页面主面板的说明走 `.panel-body` 正文层、列表是自己通宽的表格
+ * （第 12 节的兜底不会叠上去）；弹窗内容靠 Modal 自带的 `.modal-body` 内距 ——
+ * 两处都不存在"正文层 + 兜底"叠两层的情况。 */
+.music-cell {
+  display: block;
+  min-width: 0;
+}
+.music-cell .cell-title,
+.music-cell .cell-sub {
+  display: block;
+}
+.music-order {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+}
+/* 面板正文里那行「上下箭头调整前台显示顺序…」：旧版是 `.hint` 加两条内联负外边距 */
+.music-note {
+  margin: 0;
+  color: var(--ink-soft);
+  font-size: 13px;
+}
+
+.lyric-bar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 18px;
+  margin-bottom: 10px;
+}
+.lyric-bar-acts {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+}
+.lyric-tip {
+  color: var(--ink-soft);
+  font-size: 13px;
+}
+.lyric-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.lyric-head,
+.lyric-row {
+  display: grid;
+  grid-template-columns: 116px minmax(0, 1fr) 72px;
+  gap: 10px;
+  align-items: center;
+}
+.lyric-head {
+  padding-bottom: 2px;
+  color: var(--ink-soft);
+  font-size: 12px;
+}
+.lyric-acts {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 2px;
+}
+.lyric-foot {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 12px;
+}
+.lyric-total {
+  margin-left: auto;
+  color: var(--ink-soft);
+  font-size: 13px;
+}
+/* 窄屏（与全站 820 断点对齐）：时间列收窄，三列布局不变 ——
+   表头那行「时间 / 文字」要留着，不然看不出哪一格是时间 */
+@media (max-width: 820px) {
+  .lyric-head,
+  .lyric-row {
+    grid-template-columns: 96px minmax(0, 1fr) 72px;
+    gap: 8px;
+  }
+}

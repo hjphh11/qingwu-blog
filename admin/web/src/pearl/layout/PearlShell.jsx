@@ -112,8 +112,10 @@ const TITLES = {
   publish: ['运维', '发布', '构建校验 → 提交 → 推送 → 触发重建'],
 };
 
-/** 已经迁到珍珠玻璃的页面名。其它的暂时套一层暖色容器（下一轮再迁） */
-const PEARL_PAGES = new Set(['dash', 'posts', 'edit', 'cats', 'links', 'apply', 'share', 'about', 'trash', 'logs', 'stats', 'publish']);
+/** 已经迁到珍珠玻璃的页面名 —— 侧栏 11 个 key 全覆盖（`music` 是最后一个补上的）。
+ *  不在这里的路由会被套进 `.legacy-slot`（暖色容器），那一层与 pearl-legacy-bridge.css
+ *  等兼容皮肤一起在收尾阶段删除。 */
+const PEARL_PAGES = new Set(['dash', 'posts', 'edit', 'cats', 'music', 'links', 'apply', 'share', 'about', 'trash', 'logs', 'stats', 'publish']);
 
 export default function PearlShell({ onLogout }) {
   const [route, setRoute] = useState({ name: 'dash', params: {} });
