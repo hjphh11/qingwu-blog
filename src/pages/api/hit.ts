@@ -75,17 +75,17 @@ async function forwardToWorker(request: Request, body: HitBody, clientIp: string
     });
 
     if (!res.ok) {
-      // ⚠️ 临时诊断：这条分支原来是静默的，导致线上"转发不生效"完全没法排查。
-      // 打出真实状态码与响应体（截断），定位完改成正常日志或删除。
+      // ⚠️ 这条分支原来**静默 return null**，结果一次真实的 403（Cloudflare 挑战
+      // 数据中心 IP）在线上完全看不到，排查时只能靠猜。关键失败路径必须留痕。
       const bodyText = await res.text().catch(() => '');
-      console.error('[hit-probe] Worker 返回非 2xx:', res.status, bodyText.slice(0, 300));
+      console.error(`[hit] Worker 返回非 2xx：${res.status} ${bodyText.slice(0, 200)}`);
       return null; // 4xx/5xx：退回旧路（不把错误码透出去）
     }
     const data = (await res.json()) as WorkerHitResult;
     return json({
       ok: data?.ok === true,
       reason: typeof data?.reason === 'string' ? data.reason : undefined,
-      mode: 'worker', build: 'probe-v1',
+      mode: 'worker',
       counted: data?.counted === true,
     });
   } catch (err) {
@@ -98,10 +98,6 @@ async function forwardToWorker(request: Request, body: HitBody, clientIp: string
 export const GET: APIRoute = async () => json({ enabled: ENABLED });
 
 export const POST: APIRoute = async ({ request, clientAddress }) => {
-  // ⚠️ 临时探针（定位转发为何不生效，定位完删除）：
-  //   目的 1：验证这个函数的 console 输出到底会不会进 Vercel 运行日志
-  //   目的 2：直接打印 WORKER_URL 的真值，不再靠推断
-  console.log('[hit-probe] alive workerUrl=', JSON.stringify(WORKER_URL));
   if (!ENABLED) return json({ ok: false, reason: 'disabled' });
 
   // ⚠️ 别写 `as typeof body`：那时 body 被收窄成 null，类型会变成 null（astro check 会报 never）。
@@ -128,7 +124,7 @@ export const POST: APIRoute = async ({ request, clientAddress }) => {
     const forwarded = await forwardToWorker(request, body ?? {}, ip);
     if (forwarded) return forwarded;
     // 转发失败：如果旧路也没配，就只能回 error（依旧是 200，访客无感）
-    if (!LEGACY_ENABLED) return json({ ok: false, reason: 'error', mode: 'worker', build: 'probe-v1' });
+    if (!LEGACY_ENABLED) return json({ ok: false, reason: 'error', mode: 'worker' });
   }
 
   // ② 旧路：Upstash（保留原行为，未配置 HIT_WORKER_URL 时完全等价于迁移前）
@@ -144,10 +140,10 @@ export const POST: APIRoute = async ({ request, clientAddress }) => {
       },
       SALT,
     );
-    return json({ ok: r.counted, reason: r.reason, mode: 'upstash', build: 'probe-v1' });
+    return json({ ok: r.counted, reason: r.reason, mode: 'upstash' });
   } catch (err) {
     // 计数失败只记服务端日志：访客那边什么都看不到
     console.error('[hit] 采集失败:', err);
-    return json({ ok: false, reason: 'error', mode: 'upstash', build: 'probe-v1' });
+    return json({ ok: false, reason: 'error', mode: 'upstash' });
   }
 };
