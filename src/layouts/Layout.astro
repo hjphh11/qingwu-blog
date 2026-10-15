@@ -134,6 +134,12 @@ const url = SITE.url.replace(/\/$/, '') + pathname;
         if (window.__qHitWired) return;
         window.__qHitWired = true;
 
+        // 访客上报直接打 Cloudflare Worker（写 D1）。
+        // 为什么不走同源 /api/hit 再转发：那样由 Vercel 的**数据中心 IP** 发出请求，
+        // Cloudflare 的 Managed Challenge 会回 403（实测 "Just a moment..." 挑战页）；
+        // 而访客是**真浏览器 + 住宅 IP**，不会触发挑战。Worker 侧已处理 CORS 预检。
+        var HIT_ENDPOINT = 'https://api.qingwu.ink/hit';
+
         function sendHit() {
           try {
             var h = location.hostname;
@@ -146,9 +152,9 @@ const url = SITE.url.replace(/\/$/, '') + pathname;
             });
             if (navigator.sendBeacon) {
               // sendBeacon 的好处：页面正在关闭/切换时也能发出去
-              navigator.sendBeacon('/api/hit', new Blob([payload], { type: 'application/json' }));
+              navigator.sendBeacon(HIT_ENDPOINT, new Blob([payload], { type: 'application/json' }));
             } else {
-              fetch('/api/hit', {
+              fetch(HIT_ENDPOINT, {
                 method: 'POST',
                 body: payload,
                 headers: { 'content-type': 'application/json' },
