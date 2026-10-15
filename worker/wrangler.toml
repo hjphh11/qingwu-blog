@@ -1,0 +1,54 @@
+# 清吾 · 动态运行时 Worker（Cloudflare）
+#
+# 方案见 docs/后台迁移-Cloudflare方案.md。
+# **第 1 步只启用统计**：POST /hit（访客上报 → D1）、GET /stats（后台查询）、GET /health。
+# 友链申请（第 2 步）、后台（第 3 步）、定时发布（第 4 步）、评论/点赞（第 5 步）都在后面，
+# 本文件里先用注释占位，避免现在就把没写的功能打开。
+#
+# 部署（细节见同目录 README.md）：
+#   wrangler d1 create qingwu            # 建库，把输出的 database_id 填到下面
+#   wrangler d1 migrations apply qingwu --remote
+#   wrangler secret put HIT_IP_SALT      # 访客匿名化用的盐（必填）
+#   wrangler secret put ADMIN_STATS_TOKEN# 后台读 /stats 用的口令（可选但强烈建议）
+#   wrangler deploy
+
+name = "qingwu-api"
+main = "src/index.ts"
+# 打包产物类型；wrangler 直接打包 TS，不需要额外的构建步骤。
+compatibility_date = "2025-04-01"
+# nodejs_compat 现在用不到（代码里只用 Web 标准 API）；将来第 3 步要跑 git/加密库时再打开。
+# compatibility_flags = ["nodejs_compat"]
+
+# ——— D1：统计数据的落点 ———
+[[d1_databases]]
+binding = "DB" # 代码里 env.DB
+database_name = "qingwu"
+# ⚠️ 手工步骤：`wrangler d1 create qingwu` 之后把真实 id 填进来（见 README.md）
+database_id = "REPLACE_WITH_D1_DATABASE_ID"
+# 本地 `wrangler dev` 会用 .wrangler/state 下的本地 SQLite 复刻这份 schema；
+# migrations_dir 让 `wrangler d1 migrations apply` 知道去哪找建表 SQL。
+migrations_dir = "migrations"
+
+# ——— R2：先占位，第 1 步不用 ———
+# 方案里 R2 只服务「后台私有资源 + 备份」（公开媒体继续留国内节点）。
+# [[r2_buckets]]
+# binding = "R2"
+# bucket_name = "qingwu-private"
+
+# ——— Cron：定时发布用，第 4 步再开 ———
+# [triggers]
+# crons = ["*/5 * * * *"]
+
+[vars]
+# 允许跨源调用 /hit 的站点（逗号分隔；* 表示不限制）。
+# 站点默认走**同源 /api/hit 薄转发**，所以正常情况下用不到 CORS；
+# 这里留着是为了「哪天想让浏览器直连 Worker」时不用改代码。
+ALLOWED_ORIGINS = "https://qingwu.ink,https://www.qingwu.ink,http://localhost:4321"
+# /stats 响应里回显的「数据来源」信息。纯展示字段，后台前端用它显示一行说明。
+# 配了它，后台统计页会显示「数据来源：Cloudflare D1（访客）」，而不是旧的 GitHub 仓库路径。
+STATS_SOURCE_REPO = "cloudflare-d1"
+STATS_SOURCE_PATH = "hits"
+
+# ——— 本地开发：secret 放 worker/.dev.vars（已被 .gitignore 忽略）———
+# HIT_IP_SALT="dev-salt"
+# ADMIN_STATS_TOKEN="dev-token"

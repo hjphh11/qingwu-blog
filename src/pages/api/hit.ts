@@ -1,11 +1,15 @@
-// 访问打点（方案 §11 路线 B）。
+// 访问打点（方案 §11 路线 B）。**第 1 步迁移后**：这里变成一层薄转发。
 //
-//   GET  /api/hit   能力探测：返回 { enabled }。没配 Upstash 时前端就不用白打点了
+//   GET  /api/hit   能力探测：返回 { enabled }。没配采集端时前端就不用白打点了
 //                   （也和 /api/links/apply 一样，方便排查「变量写错 → 静默不计数」）。
 //   POST /api/hit   记一次访问。**永远返回 200**：打点失败绝不能影响访客，
 //                   浏览器的 sendBeacon 也不看状态码，回 4xx/5xx 只会在控制台留噪音。
 //
-// 采集的计数写进 Upstash（和限流共用同一个库），由 GitHub Action 定时汇总成 stats.json。
+// 数据往哪走（两条路，靠 `HIT_WORKER_URL` 切换）：
+//   ① 配了 `HIT_WORKER_URL`（例如 https://api.qingwu.ink）→ **转发给 Cloudflare Worker**，
+//      由它写 D1。前端仍然调同源 `/api/hit`，所以**不用改前端、也不用处理 CORS**。
+//      Worker 挂了/超时 → 自动退回 ②，不丢数据。
+//   ② 没配 → 保持原样写 Upstash（旧链路仍可用，随时可回退：把这个变量删掉即可）。
 export const prerender = false;
 
 import type { APIRoute } from 'astro';
@@ -14,8 +18,15 @@ import { collectHit, isBot, statsConfig } from '../../lib/stats';
 
 const SALT = env('APPLY_IP_SALT');
 const CFG = statsConfig();
-/** 两个都要有：Upstash 用来存，SALT 用来匿名化访客（缺一个就只探测不采集）*/
-const ENABLED = Boolean(CFG && SALT);
+/** Upstash 那条旧路：两个都要有（Upstash 用来存，SALT 用来匿名化访客）*/
+const LEGACY_ENABLED = Boolean(CFG && SALT);
+
+/** 新的采集端（Cloudflare Worker）。**空 = 走旧的 Upstash 链路** */
+const WORKER_URL = env('HIT_WORKER_URL').replace(/\/$/, '');
+/** 转发超时（毫秒）。Worker 有边缘缓存+就近接入，正常几十毫秒；超了就退回旧路 */
+const WORKER_TIMEOUT_MS = 2000;
+
+const ENABLED = Boolean(WORKER_URL) || LEGACY_ENABLED;
 
 const json = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), {
@@ -27,6 +38,52 @@ const json = (body: unknown, status = 200) =>
 interface HitBody {
   path?: unknown;
   referrer?: unknown;
+}
+
+/** Worker `/hit` 的响应（见 worker/src/hit.ts）*/
+interface WorkerHitResult {
+  ok?: unknown;
+  reason?: unknown;
+  counted?: unknown;
+}
+
+/**
+ * 把这次访问转给 Worker。
+ * 返回 null 表示「没转成功」—— 调用方会退回旧的 Upstash 链路。
+ */
+async function forwardToWorker(request: Request, body: HitBody, clientIp: string): Promise<Response | null> {
+  try {
+    const ua = request.headers.get('user-agent');
+    const country = request.headers.get('x-vercel-ip-country');
+    const xff = request.headers.get('x-forwarded-for');
+    const realIp = request.headers.get('x-real-ip');
+    const res = await fetch(`${WORKER_URL}/hit`, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        // 把访客的真实信息原样带给 Worker：国家/地区（Vercel 会注入）、UA、转发链上的 IP
+        ...(ua ? { 'user-agent': ua } : {}),
+        ...(country ? { 'x-vercel-ip-country': country } : {}),
+        ...(xff ? { 'x-forwarded-for': xff } : {}),
+        ...(realIp ? { 'x-real-ip': realIp } : clientIp !== 'unknown' ? { 'x-real-ip': clientIp } : {}),
+      },
+      body: JSON.stringify({ path: body.path, referrer: body.referrer }),
+      signal: AbortSignal.timeout(WORKER_TIMEOUT_MS),
+    });
+
+    if (!res.ok) return null; // 4xx/5xx：退回旧路（不把错误码透出去）
+    const data = (await res.json()) as WorkerHitResult;
+    return json({
+      ok: data?.ok === true,
+      reason: typeof data?.reason === 'string' ? data.reason : undefined,
+      mode: 'worker',
+      counted: data?.counted === true,
+    });
+  } catch (err) {
+    // Worker 不可达/超时/返回不是 JSON —— 只记服务端日志，然后退回旧路
+    console.error('[hit] 转发 Worker 失败，回退 Upstash:', err instanceof Error ? err.message : err);
+    return null;
+  }
 }
 
 export const GET: APIRoute = async () => json({ enabled: ENABLED });
@@ -45,6 +102,7 @@ export const POST: APIRoute = async ({ request, clientAddress }) => {
   const ua = request.headers.get('user-agent') || '';
   if (isBot(ua)) return json({ ok: false, reason: 'bot' }); // 爬虫、监控、预览渲染都不算访客
 
+  // 访客 IP：拿不到也不影响（少数运行环境没有）；转发给 Worker 时用它兜底
   let ip = 'unknown';
   try {
     ip = clientAddress || 'unknown';
@@ -52,6 +110,15 @@ export const POST: APIRoute = async ({ request, clientAddress }) => {
     /* 少数运行环境拿不到 IP，不影响 */
   }
 
+  // ① 新路：交给 Worker（bot/去重/限流都在 Worker 里做，和旧链路同一套规则）
+  if (WORKER_URL) {
+    const forwarded = await forwardToWorker(request, body ?? {}, ip);
+    if (forwarded) return forwarded;
+    // 转发失败：如果旧路也没配，就只能回 error（依旧是 200，访客无感）
+    if (!LEGACY_ENABLED) return json({ ok: false, reason: 'error', mode: 'worker' });
+  }
+
+  // ② 旧路：Upstash（保留原行为，未配置 HIT_WORKER_URL 时完全等价于迁移前）
   try {
     const r = await collectHit(
       CFG!,
@@ -64,10 +131,10 @@ export const POST: APIRoute = async ({ request, clientAddress }) => {
       },
       SALT,
     );
-    return json({ ok: r.counted, reason: r.reason });
+    return json({ ok: r.counted, reason: r.reason, mode: 'upstash' });
   } catch (err) {
     // 计数失败只记服务端日志：访客那边什么都看不到
     console.error('[hit] 采集失败:', err);
-    return json({ ok: false, reason: 'error' });
+    return json({ ok: false, reason: 'error', mode: 'upstash' });
   }
 };

@@ -1,0 +1,22 @@
+{
+  "name": "qingwu-worker",
+  "private": true,
+  "version": "0.0.1",
+  "type": "module",
+  "description": "清吾 · Cloudflare Worker 动态运行时（第 1 步：访问统计 /hit + /stats）",
+  "scripts": {
+    "dev": "wrangler dev --local",
+    "deploy": "wrangler deploy",
+    "dry-run": "wrangler deploy --dry-run",
+    "migrate": "wrangler d1 migrations apply qingwu --remote",
+    "migrate:local": "wrangler d1 migrations apply qingwu --local",
+    "tail": "wrangler tail",
+    "typecheck": "tsc --noEmit",
+    "import-stats": "node scripts/import-stats.mjs"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^5.20261006.1",
+    "typescript": "^5.6.3",
+    "wrangler": "^4.20.0"
+  }
+}

@@ -1,0 +1,6 @@
+# Worker 本地产物（不进仓库）
+node_modules/
+.wrangler/
+dist/
+*.log
+.dev.vars
