@@ -3,8 +3,6 @@ import { createRoot } from 'react-dom/client';
 import App from './App.jsx';
 
 // 旧暖色样式（19 个页面还在用）。迁移完成后会整体删掉。
-import './styles/theme.css';
-import './styles/app.css';
 
 // 珍珠玻璃七层 —— 从 scaffold 逐字搬来，见 scripts/sync-pearl-css.mjs。
 // 引入顺序 = 层叠顺序：令牌 → 基线 → 材质 → 控件 → 仪器 → 布局 → 页面差异。
@@ -23,7 +21,6 @@ import './styles/pearl-local.css';
 
 // 旧页面兼容皮肤：把 8 个还没重写的页面仍在用的暖色类名（.card/.panel/.table/.btn/.tag…）
 // 整体映射到珍珠玻璃令牌上，先让全站视觉统一；等这些页面按 pearl/PORTING.md 升级完就删掉。
-import './styles/pearl-legacy-bridge.css';
 
 createRoot(document.getElementById('root')).render(
   <React.StrictMode>
