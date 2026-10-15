@@ -74,7 +74,13 @@ async function forwardToWorker(request: Request, body: HitBody, clientIp: string
       signal: AbortSignal.timeout(WORKER_TIMEOUT_MS),
     });
 
-    if (!res.ok) return null; // 4xx/5xx：退回旧路（不把错误码透出去）
+    if (!res.ok) {
+      // ⚠️ 临时诊断：这条分支原来是静默的，导致线上"转发不生效"完全没法排查。
+      // 打出真实状态码与响应体（截断），定位完改成正常日志或删除。
+      const bodyText = await res.text().catch(() => '');
+      console.error('[hit-probe] Worker 返回非 2xx:', res.status, bodyText.slice(0, 300));
+      return null; // 4xx/5xx：退回旧路（不把错误码透出去）
+    }
     const data = (await res.json()) as WorkerHitResult;
     return json({
       ok: data?.ok === true,
