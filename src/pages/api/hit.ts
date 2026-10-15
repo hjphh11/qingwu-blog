@@ -27,7 +27,7 @@ const LEGACY_ENABLED = Boolean(CFG && SALT);
 // import.meta.env[key] 也不会被内联，这就是当初切不过去的原因）。
 const WORKER_URL = (env('PUBLIC_HIT_WORKER_URL') || env('HIT_WORKER_URL') || 'https://api.qingwu.ink').replace(/\/$/, '');
 /** 转发超时（毫秒）。Worker 有边缘缓存+就近接入，正常几十毫秒；超了就退回旧路 */
-const WORKER_TIMEOUT_MS = 2000;
+const WORKER_TIMEOUT_MS = 8000; // 2s 太紧：跨境 + Worker 冷启动 + D1 写，超时就会静默回退 Upstash
 
 const ENABLED = Boolean(WORKER_URL) || LEGACY_ENABLED;
 
