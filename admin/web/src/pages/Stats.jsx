@@ -1,8 +1,9 @@
 // 访问统计（珍珠玻璃版）。
 //
-// 数据链路：访客 → 站内 /api/hit → Upstash Redis → **GitHub Action 每 6 小时汇总** →
-//           私有仓库的 stats.json → 这个页面读它画图（后台读取零跨境）。
-// 所以页面上的数字**最多滞后 6 小时**，页头写清「数据到哪一天、什么时候汇总的」。
+// 数据链路（2026-10-15 起）：访客 → 站内 /api/hit（薄转发）→ **Cloudflare Worker** → **D1**。
+// 所以页面上的数字是**读取那一刻**的实时值；页头写清「数据到哪一天、什么时候读取的」。
+// 旧链路（Upstash → GitHub Action 每 6 小时汇总 → 私有仓库 stats.json）已可下线，
+// 后台侧的三条取数路优先级见 admin/.env.example（mock > ADMIN_STATS_ENDPOINT > GitHub 文件）。
 //
 // 字段与后端 `admin/server/stats.js` 的 getStats() 一一对应，没有一处是猜的：
 //   enabled / empty / reason / repo / path / generatedAt / latestDay /
@@ -142,7 +143,7 @@ export default function Stats() {
         >
           <EmptyState
             title={error}
-            desc="统计文件在私有仓库里，读取要 ADMIN_APPLY_TOKEN"
+            desc="统计接口是 Cloudflare Worker（api.qingwu.ink），读取要 ADMIN_STATS_ENDPOINT"
             icon={CircleAlert}
           />
         </Panel>
@@ -178,7 +179,7 @@ export default function Stats() {
 
   const topPages = (data.pages ?? []).slice(0, 20);
 
-  const trendMeta = `数据到 ${data.latestDay || '—'} · 每 6 小时汇总一次${
+  const trendMeta = `数据到 ${data.latestDay || '—'} · 实时读取${
     data.generatedAt ? `（${fmt(data.generatedAt)}）` : ''
   }`;
 
@@ -186,7 +187,7 @@ export default function Stats() {
     <div className={cls('page', 'dashboard', ready && 'is-entrance-ready')}>
       <PageHeader
         title="访问统计"
-        desc="访客进页面时自动记一笔，每 6 小时汇总成一份统计文件；数字最多滞后 6 小时。"
+        desc="访客进页面时自动记一笔，直接写进数据库；每次打开都是最新数字。"
         actions={
           <>
             <span className={cls('faint')} style={{ fontSize: 12 }}>{trendMeta}</span>
@@ -197,7 +198,7 @@ export default function Stats() {
         }
       />
 
-      {/* 空态：① 没配读取令牌（enabled=false）② 配了但汇总文件还没生成（empty=true）
+      {/* 空态：① 统计接口没配好（enabled=false）② 接口通了但库里还没有数据（empty=true）
           两种都取后端 getStats() 的 reason，原文照显 */}
       {(data.enabled === false || data.empty) && (
         <Panel
@@ -221,13 +222,13 @@ export default function Stats() {
             }}
           >
             <MorphIcon icon={CircleAlert} size={16} color="currentColor" />
-            <span>{data.reason || '还没有汇总文件'}</span>
+            <span>{data.reason || '还没有数据'}</span>
           </div>
           <EmptyState
             desc={
               data.enabled === false
                 ? '在服务器上配好 ADMIN_APPLY_TOKEN 后，这里会读到私有仓库里的 stats.json。'
-                : '等第一次自动汇总跑完（每 6 小时一次），这里就有趋势、来源、地区与设备了。'
+                : '等第一个访客进来，这里就会有趋势、来源、地区与设备。'
             }
             icon={ChartNoAxesColumn}
           />
@@ -280,7 +281,7 @@ export default function Stats() {
         >
           <span className="glow-layer" aria-hidden="true" />
           {trendDays.length === 0 ? (
-            <EmptyState title="还没有数据" desc="等第一次汇总跑完就有了" icon={ChartNoAxesColumn} />
+            <EmptyState title="还没有数据" desc="等第一个访客就有了" icon={ChartNoAxesColumn} />
           ) : (
             <TrendChart
             secondaryTone="ink"
@@ -407,9 +408,9 @@ export default function Stats() {
           <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10, fontSize: 13, color: 'var(--ink-muted)' }}>
             <MorphIcon icon={Timer} size={14} color="currentColor" />
             <span>
-              访客进页面时自动记一笔，每 6 小时汇总一次；只统计路径 / 来源 / 地区 / 设备，
+              访客进页面时自动记一笔，只统计路径 / 来源 / 地区 / 设备，
               <strong>不存明文 IP</strong>，同一访客同一页 30 分钟内只算一次。共有{' '}
-              {n(data.counts?.days)} 天的记录，汇总时间 {fmt(data.generatedAt)}。
+              {n(data.counts?.days)} 天的记录，读取于 {fmt(data.generatedAt)}。
             </span>
           </div>
         </Panel>
