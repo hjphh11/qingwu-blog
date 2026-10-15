@@ -153,6 +153,9 @@ const url = SITE.url.replace(/\/$/, '') + pathname;
             if (navigator.sendBeacon) {
               // sendBeacon 的好处：页面正在关闭/切换时也能发出去
               navigator.sendBeacon(HIT_ENDPOINT, new Blob([payload], { type: 'application/json' }));
+              // 过渡期**对照线**：同源 /api/hit → Vercel 函数 → Upstash。
+              // 后台已改读新线（D1）；这条只继续统计，过几天两边数字对得上就删掉这几行。
+              navigator.sendBeacon('/api/hit', new Blob([payload], { type: 'application/json' }));
             } else {
               fetch(HIT_ENDPOINT, {
                 method: 'POST',
