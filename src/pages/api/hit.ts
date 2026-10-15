@@ -22,7 +22,10 @@ const CFG = statsConfig();
 const LEGACY_ENABLED = Boolean(CFG && SALT);
 
 /** 新的采集端（Cloudflare Worker）。**空 = 走旧的 Upstash 链路** */
-const WORKER_URL = env('HIT_WORKER_URL').replace(/\/$/, '');
+// 读两个键：`PUBLIC_` 优先 —— Vite 对 `PUBLIC_` 前缀的变量会在**构建期静态内联**，
+// 不依赖运行时的 process.env（Edge runtime 里根本没有 process.env，动态键的
+// import.meta.env[key] 也不会被内联，这就是当初切不过去的原因）。
+const WORKER_URL = (env('PUBLIC_HIT_WORKER_URL') || env('HIT_WORKER_URL')).replace(/\/$/, '');
 /** 转发超时（毫秒）。Worker 有边缘缓存+就近接入，正常几十毫秒；超了就退回旧路 */
 const WORKER_TIMEOUT_MS = 2000;
 
