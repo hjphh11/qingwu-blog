@@ -64,18 +64,23 @@ export const config = {
   /**
    * 友链申请审批（阶段 J / 方案 §4.5 + 第 35/36/49 条）。
    *
-   * 申请数据存在**私有仓库**里（含访客邮箱，绝不能进公开的博客仓库），
-   * 后台走 GitHub Contents API 读写它 —— 通过/拒绝就是把 `status` 写回去。
-   * PAT 需要该私有仓库的 **Contents: Read and write**（和 Vercel 函数用的是同一类 token）。
-   * 没配 token 时审批页只显示「没配 token」的说明，不影响其它功能。
+   * **第 2 步迁移后数据在 Cloudflare D1**（Worker 的 `applications` 表），
+   * 后台走 Worker 的 HTTP 接口读写：`GET /apply` 列表、`PATCH /apply/:id` 改状态。
+   * 原来那套「GitHub Contents API 读写私有仓库 applications.json」已经整条删除 ——
+   * 拿 git 当数据库用没法索引、没法 UNIQUE 去重、并发还得重试。
+   *
+   * `ADMIN_APPLY_TOKEN` 现在存的是**与 Worker 上 `ADMIN_APPLY_TOKEN` secret 同值**的口令，
+   * 不再是 GitHub PAT。它和 `ADMIN_STATS_TOKEN` 刻意分开：统计口令泄漏只暴露访问量，
+   * 这个泄漏会暴露访客邮箱。
+   *
+   * 没配 token 时审批页只显示「没配」的说明，不影响其它功能。
    */
-  applyToken: env('ADMIN_APPLY_TOKEN'),
-  applyRepo: env('ADMIN_APPLY_REPO', 'hjphh11/qingwu-link-applications'),
-  applyPath: env('ADMIN_APPLY_PATH', 'applications.json'),
-  applyRef: env('ADMIN_APPLY_REF', 'main'),
-  /** 便于本地用 mock 服务验证；默认 GitHub 官方 API */
-  applyApiBase: env('ADMIN_APPLY_API_BASE', 'https://api.github.com'),
-  /** 审批列表的服务端缓存（毫秒）。单用户后台，翻页来回切没必要每次都打 GitHub */
+  applyApiToken: env('ADMIN_APPLY_TOKEN'),
+  /** Worker 的 API 根地址（`/apply` 会拼在它后面） */
+  applyApiBase: env('ADMIN_APPLY_API_BASE', env('ADMIN_STATS_ENDPOINT', '').replace(/\/stats\/?$/, '') || 'https://api.qingwu.ink'),
+  /** 调友链接口的超时（毫秒）。跨境，别设太短 */
+  applyTimeoutMs: Number(env('ADMIN_APPLY_TIMEOUT_MS', '15000')),
+  /** 审批列表的服务端缓存（毫秒）。单用户后台，翻页来回切没必要每次都打跨境请求 */
   applyCacheMs: Number(env('ADMIN_APPLY_CACHE_MS', '45000')),
 
   /**

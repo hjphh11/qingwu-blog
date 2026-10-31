@@ -192,7 +192,7 @@ export async function searchAll(rawQuery, { limit = 6 } = {}) {
       })),
   );
 
-  // ——— 友链申请（走私有仓库；失败就跳过）———
+  // ——— 友链申请（走 Cloudflare D1 的 /apply；失败就跳过）———
   try {
     const { listApplications } = await import('./applications.js');
     const data = await listApplications();

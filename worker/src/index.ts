@@ -1,23 +1,27 @@
 // 清吾 · Worker 入口（极小路由）
 //
-// 第 1 步只开放三条路由：
-//   POST /hit     访客上报 → D1
-//   GET  /hit     能力探测（与旧的 /api/hit GET 同形）
-//   GET  /stats   后台统计查询（需 Bearer 口令）
-//   GET  /health  健康检查
+// 已启用：
+//   POST   /hit          访客上报 → D1
+//   GET    /hit          能力探测（与旧的 /api/hit GET 同形）
+//   GET    /stats        后台统计查询（需 Bearer 口令）
+//   GET    /health       健康检查
+//   POST   /apply        友链申请提交（第 2 步）
+//   GET    /apply        无口令 = 能力探测；带口令 = 后台读列表
+//   PATCH  /apply/:id    后台改审批状态（需 Bearer 口令）
 //
-// 第 2~5 步的路由（/apply、/comments、/likes、Cron）以后再加，别现在就把口子开着。
+// 第 3~5 步的路由（/comments、/likes、Cron）以后再加，别现在就把口子开着。
 
+import { getApply, patchApply, postApply } from './apply';
 import { getHit, postHit } from './hit';
 import { getStats } from './stats';
 import { json, originAllowed, parseOrigins } from './util';
 import type { Env } from './types';
 
 /** 允许的请求方法，用于 CORS 预检 */
-const ALLOW_METHODS = 'GET, POST, OPTIONS';
+const ALLOW_METHODS = 'GET, POST, PATCH, OPTIONS';
 const ALLOW_HEADERS = 'content-type, authorization';
 
-/** 处理 CORS 预检：只有 /hit 需要（站点默认走同源转发，用不到；留着给浏览器直连的场景） */
+/** 处理 CORS 预检：/hit 与 /apply 都可能被浏览器直连，都要支持 */
 function preflight(request: Request, env: Env): Response {
   const origin = request.headers.get('origin') || '';
   const headers: Record<string, string> = { 'access-control-allow-methods': ALLOW_METHODS, 'access-control-allow-headers': ALLOW_HEADERS };
@@ -44,6 +48,19 @@ export default {
       if (request.method === 'POST') return postHit(request, env, ctx);
       if (request.method === 'GET') return getHit(env);
       return json({ ok: false, reason: 'bad_request' }, 405);
+    }
+
+    // —— 友链申请（第 2 步）——
+    if (path === '/apply') {
+      if (request.method === 'POST') return postApply(request, env);
+      if (request.method === 'GET') return getApply(request, env);
+      return json({ ok: false, reason: 'method_not_allowed' }, 405);
+    }
+    // /apply/:id —— 只支持 PATCH（后台改状态）
+    const applyId = path.startsWith('/apply/') ? path.slice('/apply/'.length) : '';
+    if (applyId) {
+      if (request.method === 'PATCH') return patchApply(request, env, applyId);
+      return json({ ok: false, reason: 'method_not_allowed' }, 405);
     }
 
     if (path === '/stats') {

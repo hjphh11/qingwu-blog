@@ -1,229 +1,121 @@
-// 友链申请的服务端函数(阶段 B / B.1)。
+// 友链申请的同源入口 —— **第 2 步迁移后它只是一层转发**。
 //
-// 流程：校验 → Cloudflare Turnstile 防刷 → **限流(Upstash)** → 写私有仓库
-//       → Resend 发通知(超额度则排队,下个小时补发)。
+// 真实存储与业务逻辑都在 Cloudflare Worker（`POST/GET/PATCH /apply` → D1）。
+// 这个 Vercel 函数只做两件事：
+//   1. 给「浏览器直连 Worker 失败」的情况当兜底（跨境抖动、Worker 短暂不可用）；
+//   2. 保留一个同源地址，方便排查（`curl https://www.qingwu.ink/api/links/apply`）。
 //
-// 两个端点：
-//   GET  /api/links/apply   能力探测。返回 { enabled }，前端据此决定
-//                           是「真提交」还是回退到「通道建设中 + 邮件兜底」。
-//                           这样在密钥还没配好之前，线上不会出现看不懂的提交失败。
-//   POST /api/links/apply   真正提交。
+// 前端的顺序是「直连优先、失败回退到这里」，所以正常情况下这条路由**不会被调用**。
 //
-// 需要配置的环境变量见仓库根 `.env.example`。
+// ⚠️ 已知代价：经这里转发时，Worker 看到的访客 IP 是 Vercel 数据中心 IP 而不是真实
+// 访客 IP，限流会变成「所有回退用户共用一个桶」。只在异常路径出现，可以接受；
+// 但**不要**把它改回主要入口 —— 那样限流就形同虚设。
+//
+// 本地联调注意：Worker 侧的人机验证需要访问 challenges.cloudflare.com，
+// 而 Windows 上的 workerd 出不去。本地请让 `worker/.dev.vars` 带上
+// `DEV_SKIP_TURNSTILE=1`（已 gitignore，线上不会有这个变量）。
 export const prerender = false;
 
 import type { APIRoute } from 'astro';
-import { appendApplication } from '../../../lib/applyStore';
-import { notifyNewApplication } from '../../../lib/applyNotify';
-import { normalizeValues, validateApply, type ApplyValues } from '../../../lib/applyValidation';
-import {
-  checkAndBump,
-  deliverNotifications,
-  hashIp,
-  rateLimitConfig,
-} from '../../../lib/rateLimit';
 import { env } from '../../../lib/serverEnv';
 
-// ——— 配置(用户填在 Vercel → Settings → Environment Variables) ———
-const APPLY_TOKEN = env('APPLY_TOKEN');
-const APPLY_REPO = env('APPLY_REPO') || 'hjphh11/qingwu-link-applications';
-const APPLY_PATH = env('APPLY_PATH') || 'applications.json';
-const APPLY_REF = env('APPLY_REF') || 'main';
+const WORKER_URL = (env('PUBLIC_HIT_WORKER_URL') || env('HIT_WORKER_URL') || 'https://api.qingwu.ink').replace(/\/$/, '');
+/** 转发超时：要和前端那边的 8s 对齐，否则前端先放弃、这边还在写 */
+const FORWARD_TIMEOUT_MS = 9000;
 
-const TURNSTILE_SECRET = env('TURNSTILE_SECRET_KEY');
-const TURNSTILE_VERIFY_URL =
-  env('TURNSTILE_VERIFY_URL') || 'https://challenges.cloudflare.com/turnstile/v0/siteverify';
-
-const RESEND_API_KEY = env('RESEND_API_KEY');
-const APPLY_MAIL_FROM = env('APPLY_MAIL_FROM');
-const APPLY_NOTIFY_TO = env('APPLY_NOTIFY_TO');
-
-// IP 匿名化用的盐(必填才能启用限流;缺了就是 fail-open)
-const APPLY_IP_SALT = env('APPLY_IP_SALT');
-
-// 可选覆盖：把对外请求指向本地 mock，用于本地联调(平时不用填)
-const GITHUB_API_BASE = env('APPLY_GITHUB_API_BASE') || undefined;
-const RESEND_API_BASE = env('RESEND_API_BASE') || undefined;
-
-/** 存储与防刷都就绪才算「能真提交」；限流/邮件是尽力而为，不参与这个判断 */
-const ENABLED = Boolean(APPLY_TOKEN && TURNSTILE_SECRET);
-
-const json = (body: unknown, status: number, extra: Record<string, string> = {}) =>
+const json = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), {
     status,
-    headers: { 'content-type': 'application/json; charset=utf-8', ...extra },
+    headers: { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' },
   });
 
-/** Turnstile 校验。校验接口本身失败(网络等)时按不通过处理。 */
-async function verifyTurnstile(token: string, ip: string | null): Promise<boolean> {
-  const form = new URLSearchParams();
-  form.set('secret', TURNSTILE_SECRET);
-  form.set('response', token);
-  if (ip) form.set('remoteip', ip);
+/**
+ * 转给 Worker，返回**上游的状态码与响应体文本**（不返回 Response 对象）。
+ *
+ * 返回 `{status, text}` 而不是 `Response`，是为了让失败重试和「就地构造 Response」
+ * 都发生在同一个函数里 —— 曾经把 fetch 得到的 Response 直接往上抛，
+ * 在 astro dev 下很难判断 500 到底来自上游还是本地兜底。现在边界清楚。
+ */
+type Forwarded = { status: number; text: string; contentType: string } | null;
 
-  try {
-    const res = await fetch(TURNSTILE_VERIFY_URL, { method: 'POST', body: form });
-    if (!res.ok) return false;
-    const data = (await res.json()) as { success?: boolean };
-    return data.success === true;
-  } catch {
-    return false;
+async function forward(request: Request, path: string, method: string, body?: string): Promise<Forwarded> {
+  const headers: Record<string, string> = {
+    accept: 'application/json',
+    ...(body ? { 'content-type': 'application/json' } : {}),
+    // **不复用连接**。Node 的 undici 默认 keep-alive 复用，而 workerd（wrangler dev）
+    // 在复用连接上处理 POST 会间歇性回一个裸 500（body 就是 `Internal Server Error`、
+    // 无 content-type、Worker 自己的日志里查不到这条记录）。
+    // 实测症状：直连 Worker 永远正常，经这条转发则「一次好一次坏」。
+    // 代价是多一次握手；但这条路由本来只在「浏览器直连 Worker 失败」时才走，可以接受。
+    connection: 'close',
+  };
+  const ua = request.headers.get('user-agent');
+  if (ua) headers['user-agent'] = ua;
+  // 注意：**不要转发 x-forwarded-for / x-real-ip**。
+  // 经 Vercel 转发时带着它们会让远端看到 Vercel 机房 IP 冒充的访客 IP，
+  // 反而污染限流统计；Worker 侧本来就用 cf-connecting-ip。
+  // （经 Vercel 转发拿不到真实访客 IP 这件事是已知代价，见文件头。）
+
+  // 裸 5xx 重试一次：跨境链路 + Worker 冷启动都会偶发，访客不该看到这种失败。
+  // 只重试 5xx，**不重试 4xx** —— 4xx 是业务答复（重复提交 / 被限流），重试没意义。
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      const res = await fetch(`${WORKER_URL}${path}`, {
+        method,
+        headers,
+        ...(body ? { body } : {}),
+        signal: AbortSignal.timeout(FORWARD_TIMEOUT_MS),
+      });
+
+      // 原样透传状态码与响应体：访客需要看到「重复提交」「被限流」这些准确答复
+      const text = await res.text();
+      if (res.status >= 500 && attempt === 0) {
+        console.warn(`[links/apply] Worker 返回 ${res.status}，重试一次`);
+        continue;
+      }
+      return {
+        status: res.status,
+        text,
+        contentType: res.headers.get('content-type') || 'application/json; charset=utf-8',
+      };
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (attempt === 0) {
+        console.warn('[links/apply] 转发 Worker 失败，重试一次:', msg);
+        continue;
+      }
+      console.error('[links/apply] 转发 Worker 失败:', msg);
+      return null;
+    }
   }
+  return null;
 }
 
-export const GET: APIRoute = async () => {
-  // rateLimit 只说明「限流有没有配好」,不暴露任何密钥 ——
-  // 用来排查「Upstash 变量写错/带引号 → 静默 fail-open」这种情况。
-  const rateLimitReady = Boolean(rateLimitConfig() && APPLY_IP_SALT);
-  return json({ enabled: ENABLED, rateLimit: rateLimitReady }, 200, {
-    'cache-control': 'no-store',
+/** 把 Worker 的答复原样回给访客 */
+const relay = (f: { status: number; text: string; contentType: string }): Response =>
+  new Response(f.text, {
+    status: f.status,
+    headers: { 'content-type': f.contentType, 'cache-control': 'no-store' },
   });
+
+/** 能力探测（无口令）：只回答「能不能提交」 */
+export const GET: APIRoute = async () => {
+  const f = await forward(new Request('https://placeholder/'), '/apply', 'GET');
+  if (f) return relay(f);
+  // Worker 不可达时也别说「能收」—— 前端据此决定要不要显示表单
+  return json({ enabled: false, reason: 'worker_unreachable' });
 };
 
-export const POST: APIRoute = async ({ request, clientAddress }) => {
-  if (!ENABLED) {
-    // 前端会用能力探测提前拦住；真打进来也明确告诉它「现在还不能收」
-    return json({ error: 'unavailable', message: '提交通道还没开放' }, 503);
-  }
-
-  let payload: (Partial<ApplyValues> & { turnstileToken?: string; hp?: string; elapsedMs?: number }) | null =
-    null;
+export const POST: APIRoute = async ({ request }) => {
+  // 读出原始 body 再转发（不能直接传 request.body 流：转发失败时可能已被消费）
+  let body: string;
   try {
-    payload = await request.json();
+    body = await request.text();
   } catch {
     return json({ error: 'bad_request', message: '请求格式不对' }, 400);
   }
-  if (!payload || typeof payload !== 'object') {
-    return json({ error: 'bad_request', message: '请求格式不对' }, 400);
-  }
 
-  // —— 0. 蜜罐：正常访客看不到这个隐藏字段，只有脚本会填 ——
-  // 返回「假装成功」，不落库、不发信、不留痕迹，让脚本拿不到反馈。
-  if (typeof payload.hp === 'string' && payload.hp.trim() !== '') {
-    console.warn('[links/apply] 蜜罐命中，已忽略该提交');
-    return json({ ok: true, id: 'ignored', notified: false }, 200, { 'cache-control': 'no-store' });
-  }
-
-  // 填表太快通常也不是人(只记日志,不拦 —— 免得误伤自动填充的用户)
-  if (typeof payload.elapsedMs === 'number' && payload.elapsedMs >= 0 && payload.elapsedMs < 1500) {
-    console.warn(`[links/apply] 填表仅 ${payload.elapsedMs}ms，疑似脚本(未拦截)`);
-  }
-
-  // —— 1. 字段校验(与前端同一套规则，前端被绕过也能兜住) ——
-  const values = normalizeValues(payload);
-  const errors = validateApply(values);
-  if (Object.keys(errors).length > 0) {
-    return json({ error: 'validation', fields: errors }, 400);
-  }
-
-  // —— 2. 人机验证 ——
-  const token = typeof payload.turnstileToken === 'string' ? payload.turnstileToken : '';
-  if (!token) {
-    return json({ error: 'turnstile', message: '请先完成人机验证' }, 403);
-  }
-
-  let ip: string | null = null;
-  try {
-    ip = clientAddress || null;
-  } catch {
-    ip = null; // 少数运行环境拿不到客户端 IP，不影响主流程
-  }
-
-  const passed = await verifyTurnstile(token, ip);
-  if (!passed) {
-    return json({ error: 'turnstile', message: '人机验证没通过，请刷新后重试' }, 403);
-  }
-
-  // —— 3. 限流(只对「真解了人机验证」的提交计数) ——
-  const rl = rateLimitConfig();
-  if (rl && APPLY_IP_SALT) {
-    const decision = await checkAndBump(rl, hashIp(ip || 'unknown', APPLY_IP_SALT));
-    if (!decision.allowed) {
-      const status = decision.scope?.startsWith('global') ? 503 : 429;
-      return json(
-        {
-          error: 'rate_limited',
-          scope: decision.scope,
-          message: decision.message,
-        },
-        status,
-        {
-          'cache-control': 'no-store',
-          ...(decision.retryAfterSec ? { 'retry-after': String(decision.retryAfterSec) } : {}),
-        },
-      );
-    }
-  } else if (!rl) {
-    console.warn('[links/apply] 未配置 Upstash，限流已跳过(fail-open)');
-  } else {
-    console.warn('[links/apply] 未配置 APPLY_IP_SALT，限流已跳过(fail-open)');
-  }
-
-  // —— 4. 写私有仓库(含去重) ——
-  let stored: { ok: true; id: string } | { ok: false; code: 'duplicate'; message: string };
-  try {
-    stored = await appendApplication(
-      {
-        token: APPLY_TOKEN,
-        repo: APPLY_REPO,
-        path: APPLY_PATH,
-        ref: APPLY_REF,
-        apiBase: GITHUB_API_BASE,
-      },
-      {
-        name: values.name,
-        url: values.url,
-        avatar: values.avatar,
-        intro: values.intro,
-        email: values.email,
-      },
-    );
-  } catch (err) {
-    // 细节只进服务端日志，不回给访客
-    console.error('[links/apply] 写入申请失败:', err);
-    return json({ error: 'storage', message: '申请暂时存不进去，请稍后重试或直接邮件联系我' }, 502);
-  }
-
-  if (!stored.ok) {
-    return json({ error: 'duplicate', message: stored.message }, 409);
-  }
-
-  // —— 5. 邮件通知(尽力而为；超额度就排队，下个额度窗口补发) ——
-  const submission = {
-    id: stored.id,
-    submittedAt: new Date().toISOString(),
-    ...values,
-  };
-  let notified = false;
-  let queued = false;
-
-  if (RESEND_API_KEY && APPLY_MAIL_FROM && APPLY_NOTIFY_TO) {
-    const send = async (p: Record<string, unknown>) => {
-      const sent = await notifyNewApplication(
-        {
-          apiKey: RESEND_API_KEY,
-          from: APPLY_MAIL_FROM,
-          to: APPLY_NOTIFY_TO,
-          apiBase: RESEND_API_BASE,
-        },
-        p as unknown as Parameters<typeof notifyNewApplication>[1],
-      );
-      if (!sent.ok) console.error('[links/apply] 邮件通知失败:', sent.error);
-      return sent.ok;
-    };
-
-    try {
-      // 传 null 表示没配 Upstash → 内部会走进程内兜底
-      const r = await deliverNotifications(rl, send, submission);
-      notified = r.notified;
-      queued = r.queued;
-    } catch (err) {
-      console.error('[links/apply] 通知投递异常，改为直接发送:', err);
-      notified = await send(submission);
-    }
-  } else {
-    console.warn('[links/apply] 未配置 Resend，跳过邮件通知');
-  }
-
-  return json({ ok: true, id: stored.id, notified, queued }, 200, { 'cache-control': 'no-store' });
+  const f = await forward(request, '/apply', 'POST', body);
+  if (f) return relay(f);
+  return json({ error: 'storage', message: '申请暂时存不进去，请稍后重试或直接邮件联系我' }, 502);
 };

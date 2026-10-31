@@ -1,24 +1,25 @@
-// 友链申请审批（阶段 J · 方案 §4.5 + 第 35 / 36 / 49 条）
+// 友链申请审批（阶段 J · 第 2 步迁移：数据源从私有仓库改成 Cloudflare D1）
 //
-// 申请数据存在**私有仓库**（`hjphh11/qingwu-link-applications`）里，不进公开的博客仓库 ——
-// 因为申请里带**访客邮箱**，而 `qingwu-blog` 是 public，写进去会永久留在公开 git 历史里。
+// **数据在哪**：Cloudflare D1（Worker 的 `applications` 表）。
+// 为什么不再放私有仓库：申请里带**访客邮箱**，`qingwu-blog` 是 public，
+// 而私有仓库那套「读 sha → 改 → 带 sha 写回」本质是拿 git 当数据库用 ——
+// 没法索引、没法 UNIQUE 去重、并发还要重试。D1 有 `UNIQUE(url)` 和索引，天然合适。
 //
-// 读写都走 GitHub Contents API（和阶段 B 的 Vercel 函数同一套）：
-//   · 读：审批列表
-//   · 写：**通过 / 拒绝 = 把 `status` 写回私有仓库**。
-//     为什么不只在本地记？因为：
-//       1. 阶段 B 的去重逻辑就认 `status`（`rejected` 之后对方可以重新申请），
-//          状态写在仓库里两端才一致；
-//       2. 状态跟着私有仓库走，服务器重装也不会丢。
+// 读写都走 Worker 的 HTTP 接口（和统计的 `/stats` 同一套鉴权思路）：
+//   · GET   `/apply`       带 `Authorization: Bearer <ADMIN_APPLY_TOKEN>` → 全部申请
+//   · PATCH `/apply/:id`   同样的口令 → 改 status / reason
+//   · 返回形状与旧的 `applications.json` **逐字段一致**，所以 `Applications.jsx` 一行都不用改。
 //
-// **通过** = 追加进 `src/data/links.json`（走 links 模块，自动补 `addedAt`/`visible`、
-// 并自带同名链接去重）→ 于是它出现在「待发布」里，去发布页点一下就上线（阶段 I）。
+// **通过**仍然是：先追加进 `src/data/links.json`（自动补 `addedAt`/`visible`、自带去重）
+// → 于是它出现在「待发布」里，去发布页点一下就上线（阶段 I）；
+// 成功之后再回写 D1 的 status。顺序很重要，见 `approveApplication` 的注释。
 import { z } from 'zod';
 import { config } from './config.js';
 import { conflict, httpError } from './jsonFile.js';
 import { listLinks, saveLinks } from './links.js';
 import { appendLog } from './oplog.js';
 
+/** Worker 返回的单条申请。字段与旧 `applications.json` 一致。 */
 const ApplicationSchema = z.object({
   id: z.string().trim().min(1, '缺少 id'),
   name: z.string().trim().min(1, '名字不能为空').max(60, '名字太长'),
@@ -28,150 +29,137 @@ const ApplicationSchema = z.object({
   email: z.string().trim().max(160, '邮箱太长').default(''),
   submittedAt: z.string().default(''),
   status: z.enum(['pending', 'approved', 'rejected']).default('pending'),
-  // ↓ 这两个字段是**后台审批时**写回去的（Vercel 函数只写 status: 'pending'）
   reviewedAt: z.string().nullish(),
   reason: z.string().max(200, '拒绝原因太长').nullish(),
 });
 
-const FileSchema = z.object({
-  applications: z.array(ApplicationSchema).default([]),
+const ListSchema = z.object({
+  enabled: z.boolean().default(true),
+  repo: z.string().optional(),
+  path: z.string().optional(),
+  items: z.array(ApplicationSchema).default([]),
+  counts: z
+    .object({
+      pending: z.number().default(0),
+      approved: z.number().default(0),
+      rejected: z.number().default(0),
+      total: z.number().default(0),
+    })
+    .optional(),
+  fetchedAt: z.string().optional(),
 });
 
-/** 仓库里读到的原始记录（Vercel 函数写的时候可能少字段，这里都补上默认值） */
-function normalize(app) {
-  return {
-    ...app,
-    avatar: app.avatar ?? '',
-    intro: app.intro ?? '',
-    email: app.email ?? '',
-    status: app.status ?? 'pending',
-    reviewedAt: app.reviewedAt ?? null,
-    reason: app.reason ?? null,
-  };
-}
-
-/** 没配 token 时给前端的说明（不是报错，是「还没配」）*/
-function notConfigured() {
+/** 没配接口/口令时给前端的说明（不是报错，是「还没配」）*/
+function notConfigured(reason) {
   return {
     enabled: false,
-    repo: config.applyRepo,
-    path: config.applyPath,
-    reason: '没配 ADMIN_APPLY_TOKEN —— 审批列表读不到私有仓库里的申请',
+    repo: 'cloudflare-d1',
+    path: 'applications',
+    reason,
     items: [],
     counts: { pending: 0, approved: 0, rejected: 0, total: 0 },
   };
 }
 
-const contentsUrl = () =>
-  `${config.applyApiBase.replace(/\/$/, '')}/repos/${config.applyRepo}/contents/${config.applyPath}`;
+/** 站点地址规范化，用于「是不是同一个站」的比较（与 Worker 侧 urlKey 同义） */
+function urlKey(raw) {
+  return String(raw ?? '')
+    .trim()
+    .toLowerCase()
+    .replace(/^https?:\/\//, '')
+    .replace(/^www\./, '')
+    .replace(/\/+$/, '');
+}
 
-const ghHeaders = () => ({
-  authorization: `Bearer ${config.applyToken}`,
-  accept: 'application/vnd.github+json',
-  'user-agent': 'qingwu-admin',
-  'x-github-api-version': '2022-11-28',
+const applyUrl = (suffix = '') => `${config.applyApiBase.replace(/\/$/, '')}/apply${suffix}`;
+
+/**
+ * **迁移守卫**：`ADMIN_APPLY_TOKEN` 这个变量名以前存的是 GitHub PAT（`github_pat_…` / `ghp_…`），
+ * 现在要存的是 Worker 的 `ADMIN_APPLY_TOKEN` 口令。同名不同义，配错了只会得到 401，
+ * 而 401 的提示很容易被当成「口令写错了」而想不到「这是上一个时代的 token」。
+ * 所以这里显式识别一次，给出能照着改的提示。
+ */
+function assertNotGithubToken() {
+  const t = String(config.applyApiToken || '');
+  if (/^(github_pat_|ghp_|gho_|ghu_|ghs_)/.test(t)) {
+    return (
+      'ADMIN_APPLY_TOKEN 里放的还是 GitHub PAT —— 第 2 步迁移后它应该是 ' +
+      'Worker 上 `wrangler secret put ADMIN_APPLY_TOKEN` 设的那个口令。' +
+      '申请数据已经不在私有仓库了，这个 token 不再需要 GitHub 权限'
+    );
+  }
+  return null;
+}
+
+const apiHeaders = () => ({
+  accept: 'application/json',
+  authorization: `Bearer ${config.applyApiToken}`,
 });
 
-/** 读私有仓库里的申请文件 → { apps, sha }（文件还不存在时给空列表，让首次写入能建文件） */
-async function fetchApplications() {
-  const res = await fetch(`${contentsUrl()}?ref=${encodeURIComponent(config.applyRef)}`, {
-    headers: ghHeaders(),
-    signal: AbortSignal.timeout(20_000),
-  });
+/** 统一把「连不上 / 401 / 5xx」翻译成人能看懂的错误 */
+async function callWorker(path, init = {}) {
+  let res;
+  try {
+    res = await fetch(applyUrl(path), {
+      ...init,
+      headers: { ...apiHeaders(), ...(init.body ? { 'content-type': 'application/json' } : {}) },
+      signal: AbortSignal.timeout(config.applyTimeoutMs),
+    });
+  } catch (err) {
+    throw httpError(
+      502,
+      `连不上友链接口（${applyUrl(path)}）：${err.message}`,
+      'apply_unreachable',
+    );
+  }
 
-  if (res.status === 404) return { apps: [], sha: null };
   if (res.status === 401 || res.status === 403) {
-    throw httpError(502, `私有仓库 ${config.applyRepo} 的 token 无效或权限不够（GitHub ${res.status}）`, 'apply_auth');
+    throw httpError(
+      502,
+      `友链接口拒绝访问（HTTP ${res.status}）—— 检查 ADMIN_APPLY_TOKEN 是否与 Worker 的 ADMIN_APPLY_TOKEN 一致`,
+      'apply_auth',
+    );
   }
   if (!res.ok) {
-    throw httpError(502, `读取申请列表失败：GitHub ${res.status}`, 'apply_read');
+    const bodyText = await res.text().catch(() => '');
+    throw httpError(502, `友链接口返回 HTTP ${res.status} ${bodyText.slice(0, 120)}`, 'apply_api_failed');
   }
 
-  const data = await res.json();
-  const raw = Buffer.from(String(data.content ?? '').replace(/\n/g, ''), 'base64').toString('utf8');
   let parsed;
   try {
-    parsed = JSON.parse(raw || '{}');
+    parsed = await res.json();
   } catch {
-    throw httpError(502, `${config.applyPath} 不是合法 JSON，先去私有仓库修好它`, 'apply_bad_json');
+    throw httpError(502, '友链接口返回的不是 JSON', 'apply_bad_json');
   }
-  const check = FileSchema.safeParse(parsed);
+  return parsed;
+}
+
+// ——— 列表缓存（单用户后台；翻来翻去不必每次都打跨境请求）———
+let cache = { at: 0, data: null };
+
+/** 审批列表：待审批在前，同状态按提交时间倒序（排序也在 Worker 里做了，这里只兜底） */
+export async function listApplications({ force = false } = {}) {
+  if (!config.applyApiToken) {
+    return notConfigured('没配 ADMIN_APPLY_TOKEN —— 读不到 Cloudflare D1 里的申请列表');
+  }
+  const stale = assertNotGithubToken();
+  if (stale) return notConfigured(stale);
+
+  if (!force && cache.data && Date.now() - cache.at < config.applyCacheMs) return cache.data;
+
+  const raw = await callWorker('');
+  const check = ListSchema.safeParse(raw);
   if (!check.success) {
     const first = check.error.issues[0];
     throw httpError(
       502,
-      `申请数据格式不对：applications.${first.path.join('.') || '?'} —— ${first.message}`,
+      `申请数据格式不对：items.${first.path.join('.') || '?'} —— ${first.message}`,
       'apply_bad_shape',
     );
   }
-  return { apps: check.data.applications.map(normalize), sha: data.sha ?? null };
-}
-
-/** 读 → 改 → 带 sha 写回。sha 过期（有人同时提交）时重新读取、把我们的状态改动并上去再试 */
-async function writeApplications(apps, message, attempts = 3) {
-  let list = apps;
-  let sha = currentSha;
-
-  for (let i = 0; i < attempts; i++) {
-    const body = `${JSON.stringify({ applications: list }, null, 2)}\n`;
-    const res = await fetch(contentsUrl(), {
-      method: 'PUT',
-      headers: { ...ghHeaders(), 'content-type': 'application/json' },
-      signal: AbortSignal.timeout(20_000),
-      body: JSON.stringify({
-        message,
-        content: Buffer.from(body, 'utf8').toString('base64'),
-        ...(sha ? { sha } : {}),
-      }),
-    });
-
-    if (res.ok) {
-      cache = { at: 0, data: null };
-      return;
-    }
-
-    if (res.status === 409 || res.status === 422) {
-      // 别人刚提交过（sha 变了）→ 重新读最新版本，把我们改的 status 并上去再写一次
-      const again = await fetchApplications();
-      sha = again.sha;
-      list = applyMerge(list, again.apps);
-      continue;
-    }
-    if (res.status === 404) {
-      throw httpError(502, `私有仓库 ${config.applyRepo} 不存在，或 token 没有 Contents 写权限`, 'apply_write');
-    }
-    throw httpError(502, `写回申请状态失败：GitHub ${res.status}`, 'apply_write');
-  }
-  throw httpError(502, '申请状态写回失败：并发冲突重试次数用尽', 'apply_conflict');
-}
-
-// 写回时的基准 sha（每次读列表时刷新）
-let currentSha = null;
-
-/** 冲突重试时：以仓库里的最新版本为准，只保留我们对 status/reviewedAt/reason 的改动 */
-function applyMerge(ours, theirs) {
-  const byId = new Map(ours.map((a) => [a.id, a]));
-  return theirs.map((t) => {
-    const o = byId.get(t.id);
-    if (!o) return t;
-    return { ...t, status: o.status, reviewedAt: o.reviewedAt, reason: o.reason };
-  });
-}
-
-// ——— 列表缓存（单用户后台；翻来翻去不必每次都打 GitHub）———
-let cache = { at: 0, data: null };
-
-/** 审批列表：待审批在前，同状态按提交时间倒序 */
-export async function listApplications({ force = false } = {}) {
-  if (!config.applyToken) return notConfigured();
-
-  if (!force && cache.data && Date.now() - cache.at < config.applyCacheMs) return cache.data;
-
-  const { apps, sha } = await fetchApplications();
-  currentSha = sha;
 
   const order = { pending: 0, approved: 1, rejected: 2 };
-  const items = [...apps].sort(
+  const items = [...check.data.items].sort(
     (a, b) =>
       (order[a.status] ?? 9) - (order[b.status] ?? 9) ||
       String(b.submittedAt).localeCompare(String(a.submittedAt)),
@@ -179,8 +167,8 @@ export async function listApplications({ force = false } = {}) {
 
   const data = {
     enabled: true,
-    repo: config.applyRepo,
-    path: config.applyPath,
+    repo: raw.repo || 'cloudflare-d1',
+    path: raw.path || 'applications',
     items,
     counts: {
       pending: items.filter((a) => a.status === 'pending').length,
@@ -188,15 +176,15 @@ export async function listApplications({ force = false } = {}) {
       rejected: items.filter((a) => a.status === 'rejected').length,
       total: items.length,
     },
-    fetchedAt: new Date().toISOString(),
+    fetchedAt: raw.fetchedAt || new Date().toISOString(),
   };
   cache = { at: Date.now(), data };
   return data;
 }
 
-/** 侧栏角标用：只要待审批数量（走缓存，不额外打 GitHub） */
+/** 侧栏角标用：只要待审批数量（走缓存，不额外打接口） */
 export async function applicationsSummary() {
-  if (!config.applyToken) return { enabled: false, pending: 0 };
+  if (!config.applyApiToken) return { enabled: false, pending: 0 };
   try {
     const d = await listApplications();
     return { enabled: true, pending: d.counts.pending, total: d.counts.total };
@@ -211,19 +199,30 @@ async function findOne(id, apps) {
   return app;
 }
 
+/** 改状态：PATCH /apply/:id */
+async function setStatus(id, status, reason = null) {
+  const body = await callWorker(`/${encodeURIComponent(id)}`, {
+    method: 'PATCH',
+    body: JSON.stringify({ status, reason }),
+  });
+  cache = { at: 0, data: null };
+  return body?.application ?? null;
+}
+
 /**
- * 通过：① 写进 links.json（进入待发布）→ ② 把 status 写回私有仓库。
+ * 通过：① 写进 links.json（进入待发布）→ ② 把 status 写回 D1。
  * 顺序很重要：先写 links.json。万一第 ② 步失败，申请还是 pending，
  * 你可以再点一次（links 那边有同名链接去重，不会重复添加）。
  */
 export async function approveApplication(id, { force = false } = {}) {
-  if (!config.applyToken) throw conflict('没配 ADMIN_APPLY_TOKEN，读不到申请列表');
+  if (!config.applyApiToken) throw conflict('没配 ADMIN_APPLY_TOKEN，读不到申请列表');
   const data = await listApplications({ force });
   const app = await findOne(String(id ?? ''), data.items);
   if (app.status === 'approved') throw conflict('这条申请已经通过过了');
 
   const { friends } = await listLinks();
-  if (friends.some((f) => f.url.trim().toLowerCase() === app.url.trim().toLowerCase())) {
+  const key = urlKey(app.url);
+  if (friends.some((f) => urlKey(f.url) === key)) {
     throw conflict(`「${app.name}」的链接已经在友链列表里了 —— 直接把这条申请标成「已拒绝」或忽略即可`);
   }
 
@@ -248,64 +247,62 @@ export async function approveApplication(id, { force = false } = {}) {
     throw conflict(`这条申请的数据没通过友链校验（${err.message}）—— 建议去「友链」页手动加一条`);
   }
 
-  const reviewedAt = new Date().toISOString();
-  const next = data.items.map((a) => (a.id === app.id ? { ...a, status: 'approved', reviewedAt } : a));
-  await writeApplications(next, `审批：通过友链 ${app.name}`);
+  let updated = null;
+  try {
+    updated = await setStatus(app.id, 'approved');
+  } catch (err) {
+    // links.json 已经写进去了，这里失败不能把功劳吞掉 —— 明确告诉用户「还差一步」
+    throw conflict(
+      `已经写进友链列表（待发布），但回写审批状态失败：${err.message}。` +
+        `去 D1 里把这条的 status 改成 approved，或者再点一次「通过」`,
+    );
+  }
 
-  cache = { at: 0, data: null };
   await appendLog({
     action: 'approve',
-    repo: config.applyRepo,
+    repo: 'cloudflare-d1',
     application: { id: app.id, name: app.name, url: app.url },
     result: '已写进 links.json（待发布）',
   });
 
-  return { ok: true, application: { ...app, status: 'approved', reviewedAt }, links: await listLinks() };
+  return { ok: true, application: updated ?? { ...app, status: 'approved' }, links: await listLinks() };
 }
 
-/** 拒绝：把 status 写回私有仓库（可留原因）。对方之后可以重新申请（阶段 B 的去重认这个状态） */
+/** 拒绝：改 status（可留原因）。对方之后可以重新申请（去重逻辑认这个状态） */
 export async function rejectApplication(id, reason = '') {
-  if (!config.applyToken) throw conflict('没配 ADMIN_APPLY_TOKEN，读不到申请列表');
+  if (!config.applyApiToken) throw conflict('没配 ADMIN_APPLY_TOKEN，读不到申请列表');
   const data = await listApplications({ force: true });
   const app = await findOne(String(id ?? ''), data.items);
   if (app.status === 'rejected') throw conflict('这条申请已经拒绝过了');
 
-  const reviewedAt = new Date().toISOString();
   const note = String(reason ?? '').trim().slice(0, 200);
-  const next = data.items.map((a) =>
-    a.id === app.id ? { ...a, status: 'rejected', reviewedAt, reason: note || null } : a,
-  );
-  await writeApplications(next, `审批：拒绝友链 ${app.name}`);
+  const updated = await setStatus(app.id, 'rejected', note || null);
 
-  cache = { at: 0, data: null };
   await appendLog({
     action: 'reject',
-    repo: config.applyRepo,
+    repo: 'cloudflare-d1',
     application: { id: app.id, name: app.name, url: app.url },
     reason: note,
     result: '已标记为拒绝',
   });
 
-  return { ok: true, application: { ...app, status: 'rejected', reviewedAt, reason: note || null } };
+  return { ok: true, application: updated ?? { ...app, status: 'rejected', reason: note || null } };
 }
 
 /** 把某条申请改回「待审批」（点错了能撤回）*/
 export async function reopenApplication(id) {
-  if (!config.applyToken) throw conflict('没配 ADMIN_APPLY_TOKEN，读不到申请列表');
+  if (!config.applyApiToken) throw conflict('没配 ADMIN_APPLY_TOKEN，读不到申请列表');
   const data = await listApplications({ force: true });
   const app = await findOne(String(id ?? ''), data.items);
-  const next = data.items.map((a) =>
-    a.id === app.id ? { ...a, status: 'pending', reviewedAt: null, reason: null } : a,
-  );
-  await writeApplications(next, `审批：把友链申请 ${app.name} 改回待审批`);
-  cache = { at: 0, data: null };
+
+  const updated = await setStatus(app.id, 'pending');
   await appendLog({
     action: 'reopen',
-    repo: config.applyRepo,
+    repo: 'cloudflare-d1',
     application: { id: app.id, name: app.name },
     result: '已改回待审批',
   });
-  return { ok: true, application: { ...app, status: 'pending', reviewedAt: null, reason: null } };
+  return { ok: true, application: updated ?? { ...app, status: 'pending', reviewedAt: null, reason: null } };
 }
 
 /** 仅供测试/自检：清掉列表缓存 */

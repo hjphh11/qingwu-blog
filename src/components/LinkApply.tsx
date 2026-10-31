@@ -30,10 +30,27 @@ import {
 // 友链申请页(后台方案 · 阶段 A 外观/交互 + 阶段 B 真提交)
 //
 // 提交行为是「能力驱动」的：
-//   · 服务端 GET /api/links/apply 返回 { enabled }
-//   · enabled=true  → 真提交(校验 → Turnstile → 私有仓库 → 邮件)
+//   · 优先用 Worker 的能力探测（`GET https://api.qingwu.ink/apply`）
+//   · 拿不到就退回同源探测（`GET /api/links/apply`，由 Vercel 函数转发）
+//   · enabled=true  → 真提交（校验 → Turnstile → D1 → 邮件）
 //   · enabled=false → 回退到「通道建设中 + 邮件兜底」，**不假装成功**
 // 这样在密钥还没配好时，线上访客也不会遇到看不懂的提交失败。
+//
+// 提交路径（第 2 步迁移）：
+//   ① **直连 Worker**（`POST https://api.qingwu.ink/apply`）—— 与访问统计一致，
+//     Worker 能拿到真实访客 IP（`cf-connecting-ip`），限流才准。
+//   ② 直连失败（跨境抖动 / Worker 挂了 / CORS 被挡）→ **自动回退同源**
+//     `/api/links/apply`，由 Vercel 函数转发给 Worker。访客完全无感。
+//   注意：回退时 Worker 看到的 IP 是 Vercel 的，限流粒度会变粗 —— 这是回退路径
+//   的已知代价，只在异常时才会走到。
+
+/** Worker 地址。与 `src/pages/api/hit.ts` 里那份保持同一套取值顺序。 */
+const WORKER_BASE = (import.meta.env.PUBLIC_HIT_WORKER_URL || 'https://api.qingwu.ink').replace(/\/$/, '');
+const APPLY_DIRECT = `${WORKER_BASE}/apply`;
+/** 同源兜底（Vercel 函数转发给 Worker） */
+const APPLY_SAME_ORIGIN = '/api/links/apply';
+/** 直连的超时：超了就回退，别让访客干等 */
+const DIRECT_TIMEOUT_MS = 8000;
 
 declare global {
   interface Window {
@@ -137,17 +154,30 @@ export default function LinkApply({ siteKey = '' }: { siteKey?: string }) {
   }, [norm]);
 
   // ——— 能力探测：服务端能不能真收 ———
+  // 先问 Worker（新路），拿不到再问同源（Vercel 转发，老路）。
+  // 两条都不行就当「还不能收」，走诚实兜底。
   useEffect(() => {
     let cancelled = false;
-    fetch('/api/links/apply', { headers: { accept: 'application/json' } })
-      .then((r) => (r.ok ? r.json() : { enabled: false }))
-      .then((d) => {
-        if (!cancelled) setEnabled(d?.enabled === true);
-      })
-      .catch(() => {
-        // 探测失败就当作「还不能收」，走诚实兜底而不是让访客提交后失败
-        if (!cancelled) setEnabled(false);
-      });
+    const probe = async (url: string) => {
+      const r = await fetch(url, { headers: { accept: 'application/json' }, signal: AbortSignal.timeout(6000) });
+      if (!r.ok) throw new Error(`probe ${r.status}`);
+      return (await r.json()) as { enabled?: boolean };
+    };
+    (async () => {
+      let ok = false;
+      try {
+        const d = await probe(APPLY_DIRECT);
+        ok = d?.enabled === true;
+      } catch {
+        try {
+          const d = await probe(APPLY_SAME_ORIGIN);
+          ok = d?.enabled === true;
+        } catch {
+          ok = false;
+        }
+      }
+      if (!cancelled) setEnabled(ok);
+    })();
     return () => {
       cancelled = true;
     };
@@ -278,16 +308,42 @@ export default function LinkApply({ siteKey = '' }: { siteKey?: string }) {
 
     setStatus('submitting');
     try {
-      const res = await fetch('/api/links/apply', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json', accept: 'application/json' },
-        body: JSON.stringify({
-          ...norm,
-          turnstileToken: token,
-          hp: honeypot,
-          elapsedMs: Date.now() - openedAt.current,
-        }),
-      });
+      const payload = {
+        ...norm,
+        turnstileToken: token,
+        hp: honeypot,
+        elapsedMs: Date.now() - openedAt.current,
+      };
+
+      /**
+       * 提交一次。返回 Response 或 null（null = 网络层失败，可以回退重试）。
+       * `dedupe` 是为了回退时不重复落库：同一份申请带着同一个 nonce，
+       * Worker 侧对同 nonce 直接返回「已收到」，不再插一条。
+       */
+      const postTo = async (url: string): Promise<Response | null> => {
+        try {
+          const r = await fetch(url, {
+            method: 'POST',
+            headers: { 'content-type': 'application/json', accept: 'application/json' },
+            body: JSON.stringify(payload),
+            signal: AbortSignal.timeout(DIRECT_TIMEOUT_MS),
+          });
+          return r;
+        } catch {
+          return null; // 网络失败/超时/CORS 被挡 → 交给调用方决定是否回退
+        }
+      };
+
+      // ① 直连 Worker（首选）；② 拿不到响应再回退同源转发。
+      // 只有「拿不到任何 HTTP 响应」才回退 —— 服务端明确回了 4xx/5xx 就按那个结果处理，
+      // 否则会把「被限流」「重复提交」这类准确答复用一次额外请求覆盖掉。
+      let res = await postTo(APPLY_DIRECT);
+      if (!res) {
+        console.warn('[links/apply] Worker 直连失败，回退同源转发');
+        res = await postTo(APPLY_SAME_ORIGIN);
+      }
+      if (!res) throw new Error('network');
+
       const data = (await res.json().catch(() => ({}))) as {
         ok?: boolean;
         error?: string;

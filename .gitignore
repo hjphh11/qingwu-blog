@@ -90,3 +90,7 @@ docs/后台迁移-Cloudflare方案.md
 
 # AI 助手工作记忆目录（个人笔记，不进仓库）
 .workbuddy/
+
+# 临时解压/测试产物（不进仓库）
+.tmp-mig/
+.tmp-*/

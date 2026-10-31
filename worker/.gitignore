@@ -1,9 +1,14 @@
 # Worker 本地产物（不进仓库）
 node_modules/
 .wrangler/
+# 临时状态目录：跑 `wrangler dev --persist-to .tmp-xxx` 会生成，
+# 里面是本地 SQLite 快照（含测试数据），永远不要提交。
+.tmp-*/
+.tmp-state-*/
 dist/
 *.log
 .dev.vars
+.dev.vars.bak
 
 # Cloudflare API token（本地部署用，绝不入仓）
 .cf-token
