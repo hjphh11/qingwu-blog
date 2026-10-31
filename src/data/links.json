@@ -39,6 +39,14 @@
       "url": "https://blog.cuteleaf.cn",
       "visible": true,
       "addedAt": "2026-10-15"
+    },
+    {
+      "name": "SamsBlog",
+      "avatar": "https://blog.moesam.com/media/brand/logo.jpg",
+      "intro": "只是一只大黄狗",
+      "url": "https://blog.moesam.com",
+      "visible": true,
+      "addedAt": "2026-10-31"
     }
   ]
 }
