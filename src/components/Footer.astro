@@ -3,7 +3,10 @@ const year = new Date().getFullYear();
 ---
 
 <footer class="mt-24 bg-gradient-to-b from-transparent to-cream/85 pb-12 pt-14">
-  <div class="mx-auto flex max-w-[1080px] flex-col items-center gap-6 px-6 text-center">
+  {/* 横轴与 .page-shell 同源：用 --shell-max / --shell-gutter，
+      不再写死 max-w-[1080px] + px-6 —— 那样在宽屏下留白比正文少 16px，
+      页脚两侧的链接会比上面的内容更贴边。 */}
+  <div class="shell-inline flex flex-col items-center gap-6 text-center">
     <p class="font-hand text-2xl text-accent">欢迎来到清吾的小屋</p>
 
     {/* 页脚导航:每个链接都撑到 ≥44px 的可点高度(mobile 上原来只有 28×20px) */}

@@ -55,6 +55,17 @@
   --space-block: 1.75rem;
   --space-section: 3.5rem;
 
+  /* —— 版心(横轴唯一来源) ——
+     导航、正文、页脚三者共用这两个值,谁的左缘都不许自己算。
+     --shell-max: 内容最大宽度
+     --shell-gutter: 两侧留白(clamp,窄屏自动收窄)
+     ⚠️ 用它们的方式只有两种:
+        ① .page-shell 容器(正文、页脚直接套)
+        ② 需要单独控制的组件用 var(--shell-max) + 相同 gutter 外包一层
+        绝对不要写第三个数(比如 max-w-4xl),那必然错开。 */
+  --shell-max: 1080px;
+  --shell-gutter: clamp(1.25rem, 0.6rem + 2.2vw, 2.5rem);
+
   /* —— 动效(克制的、有目的的动效) —— */
   --ease-soft: cubic-bezier(0.22, 0.61, 0.36, 1);
   --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);

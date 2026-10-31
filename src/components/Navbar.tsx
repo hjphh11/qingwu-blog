@@ -102,9 +102,19 @@ export default function Navbar({ pathname = '/' }: Props) {
       initial={false}
       animate={{ y: glass ? 0 : -4 }}
       transition={{ duration: dur, ease: 'easeOut' }}
-      className="fixed inset-x-0 top-0 z-50 flex justify-center px-4 pt-4"
+      className="fixed inset-x-0 top-0 z-50 flex justify-center pt-4"
     >
-      <div className="relative flex w-full max-w-4xl items-center justify-between gap-4 py-2 pl-4 pr-3">
+      {/*
+        横轴对齐：这里的三条规则必须一起看 ——
+        ① 外层 w-full + max-w-[var(--shell-max)] + padding-inline[var(--shell-gutter)]
+           = 与 .page-shell 完全同一套值（别再写 max-w-4xl，它比正文窄 184px）。
+        ② 内层胶囊条本身有一圈内边距（pl-4 = 16px），品牌图标落在它内侧。
+           所以用 -ml-4 把这 16px 抵消掉，图标左缘才真正压在内容左边线上。
+        ③ -ml-4 与 pl-4 必须等值，改一个要改另一个。
+        实测修正前品牌比页标题右移 68px(1440) / 48px(1024) / 12px(390)。
+      */}
+      <div className="flex w-full max-w-[var(--shell-max)] px-[var(--shell-gutter)]">
+        <div className="relative -ml-4 flex w-full items-center justify-between gap-4 py-2 pl-4 pr-3">
         {/* 液态玻璃背景层:透明 → 玻璃的淡入 */}
         <motion.div
           aria-hidden="true"
@@ -182,6 +192,7 @@ export default function Navbar({ pathname = '/' }: Props) {
         >
           <MorphIcon icon={open ? X : Menu} size={20} color="currentColor" />
         </button>
+        </div>
       </div>
 
       {/* 移动端展开菜单 */}

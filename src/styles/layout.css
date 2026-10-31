@@ -11,12 +11,22 @@
      现在统一到一个 1080px 的画布 + 一致的左右留白,所有页面共用一条左边线。 */
   .page-shell {
     width: 100%;
-    max-width: 1080px;
+    max-width: var(--shell-max);
     margin-inline: auto;
-    padding-inline: clamp(1.25rem, 0.6rem + 2.2vw, 2.5rem);
+    padding-inline: var(--shell-gutter);
     padding-bottom: 5rem;
     /* 顶部留出固定导航的高度:导航 68px + 一段呼吸 */
     padding-top: clamp(6rem, 5rem + 3vw, 7.5rem);
+  }
+
+  /* 导航与页脚的横轴跟 .page-shell 完全一致 ——
+     不再各写一套 max-width + padding（那样必然错位几十像素）。
+     两者只需要「同样的最大宽度 + 同样的留白」,不需要 .page-shell 的上下 padding。 */
+  .shell-inline {
+    width: 100%;
+    max-width: var(--shell-max);
+    margin-inline: auto;
+    padding-inline: var(--shell-gutter);
   }
 
   /* —— 页面级标题区(标题 + 一句副标) ——
