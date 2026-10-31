@@ -35,8 +35,8 @@
     font-size: 0.875rem;
     line-height: 1.5;
     color: var(--color-muted);
-    transition: color 0.2s var(--ease-soft), border-color 0.2s var(--ease-soft),
-      background-color 0.2s var(--ease-soft), transform 0.2s var(--ease-soft);
+    transition: color var(--dur-micro) var(--ease-soft), border-color var(--dur-micro) var(--ease-soft),
+      background-color var(--dur-micro) var(--ease-soft), transform var(--dur-micro) var(--ease-soft);
     /* 移动端点击区域 ≥ 44px 高 */
     min-height: 2.25rem;
   }
@@ -73,7 +73,7 @@
     border-radius: var(--radius-pill);
     font-size: 0.875rem;
     color: var(--color-muted);
-    transition: color 0.2s var(--ease-soft), background-color 0.2s var(--ease-soft);
+    transition: color var(--dur-micro) var(--ease-soft), background-color var(--dur-micro) var(--ease-soft);
   }
   .page-link:hover {
     color: var(--color-accent);

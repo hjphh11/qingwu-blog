@@ -130,7 +130,7 @@
     line-height: 1.45;
     color: var(--color-ink);
     text-wrap: balance;
-    transition: color 0.25s var(--ease-soft);
+    transition: color var(--dur-micro) var(--ease-soft);
   }
   /* 摘要限宽：14px 下原来一行能排 72~94 个汉字（实测 942px 宽），
      远超中文舒适阅读区（约 28~40 字/行）—— 眼睛要长距离回扫才找得到下一行开头。

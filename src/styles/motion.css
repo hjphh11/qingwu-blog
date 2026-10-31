@@ -17,7 +17,7 @@
 .qjs .reveal {
   opacity: 0;
   transform: translateY(22px);
-  transition: opacity 0.6s var(--ease-out-expo), transform 0.6s var(--ease-out-expo);
+  transition: opacity var(--dur-move) var(--ease-out-expo), transform var(--dur-move) var(--ease-out-expo);
 }
 .qjs .reveal:not(.is-visible) {
   will-change: opacity, transform;

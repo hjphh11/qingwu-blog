@@ -123,7 +123,7 @@ export default function Hero() {
       ref={heroRef}
       className="relative flex min-h-[min(88svh,44rem)] items-stretch px-6 pb-16 pt-24 sm:pt-28"
     >
-      <div className="mx-auto flex w-full max-w-[1080px] flex-col items-center gap-8 md:flex-row md:items-start md:justify-between md:gap-12">
+      <div className="mx-auto flex w-full max-w-[var(--shell-max)] flex-col items-center gap-8 md:flex-row md:items-start md:justify-between md:gap-12">
         {/* 左:大号笔顺问候,顶到左上角 */}
         <div className="order-2 flex w-full max-w-[680px] flex-1 flex-col md:order-1 md:self-start">
           {/* 首页原本没有任何 h1(笔顺问候是 canvas,不是文本节点),
@@ -155,7 +155,7 @@ export default function Hero() {
             </button>
           )}
           {/* 副标:逐词模糊浮现(借鉴 MotionVault「blur-fade-in」,MIT,按爱弥斯暖色重写) */}
-          <p className="mt-7 text-base leading-relaxed text-ink/75">
+          <p className="mt-7 text-base leading-relaxed text-subtle">
             {reduce ? (
               SUBTITLE_PARTS.join(' · ')
             ) : (

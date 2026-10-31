@@ -273,7 +273,7 @@ export default function MusicClient() {
                       className={`block w-full py-2.5 text-center transition-all ${
                         i === activeLyricIndex
                           ? 'scale-105 rounded-xl bg-rose/10 font-display text-xl text-crimson'
-                          : 'text-sm text-subtle hover:text-ink/85'
+                          : 'text-sm text-subtle hover:text-muted'
                       }`}
                     >
                       {ln.text}

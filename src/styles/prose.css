@@ -40,7 +40,7 @@
     text-decoration-thickness: 1px;
     text-underline-offset: 3px;
     text-decoration-color: color-mix(in oklab, var(--color-accent) 40%, transparent);
-    transition: text-decoration-color 0.2s var(--ease-soft);
+    transition: text-decoration-color var(--dur-micro) var(--ease-soft);
   }
   .prose a:hover {
     text-decoration-color: var(--color-accent);

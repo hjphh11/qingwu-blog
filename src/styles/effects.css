@@ -40,6 +40,8 @@
     animation: wave 1s ease-in-out infinite;
     transform-origin: center;
   }
+  /* 三根声波条错峰起跳，延时是**有序序列**(0/0.2/0.4)，
+     不是「微反馈/状态切换」那种语义档位，所以这里不用 --dur-* token。 */
   .wave-bar:nth-child(1) {
     animation-delay: 0s;
   }
@@ -196,8 +198,8 @@
     border-radius: 0 2px 2px 0;
     background: linear-gradient(90deg, var(--color-crimson), var(--color-amber));
     transition:
-      width 0.3s var(--ease-soft),
-      opacity 0.3s var(--ease-soft);
+      width var(--dur-state) var(--ease-soft),
+      opacity var(--dur-state) var(--ease-soft);
   }
 
   /* —— ④ 音乐缓冲:琥珀色缓冲环 + 唱片降速 + 声波降幅 ——
@@ -211,7 +213,7 @@
     border-top-color: var(--color-amber);
     animation: q-spin-turn 1.05s linear infinite;
     opacity: 0;
-    transition: opacity 0.3s var(--ease-soft);
+    transition: opacity var(--dur-state) var(--ease-soft);
     pointer-events: none;
   }
   .q-buf-ring.is-on {
@@ -277,7 +279,7 @@
      看到的是「图被蒙了一层粉」,而不是「本来就在那儿、只是还没填好」。 */
   .qjs .q-media img {
     opacity: 0;
-    transition: opacity 0.55s var(--ease-soft);
+    transition: opacity var(--dur-move) var(--ease-soft);
   }
   .qjs .q-media::before {
     content: '';
@@ -287,7 +289,7 @@
     pointer-events: none;
     border-radius: inherit;
     background: linear-gradient(135deg, rgba(246, 165, 184, 0.28), rgba(232, 176, 75, 0.2));
-    transition: opacity 0.55s var(--ease-soft);
+    transition: opacity var(--dur-move) var(--ease-soft);
   }
   .qjs .q-media.is-loaded img {
     opacity: 1;
@@ -341,7 +343,7 @@
     position: absolute;
     inset: 0;
     background: radial-gradient(120% 92% at 50% 44%, #fff9f3 0%, var(--color-cream) 64%);
-    transition: opacity 0.7s var(--ease-out-expo);
+    transition: opacity var(--dur-move) var(--ease-out-expo);
   }
   .q-splash__glow {
     position: absolute;
@@ -480,7 +482,7 @@
   }
   .q-splash.is-leaving .q-splash__greet span {
     opacity: 0;
-    transition: opacity 0.28s linear;
+    transition: opacity var(--dur-state) linear;
   }
 
   /* —— ⑦ 空态出口:统一四处空态的按钮与手写体字号 ——
@@ -517,9 +519,9 @@
     line-height: 1.5;
     color: var(--color-accent);
     transition:
-      border-color 0.2s var(--ease-soft),
-      background-color 0.2s var(--ease-soft),
-      transform 0.2s var(--ease-soft);
+      border-color var(--dur-micro) var(--ease-soft),
+      background-color var(--dur-micro) var(--ease-soft),
+      transform var(--dur-micro) var(--ease-soft);
   }
   /* 抬升只在「有 hover 且不禁用动效」时生效 —— 全站统一的做法 */
   @media (hover: hover) and (prefers-reduced-motion: no-preference) {
@@ -619,7 +621,7 @@
     opacity: 0;
     pointer-events: none;
     border-radius: inherit;
-    transition: opacity 0.5s var(--ease-soft);
+    transition: opacity var(--dur-move) var(--ease-soft);
     background: radial-gradient(
       280px circle at var(--mx, 50%) var(--my, 50%),
       rgba(246, 165, 184, 0.3),
@@ -653,7 +655,7 @@
     height: 100%;
     display: grid;
     transform-style: preserve-3d;
-    transition: transform 0.7s var(--ease-soft);
+    transition: transform var(--dur-move) var(--ease-soft);
   }
   .flip-card.is-flipped .flip-inner {
     transform: rotateY(180deg);

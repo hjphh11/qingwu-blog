@@ -71,9 +71,15 @@
   --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
 
   /* —— 时长梯队(见 docs/开屏与全部加载动画-完整设计文档.html 第 01 节) ——
-     微反馈 150–200ms · 状态切换 300–400ms · 开屏归位位移 820ms。
-     开屏总时长不在这里 —— 它是三档可选值(1.6/2.0/2.4s),由 Splash 的 dur 给。 */
-  --dur-micro: 180ms;
-  --dur-state: 340ms;
-  --dur-move: 820ms;
+     微反馈 150–200ms · 状态切换 300–400ms · 位移 500–600ms · 电影级 800–1200ms。
+     开屏总时长不在这里 —— 它是三档可选值(1.6/2.0/2.4s),由 Splash 的 dur 给。
+
+     ⚠️ 纪律：组件里不要写裸数字（0.2s / 200ms 之类）。
+        按语义挑一档，写作 var(--dur-micro) 等。
+        scripts/check-tokens.mjs 会扫出漏网的裸数字。 */
+  --dur-micro: 180ms;    /* 悬停、按下、颜色渐变这类即时反馈 */
+  --dur-state: 340ms;    /* 展开/收起、状态切换 */
+  --dur-move: 560ms;     /* 元素位移、FLIP 归位 */
+  --dur-cinematic: 900ms;/* 场景过渡、光散重组（v6 光场用） */
+  --dur-splash-move: 820ms; /* 开屏立绘归位专用，与 Splash 的算式绑定，别挪作他用 */
 }

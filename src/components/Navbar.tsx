@@ -221,7 +221,7 @@ export default function Navbar({ pathname = '/' }: Props) {
                 className={`rounded-xl px-4 py-2.5 text-base font-medium transition active:scale-95 ${
                   isActive(item.href)
                     ? 'bg-rose/25 text-crimson'
-                    : 'text-ink/85 hover:bg-rose/15'
+                    : 'text-muted hover:bg-rose/15'
                 }`}
               >
                 {item.label}

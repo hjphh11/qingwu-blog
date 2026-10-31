@@ -414,7 +414,7 @@ export default function LinkApply({ siteKey = '' }: { siteKey?: string }) {
     (submitted || touched[key]) && errors[key] ? errors[key] : undefined;
 
   const inputCls = (bad: boolean) =>
-    `w-full rounded-full border bg-white/60 px-4 py-2.5 text-sm text-ink outline-none transition-colors placeholder:text-ink/35 focus:ring-2 focus:ring-rose/20 ${
+    `w-full rounded-full border bg-white/60 px-4 py-2.5 text-sm text-ink outline-none transition-colors placeholder:text-subtle focus:ring-2 focus:ring-rose/20 ${
       bad ? 'border-crimson/60 focus:border-crimson' : 'border-rose/25 focus:border-rose/60'
     }`;
 
@@ -431,7 +431,7 @@ export default function LinkApply({ siteKey = '' }: { siteKey?: string }) {
           initial={reduce ? false : { opacity: 0, y: 8 }}
           animate={reduce ? {} : { opacity: 1, y: 0 }}
           transition={{ duration: 0.4, ease: [0.16, 1, 0.3, 1] }}
-          className="flex items-start gap-2.5 rounded-[var(--radius-card)] border border-amber/40 bg-amber/15 p-4 text-sm text-ink/85"
+          className="flex items-start gap-2.5 rounded-[var(--radius-card)] border border-amber/40 bg-amber/15 p-4 text-sm text-muted"
         >
           <span className="mt-0.5 shrink-0 text-amber">
             <MorphIcon icon={Info} size={17} color="currentColor" />
@@ -546,7 +546,7 @@ export default function LinkApply({ siteKey = '' }: { siteKey?: string }) {
                 {serverMessage || '请稍等一会儿再试 ~'}
               </p>
 
-              <div className="mt-5 flex items-start gap-2.5 rounded-[var(--radius-card)] border border-amber/40 bg-amber/15 p-4 text-left text-sm text-ink/85">
+              <div className="mt-5 flex items-start gap-2.5 rounded-[var(--radius-card)] border border-amber/40 bg-amber/15 p-4 text-left text-sm text-muted">
                 <span className="mt-0.5 shrink-0 text-amber">
                   <MorphIcon icon={Info} size={17} color="currentColor" />
                 </span>
@@ -606,7 +606,7 @@ export default function LinkApply({ siteKey = '' }: { siteKey?: string }) {
                     : '不好意思，刚才没能把你的申请收进来。')}
               </p>
 
-              <div className="mt-5 flex items-start gap-2.5 rounded-[var(--radius-card)] border border-amber/40 bg-amber/15 p-4 text-left text-sm text-ink/85">
+              <div className="mt-5 flex items-start gap-2.5 rounded-[var(--radius-card)] border border-amber/40 bg-amber/15 p-4 text-left text-sm text-muted">
                 <span className="mt-0.5 shrink-0 text-amber">
                   <MorphIcon icon={Info} size={17} color="currentColor" />
                 </span>
@@ -698,7 +698,7 @@ export default function LinkApply({ siteKey = '' }: { siteKey?: string }) {
                     <div key={f.key} className="flex flex-col gap-1.5">
                       <label
                         htmlFor={`apply-${f.key}`}
-                        className="flex items-center gap-2 text-sm font-medium text-ink/85"
+                        className="flex items-center gap-2 text-sm font-medium text-muted"
                       >
                         <span className="text-rose">
                           <MorphIcon icon={f.icon as never} size={16} color="currentColor" />
@@ -754,7 +754,7 @@ export default function LinkApply({ siteKey = '' }: { siteKey?: string }) {
               {/* 人机验证(仅在服务端具备接收能力、且配了站点密钥时出现) */}
               {enabled === true && siteKey && (
                 <div className="mt-6 flex flex-col gap-2">
-                  <span className="text-sm font-medium text-ink/85">人机验证</span>
+                  <span className="text-sm font-medium text-muted">人机验证</span>
                   <div ref={turnstileBox} />
                   {turnstileMsg && (
                     <p role="alert" className="flex items-center gap-1.5 text-xs text-crimson">
@@ -853,7 +853,7 @@ export default function LinkApply({ siteKey = '' }: { siteKey?: string }) {
               {MY_INFO.map((it) => (
                 <div key={it.label} className="flex gap-2">
                   <dt className="w-16 shrink-0 text-subtle">{it.label}</dt>
-                  <dd className="min-w-0 flex-1 break-all text-ink/85">{it.value}</dd>
+                  <dd className="min-w-0 flex-1 break-all text-muted">{it.value}</dd>
                 </div>
               ))}
             </dl>
