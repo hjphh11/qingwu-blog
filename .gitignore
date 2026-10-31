@@ -99,3 +99,4 @@ docs/后台迁移-Cloudflare方案.md
 # 临时解压/测试产物（不进仓库）
 .tmp-mig/
 .tmp-*/
+.astro-old-tmp/

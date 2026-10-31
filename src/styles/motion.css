@@ -1,0 +1,133 @@
+/* 动效纪律：滚动揭示、切后台暂停、减少动效降级。
+
+   ⚠️ 这个文件不包 @layer —— 原文件里这几段就是裸露规则,
+      包进 layer 会改变它们与组件层的先后关系,进而改变层叠结果。
+
+   ⚠️ 新增任何持续动画(animation infinite / 长循环)必须同时挂进
+      .qhidden 与 prefers-reduced-motion 两处,否则切后台会白烧电。 */
+
+/* 滚动揭示(借鉴 MotionVault「滚动叙事 / line-reveal」思路,MIT,暖色)
+   仅在 JS 可用(<html>.qjs)时隐藏待展示元素,避免无 JS 时内容缺失;
+   进入视口后上浮淡入(is-visible),由 Layout 全局 IntersectionObserver 驱动。
+
+   性能:不再给每个待展示元素挂 `will-change` —— 那会把页面上每个区块都提成
+   独立合成层(首页 5 张卡 + 5 个侧栏块 + 每个页面的区块),层多了 GPU 内存和
+   合成开销反而更大。改用 `backface-visibility: hidden` 触发一次性提升,
+   动画结束后由 .is-visible 撤掉。 */
+.qjs .reveal {
+  opacity: 0;
+  transform: translateY(22px);
+  transition: opacity 0.6s var(--ease-out-expo), transform 0.6s var(--ease-out-expo);
+}
+.qjs .reveal:not(.is-visible) {
+  will-change: opacity, transform;
+}
+.qjs .reveal.is-visible {
+  opacity: 1;
+  transform: none;
+}
+
+/* 切到后台时:停掉一切持续动画 —— 没人看的时候不该继续烧 CPU/电量 */
+.qhidden .aurora-blob,
+.qhidden .disc,
+.qhidden .wave-bar,
+.qhidden .q-marquee,
+.qhidden .q-skel,
+.qhidden .q-petal .hub,
+.qhidden .q-petal .petal,
+.qhidden .q-spin,
+.qhidden .q-buf-ring,
+.qhidden .q-submit-sweep::after,
+.qhidden .q-splash__glow,
+.qhidden .q-lost__img,
+.qhidden .q-lost__q {
+  animation-play-state: paused !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .disc,
+  .wave-bar {
+    animation: none !important;
+  }
+
+  /* 加载动画家族:循环类一律停;骨架退化为静态浅色块(不是灰块,维持暖色) */
+  .q-skel {
+    animation: none !important;
+    background: rgba(246, 165, 184, 0.22);
+  }
+  .q-petal .hub,
+  .q-petal .petal,
+  .q-spin,
+  .q-buf-ring,
+  .q-submit-sweep::after {
+    animation: none !important;
+  }
+  .q-buf-ring.is-on {
+    opacity: 1;
+  }
+  .qjs .q-media img,
+  .qjs .q-media::before {
+    transition: none;
+  }
+  .q-route__bar {
+    transition: none;
+  }
+  .q-splash__glow {
+    animation: none !important;
+  }
+  /* 404 的爱弥斯:停下来站直,「?」留在原地(它是内容的一部分,不该被一起关掉) */
+  .q-lost__img,
+  .q-lost__q {
+    animation: none !important;
+  }
+  .q-empty-btn {
+    transition: none;
+  }
+
+  .qjs .reveal {
+    transition: none;
+  }
+
+  /* 降低动效:所有悬停位移/缩放一律关掉(之前 Tailwind 的 hover:-translate-y-1
+     不受这个偏好影响,开着「减少动效」还是会动,是明确的可用性问题) */
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+  }
+  .card-lift,
+  .card-lift:hover,
+  .card-lift:active {
+    transform: none !important;
+    transition: none !important;
+  }
+  .hover\:-translate-y-1:hover,
+  .hover\:-translate-y-0\.5:hover,
+  .group:hover .group-hover\:translate-x-1 {
+    transform: none !important;
+  }
+
+  /* 降级:聚光不做淡入淡出,关闭 */
+  .card-spotlight::before {
+    transition: none;
+  }
+  .card-spotlight:hover::before {
+    opacity: 0;
+  }
+
+  /* 按钮涟漪:降级时不做扩散动画 */
+  .btn-ripple .ripple {
+    animation: none;
+    opacity: 0;
+  }
+
+  /* 暖色氛围光斑:降级时静止(保留静态柔光,不再漂浮) */
+  .aurora-blob {
+    animation: none !important;
+  }
+
+  /* 翻转卡:降级时不做 0.7s 翻转动画 */
+  .flip-inner {
+    transition: none;
+  }
+}
