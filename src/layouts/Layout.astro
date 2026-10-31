@@ -1,6 +1,9 @@
 ---
-import '@fontsource/ma-shan-zheng';
-import '@fontsource/zcool-xiaowei';
+/*
+ * 字体不再从 @fontsource 全量引入（那会带进 174 个分片 / 13MB）。
+ * 现在用 scripts/subset-fonts.py 生成的子集，@font-face 在 fonts.css 里，
+ * 由 styles/index.css 统一引 —— 所以这里只留一个样式入口。
+ */
 import '../styles/global.css';
 import ClientRouter from 'astro/components/ClientRouter.astro';
 import { SITE } from '../config';
@@ -45,6 +48,18 @@ const url = SITE.url.replace(/\/$/, '') + pathname;
         fetchpriority="high"
       />
     )}
+
+    {/* 标题字体预加载：首屏每个页面都有 .page-head 标题，用的就是 ZCOOL XiaoWei。
+        不 preload 的话浏览器要等 CSS 解析完才发现它，标题会先以系统宋体出现再换 —— 
+        947KB 的字体在慢网下这段闪烁会很长。
+        只 preload 标题体，**不 preload 手写体**（10KB 且只在开屏/空态出现，优先级低）。 */}
+    <link
+      rel="preload"
+      as="font"
+      type="font/woff2"
+      href="/fonts/zcool-xiaowei-subset.woff2"
+      crossorigin
+    />
 
     {/* 滚动揭示启用标记:让 .reveal 只在 JS 可用时才隐藏,避免无 JS 时内容缺失 */}
     <script is:inline>

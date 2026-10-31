@@ -1,0 +1,24 @@
+/* 由 scripts/subset-fonts.py 生成，不要手改。
+   重跑：python scripts/subset-fonts.py（改完文案后执行）
+
+   为什么要子集化：@fontsource 按 unicode-range 把中文字体切成 92 个分片，
+   原始 174 个文件 / 13MB。这里只打实际要渲染的字，两种字体字集不同：
+   · ZCOOL XiaoWei 承载标题与**运行时城市名**，故含 GB2312 一级常用字兜底；
+   · Ma Shan Zheng 只用于开屏问候/空态/404 的固定短句，字集按文案精确生成。
+   font-display: swap —— 字体没到时先用系统字体，绝不阻塞渲染。 */
+
+@font-face {
+  font-family: "ZCOOL XiaoWei";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("/fonts/zcool-xiaowei-subset.woff2") format("woff2");
+}
+
+@font-face {
+  font-family: "Ma Shan Zheng";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("/fonts/ma-shan-zheng-subset.woff2") format("woff2");
+}

@@ -5,12 +5,13 @@
  *
  * 顺序即层叠：不要随意调整下面几行的先后。
  *   1) tokens   —— @theme，必须最早，后面所有文件都可能引用它定义的变量
- *   2) base     —— @layer base 重置
- *   3) layout   —— 版式骨架（容器是横轴的唯一来源）
- *   4) ui       —— 可复用零件
- *   5) prose    —— 正文排版
- *   6) effects  —— 氛围与特效（全挂在 .q-* 前缀上）
- *   7) motion   —— 揭示/暂停/降级（**不带 @layer**，必须最后）
+ *   2) fonts    —— 子集字体的 @font-face（由 scripts/subset-fonts.py 生成）
+ *   3) base     —— @layer base 重置
+ *   4) layout   —— 版式骨架（容器是横轴的唯一来源）
+ *   5) ui       —— 可复用零件
+ *   6) prose    —— 正文排版
+ *   7) effects  —— 氛围与特效（全挂在 .q-* 前缀上）
+ *   8) motion   —— 揭示/暂停/降级（**不带 @layer**，必须最后）
  *
  * 为什么 motion.css 最后：它里面有 .qhidden 与 prefers-reduced-motion 的
  * `animation-play-state: paused !important` 兜底，必须盖在后面才能生效。
@@ -19,6 +20,7 @@
  * prefers-reduced-motion 两处，否则切到后台会继续烧 CPU。
  */
 @import "./tokens.css";
+@import "./fonts.css";
 @import "./base.css";
 @import "./layout.css";
 @import "./ui.css";
