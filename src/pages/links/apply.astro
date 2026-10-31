@@ -12,7 +12,12 @@ const turnstileSiteKey = import.meta.env.PUBLIC_TURNSTILE_SITE_KEY ?? '';
   title="友链申请 · 清吾"
   description="和清吾互换友链：填好站点名称、网址、头像与一句介绍，审核通过后会出现在友链页。"
 >
-  <div class="page-shell max-w-[62rem]">
+  {/*
+    窄栏下沉到内层（同 /about）。给 .page-shell 覆盖 max-w 会让它按新宽度重新居中，
+    内容左缘跟着横跳 —— 实测右移 44px。外壳保持统一画布，只在内层限宽。
+  */}
+  <div class="page-shell">
+    <div class="max-w-[62rem]">
     <a
       href="/links"
       class="reveal mb-6 -ml-2 inline-flex items-center gap-1.5 px-2 py-2 text-sm text-muted transition-colors hover:text-accent"
@@ -29,5 +34,6 @@ const turnstileSiteKey = import.meta.env.PUBLIC_TURNSTILE_SITE_KEY ?? '';
     </header>
 
     <LinkApply client:load siteKey={turnstileSiteKey} />
+    </div>
   </div>
 </Layout>

@@ -225,8 +225,14 @@
     text-wrap: balance;
     transition: color 0.25s var(--ease-soft);
   }
+  /* 摘要限宽：14px 下原来一行能排 72~94 个汉字（实测 942px 宽），
+     远超中文舒适阅读区（约 28~40 字/行）—— 眼睛要长距离回扫才找得到下一行开头。
+     **用 em 不用 ch**：ch 是数字 `0` 的宽度，这个字体下 ch≈0.585em，
+     写 34ch 实际只有 279px（21 字/行），比目标窄了一半。
+     中文全角字宽≈1em，所以 34em 正好 34 个字。窄屏时卡片本身更窄，em 会跟着字号走。 */
   .list-card-desc {
     margin-top: 0.5rem;
+    max-width: 34em;
     font-size: 0.875rem;
     line-height: 1.65;
     color: var(--color-muted);

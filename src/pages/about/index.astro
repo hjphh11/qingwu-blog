@@ -9,7 +9,13 @@ import { SITE } from '../../config';
 ---
 
 <Layout title="关于 · 清吾">
-  <div class="page-shell max-w-[62rem]">
+  {/*
+    窄栏：**不要给 .page-shell 覆盖 max-w**。.page-shell 是 max-width:1080px + margin-inline:auto，
+    改了它的 max-width 会让它按新宽度重新居中 —— 内容左缘跟着横跳（实测 /about 比其它页右移 44px）。
+    正确做法是外壳保持 .page-shell 不动，把窄栏下沉到内层这个 div 上。
+  */}
+  <div class="page-shell">
+    <div class="max-w-[62rem]">
     <header class="page-head">
       <h1 class="page-head__title">关于</h1>
       <p class="page-head__sub">这里是清吾的小屋，和你打个招呼 ~</p>
@@ -121,6 +127,7 @@ import { SITE } from '../../config';
           </span>
         </a>
       </div>
+    </div>
     </div>
   </div>
 </Layout>
