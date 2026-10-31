@@ -35,15 +35,16 @@ npm run check    # 类型检查
 > 部署的更多细节与备注，保存在**本地** `docs/部署说明.md`，不随仓库公开。
 
 ## 📈 访问统计
-访客打点走**同源** `/api/hit`，正常情况下站点不会直接对外暴露接口：
+访客打点走 **Cloudflare Worker**（`https://api.qingwu.ink/hit`）→ 写入 D1，后台读 `GET /stats`。
 
-- 默认（未配 `HIT_WORKER_URL`）：打点写 Upstash Redis，由 GitHub Action 定时汇总。
-- 配了 `HIT_WORKER_URL`（例如 `https://api.qingwu.ink`）：`/api/hit` 变成一层**薄转发**，
-  由 Cloudflare Worker 写 D1；后台改读 Worker 的 `GET /stats`。
-  转发失败会自动退回 Upstash，不会丢数据；删掉这个变量即可回退。
+- 前端默认由浏览器**直连 Worker**（`Layout.astro`）。为什么不走同源转发：那样请求由 Vercel 的
+  数据中心 IP 发出，Cloudflare 的 Managed Challenge 会回 403。
+- 同源的 `/api/hit` 仍然保留，作一层**薄转发**（`src/pages/api/hit.ts`），方便排查与兜底调用；
+  **它不再回退 Upstash** —— Worker 不可达就是少记一次访问，只留服务端日志。
+- 旧的 Upstash + GitHub Action 汇总链路已于 2026-10-31 整条删除。
+  `UPSTASH_REDIS_REST_*` 仍需要，但**只给友链申请的限流用**，与统计无关。
 
 > Worker 的部署步骤、migration、secret 与历史数据迁移见 **`worker/README.md`**。
-> 完整方案见 `docs/后台迁移-Cloudflare方案.md`。
 
 ## 📝 内容
 - 文章：`src/content/blog/*.md`（分类见 `src/data/categories.json`）

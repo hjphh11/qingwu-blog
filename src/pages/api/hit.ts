@@ -1,35 +1,40 @@
-// 访问打点（方案 §11 路线 B）。**第 1 步迁移后**：这里变成一层薄转发。
+// 访问打点。**迁移完成后**：这里只剩「同源转发给 Cloudflare Worker」一件事。
 //
-//   GET  /api/hit   能力探测：返回 { enabled }。没配采集端时前端就不用白打点了
-//                   （也和 /api/links/apply 一样，方便排查「变量写错 → 静默不计数」）。
+//   GET  /api/hit   能力探测：返回 { enabled }，方便排查「变量写错 → 静默不计数」。
 //   POST /api/hit   记一次访问。**永远返回 200**：打点失败绝不能影响访客，
 //                   浏览器的 sendBeacon 也不看状态码，回 4xx/5xx 只会在控制台留噪音。
 //
-// 数据往哪走（两条路，靠 `HIT_WORKER_URL` 切换）：
-//   ① 配了 `HIT_WORKER_URL`（例如 https://api.qingwu.ink）→ **转发给 Cloudflare Worker**，
-//      由它写 D1。前端仍然调同源 `/api/hit`，所以**不用改前端、也不用处理 CORS**。
-//      Worker 挂了/超时 → 自动退回 ②，不丢数据。
-//   ② 没配 → 保持原样写 Upstash（旧链路仍可用，随时可回退：把这个变量删掉即可）。
+// 唯一的去向：`https://api.qingwu.ink/hit`（Cloudflare Worker → D1）。
+//
+// 历史：这条路由以前还会在 Worker 转发失败时**回退到 Upstash**（旧的 Vercel 链路，
+// 再由 GitHub Action 每 6 小时汇总写私有仓库的 stats.json）。2026-10-31 核对过
+// 两边数据：重叠的 37 天里 35 天逐日完全相同，且旧线自 10-18 起就没再产出新数据，
+// 于是旧链路整条退役 —— 回退分支、stats.ts、stats-collect.mjs、stats.yml 一并删除。
+// 现在 Worker 挂了就是少记一次访问，不再有第二条线兜底，这是刻意的取舍：
+// 留着一条常年不产生数据的「备用线」只会让人误以为有兜底。
 export const prerender = false;
 
 import type { APIRoute } from 'astro';
 import { env } from '../../lib/serverEnv';
-import { collectHit, isBot, statsConfig } from '../../lib/stats';
 
-const SALT = env('APPLY_IP_SALT');
-const CFG = statsConfig();
-/** Upstash 那条旧路：两个都要有（Upstash 用来存，SALT 用来匿名化访客）*/
-const LEGACY_ENABLED = Boolean(CFG && SALT);
-
-/** 新的采集端（Cloudflare Worker）。**空 = 走旧的 Upstash 链路** */
-// 读两个键：`PUBLIC_` 优先 —— Vite 对 `PUBLIC_` 前缀的变量会在**构建期静态内联**，
-// 不依赖运行时的 process.env（Edge runtime 里根本没有 process.env，动态键的
-// import.meta.env[key] 也不会被内联，这就是当初切不过去的原因）。
+/** Worker 地址。`PUBLIC_` 优先 —— Vite 对 `PUBLIC_` 前缀的变量会在**构建期静态内联**，
+ *  不依赖运行时的 process.env（Edge runtime 里根本没有 process.env）。 */
 const WORKER_URL = (env('PUBLIC_HIT_WORKER_URL') || env('HIT_WORKER_URL') || 'https://api.qingwu.ink').replace(/\/$/, '');
-/** 转发超时（毫秒）。Worker 有边缘缓存+就近接入，正常几十毫秒；超了就退回旧路 */
-const WORKER_TIMEOUT_MS = 8000; // 2s 太紧：跨境 + Worker 冷启动 + D1 写，超时就会静默回退 Upstash
 
-const ENABLED = Boolean(WORKER_URL) || LEGACY_ENABLED;
+/** 转发超时（毫秒）。Worker 有边缘缓存+就近接入，正常几十毫秒；
+ *  8s 是给「跨境 + 冷启动 + D1 写」留的余量，别调回 2s（那样会大量假超时）。 */
+const WORKER_TIMEOUT_MS = 8000;
+
+const ENABLED = Boolean(WORKER_URL);
+
+/** 只用于「明显是爬虫就别白跑一趟跨境请求」，判错也不影响数据正确性。
+ *  Worker 侧自己也判一次，这里是省一次往返的早退。 */
+const BOT_RE =
+  /bot|crawler|spider|crawling|slurp|facebookexternalhit|embedly|quora link preview|pinterest|vkshare|whatsapp|telegrambot|headlesschrome|phantomjs|lighthouse|pagespeed|pingdom|uptime|monitor|curl|wget|python-requests|axios|go-http-client/i;
+
+function isBot(ua: string): boolean {
+  return !ua || BOT_RE.test(ua);
+}
 
 const json = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), {
@@ -52,7 +57,7 @@ interface WorkerHitResult {
 
 /**
  * 把这次访问转给 Worker。
- * 返回 null 表示「没转成功」—— 调用方会退回旧的 Upstash 链路。
+ * 返回 null 表示没转成功 —— 打点失败对访客不可见，只记日志。
  */
 async function forwardToWorker(request: Request, body: HitBody, clientIp: string): Promise<Response | null> {
   try {
@@ -79,7 +84,7 @@ async function forwardToWorker(request: Request, body: HitBody, clientIp: string
       // 数据中心 IP）在线上完全看不到，排查时只能靠猜。关键失败路径必须留痕。
       const bodyText = await res.text().catch(() => '');
       console.error(`[hit] Worker 返回非 2xx：${res.status} ${bodyText.slice(0, 200)}`);
-      return null; // 4xx/5xx：退回旧路（不把错误码透出去）
+      return null;
     }
     const data = (await res.json()) as WorkerHitResult;
     return json({
@@ -89,8 +94,8 @@ async function forwardToWorker(request: Request, body: HitBody, clientIp: string
       counted: data?.counted === true,
     });
   } catch (err) {
-    // Worker 不可达/超时/返回不是 JSON —— 只记服务端日志，然后退回旧路
-    console.error('[hit] 转发 Worker 失败，回退 Upstash:', err instanceof Error ? err.message : err);
+    // Worker 不可达/超时/返回不是 JSON —— 只记服务端日志，访客无感
+    console.error('[hit] 转发 Worker 失败:', err instanceof Error ? err.message : err);
     return null;
   }
 }
@@ -109,9 +114,10 @@ export const POST: APIRoute = async ({ request, clientAddress }) => {
   }
 
   const ua = request.headers.get('user-agent') || '';
-  if (isBot(ua)) return json({ ok: false, reason: 'bot' }); // 爬虫、监控、预览渲染都不算访客
+  // 爬虫、监控、预览渲染都不算访客。Worker 侧也判一次，这里早退省掉一次跨境请求。
+  if (isBot(ua)) return json({ ok: false, reason: 'bot' });
 
-  // 访客 IP：拿不到也不影响（少数运行环境没有）；转发给 Worker 时用它兜底
+  // 访客 IP：拿不到也不影响（少数运行环境没有）
   let ip = 'unknown';
   try {
     ip = clientAddress || 'unknown';
@@ -119,31 +125,8 @@ export const POST: APIRoute = async ({ request, clientAddress }) => {
     /* 少数运行环境拿不到 IP，不影响 */
   }
 
-  // ① 新路：交给 Worker（bot/去重/限流都在 Worker 里做，和旧链路同一套规则）
-  if (WORKER_URL) {
-    const forwarded = await forwardToWorker(request, body ?? {}, ip);
-    if (forwarded) return forwarded;
-    // 转发失败：如果旧路也没配，就只能回 error（依旧是 200，访客无感）
-    if (!LEGACY_ENABLED) return json({ ok: false, reason: 'error', mode: 'worker' });
-  }
-
-  // ② 旧路：Upstash（保留原行为，未配置 HIT_WORKER_URL 时完全等价于迁移前）
-  try {
-    const r = await collectHit(
-      CFG!,
-      {
-        path: typeof body?.path === 'string' ? body.path : '',
-        referrer: typeof body?.referrer === 'string' ? body.referrer : '',
-        ip,
-        ua,
-        country: request.headers.get('x-vercel-ip-country'),
-      },
-      SALT,
-    );
-    return json({ ok: r.counted, reason: r.reason, mode: 'upstash' });
-  } catch (err) {
-    // 计数失败只记服务端日志：访客那边什么都看不到
-    console.error('[hit] 采集失败:', err);
-    return json({ ok: false, reason: 'error', mode: 'upstash' });
-  }
+  const forwarded = await forwardToWorker(request, body ?? {}, ip);
+  if (forwarded) return forwarded;
+  // 转发失败：依旧是 200，访客无感
+  return json({ ok: false, reason: 'error', mode: 'worker' });
 };

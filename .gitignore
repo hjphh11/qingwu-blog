@@ -85,6 +85,8 @@ docs/admin-ui-framework-research.md
 docs/调研-后台界面设计与组件.md
 docs/调研-Git型CMS与内容后台.md
 docs/后台升级-开源方案调研.md
+# 含 Tailscale / ECS / systemd / D1 database_id 等内部部署细节
+docs/后台迁移-Cloudflare方案.md
 
 # AI 助手工作记忆目录（个人笔记，不进仓库）
 .workbuddy/

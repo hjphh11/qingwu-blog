@@ -1,11 +1,15 @@
 // 访问统计（阶段 M · 方案 §11 路线 B）
 //
-// **三条取数路（优先级从高到低）** —— 见 docs/后台迁移-Cloudflare方案.md 第 1 步：
+// **两条取数路（优先级从高到低）** —— 见 docs/后台迁移-Cloudflare方案.md 第 1 步：
 //   ① `ADMIN_STATS_MOCK_FILE`  本地 mock 文件（自测用，永远是第一优先）
-//   ② `ADMIN_STATS_ENDPOINT`   直接 HTTP 读 Cloudflare Worker `/stats`（数据在 D1）← 迁移后的新路
-//   ③ GitHub Contents API      读私有仓库里那份由 Action 每 6 小时汇总的 stats.json（旧路，保留回退）
+//   ② `ADMIN_STATS_ENDPOINT`   直接 HTTP 读 Cloudflare Worker `/stats`（数据在 D1）← 唯一线上来源
 //
-// 返回给前端的**形状三种来源完全一致**（前端一行都不用改）：
+// 原来还有第三条「GitHub Contents API 读私有仓库的 stats.json」的旧路，已于 2026-10-31 删除：
+// 那份文件由 GitHub Action 每 6 小时汇总，自 10-18 起就再没产出过新数据；而它只要
+// `ADMIN_APPLY_TOKEN` 在（友链申请还要用）就会启用，等于「Worker 一挂就静默退回显示
+// 半个月前的过期数字」—— 比直接报错更危险。现在读不到就明确报错。
+//
+// 返回给前端的**形状两种来源完全一致**（前端一行都不用改）：
 //   { enabled, empty, reason?, repo, path, generatedAt, latestDay,
 //     totals:{pv,uv}, today:{d,pv,uv}, last7:{pv,uv}, last30:{pv,uv},
 //     days:[{d,pv,uv}], pages:[{p,pv}], referrers:[{r,pv}],
@@ -48,51 +52,13 @@ const TREND_DAYS = 90;
 const TOP_N = 20;
 
 /** 当前用的是哪条路（只用于日志/说明，不影响返回形状）*/
-let source = 'github';
+let source = 'endpoint';
 let cache = { at: 0, data: null };
 
-const contentsUrl = () =>
-  `${config.applyApiBase.replace(/\/$/, '')}/repos/${config.applyRepo}/contents/${config.statsPath}`;
-
-/** ③ 旧路：GitHub Contents API 读 stats.json（Action 每 6 小时写一份）*/
-async function fetchStatsFromGithub() {
-  const res = await fetch(`${contentsUrl()}?ref=${encodeURIComponent(config.applyRef)}`, {
-    headers: {
-      authorization: `Bearer ${config.applyToken}`,
-      accept: 'application/vnd.github+json',
-      'user-agent': 'qingwu-admin',
-      'x-github-api-version': '2022-11-28',
-    },
-    signal: AbortSignal.timeout(20_000),
-  });
-
-  // 还没跑过 Action（或换了文件名）时，文件本来就可能不存在 —— 这不是错误
-  if (res.status === 404) return null;
-  if (res.status === 401 || res.status === 403) {
-    throw httpError(502, `读统计文件时 token 权限不够（GitHub ${res.status}）`, 'stats_auth');
-  }
-  if (!res.ok) throw httpError(502, `读统计文件失败：GitHub ${res.status}`, 'stats_read');
-
-  const data = await res.json();
-  const text = Buffer.from(String(data.content ?? '').replace(/\n/g, ''), 'base64').toString('utf8');
-  let parsed;
-  try {
-    parsed = JSON.parse(text);
-  } catch {
-    throw httpError(502, `${config.statsPath} 不是合法 JSON`, 'stats_bad_json');
-  }
-  const check = StatsSchema.safeParse(parsed);
-  if (!check.success) {
-    const first = check.error.issues[0];
-    throw httpError(502, `统计文件格式不对：${first.path.join('.') || '?'} —— ${first.message}`, 'stats_bad_shape');
-  }
-  return check.data;
-}
-
 /**
- * ② 新路：HTTP 读 Cloudflare Worker 的 `/stats`（D1 实时聚合）。
+ * ② 线上唯一来源：HTTP 读 Cloudflare Worker 的 `/stats`（D1 实时聚合）。
  * Worker 返回的就是**已经算好的**总览（含 today/last7/last30），所以这里不再自己算，
- * 只做「校验 + 裁剪」—— 保证和旧路输出完全同形。
+ * 只做「校验 + 裁剪」。
  */
 async function fetchStatsFromEndpoint() {
   if (!config.statsEndpoint) return null;
@@ -138,14 +104,13 @@ async function readMock() {
 
 const sumDays = (days) => days.reduce((acc, d) => ({ pv: acc.pv + d.pv, uv: acc.uv + d.uv }), { pv: 0, uv: 0 });
 
-/** 空数据的兜底（repo/path 跟着当前数据源走，别让前端显示成 GitHub 仓库）*/
+/** 空数据的兜底（数据源固定是 D1，别再让前端显示成 GitHub 仓库）*/
 function emptyPayload(reason) {
-  const fromEndpoint = source === 'endpoint';
   return {
     enabled: true,
     empty: true,
-    repo: fromEndpoint ? 'cloudflare-d1' : config.applyRepo,
-    path: fromEndpoint ? 'hits' : config.statsPath,
+    repo: 'cloudflare-d1',
+    path: 'hits',
     reason,
     totals: { pv: 0, uv: 0 },
     days: [],
@@ -161,29 +126,24 @@ function emptyPayload(reason) {
 export async function getStats({ force = false } = {}) {
   const useMock = Boolean(config.statsMockFile);
   const useEndpoint = !useMock && Boolean(config.statsEndpoint);
-  const useGithub = !useMock && !useEndpoint && Boolean(config.applyToken);
 
-  // 三个都没配：保持原样，明确告诉用户为什么看不到数据
-  if (!useMock && !useEndpoint && !config.applyToken) {
+  // 两个都没配：明确告诉用户为什么看不到数据
+  if (!useMock && !useEndpoint) {
     return {
       enabled: false,
       empty: true,
-      repo: config.applyRepo,
-      path: config.statsPath,
-      reason: '还没配统计数据源 —— 填 ADMIN_STATS_ENDPOINT（Cloudflare Worker），或保留旧的 ADMIN_APPLY_TOKEN 读私有仓库',
+      repo: 'cloudflare-d1',
+      path: 'hits',
+      reason: '还没配统计数据源 —— 填 ADMIN_STATS_ENDPOINT（Cloudflare Worker 的 /stats 地址）',
     };
   }
 
-  source = useMock ? 'mock' : useEndpoint ? 'endpoint' : 'github';
+  source = useMock ? 'mock' : 'endpoint';
   if (!force && cache.data && Date.now() - cache.at < config.statsCacheMs && cache.source === source) return cache.data;
 
-  const raw = useMock ? await readMock() : useEndpoint ? await fetchStatsFromEndpoint() : useGithub ? await fetchStatsFromGithub() : null;
+  const raw = useMock ? await readMock() : await fetchStatsFromEndpoint();
   if (!raw) {
-    const empty = emptyPayload(
-      useEndpoint
-        ? '统计接口还没有数据 —— 访客打过点之后就有了'
-        : '还没有汇总文件 —— 自动汇总还没跑过第一次，跑完就有了',
-    );
+    const empty = emptyPayload('统计接口还没有数据 —— 访客打过点之后就有了');
     cache = { at: Date.now(), data: empty, source };
     return empty;
   }
@@ -191,7 +151,7 @@ export async function getStats({ force = false } = {}) {
   const days = [...raw.days].sort((a, b) => a.d.localeCompare(b.d));
   const recent = days.slice(-TREND_DAYS);
   // 接口那份已经算好了今日/近 7 天/近 30 天（它的「天」就是同一套日历），优先用它自己的；
-  // 旧路（GitHub 文件）没这几个字段，就按原来的方式现算 —— 两条路的数字口径完全一致。
+  // mock 文件没这几个字段，就现算 —— 两边数字口径完全一致。
   const today = raw.today ?? days.at(-1) ?? { d: '', pv: 0, uv: 0 };
   const last7 = raw.last7 ?? sumDays(days.slice(-7));
   const last30 = raw.last30 ?? sumDays(days.slice(-30));
@@ -199,10 +159,10 @@ export async function getStats({ force = false } = {}) {
   const data = {
     enabled: true,
     empty: false,
-    repo: raw.repo || (useEndpoint ? 'cloudflare-d1' : config.applyRepo),
-    path: raw.path || (useEndpoint ? 'hits' : config.statsPath),
+    repo: raw.repo || 'cloudflare-d1',
+    path: raw.path || 'hits',
     generatedAt: raw.generatedAt,
-    /** 数据只到这一天。旧路每 6 小时汇总一次，最多滞后 6 小时；新路（D1）是实时的 */
+    /** 数据只到这一天。D1 是实时的，正常情况下就是今天 */
     latestDay: today.d,
     totals: raw.totals,
     today,

@@ -79,19 +79,15 @@ export const config = {
   applyCacheMs: Number(env('ADMIN_APPLY_CACHE_MS', '45000')),
 
   /**
-   * 访问统计（阶段 M · 方案 §11 路线 B）：GitHub Action 每 6 小时把 Upstash 里的计数
-   * 汇总成 `stats.json` 写进**私有仓库**，后台读它画图（零跨境）。
-   * 复用上面那个私有仓库与 token（同一个库、不同文件）。
-   *
-   * ⚠️ 迁移（docs/后台迁移-Cloudflare方案.md 第 1 步）：配了下面的 `statsEndpoint`
-   * 就改成**直接 HTTP 读 Cloudflare Worker**（数据在 D1），GitHub 那条路只作为回退保留。
+   * 访问统计：唯一线上来源是 Cloudflare Worker 的 `/stats`（数据在 D1）。
+   * 原来还有一条「GitHub Action 每 6 小时汇总 → 私有仓库 stats.json → 后台读文件」的旧路，
+   * 2026-10-31 已随旧链路一起删除（stats.json 自 10-18 起就没再更新过）。
+   * 因此这里不再有 `statsPath` —— `ADMIN_APPLY_TOKEN` 只留给好友链申请用。
    */
-  statsPath: env('ADMIN_STATS_PATH', 'stats.json'),
   statsCacheMs: Number(env('ADMIN_STATS_CACHE_MS', '300000')),
   /**
-   * 统计接口地址（选填）：例如 `https://api.qingwu.ink/stats`。
-   * 配了就优先走它（Cloudflare Worker + D1）；不配就还是读 GitHub 上的 stats.json。
-   * 详见 `admin/server/stats.js` 里的三档优先级（mock > endpoint > GitHub）。
+   * 统计接口地址（线上必填）：例如 `https://api.qingwu.ink/stats`。
+   * 详见 `admin/server/stats.js` 里的两档优先级（mock > endpoint）。
    */
   statsEndpoint: env('ADMIN_STATS_ENDPOINT', ''),
   /** 调统计接口用的口令，对应 Worker 的 `ADMIN_STATS_TOKEN` secret（`Authorization: Bearer`）*/

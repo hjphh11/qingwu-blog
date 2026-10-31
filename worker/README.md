@@ -148,8 +148,14 @@ routes = [
 
 ### 9. 切换站点与后台（这一步才算真正迁移）
 
+> **状态：已完成（2026-10-31）**。旧链路（Vercel 函数 → Upstash → GitHub Action 汇总 →
+> 私有仓库 stats.json）已经整条删除，`.github/workflows/stats.yml` 与
+> `scripts/stats-collect.mjs` 与 `src/lib/stats.ts` 都不在了。下面保留原始步骤供追溯。
+
 1. **Vercel** 环境变量加 `HIT_WORKER_URL=https://api.qingwu.ink` → 重新部署。
-   之后 `/api/hit` 就转发给 Worker 了（转发失败会自动退回 Upstash，不丢数据）。
+   之后 `/api/hit` 就转发给 Worker 了。
+   ⚠️ **现在没有 Upstash 兜底了**：Worker 不可达就是少记一次访问（只留服务端日志）。
+   这是刻意取舍 —— 留着一条常年不产数据的「备用线」只会让人误以为有兜底。
 2. **后台** `.env`（服务器上是 `/opt/qingwu/.env`）加：
 
    ```ini
@@ -157,12 +163,15 @@ routes = [
    ADMIN_STATS_TOKEN=<与 Worker 上那个 secret 同一个值>
    ```
 
-   配完之后后台就不再读 GitHub 上的 stats.json 了（`ADMIN_APPLY_TOKEN` 只剩友链申请在用）。
-3. 观察几天，确认统计页数字正常后，再删掉 `.github/workflows/stats.yml`
-   和 Vercel 上的 `UPSTASH_REDIS_REST_*`（**限流还要用它们，别删** —— 只删 Action 的 secrets）。
+   `ADMIN_STATS_ENDPOINT` 现在是**线上必填**：不配的话统计页会直接告诉你「还没配数据源」，
+   不会再静默退回读那份过期的 `stats.json`（那个回退分支已删）。
+3. ~~观察几天，确认数字正常后删掉 `stats.yml` 和 Vercel 上的 `UPSTASH_REDIS_REST_*`~~
+   → 已完成。**注意：Vercel 上的 `UPSTASH_REDIS_REST_*` 不能删** —— 友链申请的限流
+   （`src/lib/rateLimit.ts`）还在用它，和统计共用同一个库、不同 key 前缀
+   （限流 `qw:rl:*` / `qw:mail:*`，统计 `qw:*` 已废弃）。只删 GitHub Actions 的 secrets。
 
-**回退**：把 Vercel 的 `HIT_WORKER_URL` 和后台的 `ADMIN_STATS_ENDPOINT` 删掉即可，
-两边立刻回到迁移前的行为；D1 里的数据留着不影响任何东西。
+**回退**：旧路已经拆除，不存在「改回 Vercel 函数」这条路了。真要回退，得从
+`git log` 里找回 `chore/retire-legacy-hit` 之前的版本。日常无需回退 —— D1 的数据是即时写入的。
 
 ## 目录说明
 
@@ -179,13 +188,16 @@ worker/
     ├── index.ts             # 极小路由
     ├── hit.ts               # POST /hit（去重 + 限流 + 写 D1）
     ├── stats.ts             # GET /stats（D1 聚合，形状与后台旧代码一致）
-    ├── util.ts              # 与站点旧 src/lib/stats.ts 逐字对齐的口径（切天/规范化/设备/哈希）
+    ├── util.ts              # 口径（切天/规范化/设备/哈希）—— 与站点旧 src/lib/stats.ts 对齐，该文件已删
     └── types.ts             # Env 等类型
 ```
 
 ## 与旧口径的一致性（重要）
 
-| 口径 | 旧实现 | 这里 |
+> 下表「旧实现」列的 `src/lib/stats.ts` 已于 2026-10-31 随旧链路删除，
+> 保留这张表是为了追溯口径来源与迁移时做过的等价性核对。
+
+| 口径 | 旧实现（已删除） | 这里 |
 |---|---|---|
 | 切天 | `src/lib/stats.ts` `dayKey()`：UTC+8 | `util.ts` `dayKey()`：同样 UTC+8（**Asia/Shanghai**） |
 | 路径 | `normPath()`，异常归 `/(other)` | 同 |
