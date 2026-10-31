@@ -41,7 +41,15 @@
       "addedAt": "2026-10-15"
     },
     {
-      "name": "SamsBlog",
+"name": "时光潜流",
+      "avatar": "https://www.dreamcenter.top/imgs/avatar.jpg",
+      "intro": "妹控的中二君！",
+      "url": "https://www.dreamcenter.top",
+      "visible": true,
+      "addedAt": "2026-10-15"
+      },
+      {
+"name": "SamsBlog",
       "avatar": "https://blog.moesam.com/media/brand/logo.jpg",
       "intro": "只是一只大黄狗",
       "url": "https://blog.moesam.com",
