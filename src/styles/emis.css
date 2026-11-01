@@ -97,4 +97,53 @@
       animation: none;
     }
   }
+
+  /* ── 内容页小陪伴 ──────────────────────────────────────────
+     左下角。右下角是迷你播放器（bottom-6 right-6），两个叠在一起会打架。
+     z-index 低于导航（50），高于正文，但它 pointer-events:none，不挡任何东西。 */
+  .q-companion {
+    position: fixed;
+    left: 18px;
+    bottom: 0;
+    z-index: 30;
+    pointer-events: none;
+    width: clamp(76px, 8vw, 118px);
+    opacity: 0;
+    transform: translateY(22%);
+    transition:
+      opacity var(--dur-state) var(--ease-soft),
+      transform var(--dur-state) var(--ease-soft);
+    will-change: opacity, transform;
+  }
+
+  .q-companion.is-on {
+    opacity: 0.9;
+    transform: translateY(0);
+  }
+
+  /* corner 是「一直在」的形态，出现得比其它两个更轻一点：
+     没有从下方探头的过程，只有淡入。 */
+  .q-companion--corner {
+    transform: none;
+  }
+
+  .q-companion img {
+    display: block;
+    width: 100%;
+    height: auto;
+  }
+
+  /* 减动效：不做位移过渡，直接显隐 */
+  .q-companion.is-static {
+    transition: none;
+    transform: none;
+  }
+
+  /* 窄屏不显示：手机上一块固定的图很容易压住正文。
+     「不抢注意力」在手机上就等于「别出现」。 */
+  @media (max-width: 767px) {
+    .q-companion {
+      display: none;
+    }
+  }
 }

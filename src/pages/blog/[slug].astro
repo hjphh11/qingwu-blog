@@ -1,6 +1,7 @@
 ---
 import Layout from '../../layouts/Layout.astro';
 import ReadingProgress from '../../components/ReadingProgress.tsx';
+import EmisCompanion from '../../components/emis/EmisCompanion.tsx';
 import ContactExpand from '../../components/ContactExpand.tsx';
 import MorphIcon from 'morphicons/astro';
 import { List, ArrowLeft } from '../../lib/icons';
@@ -104,6 +105,11 @@ const toc = headings.filter((h) => h.depth === 2 || h.depth === 3);
       </nav>
     </aside>
   </div>
+
+  {/* 小陪伴：三种形态（角落 / 滚动探头 / 文末）每次进文章页随机掷一个。
+      client:only —— 形态是客户端随机决定的，服务端无从预知；
+      而且它只是个固定定位的装饰层，不需要 SSR。 */}
+  <EmisCompanion client:only="react" />
 </Layout>
 
 <script>

@@ -37,6 +37,7 @@ export default function MiniPlayer() {
         dragMomentum={false}
         dragConstraints={viewportRef}
         style={{ x, y }}
+        data-q-mini
         className="pointer-events-auto absolute bottom-6 right-6 cursor-grab select-none active:cursor-grabbing"
       >
         <div

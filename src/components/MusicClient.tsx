@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { motion } from 'motion/react';
 import { MorphIcon } from 'morphicons/react';
 import { SkipBack, Play, Pause, SkipForward, Volume2, VolumeX, Repeat, Repeat1, Shuffle } from '../lib/icons';
-import { initMusic, subscribe, getMusicState, music } from '../lib/musicStore';
+import { initMusic, subscribe, getMusicState, getPristineState, music } from '../lib/musicStore';
 
 function fmt(sec: number) {
   if (!isFinite(sec)) return '0:00';
@@ -14,13 +14,21 @@ function fmt(sec: number) {
 const modeText = { order: '顺序', one: '单曲', random: '随机' } as const;
 
 export default function MusicClient() {
-  const [state, setState] = useState(getMusicState());
+  /* ⚠️ 首帧必须用「未被 restore 还原过」的快照，不能用 getMusicState()。
+     这个组件是 client:load —— 服务端渲染的 HTML 里是默认状态；而 MiniPlayer
+     是 client:only，它会先挂载并 restore()，把 localStorage 里的歌写进模块变量。
+     直接读 getMusicState() 就会拿到已还原的值，与水合时的服务端 HTML 对不上，
+     React 报 hydration mismatch 且**不会修补**（用户上次听的歌就不显示）。
+     真实状态在下面的 effect 里同步。 */
+  const [state, setState] = useState(getPristineState);
   const [tab, setTab] = useState<'lrc' | 'list'>('lrc');
   const [query, setQuery] = useState('');
   const lyricsRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     initMusic();
+    // initMusic 里的 emit() 发生在 subscribe 之前，会漏掉 —— 这里补同步一次
+    setState(getMusicState());
     return subscribe(() => setState(getMusicState()));
   }, []);
 

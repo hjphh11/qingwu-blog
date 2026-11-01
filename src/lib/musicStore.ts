@@ -271,6 +271,24 @@ export function getMusicState() {
   return getState();
 }
 
+/**
+ * 模块求值那一刻的状态快照 —— 也就是**还没被 restore() 还原过**的那份默认值。
+ *
+ * 为什么需要它：MusicClient 是 `client:load`，服务端会先渲染一份 HTML，
+ * 那里面的状态就是这份默认值。但 MiniPlayer 是 `client:only`，它会先挂载并调用
+ * `initMusic()` → `restore()`，把 localStorage 里的歌写进模块变量。
+ * 之后 MusicClient 水合时再 `useState(getMusicState())`，拿到的就是「已还原」的状态，
+ * 与服务端 HTML 对不上 —— React 报 hydration mismatch，而且明确说**不会修补**，
+ * 界面会停在服务端那份（用户上次听的那首歌不显示）。
+ *
+ * 所以首帧必须用这份快照，等水合完成后再同步成真实状态。
+ */
+const PRISTINE_STATE = getState();
+
+export function getPristineState() {
+  return PRISTINE_STATE;
+}
+
 export function audioElement() {
   return getAudio();
 }
