@@ -31,35 +31,28 @@ export default function StatsCard({ articleCount = 0 }: { articleCount?: number 
     setReady(true);
   }, []);
 
-  const row = (
-    Icon: typeof Footprints,
-    label: string,
-    value: number,
-    unit: string,
-  ) => (
-    <div className="flex items-center justify-between border-b border-rose/15 pb-2.5 text-sm last:border-0 last:pb-0">
-      <span className="flex items-center gap-2 text-muted">
-        <MorphIcon icon={Icon} size={16} className="shrink-0" color="currentColor" />
-        {label}
-      </span>
-      <span className="font-display text-lg text-accent tabular-nums">
+  /* 三个数字改成**横排三列**。
+     原来是三行、每行一条分隔线，整张卡 208px —— 右栏五张卡加起来 911px，
+     比 1440×900 的可用高度（772px）还高，于是右栏永远没法跟左栏一样完整吸顶。
+     横排之后同信息量只用 135px（省 73），右栏才装得进一屏。
+     顺序没变，读起来还是「足迹 / 旅人 / 故事」。 */
+  const cell = (Icon: typeof Footprints, label: string, value: number, unit: string) => (
+    <div className="flex flex-col items-center gap-0.5">
+      <MorphIcon icon={Icon} size={15} className="shrink-0 text-crimson/70" color="currentColor" />
+      <span className="font-display text-lg leading-tight text-accent tabular-nums">
         {value}
-        <span className="ml-0.5 text-sm">{unit}</span>
+        <span className="ml-0.5 text-xs">{unit}</span>
       </span>
+      <span className="text-[0.6875rem] leading-tight text-subtle">{label}</span>
     </div>
   );
 
-  // 骨架逐行对应真实行:右侧数值位是 text-lg(28px 行高),左缘原样是一行 text-sm。
-  const skelRow = (key: number) => (
-    <div
-      key={key}
-      className="flex items-center justify-between border-b border-rose/15 pb-2.5 last:border-0 last:pb-0"
-    >
-      <span className="flex items-center gap-2">
-        <Skel className="h-4 w-4 rounded-[5px]" />
-        <Skel className="h-5 w-[4.5rem]" />
-      </span>
-      <Skel className="h-7 w-[3.5rem] rounded-lg" />
+  // 骨架与真实布局一一对应：三列，每列「图标 / 数字 / 标签」
+  const skelCell = (key: number) => (
+    <div key={key} className="flex flex-col items-center gap-1">
+      <Skel className="h-[15px] w-[15px] rounded-[5px]" />
+      <Skel className="h-5 w-8 rounded-md" />
+      <Skel className="h-3 w-12" />
     </div>
   );
 
@@ -69,7 +62,7 @@ export default function StatsCard({ articleCount = 0 }: { articleCount?: number 
       skeleton={
         <>
           <SkelHead className="w-[8.75rem]" />
-          <div className="mt-4 space-y-3">{[0, 1, 2].map(skelRow)}</div>
+          <div className="mt-4 grid grid-cols-3">{[0, 1, 2].map(skelCell)}</div>
         </>
       }
     >
@@ -79,10 +72,10 @@ export default function StatsCard({ articleCount = 0 }: { articleCount?: number 
           悄悄收藏的脚印 <MorphIcon icon={Sparkles} size={14} color="currentColor" />
         </span>
       </div>
-      <div className="mt-4 space-y-3">
-        {row(Footprints, '留下的足迹', visits, '次')}
-        {row(Compass, '来过的旅人', visitors, '位')}
-        {row(BookOpen, '写下的故事', articleCount, '篇')}
+      <div className="mt-4 grid grid-cols-3">
+        {cell(Footprints, '留下的足迹', visits, '次')}
+        {cell(Compass, '来过的旅人', visitors, '位')}
+        {cell(BookOpen, '写下的故事', articleCount, '篇')}
       </div>
     </CardShell>
   );

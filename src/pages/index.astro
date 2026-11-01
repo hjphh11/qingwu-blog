@@ -157,7 +157,7 @@ const catNav = [...categories]
         之前一律 client:only —— 服务端渲染为空,整栏会在 JS 到位后一起弹出来。
         改成 client:load 后它们会参与服务端渲染:先出骨架,数据到位再换成真实
         内容(见 components/home/CardShell.tsx)。TechStackCard 是静态的,不需要壳。 */}
-    <aside class="q-rail reveal flex min-w-0 flex-col gap-4" aria-label="此刻">
+    <aside class="q-rail reveal flex min-w-0 flex-col gap-4 lg:self-start" aria-label="此刻">
       <CurrentTime client:load />
       <VisitorCity client:load />
       <StatsCard articleCount={allPosts.length} client:load />
@@ -248,5 +248,48 @@ const catNav = [...categories]
     document.addEventListener('astro:page-load', initAuthorCard);
     if (document.readyState !== 'loading') initAuthorCard();
     else document.addEventListener('DOMContentLoaded', initAuthorCard, { once: true });
+
+    /*
+     * 右栏「此刻」：装得下才吸顶。CSS 只定义 `.is-stuck` 长什么样，判不判由这里说了算。
+     *
+     * 为什么不用纯 CSS：右栏五张卡合计约 911px，能不能完整停在导航下面取决于
+     * **窗口多高**，CSS 没法自证。之前的写法是 sticky + max-height + 内部滚动，
+     * 在 1440×900 上把最后一张卡切掉一半、栏内还能单独滚 —— 用户原话是
+     * 「更加奇怪，就不能跟旁边对齐吗」。对齐的前提是完整显示。
+     *
+     * 判据只有一条：内容自然高 ≤ 视口 − 导航 − 底部余量 → 吸；否则回到普通文档流。
+     * 矮屏时右栏会跟着页面滚走，但至少不裁、不滚、不错位。
+     */
+    let teardownRail = () => {};
+
+    function initRail() {
+      teardownRail();
+      const rail = document.querySelector<HTMLElement>('.q-rail');
+      if (!rail) return;
+
+      const TOP = 96; // 与 .q-rail.is-stuck 的 top: 6rem 一致，改一处要改另一处
+      const BOTTOM = 16;
+
+      const decide = () => {
+        // aside 一直是 align-self: start，offsetHeight 就是内容自然高（不会被行高撑开）
+        const fits = rail.offsetHeight <= window.innerHeight - TOP - BOTTOM;
+        rail.classList.toggle('is-stuck', fits);
+      };
+
+      decide();
+      window.addEventListener('resize', decide);
+      // 卡片内容是客户端渲染的（时间/定位/统计），高度会变，盯住它
+      const ro = 'ResizeObserver' in window ? new ResizeObserver(decide) : null;
+      ro?.observe(rail);
+
+      teardownRail = () => {
+        window.removeEventListener('resize', decide);
+        ro?.disconnect();
+      };
+    }
+
+    document.addEventListener('astro:page-load', initRail);
+    if (document.readyState !== 'loading') initRail();
+    else document.addEventListener('DOMContentLoaded', initRail, { once: true });
   </script>
 </Layout>

@@ -110,39 +110,22 @@
     background: var(--color-crimson);
   }
 
-  /* —— 首页右栏「此刻」：滚动时吸顶 ——
-     左栏一直是 sticky 的，右栏不是，于是往下滚一段之后右边整片空白、
+  /* —— 首页右栏「此刻」：装得下才吸顶 ——
+     左栏一直是 sticky，右栏不是，于是往下滚一段之后右边整片空白、
      只剩中间一列在动，看着像版面塌了一半。
 
-     ⚠️ 这里不能只写 `position: sticky`。右栏五张卡总高约 1288px，远高于
-     常见视口；sticky 元素高过视口时，超出视口的那截**永远没有机会露出来**
-     （顶部粘住之后它就不再移动），最后两张卡等于消失。
-     所以同时给一个「视口高 − 导航 − 底部余量」的上限，让栏内自己滚 ——
-     内容不足时（大屏）不会出现滚动条，行为和普通 sticky 一样。
-     滚动条做细、做成玫瑰色：它同时也是「下面还有内容」的唯一提示。 */
-  @media (min-width: 1024px) {
-    .q-rail {
-      position: sticky;
-      top: 6rem;
-      align-self: start;
-      max-height: calc(100dvh - 8rem);
-      overflow-y: auto;
-      scrollbar-width: thin;
-      scrollbar-color: rgba(246, 165, 184, 0.75) transparent;
-      /* 给滚动条让出 6px，再用负外边距抵消 —— 右栏的左右边缘一像素都不能挪 */
-      padding-right: 0.375rem;
-      margin-right: -0.375rem;
-    }
-    .q-rail::-webkit-scrollbar {
-      width: 6px;
-    }
-    .q-rail::-webkit-scrollbar-thumb {
-      background: rgba(246, 165, 184, 0.75);
-      border-radius: var(--radius-pill);
-    }
-    .q-rail::-webkit-scrollbar-track {
-      background: transparent;
-    }
+     但右栏五张卡合计约 911px，比 1440×900 的可用高度（视口 − 导航 96 − 余量）
+     还高。这里踩过一次：写死 `sticky + max-height + overflow: auto` 之后，
+     矮一点的屏上右栏被硬裁，「陪你多久」整张卡切一半，而且栏内自己滚 ——
+     比原来的空白更奇怪。用户的原话是「跟旁边对齐」，对齐的前提是**完整显示**。
+
+     所以改成按内容高度决定：
+       · 装得下 → `.is-stuck`（吸顶，整列完整停在导航下面）
+       · 装不下 → 不加类，回到普通文档流，正常跟着页面滚（不裁、不滚）
+     判定在页面脚本里（ResizeObserver + resize），CSS 只负责「吸住是什么样」。 */
+  .q-rail.is-stuck {
+    position: sticky;
+    top: 6rem;
   }
 
   /* —— 卡片里的小标题(关于页「清吾 / 爱弥斯 / 联系 / 刷题」) —— */

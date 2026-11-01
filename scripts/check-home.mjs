@@ -512,33 +512,46 @@ await ctx3.close();
      · 吸顶不引入横向溢出（负外边距 + 滚动条预留那几行最容易出错） */
 // ⚠️ 这里必须新开一个 page：上面的 page 属于 ctx3，ctx3.close() 已经把它带走了
 const railPage = await browser.newPage();
+
+/** 读右栏状态。判据用「内容是否被裁」（scrollHeight > clientHeight）而不是固定高度 ——
+    卡片内容是客户端渲染的，高度会随字体/数据轻微变化。 */
+const readRail = () =>
+  railPage.evaluate(() => {
+    const r = document.querySelector('aside[aria-label="此刻"]');
+    if (!r) return null;
+    const cs = getComputedStyle(r);
+    return {
+      top: Math.round(r.getBoundingClientRect().top),
+      pos: cs.position,
+      content: r.scrollHeight,
+      box: r.clientHeight,
+      clipped: r.scrollHeight > r.clientHeight + 1,
+      overflowX: document.documentElement.scrollWidth - window.innerWidth,
+      lastCard: !!r.lastElementChild,
+    };
+  });
+
+/* ① 1440×900：右栏内容 742px ≤ 可用高度（视口 − 96 − 16 = 788）→ 吸顶，整列完整。
+      ⚠️ 这个数是从 911 压下来的（脚印卡改横排三列、技术栈 chip 收小、间距 16→12）。
+      压之前 911 > 788，右栏根本没法完整停住 —— 硬吸顶会把最后一张卡切一半。 */
 await railPage.setViewport({ width: 1440, height: 900 });
 await railPage.goto(`${BASE}/`, { waitUntil: 'networkidle2', timeout: 60000 });
-await sleep(1000);
+await sleep(1200);
 await railPage.evaluate(() => window.scrollTo(0, 900));
-await sleep(600);
-const rail = await railPage.evaluate(() => {
-  const r = document.querySelector('aside[aria-label="此刻"]');
-  if (!r) return null;
-  const cs = getComputedStyle(r);
-  return {
-    top: Math.round(r.getBoundingClientRect().top),
-    pos: cs.position,
-    content: r.scrollHeight,
-    box: r.clientHeight,
-    canScroll: r.scrollHeight > r.clientHeight + 1,
-    overflowX: document.documentElement.scrollWidth - window.innerWidth,
-    // 最后一张卡还在不在 DOM 里（吸顶别把内容吃掉）
-    lastCard: !!r.lastElementChild,
-  };
-});verdict(rail?.pos === 'sticky', '右栏是 sticky', rail?.pos ?? 'missing');
-verdict(rail?.top === 96, '滚过一屏后右栏仍吸在 top=96', `top=${rail?.top}`);
-verdict(
-  !!rail?.canScroll || (rail?.content ?? 1) <= (rail?.box ?? 0),
-  '右栏内容不会因为吸顶而丢失（可滚 或 装得下）',
-  `内容 ${rail?.content} / 可视 ${rail?.box}`,
-);
-verdict(rail?.overflowX <= 0, '右栏吸顶不引入横向溢出', `越界 ${rail?.overflowX}px`);
+await sleep(500);
+let rail = await readRail();
+verdict(rail?.pos === 'sticky', '900 高屏：装得下 → 右栏吸顶', `position=${rail?.pos}`);
+verdict(rail?.top === 96, '900 高屏：吸在 top=96（与左栏同一条线）', `top=${rail?.top}`);
+verdict(!rail?.clipped, '900 高屏：吸顶后内容完整（一张卡都没切）', `内容 ${rail?.content} / 可视 ${rail?.box}`);
+verdict(rail?.overflowX <= 0, '900 高屏：不引入横向溢出', `越界 ${rail?.overflowX}px`);
+
+/* ② 1440×700：可用 588 < 742 → 不吸顶。矮屏宁可不吸，也不能把卡片裁掉。 */
+await railPage.setViewport({ width: 1440, height: 700 });
+await railPage.goto(`${BASE}/`, { waitUntil: 'networkidle2', timeout: 60000 });
+await sleep(1200);
+rail = await readRail();
+verdict(rail?.pos === 'static', '700 高屏：装不下 → 不吸顶（不裁不滚）', `position=${rail?.pos}`);
+verdict(!rail?.clipped, '700 高屏：右栏内容不被裁', `内容 ${rail?.content} / 可视 ${rail?.box}`);
 verdict(!!rail?.lastCard, '右栏最后一张卡还在（吸顶没吃掉内容）');
 await railPage.close();
 
