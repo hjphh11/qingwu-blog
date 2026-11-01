@@ -123,4 +123,35 @@
       transform: scale(0.985);
     }
   }
+
+  /* ── 文章目录（v6 §7.3）────────────────────────────────────
+     当前项左侧一道 2px 光线。光线落点要对准 ul 那条 border-left，
+     而不是紧贴文字 —— 所以用负 left 把伪元素拽回去：
+       · h2 项：li 没有额外内边距，anchor 距 border 正好 1rem（ul 的 pl-4）
+       · h3 项：li 还有一层 pl-4，anchor 距 border 2rem
+     写成两个绝对值比用 calc 叠加更好读，也免得以后改间距时算错。 */
+  .q-toc__link {
+    position: relative;
+    color: var(--color-muted);
+  }
+
+  .q-toc__link.is-active {
+    color: var(--color-accent);
+  }
+
+  .q-toc__link.is-active::before {
+    content: '';
+    position: absolute;
+    left: -1rem;
+    top: 0;
+    bottom: 0;
+    width: 2px;
+    border-radius: 2px;
+    /* 玫瑰→琥珀的渐变，与站点的光同源；纯色会显得像一条分隔线而不是光 */
+    background: linear-gradient(180deg, var(--color-rose), var(--color-amber));
+  }
+
+  .q-toc__item--sub .q-toc__link.is-active::before {
+    left: -2rem;
+  }
 }

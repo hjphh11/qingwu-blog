@@ -13,7 +13,8 @@
     "lint:tokens": "node scripts/check-tokens.mjs",
     "check:emis": "node scripts/check-emis.mjs",
     "check:companion": "node scripts/check-companion.mjs",
-    "check:home": "node scripts/check-home.mjs"
+    "check:home": "node scripts/check-home.mjs",
+    "check:reading": "node scripts/check-reading.mjs"
   },
   "dependencies": {
     "@astrojs/mdx": "^7.0.8",

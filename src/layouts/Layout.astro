@@ -66,6 +66,18 @@ const url = SITE.url.replace(/\/$/, '') + pathname;
       document.documentElement.classList.add('qjs');
     </script>
 
+    {/* 高对比阅读:在首次绘制之前把类加上,否则开过这个开关的人会先看到
+        一帧低对比、再跳成高对比。默认关,所以只对开过的人生效。 */}
+    <script is:inline>
+      try {
+        if (localStorage.getItem('qingwu:contrast') === '1') {
+          document.documentElement.classList.add('q-contrast');
+        }
+      } catch (e) {
+        /* 隐私模式下读不到,就按默认（关）走 */
+      }
+    </script>
+
     {/* 开屏:在第一次绘制之前就判定这次要不要播,并给 <html> 打标记 ——
         铺奶油幕布、先把首页立绘藏起来、锁住滚动。这三件事必须早于首帧,
         否则会出现「首页已经画出来了 → 开屏层才盖上来」的闪一下。

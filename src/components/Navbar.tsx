@@ -1,6 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { MorphIcon } from 'morphicons/react';
 import { Menu, X } from '../lib/icons';
+import ContrastToggle from './ContrastToggle';
 import {
   motion,
   AnimatePresence,
@@ -182,16 +183,22 @@ export default function Navbar({ pathname = '/' }: Props) {
           })}
         </nav>
 
-        {/* 移动端折叠按钮 → 右侧(移动) */}
-        <button
-          type="button"
-          aria-label="打开菜单"
-          aria-expanded={open}
-          onClick={() => setOpen((v) => !v)}
-          className="relative z-10 grid h-9 w-9 place-items-center rounded-full text-ink transition-colors hover:bg-rose/15 md:hidden"
-        >
-          <MorphIcon icon={open ? X : Menu} size={20} color="currentColor" />
-        </button>
+        {/* 右侧动作区：高对比开关 + 移动端菜单。
+            两个放一个容器里，免得 justify-between 把它们分到两端。 */}
+        <div className="relative z-10 flex shrink-0 items-center gap-1">
+          <ContrastToggle />
+
+          {/* 移动端折叠按钮 → 右侧(移动) */}
+          <button
+            type="button"
+            aria-label="打开菜单"
+            aria-expanded={open}
+            onClick={() => setOpen((v) => !v)}
+            className="relative z-10 grid h-9 w-9 place-items-center rounded-full text-ink transition-colors hover:bg-rose/15 md:hidden"
+          >
+            <MorphIcon icon={open ? X : Menu} size={20} color="currentColor" />
+          </button>
+        </div>
         </div>
       </div>
 

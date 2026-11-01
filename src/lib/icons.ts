@@ -48,4 +48,5 @@ export {
   CircleAlert,
   Info,
   LoaderCircle,
+  Contrast,
 } from 'lucide';
