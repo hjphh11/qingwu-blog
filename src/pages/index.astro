@@ -50,21 +50,27 @@ const catNav = [...categories]
       class="reveal hidden lg:sticky lg:top-24 lg:flex lg:flex-col lg:gap-4 lg:self-start"
       aria-label="关于与分类"
     >
-      <div class="glass-card flex flex-col items-center gap-1.5 p-4 text-center">
-        <picture>
-          <source srcSet="/images/avatar.webp" type="image/webp" />
-          <img
-            src="/images/avatar.jpg"
-            alt="清吾头像"
-            width={48}
-            height={48}
-            decoding="async"
-            class="h-12 w-12 rounded-full object-cover ring-2 ring-white/70"
-          />
-        </picture>
-        <span class="font-hand text-[1.35rem] leading-none text-ink">{profile.name}</span>
-        {/* 简介直接取 about.json 的 tagline，不另写一段 —— 同一份信息两处措辞会打脸 */}
-        <span class="text-xs leading-relaxed text-subtle">{profile.tagline}</span>
+      {/* data-author-card + q-author：吸顶时收起（见页面底部脚本）。
+          导航栏里已经有一个头像 +「清吾」，这一张跟它并排时重复得很明显。
+          ⚠️ padding 放在**内层**：收起靠 max-height: 0，而 padding 不会被 max-height
+          压掉（浏览器保证高度不小于 padding 之和），放外层会残留 32px。 */}
+      <div data-author-card class="q-author glass-card">
+        <div class="flex flex-col items-center gap-1.5 p-4 text-center">
+          <picture>
+            <source srcSet="/images/avatar.webp" type="image/webp" />
+            <img
+              src="/images/avatar.jpg"
+              alt="清吾头像"
+              width={48}
+              height={48}
+              decoding="async"
+              class="h-12 w-12 rounded-full object-cover ring-2 ring-white/70"
+            />
+          </picture>
+          <span class="font-hand text-[1.35rem] leading-none text-ink">{profile.name}</span>
+          {/* 简介直接取 about.json 的 tagline，不另写一段 —— 同一份信息两处措辞会打脸 */}
+          <span class="text-xs leading-relaxed text-subtle">{profile.tagline}</span>
+        </div>
       </div>
 
       <div class="glass-card p-1.5">
@@ -153,4 +159,88 @@ const catNav = [...categories]
       <UptimeCard client:load />
     </aside>
   </div>
+
+  <script>
+    /*
+     * 左栏作者卡：吸顶时收起，回顶部时展开。
+     *
+     * 为什么需要脚本：`position: sticky` 是否「已经粘住」在 CSS 里无法自证
+     * （除非用 animation-timeline，兼容性还不够）。所以只能比较几何：
+     * 卡片 sticky 的落点是 top-24 = 96px，**粘住之后 rect.top 恒等于 96**，
+     * 而还没粘住时它一定大于 96 —— 这一条判据既准又不需要知道 Hero 多高。
+     *
+     * 为什么按 rect.top 而不是 scrollY 阈值：Hero 的高度随视口变化，
+     * 写死一个 scrollY 数字在 900 高和 1200 高的屏上会差出上百像素。
+     *
+     * 与其它页面级脚本同样的模板（模块脚本首屏只跑一次，ClientRouter 换 body 后不重跑）：
+     * teardown + init + 监听 astro:page-load + DOM 就绪也跑一次。
+     */
+    const STICK_TOP = 96; // 与 aside 的 lg:top-24 一致，改一处要改另一处
+  
+    let teardownAuthor = () => {};
+  
+    function initAuthorCard() {
+      teardownAuthor();
+  
+    const card = document.querySelector<HTMLElement>('[data-author-card]');
+    if (!card) return;
+    // 诊断用：确认脚本真的跑到了这一步（与站内其它脚本一致的 __q* 标记习惯）
+    (window as unknown as Record<string, unknown>).__qAuthor = true;
+  
+      let settleRaf = 0;
+    let settleUntil = 0;
+    let collapsed = false;
+
+    const update = () => {
+      const top = card.getBoundingClientRect().top;
+      /* 判据是「真的粘住了」：sticky 落点就是 96，粘住后 top 恒等于 96。
+         收起阈值给 +1（亚像素容差），展开阈值给 +20 —— 收起后卡片带
+         translateY(-10px)，top 会变成 86，滞回必须大于这 10px，
+         否则会在边缘反复收展。
+         另外别写成 `collapsed ? top > B : top <= A`：那样算的是「另一个状态」的条件，
+         结果正好相反（吸顶时来回抖、回顶部反而收起）。 */
+      let next = collapsed;
+      if (top <= STICK_TOP + 1) next = true;
+      else if (top > STICK_TOP + 20) next = false;
+
+      if (next === collapsed) return;
+      collapsed = next;
+      card.classList.toggle('is-collapsed', next);
+      // 收起/展开改变左栏高度，读屏与键盘用户需要知道这块内容还在
+      card.setAttribute('aria-hidden', next ? 'true' : 'false');
+    };
+
+    /* ⚠️ 为什么不是「scroll 里跑一次 rAF」：
+       实测一次滚轮到位的滚动只派发 1 个 scroll 事件，而且**滚动结束后不再有事件**。
+       于是最后一次采样停在中间位置（99），位置落到 96 时没人再看一眼 ——
+       状态就卡住了。所以滚动后再持续追 400ms，直到位置稳定。
+       每帧只读一次 rect，页面元素不多，代价可忽略。 */
+    const settle = () => {
+      update();
+      if (performance.now() < settleUntil) settleRaf = requestAnimationFrame(settle);
+      else settleRaf = 0;
+    };
+
+    const onScroll = () => {
+      settleUntil = performance.now() + 400;
+      if (!settleRaf) settleRaf = requestAnimationFrame(settle);
+    };
+
+    window.addEventListener('scroll', onScroll, { passive: true });
+    window.addEventListener('scrollend', onScroll, { passive: true });
+    window.addEventListener('resize', onScroll);
+    update(); // 刷新后停在中间位置时也要有正确状态
+
+    teardownAuthor = () => {
+      window.removeEventListener('scroll', onScroll);
+      window.removeEventListener('scrollend', onScroll);
+      window.removeEventListener('resize', onScroll);
+      if (settleRaf) cancelAnimationFrame(settleRaf);
+    };
+    }
+  
+    document.addEventListener('astro:page-load', initAuthorCard);
+    if (document.readyState !== 'loading') initAuthorCard();
+    else document.addEventListener('DOMContentLoaded', initAuthorCard, { once: true });
+  </script>
 </Layout>

@@ -201,4 +201,36 @@
     transform-origin: 50% 100%;
     will-change: transform;
   }
+  /* ── 首页左栏「作者卡」：吸顶时收起 ────────────────────────────
+     吸顶之后它和导航栏里的头像 + 「清吾」并排，同一个头像出现两次很扎眼。
+     收起方向朝上（负 translateY + 略缩），读起来像「缩进导航栏」，而不是原地消失。
+     max-height 取接近真实高度（约 10.5rem）：给太大（比如 20rem）时前半段过渡是空转，
+     看起来像卡了一下才开始收。
+     ⚠️ 是否「已经粘住」由脚本判（比较 rect.top 与 top-24），CSS 看不出来。 */
+  .q-author {
+    overflow: hidden;
+    max-height: 10.5rem;
+    transform-origin: 50% 0;
+    transition:
+      max-height var(--dur-state) var(--ease-soft),
+      opacity var(--dur-state) var(--ease-soft),
+      transform var(--dur-state) var(--ease-soft),
+      /* 左栏是 gap-4（16px），收起后要把它一起抵消，否则还留一道空档 */
+      margin-bottom var(--dur-state) var(--ease-soft);
+  }
+
+  .q-author.is-collapsed {
+    max-height: 0;
+    margin-bottom: -1rem;
+    opacity: 0;
+    transform: translateY(-10px) scale(0.94);
+    pointer-events: none;
+  }
+
+  /* 减动效：不做过渡，但仍然要收起 —— 否则「两个头像」这个问题原样存在 */
+  @media (prefers-reduced-motion: reduce) {
+    .q-author {
+      transition: none;
+    }
+  }
 }

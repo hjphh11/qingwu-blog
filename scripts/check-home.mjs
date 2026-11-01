@@ -258,6 +258,45 @@ verdict(
 );
 
 
+/* ── 左栏作者卡：吸顶收起 / 回顶展开 ──────────────────────
+   导航栏里已经有一个头像 +「清吾」，左栏这张跟它同屏时重复得很明显。
+   规则：左栏粘住（sticky 到 top-24）时收起，回到顶部再展开。 */
+console.log('\n【作者卡收起】');
+const authorState = () =>
+  page.evaluate(() => {
+    const c = document.querySelector('[data-author-card]');
+    if (!c) return null;
+    return {
+      collapsed: c.classList.contains('is-collapsed'),
+      h: Math.round(c.getBoundingClientRect().height),
+      top: Math.round(c.getBoundingClientRect().top),
+      wired: window.__qAuthor === true,
+    };
+  });
+
+verdict((await page.evaluate(() => window.__qAuthor === true)), '作者卡脚本已接线（__qAuthor）');
+
+await page.evaluate(() => window.scrollTo(0, 0));
+await sleep(700);
+const aTop = await authorState();
+verdict(aTop && !aTop.collapsed && aTop.h > 100, '顶部：作者卡展开', `h=${aTop?.h} collapsed=${aTop?.collapsed}`);
+
+// 逐档滚到吸顶（800 处测过是粘住的位置），中间位置不该提前收起
+await page.evaluate(() => window.scrollTo(0, 700));
+await sleep(700);
+const aMid = await authorState();
+verdict(aMid && !aMid.collapsed, '未吸顶时（y=700）仍展开', `top=${aMid?.top} collapsed=${aMid?.collapsed}`);
+
+await page.evaluate(() => window.scrollTo(0, 900));
+await sleep(800);
+const aStuck = await authorState();
+verdict(aStuck && aStuck.collapsed && aStuck.h <= 4, '吸顶后收起（不再有两个头像同屏）', `h=${aStuck?.h} collapsed=${aStuck?.collapsed}`);
+
+await page.evaluate(() => window.scrollTo(0, 0));
+await sleep(800);
+const aBack = await authorState();
+verdict(aBack && !aBack.collapsed && aBack.h > 100, '回到顶部重新展开', `h=${aBack?.h} collapsed=${aBack?.collapsed}`);
+
 /* ── 左栏分类链接真的会筛选 ───────────────────────────────
    首页左栏是「按分类看」，点了要落到筛选后的列表，否则就是个假入口。 */
 await page.setViewport({ width: 1440, height: 900 });
