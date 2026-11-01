@@ -10,7 +10,8 @@
     "preview": "astro preview",
     "check": "astro check",
     "fonts": "python scripts/subset-fonts.py",
-    "lint:tokens": "node scripts/check-tokens.mjs"
+    "lint:tokens": "node scripts/check-tokens.mjs",
+    "check:emis": "node scripts/check-emis.mjs"
   },
   "dependencies": {
     "@astrojs/mdx": "^7.0.8",

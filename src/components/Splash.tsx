@@ -219,6 +219,12 @@ export default function Splash({ dur = 2000, text = GREET, reveal = 'flip' }: Pr
       mark('hidden');
       root.classList.remove('q-splash-running');
       setShow(false);
+      /* 广播「开屏结束」。
+         这是首页立绘启用 2.5D 活化的门禁：开屏用 getBoundingClientRect() 量
+         [data-emis-hero] 的落点，而那个矩形**包含 transform** —— 呼吸/微摆/视线跟随
+         只要提前跑，FLIP 归位就会落偏。所以 Hero 必须等到这一声才开始动。
+         没播开屏（第二次访问 / 非首页）时 Hero 自己看 .q-splash-pending 判断，不依赖此事件。 */
+      window.dispatchEvent(new CustomEvent('qingwu:splash-done'));
     };
     // 硬兜底:接管之后 Layout 的 5 秒兜底就交班了,这里必须自己保证「幕布一定会被收掉」。
     // 正常路径在 dur 时刻收尾;dur 很小时 moveAt 有 300ms 下限、收尾会晚于 dur,
