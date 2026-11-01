@@ -364,6 +364,71 @@ verdict(
   mob.links.join(' '),
 );
 
+/* ── 指示胶囊跟随当前项 ────────────────────────────────────
+   踩过：为了让下拉有定位上下文，给每个导航项外面包了一层 <div class="relative">，
+   于是 a.offsetLeft 全部变成 0 —— 胶囊永远停在第一项上（切到「音乐」时文字红了、
+   粉底还留在「首页」），而 offsetWidth 不受影响，所以只错位置不错大小，肉眼很容易略过。
+   这里同时卡「位置」与「宽度」，两者都要落在当前项上。 */
+console.log('\n【导航胶囊】');
+await page.setViewport({ width: 1440, height: 900 });
+await page.goto(`${BASE}/`, { waitUntil: 'networkidle2', timeout: 60000 });
+await sleep(4600); // 首页开屏，幕布会挡住鼠标
+
+const pillSnap = () =>
+  page.evaluate(() => {
+    const nav = document.querySelector('header nav');
+    const pill = nav?.querySelector('div[aria-hidden="true"] > div');
+    if (!nav || !pill) return null;
+    const pr = pill.getBoundingClientRect();
+    const nr = nav.getBoundingClientRect();
+    const items = Array.from(nav.querySelectorAll('a')).filter((a) => !a.closest('[role="menu"]'));
+    // 用 computed color 判激活：className 里含 hover:text-crimson，字符串匹配会误命中
+    const act = items.find((a) => getComputedStyle(a).color === 'rgb(194, 58, 85)');
+    const ar = act?.getBoundingClientRect();
+    return {
+      path: location.pathname,
+      activeLabel: act ? (act.textContent || '').trim().slice(0, 4) : null,
+      pillLeft: Math.round(pr.left - nr.left),
+      pillW: Math.round(pr.width),
+      itemLeft: ar ? Math.round(ar.left - nr.left) : null,
+      itemW: ar ? Math.round(ar.width) : null,
+    };
+  });
+
+const basePill = await pillSnap();
+verdict(
+  !!basePill && basePill.pillW > 20 && Math.abs(basePill.pillLeft - basePill.itemLeft) <= 2,
+  '首页：胶囊落在「首页」上且量得到宽度',
+  basePill ? `pill ${basePill.pillLeft}/${basePill.pillW}` : '未取到',
+);
+
+for (const [label, href] of [
+  ['音乐', '/music'],
+  ['友链', '/links'],
+  ['文章', '/blog'],
+]) {
+  await page.evaluate((l) => {
+    const a = Array.from(document.querySelectorAll('header nav a')).find((x) =>
+      (x.textContent || '').trim().startsWith(l),
+    );
+    a?.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, view: window }));
+  }, label);
+  await sleep(1500);
+  const snap = await pillSnap();
+  verdict(
+    !!snap &&
+      // Astro 的静态路由带尾斜杠（/music/），比较前统一去掉
+      snap.path.replace(/\/$/, '') === href &&
+      snap.activeLabel === label &&
+      Math.abs(snap.pillLeft - snap.itemLeft) <= 2 &&
+      Math.abs(snap.pillW - snap.itemW) <= 2,
+    `路由切到「${label}」后胶囊跟过去`,
+    snap
+      ? `path=${snap.path} 激活=${snap.activeLabel} pill ${snap.pillLeft}/${snap.pillW} vs 项 ${snap.itemLeft}/${snap.itemW}`
+      : '未取到',
+  );
+}
+
 /* ── 404 ──────────────────────────────────────────────── */
 console.log('\n【404】');
 await page.goto(`${BASE}/404.html`, { waitUntil: 'networkidle2', timeout: 60000 });

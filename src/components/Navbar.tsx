@@ -61,6 +61,26 @@ export default function Navbar({ pathname = '/' }: Props) {
   const [openGroup, setOpenGroup] = useState<string | null>(null);
 
   const itemRefs = useRef<(HTMLAnchorElement | null)[]>([]);
+  /** 量位置要以 nav 为原点，不能用 offsetLeft —— 原因见 measure() */
+  const navRef = useRef<HTMLElement>(null);
+
+  /**
+   * 量某个导航项相对 nav 的左缘与宽度（= 指示胶囊该待的位置）。
+   *
+   * ⚠️ 这里**不能用 `el.offsetLeft`**。offsetLeft 是相对「最近的定位祖先」
+   * 计算的，而为了让下拉面板有定位上下文，每个导航项外面都包了一层
+   * `<div class="relative">` —— 于是每一项的 offsetLeft 都变成 0，
+   * 胶囊就永远停在第一项上（切到「音乐」时文字红了、背景还留在「首页」）。
+   * 宽度用 offsetWidth 时不受影响，所以只错位置、不错大小，很容易看漏。
+   * 改成「两者 getBoundingClientRect 相减」：与定位上下文无关，也天然免疫滚动。
+   */
+  const measure = (el: HTMLAnchorElement | null) => {
+    const nav = navRef.current;
+    if (!el || !nav) return { left: 0, width: 0 };
+    const er = el.getBoundingClientRect();
+    const nr = nav.getBoundingClientRect();
+    return { left: er.left - nr.left, width: er.width };
+  };
 
   useMotionValueEvent(scrollY, 'change', (latest) => {
     setScrolled(latest > 80);
@@ -87,22 +107,20 @@ export default function Navbar({ pathname = '/' }: Props) {
     : ({ type: 'spring', stiffness: 300, damping: 24 } as const);
 
   useLayoutEffect(() => {
-    const cur = itemRefs.current[activeIdx];
-    const curLeft = cur?.offsetLeft ?? 0;
-    const curW = cur?.offsetWidth ?? 0;
+    const cur = measure(itemRefs.current[activeIdx]);
     // 上次挂载记录的激活项 = 上一个来源;有且和当前不同时,从它滑到当前;否则直接落到当前项
     const prev =
       lastActiveIdx >= 0 && lastActiveIdx !== activeIdx
-        ? itemRefs.current[lastActiveIdx]
+        ? measure(itemRefs.current[lastActiveIdx])
         : null;
     if (reduce || !prev) {
-      x.set(curLeft);
-      w.set(curW);
+      x.set(cur.left);
+      w.set(cur.width);
     } else {
-      x.set(prev.offsetLeft);
-      w.set(prev.offsetWidth);
-      animate(x, curLeft, spring);
-      animate(w, curW, spring);
+      x.set(prev.left);
+      w.set(prev.width);
+      animate(x, cur.left, spring);
+      animate(w, cur.width, spring);
     }
     lastActiveIdx = activeIdx;
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -110,11 +128,9 @@ export default function Navbar({ pathname = '/' }: Props) {
 
   useEffect(() => {
     const onResize = () => {
-      const cur = itemRefs.current[activeIdx];
-      if (cur) {
-        x.set(cur.offsetLeft);
-        w.set(cur.offsetWidth);
-      }
+      const cur = measure(itemRefs.current[activeIdx]);
+      x.set(cur.left);
+      w.set(cur.width);
     };
     window.addEventListener('resize', onResize);
     return () => window.removeEventListener('resize', onResize);
@@ -202,7 +218,7 @@ export default function Navbar({ pathname = '/' }: Props) {
         </a>
 
         {/* 导航项 → 右侧(桌面) · 透明玻璃胶囊滑动指示 */}
-        <nav className="relative z-10 hidden items-center gap-1 md:flex">
+        <nav ref={navRef} className="relative z-10 hidden items-center gap-1 md:flex">
           {/* 指示层:透明玻璃胶囊(叠在菜单项之后),随弹簧滑动到当前页 */}
           <div className="pointer-events-none absolute inset-0" aria-hidden="true">
             <motion.div
