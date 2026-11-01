@@ -12,7 +12,8 @@
     "fonts": "python scripts/subset-fonts.py",
     "lint:tokens": "node scripts/check-tokens.mjs",
     "check:emis": "node scripts/check-emis.mjs",
-    "check:companion": "node scripts/check-companion.mjs"
+    "check:companion": "node scripts/check-companion.mjs",
+    "check:home": "node scripts/check-home.mjs"
   },
   "dependencies": {
     "@astrojs/mdx": "^7.0.8",
