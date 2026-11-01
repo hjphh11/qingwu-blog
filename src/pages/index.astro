@@ -157,7 +157,7 @@ const catNav = [...categories]
         之前一律 client:only —— 服务端渲染为空,整栏会在 JS 到位后一起弹出来。
         改成 client:load 后它们会参与服务端渲染:先出骨架,数据到位再换成真实
         内容(见 components/home/CardShell.tsx)。TechStackCard 是静态的,不需要壳。 */}
-    <aside class="reveal flex min-w-0 flex-col gap-4" aria-label="此刻">
+    <aside class="q-rail reveal flex min-w-0 flex-col gap-4" aria-label="此刻">
       <CurrentTime client:load />
       <VisitorCity client:load />
       <StatsCard articleCount={allPosts.length} client:load />

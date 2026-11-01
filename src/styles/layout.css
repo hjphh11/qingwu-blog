@@ -110,6 +110,41 @@
     background: var(--color-crimson);
   }
 
+  /* —— 首页右栏「此刻」：滚动时吸顶 ——
+     左栏一直是 sticky 的，右栏不是，于是往下滚一段之后右边整片空白、
+     只剩中间一列在动，看着像版面塌了一半。
+
+     ⚠️ 这里不能只写 `position: sticky`。右栏五张卡总高约 1288px，远高于
+     常见视口；sticky 元素高过视口时，超出视口的那截**永远没有机会露出来**
+     （顶部粘住之后它就不再移动），最后两张卡等于消失。
+     所以同时给一个「视口高 − 导航 − 底部余量」的上限，让栏内自己滚 ——
+     内容不足时（大屏）不会出现滚动条，行为和普通 sticky 一样。
+     滚动条做细、做成玫瑰色：它同时也是「下面还有内容」的唯一提示。 */
+  @media (min-width: 1024px) {
+    .q-rail {
+      position: sticky;
+      top: 6rem;
+      align-self: start;
+      max-height: calc(100dvh - 8rem);
+      overflow-y: auto;
+      scrollbar-width: thin;
+      scrollbar-color: rgba(246, 165, 184, 0.75) transparent;
+      /* 给滚动条让出 6px，再用负外边距抵消 —— 右栏的左右边缘一像素都不能挪 */
+      padding-right: 0.375rem;
+      margin-right: -0.375rem;
+    }
+    .q-rail::-webkit-scrollbar {
+      width: 6px;
+    }
+    .q-rail::-webkit-scrollbar-thumb {
+      background: rgba(246, 165, 184, 0.75);
+      border-radius: var(--radius-pill);
+    }
+    .q-rail::-webkit-scrollbar-track {
+      background: transparent;
+    }
+  }
+
   /* —— 卡片里的小标题(关于页「清吾 / 爱弥斯 / 联系 / 刷题」) —— */
   .card-head {
     font-family: var(--font-display);
@@ -119,8 +154,7 @@
   }
 
   .glass-card {
-    border-radius: var(--radius-card);
-    background: rgba(255, 255, 255, 0.55);
+    border-radius: var(--radius-card);    background: rgba(255, 255, 255, 0.55);
     border: 1px solid rgba(255, 255, 255, 0.7);
     /* 只写标准写法:前缀交给构建的 Lightning CSS 按目标浏览器补。
        (自己手写 -webkit- 前缀反而会被压缩器当成重复声明、把标准写法丢掉,

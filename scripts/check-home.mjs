@@ -394,14 +394,24 @@ if (ctrl) {
     const aside = document.querySelector('aside[aria-label="关于与分类"]');
     aside.querySelector('button[aria-label="播放"]')?.click();
   });
-  await sleep(1500);
-  const playing = await page.evaluate(() => {
-    const aside = document.querySelector('aside[aria-label="关于与分类"]');
-    return {
-      label: aside.querySelector('button[aria-label="暂停"], button[aria-label="播放"]')?.getAttribute('aria-label'),
-      title: (aside.querySelector('[data-music-title]')?.textContent || '').trim(),
-    };
-  });
+  /* 轮询而不是固定 sleep：音频在对象存储上，play() 的 promise 要等数据到位才 resolve，
+     慢的时候 1.5s 根本不够 —— 用固定等待会时不时报一次假失败（实测踩过两次）。
+     最多等 8s，一变「暂停」就算过。 */
+  const readCtl = () =>
+    page.evaluate(() => {
+      const aside = document.querySelector('aside[aria-label="关于与分类"]');
+      return {
+        label: aside
+          .querySelector('button[aria-label="暂停"], button[aria-label="播放"]')
+          ?.getAttribute('aria-label'),
+        title: (aside.querySelector('[data-music-title]')?.textContent || '').trim(),
+      };
+    });
+  let playing = await readCtl();
+  for (let i = 0; i < 16 && playing.label !== '暂停'; i++) {
+    await sleep(500);
+    playing = await readCtl();
+  }
   verdict(playing.label === '暂停', '点播放后按钮变成「暂停」', `aria-label=${playing.label}`);
 
   // 下一首：曲名应变化（13 首循环，第 1 首的下一首必然不同）
@@ -491,6 +501,46 @@ if (catLink) {
 }
 
 await ctx3.close();
+
+/* ── 右栏吸顶 ────────────────────────────────────────────────
+   左栏一直是 sticky、右栏不是，于是滚过一屏之后右边整片空白、只剩中间一列在动。
+   修的时候有个坑：右栏五张卡总高约 911px，比 1440×900 的视口还高，
+   只写 position: sticky 的话超出视口的那截永远没机会露出来（最后一张卡等于消失）。
+   所以判据不是「高度 = 视口」，而是三条：
+     · 滚过一屏后 rect.top 仍等于 96（真的吸住了）
+     · 内容没丢：要么内部可滚（scrollHeight > clientHeight），要么整栏装得下
+     · 吸顶不引入横向溢出（负外边距 + 滚动条预留那几行最容易出错） */
+// ⚠️ 这里必须新开一个 page：上面的 page 属于 ctx3，ctx3.close() 已经把它带走了
+const railPage = await browser.newPage();
+await railPage.setViewport({ width: 1440, height: 900 });
+await railPage.goto(`${BASE}/`, { waitUntil: 'networkidle2', timeout: 60000 });
+await sleep(1000);
+await railPage.evaluate(() => window.scrollTo(0, 900));
+await sleep(600);
+const rail = await railPage.evaluate(() => {
+  const r = document.querySelector('aside[aria-label="此刻"]');
+  if (!r) return null;
+  const cs = getComputedStyle(r);
+  return {
+    top: Math.round(r.getBoundingClientRect().top),
+    pos: cs.position,
+    content: r.scrollHeight,
+    box: r.clientHeight,
+    canScroll: r.scrollHeight > r.clientHeight + 1,
+    overflowX: document.documentElement.scrollWidth - window.innerWidth,
+    // 最后一张卡还在不在 DOM 里（吸顶别把内容吃掉）
+    lastCard: !!r.lastElementChild,
+  };
+});verdict(rail?.pos === 'sticky', '右栏是 sticky', rail?.pos ?? 'missing');
+verdict(rail?.top === 96, '滚过一屏后右栏仍吸在 top=96', `top=${rail?.top}`);
+verdict(
+  !!rail?.canScroll || (rail?.content ?? 1) <= (rail?.box ?? 0),
+  '右栏内容不会因为吸顶而丢失（可滚 或 装得下）',
+  `内容 ${rail?.content} / 可视 ${rail?.box}`,
+);
+verdict(rail?.overflowX <= 0, '右栏吸顶不引入横向溢出', `越界 ${rail?.overflowX}px`);
+verdict(!!rail?.lastCard, '右栏最后一张卡还在（吸顶没吃掉内容）');
+await railPage.close();
 
 console.log(`\n合计失败 ${failed} 项`);
 await browser.close();
