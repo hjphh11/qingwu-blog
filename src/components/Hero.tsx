@@ -4,8 +4,17 @@ import { motion, useReducedMotion, useScroll, useTransform } from 'motion/react'
 
 const GREETING = '欢迎来到清吾的小屋';
 const CHARS = Array.from(GREETING);
-const CELL = 92;
-const CELL_H = CELL + 12;
+/**
+ * 按语义断成两行：「欢迎来到」/「清吾的小屋」。
+ *
+ * ⚠️ 不要在 JSX 里用 `flex-wrap` 让它自己折 —— 之前就是那样，格子固定 92px，
+ * 窄屏会散成 3+3+3（390）甚至 2+2+2+2+1（320，最后那个「到」孤零零一行，
+ * 整块标题吃掉 552px 高）。行数一旦交给浏览器自由折，小屏必然碎。
+ * 这里把行固定下来，尺寸交给 CSS 的 `--greet-cell` 随视口收缩（见 effects.css 的 .q-greet）。
+ */
+const GREET_LINES = [CHARS.slice(0, 4), CHARS.slice(4)];
+/** 取不到实测尺寸时的兜底（理论上不会发生，CSS 一定给了宽度） */
+const CELL_FALLBACK = 92;
 
 // 副标文案,按「 · 」切成三段,供逐词模糊浮现。
 const SUBTITLE_PARTS = '写技术 · 记生活 · 一个温馨二次元的小角落'.split('·').map((s) => s.trim());
@@ -18,7 +27,8 @@ function paintStatic(container: HTMLElement) {
   cells.forEach((cell, i) => {
     cell.textContent = '';
     const span = document.createElement('span');
-    span.className = 'font-hand text-[88px] leading-none text-ink';
+    // 字号跟着格子走（见 effects.css 的 .q-greet__char）——写死 88px 在窄屏会撑破格子
+    span.className = 'q-greet__char font-hand';
     span.textContent = CHARS[i] ?? '';
     cell.appendChild(span);
   });
@@ -55,6 +65,16 @@ export default function Hero() {
     const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
     let cancelled = false;
 
+    /* 格子尺寸由 CSS 的 --greet-cell 决定（随视口收缩），这里量一次真值交给 HanziWriter。
+       它的 svg 带固定 width/height，量错会让笔迹越出格子。
+       刻意不监听 resize 重建：svg 上有 100% 的 CSS 兜底（viewBox 会跟着缩放），
+       重建反而会把已经写好的字清空。 */
+    const cellBox = cells[0].getBoundingClientRect();
+    const cellW = Math.round(cellBox.width) || CELL_FALLBACK;
+    const cellH = Math.round(cellBox.height) || Math.round((cellW * 104) / 92);
+    // padding 原来是固定 4px，小屏格子只有 50px 时它会吃掉太多笔画空间
+    const cellPad = Math.max(2, Math.round(cellW * 0.043));
+
     const loadData = (
       char: string,
       onLoad: (data: any) => void,
@@ -81,9 +101,9 @@ export default function Hero() {
       // 只往**已经存在**的格子里作画 —— 不再 appendChild,
       // 所以首屏这十几秒里容器高度一动不动,副标题不会再被顶上顶下。
       const writer = HanziWriter.create(cells[index], CHARS[index], {
-        width: CELL,
-        height: CELL_H,
-        padding: 4,
+        width: cellW,
+        height: cellH,
+        padding: cellPad,
         delayBetweenStrokes: 30,
         strokeAnimationSpeed: 3,
         strokeFadeDuration: 150,
@@ -204,20 +224,29 @@ export default function Hero() {
       className="relative flex min-h-[min(88svh,44rem)] items-stretch px-6 pb-16 pt-24 sm:pt-28"
     >
       <div className="mx-auto flex w-full max-w-[var(--shell-max)] flex-col items-center gap-8 md:flex-row md:items-start md:justify-between md:gap-12">
-        {/* 左:大号笔顺问候,顶到左上角 */}
-        <div className="order-2 flex w-full max-w-[680px] flex-1 flex-col md:order-1 md:self-start">
+        {/* 左:大号笔顺问候,顶到左上角。
+            `q-greet-host` 建立 inline-size 容器（effects.css）——笔顺格子的宽度要按
+            **这一列实际有多宽**算，不是按视口算：md 区间右侧立绘固定占 338–374px，
+            按视口算式会算出 5 个 92px 的格子，把立绘挤出视口（实测 768 溢出 138px）。 */}
+        <div className="q-greet-host order-2 flex w-full min-w-0 max-w-[680px] flex-1 flex-col md:order-1 md:self-start">
           {/* 首页原本没有任何 h1(笔顺问候是 canvas,不是文本节点),
               屏幕阅读器和 SEO 都拿不到页面主标题。这里补一个视觉隐藏的 h1。 */}
           <h1 className="sr-only">欢迎来到清吾的小屋 · 清吾的个人博客</h1>
-          <div ref={greetingRef} className="flex flex-wrap gap-2" aria-hidden="true">
-            {/* 「先占位,再作画」:格子在这里(服务端)一次渲染好,容器高度从第一帧
-                起就是最终高度;后面逐字作画只在**已有格子**里落笔。
-                之前是「一个字画完才 appendChild 下一个」,首屏十几秒里副标题被顶上
-                顶下三次(+104 / +112 / −44px)。
-                ⚠️ 格子归 React 管,JS 只能改它们的**内容**(HanziWriter 的 svg /
-                静态字),不要增删格子本身。 */}
-            {CHARS.map((_, i) => (
-              <div key={i} className="char-cell" style={{ width: CELL, height: CELL_H }} />
+          {/* 「先占位,再作画」:格子在这里(服务端)一次渲染好,容器高度从第一帧
+              起就是最终高度;后面逐字作画只在**已有格子**里落笔。
+              之前是「一个字画完才 appendChild 下一个」,首屏十几秒里副标题被顶上
+              顶下三次(+104 / +112 / −44px)。
+              ⚠️ 格子归 React 管,JS 只能改它们的**内容**(HanziWriter 的 svg /
+              静态字),不要增删格子本身。
+              ⚠️ 两行是**固定**的(GREET_LINES),尺寸由 CSS --greet-cell 收缩 ——
+              格子宽度不再写死在这里,否则窄屏会被浏览器折成 2+2+2+2+1。 */}
+          <div ref={greetingRef} className="q-greet" aria-hidden="true">
+            {GREET_LINES.map((line, li) => (
+              <div key={li} className="q-greet__line">
+                {line.map((ch, i) => (
+                  <div key={`${li}-${i}`} className="char-cell" />
+                ))}
+              </div>
             ))}
           </div>
           {/* 逐字写完要十几秒,给急性子一个「直接看完整版」的出口。
@@ -234,40 +263,26 @@ export default function Hero() {
               跳过笔顺动画
             </button>
           )}
-          {/* 副标:逐词模糊浮现(借鉴 MotionVault「blur-fade-in」,MIT,按爱弥斯暖色重写) */}
-          <p className="mt-7 text-base leading-relaxed text-subtle">
-            {reduce ? (
-              SUBTITLE_PARTS.join(' · ')
-            ) : (
-              <motion.span
-                className="inline-flex flex-wrap items-center"
-                initial="hidden"
-                animate="show"
-                variants={{
-                  hidden: {},
-                  show: { transition: { staggerChildren: 0.14, delayChildren: 0.5 } },
-                }}
-              >
-                {SUBTITLE_PARTS.map((part, i) => (
-                  <span key={i} className="inline-flex items-center">
-                    {i > 0 && <span className="mx-2 text-crimson/70" aria-hidden="true">·</span>}
-                    <motion.span
-                      variants={{
-                        hidden: { opacity: 0, filter: 'blur(8px)', y: 8 },
-                        show: {
-                          opacity: 1,
-                          filter: 'blur(0px)',
-                          y: 0,
-                          transition: { duration: 0.7, ease: [0.16, 1, 0.3, 1] },
-                        },
-                      }}
-                    >
-                      {part}
-                    </motion.span>
+          {/* 副标：逐词浮现。
+              ⚠️ 这里原来用 motion 的 variants（opacity + blur + y，delayChildren 0.5 /
+              stagger 0.14 / duration 0.7）。问题不是「好不好看」，而是**它把首屏
+              LCP 拖到了 8.3 秒**：这些词要等 React 水合才变可见，在「4G + 4× CPU 降速」
+              下总共 6 秒起步；而且 filter: blur() 每帧都要重绘，低端机上更慢。
+              实测首页 LCP：motion 版 8304ms（LCP 元素就是最后那个词），CSS 版 2.0s。
+              现在改成纯 CSS 动画：由 Layout 在首帧前加的 .qjs 驱动，SSR 出来就能播，
+              不等水合；去掉 blur（只留位移 + 透明度），观感几乎一样但代价小一个量级。
+              每个词的间隔用内联 animation-delay，服务端就能算好。 */}
+          <p className="q-sub mt-7 text-base leading-relaxed text-subtle">
+            {SUBTITLE_PARTS.map((part, i) => (
+              <span key={i} className="q-sub__part" style={{ animationDelay: `${0.12 + i * 0.08}s` }}>
+                {i > 0 && (
+                  <span className="q-sub__sep mx-2 text-crimson/70" aria-hidden="true">
+                    ·
                   </span>
-                ))}
-              </motion.span>
-            )}
+                )}
+                {part}
+              </span>
+            ))}
           </p>
         </div>
 

@@ -298,6 +298,89 @@
     opacity: 0;
   }
 
+  /* ── 首页笔顺问候的格子 ─────────────────────────────────────────
+     两行固定（4 + 5，见 Hero.tsx 的 GREET_LINES），宽度随**这一列的实际宽度**收缩。
+     之前是 92px 写死在 JS 里、再让 flex-wrap 自由折行 —— 390 宽碎成 3+3+3，
+     320 宽碎成 2+2+2+2+1，「到」一个人占一行，整块标题吃掉 552px。
+
+     ⚠️ 为什么用容器查询（cqw）而不是视口（vw）:
+     md 区间（768–1023）右侧立绘是 shrink-0、固定占 338–374px，左列真正可用的
+     宽度远小于视口。按 vw 算会得出 5 个 92px 的格子（一行 492px），左列被撑到 492，
+     立绘被挤出视口 —— 实测 768 溢出 138px、820 溢出 109px。
+     inline-size 容器让左列的宽度不再由内容撑开（size containment），
+     再按 100cqw 算格子，任何断点都刚好放得下。
+
+     第一行声明是兜底：不支持容器查询的浏览器不认识 cqw，整条失效后回落到 vw 算式。 */
+  .q-greet-host {
+    container-type: inline-size;
+  }
+  .q-greet {
+    --greet-cell: min(92px, calc((100vw - 5rem) / 5));
+    --greet-cell: min(92px, calc((100cqw - 2rem) / 5));
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+  .q-greet__line {
+    display: flex;
+    gap: 0.5rem;
+  }
+  .q-greet .char-cell {
+    flex: none;
+    display: grid;
+    place-items: center;
+    width: var(--greet-cell);
+    height: calc(var(--greet-cell) * 104 / 92);
+  }
+  /* HanziWriter 生成的 svg 带固定 width/height：窗口变化时让它跟着格子缩放，
+     而不是溢出格子（不重建 writer，重建会把已写好的字清空）。 */
+  .q-greet .char-cell svg {
+    display: block;
+    width: 100%;
+    height: 100%;
+  }
+  /* 「跳过笔顺」时直接落的静态字，字号跟着格子走 */
+  .q-greet__char {
+    font-size: calc(var(--greet-cell) * 0.95);
+    line-height: 1;
+    color: var(--color-ink);
+  }
+
+  /* ── 首页副标：逐词浮现（纯 CSS，不等水合）────────────────────
+     原先是 motion 的 variants，要等 React 水合才可见 —— 在「4G + 4× 降速」下
+     首屏 LCP 被拖到 8.3s（LCP 元素就是最后一个词）。这里改成 CSS 动画：
+     .qjs 由 Layout 在首帧前加上，SSR 出来就能播；每个词的间隔由内联
+     animation-delay 服务端算好。没有 blur —— 那东西每帧重绘，低端机上很贵。 */
+  .q-sub {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+  }
+  /* 窄屏折行时，分隔的「·」会跟着下一个短语跑到**行首**（中文排版里的避头点）。
+     640 以下干脆不要这个点，改由短语间距分隔 —— 比让标点顶在行首干净。 */
+  @media (max-width: 639px) {
+    .q-sub {
+      gap: 0 0.85rem;
+    }
+    .q-sub__sep {
+      display: none;
+    }
+  }
+  .qjs .q-sub__part {
+    opacity: 0;
+    animation: q-sub-in 0.5s var(--ease-out-expo) forwards;
+  }
+  @keyframes q-sub-in {
+    from {
+      opacity: 0;
+      transform: translateY(8px);
+    }
+    to {
+      opacity: 1;
+      transform: none;
+    }
+  }
+
   /* ============================================================
      开屏动画 —— 爱弥斯现身 → 打招呼 → FLIP 位移归位到首页立绘原位
      三阶段时间线与验收标准见 docs/开屏与全部加载动画-完整设计文档.html 第 02 节。
