@@ -14,7 +14,8 @@
     "check:emis": "node scripts/check-emis.mjs",
     "check:companion": "node scripts/check-companion.mjs",
     "check:home": "node scripts/check-home.mjs",
-    "check:reading": "node scripts/check-reading.mjs"
+    "check:reading": "node scripts/check-reading.mjs",
+    "check:sound": "node scripts/check-sound.mjs"
   },
   "dependencies": {
     "@astrojs/mdx": "^7.0.8",

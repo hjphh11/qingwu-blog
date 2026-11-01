@@ -1,4 +1,5 @@
 import { playlist } from '../data/music';
+import { attachAnalyser, resumeAnalyser } from './audioAnalyser';
 
 type Listener = () => void;
 type PlayMode = 'order' | 'one' | 'random';
@@ -49,6 +50,10 @@ function parseLRC(lrc = ''): { time: number; text: string }[] {
 function getAudio(): HTMLAudioElement {
   if (!audio) {
     audio = new Audio();
+    // ⚠️ crossOrigin **必须赶在 src 之前**设。跨域音频不走 CORS 的话，
+    // Web Audio 的输出会被规范要求静音 → 声音正常但频谱永远全 0（见 lib/audioAnalyser.ts）。
+    // 对象存储回的是 `Access-Control-Allow-Origin: *`，所以这里安全；换托管商要重新确认。
+    audio.crossOrigin = 'anonymous';
     audio.addEventListener('timeupdate', () => {
       if (audio) currentTime = audio.currentTime;
       emit();
@@ -74,6 +79,17 @@ function getAudio(): HTMLAudioElement {
     audio.addEventListener('pause', () => setBuffering(false));
   }
   return audio;
+}
+
+/**
+ * 播放时把分析器接上。放在这里而不是组件里，是因为「一个元素只能建一个
+ * MediaElementAudioSource」—— 两处各建一次必然抛异常。
+ * AudioContext 在首次播放（必然由点击触发）时创建，才不会是 suspended。
+ * 取不到 Web Audio 就静默返回：没有声波而已，播放不受影响。
+ */
+function hookAnalyser(a: HTMLAudioElement) {
+  if (!attachAnalyser(a)) return;
+  resumeAnalyser();
 }
 
 function emit() {
@@ -128,6 +144,7 @@ function playSong(index: number) {
   }
   ensure(currentIndex);
   const a = getAudio();
+  hookAnalyser(a);
   if (loadedIndex === currentIndex && currentTime > 0 && a.currentTime !== currentTime) {
     a.currentTime = currentTime;
   }
@@ -153,6 +170,7 @@ function togglePlay() {
     a.pause();
     isPlaying = false;
   } else {
+    hookAnalyser(a);
     if (loadedIndex === currentIndex && currentTime > 0 && a.currentTime !== currentTime) {
       a.currentTime = currentTime;
     }

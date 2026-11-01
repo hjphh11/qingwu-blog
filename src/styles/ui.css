@@ -154,4 +154,51 @@
   .q-toc__item--sub .q-toc__link.is-active::before {
     left: -2rem;
   }
+
+  /* ── 频谱柱（v6 §8.2）────────────────────────────────────────
+     40 根，absolute 挂在唱片下缘 —— **不占布局**：加一排柱子本来就该零位移，
+     一旦进常规流，md 断点的播放器卡片（固定 560px）会被顶出去。
+     高度用 scaleY 变，不用 height：transform 走合成层，不会触发重排。
+     data-state 由 React 控制：off 时整块淡出并 display:none，
+     没有 Web Audio 或跨域静音的环境下就真的什么都不显示。 */
+  .q-spectrum {
+    position: absolute;
+    left: 50%;
+    /* 实测播放器卡片只剩 2px 余量（固定的 560px 基本被填满），所以只能借
+       唱片与歌名之间那 16px 的空隙。压到 -14px 正好整条落在空隙里：
+       不会盖住唱片暗面（那里柱子看不见），也不会碰到歌名。 */
+    bottom: -14px;
+    width: 80%;
+    height: 14px;
+    display: flex;
+    align-items: flex-end;
+    /* 间距只能给 1px：40 根挤在 205px 里，2px 间距时柱身只剩 3px 宽，
+       远看像一条虚线而不是均衡器。 */
+    gap: 1px;
+    transform: translateX(-50%);
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity var(--dur-state) var(--ease-soft);
+  }
+
+  .q-spectrum[data-state='on'] {
+    opacity: 0.75;
+  }
+
+  .q-spectrum[data-state='off'] {
+    /* 用 visibility 而不是 display:none —— 后者会把淡出吃掉，柱子会「啪」地消失 */
+    visibility: hidden;
+  }
+
+  .q-spectrum > span {
+    flex: 1 1 0;
+    height: 100%;
+    border-radius: 1.5px;
+    /* 用 crimson→rose 而不是 amber→rose：玫瑰色落在奶油底上等于消失
+       （第一版就是这样，柱子只剩顶端一截看得见）。crimson 在浅底和暗面上都读得出。 */
+    background: linear-gradient(180deg, var(--color-crimson), var(--color-rose));
+    transform: scaleY(0.015);
+    transform-origin: 50% 100%;
+    will-change: transform;
+  }
 }
