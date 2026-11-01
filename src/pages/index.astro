@@ -1,9 +1,10 @@
 ---
 import Layout from '../layouts/Layout.astro';
 import MorphIcon from 'morphicons/astro';
-import { categoryLabel } from '../data/categories';
+import { categories, categoryLabel } from '../data/categories';
 import { categoryIcon } from '../lib/categoryIcons';
 import { getPublishedPosts, HOME_RECENT } from '../lib/posts';
+import { profile } from '../data/about';
 import Hero from '../components/Hero.tsx';
 import CurrentTime from '../components/home/CurrentTime.tsx';
 import VisitorCity from '../components/home/VisitorCity.tsx';
@@ -16,16 +17,86 @@ import UptimeCard from '../components/home/UptimeCard.tsx';
 // 而 posts 已经被 slice(0,5) 截断，导致文章数永远显示 5。
 const allPosts = await getPublishedPosts();
 const posts = allPosts.slice(0, HOME_RECENT);
+
+/* 左栏分类导航：**不做顶栏的复制品**。
+   顶栏已经有「文章 / 音乐 / 友链 / 项目 / 关于」，左栏再列一遍只是重复；
+   这里换成「按分类看 + 每类几篇」—— 这是顶栏没有的增量信息，
+   点过去也能真的落到筛选后的列表（/blog?category=xxx，见 BlogList 的 init）。 */
+const catCounts = new Map<string, number>();
+for (const post of allPosts) {
+  catCounts.set(post.data.category, (catCounts.get(post.data.category) ?? 0) + 1);
+}
+const catNav = [...categories]
+  .sort((a, b) => a.order - b.order)
+  .map((c) => ({ id: c.id, label: c.label, count: catCounts.get(c.id) ?? 0 }));
 ---
 <Layout title="清吾 · qingwu.ink">
   <Hero client:load />
 
-  <div class="page-shell grid gap-10 lg:grid-cols-[minmax(0,1fr)_300px] lg:gap-14">
-    {/* 中央:文章流 */}
+  {/*
+    三栏：左「我」/ 中「文章」/ 右「此刻」。
+    · 中间是内容主体，宽度自适应（minmax(0,1fr)，写 0 是为了让长标题能收缩而不是撑破）；
+    · 两侧定宽 180 / 240 —— 参考里三栏博客的常见做法就是「两侧固定、中间 1fr」
+      （如 grid-template-columns: 200px 1fr 200px）。这里的版心只有 1000px 内容宽，
+      所以取 180 / 240 而非 200 / 200：右栏要放五张卡，比左栏更需要宽度。
+    · 断点：≥1024 三栏；768–1024 两栏（左栏收起，作者信息与快捷入口在 Hero 与顶栏里都有）；
+      <768 单栏，文章在上、卡片在下。
+  */}
+  <div
+    class="page-shell grid gap-5 md:grid-cols-[minmax(0,1fr)_240px] lg:grid-cols-[180px_minmax(0,1fr)_240px]"
+  >
+    {/* ── 左栏：我是谁 + 按分类看 ───────────────────────────── */}
+    <aside
+      class="reveal hidden lg:sticky lg:top-24 lg:flex lg:flex-col lg:gap-4 lg:self-start"
+      aria-label="关于与分类"
+    >
+      <div class="glass-card flex flex-col items-center gap-1.5 p-4 text-center">
+        <picture>
+          <source srcSet="/images/avatar.webp" type="image/webp" />
+          <img
+            src="/images/avatar.jpg"
+            alt="清吾头像"
+            width={48}
+            height={48}
+            decoding="async"
+            class="h-12 w-12 rounded-full object-cover ring-2 ring-white/70"
+          />
+        </picture>
+        <span class="font-hand text-[1.35rem] leading-none text-ink">{profile.name}</span>
+        {/* 简介直接取 about.json 的 tagline，不另写一段 —— 同一份信息两处措辞会打脸 */}
+        <span class="text-xs leading-relaxed text-subtle">{profile.tagline}</span>
+      </div>
+
+      <div class="glass-card p-1.5">
+        <p class="px-2.5 pb-1 pt-1.5 text-[0.6875rem] tracking-[0.14em] text-subtle">按分类看</p>
+        <nav class="flex flex-col" aria-label="按分类看文章">
+          <a
+            href="/blog"
+            class="flex items-center justify-between rounded-xl px-2.5 py-1.5 text-[0.8125rem] text-muted transition-colors hover:bg-rose/15 hover:text-crimson"
+          >
+            <span>全部</span>
+            <span class="tabular-nums text-subtle">{allPosts.length}</span>
+          </a>
+          {
+            catNav.map((c) => (
+              <a
+                href={`/blog?category=${c.id}`}
+                class="flex items-center justify-between rounded-xl px-2.5 py-1.5 text-[0.8125rem] text-muted transition-colors hover:bg-rose/15 hover:text-crimson"
+              >
+                <span>{c.label}</span>
+                <span class="tabular-nums text-subtle">{c.count}</span>
+              </a>
+            ))
+          }
+        </nav>
+      </div>
+    </aside>
+
+    {/* ── 中栏：文章流 ─────────────────────────────────────── */}
     <section class="reveal min-w-0">
       <h2 class="section-head mb-6">最近文章</h2>
 
-      <div class="flex flex-col gap-6">
+      <div class="flex flex-col gap-5">
         {
           posts.map((post) => (
             <a
@@ -69,12 +140,12 @@ const posts = allPosts.slice(0, HOME_RECENT);
       </a>
     </section>
 
-    {/* 右栏卡片
+    {/* ── 右栏：此刻的五张卡 ──────────────────────────────────
         这四张卡的数据都只能到客户端才有(时间/定位/localStorage/运行时长),
         之前一律 client:only —— 服务端渲染为空,整栏会在 JS 到位后一起弹出来。
         改成 client:load 后它们会参与服务端渲染:先出骨架,数据到位再换成真实
         内容(见 components/home/CardShell.tsx)。TechStackCard 是静态的,不需要壳。 */}
-    <aside class="reveal flex min-w-0 flex-col gap-6">
+    <aside class="reveal flex min-w-0 flex-col gap-4" aria-label="此刻">
       <CurrentTime client:load />
       <VisitorCity client:load />
       <StatsCard articleCount={allPosts.length} client:load />

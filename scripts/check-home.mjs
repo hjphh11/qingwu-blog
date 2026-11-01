@@ -184,6 +184,121 @@ const pending = (page) =>
   await ctx.close();
 }
 
+/* ── 三栏结构（2026-11-01 改版）───────────────────────────
+   左右定宽、中间自适应（180 / 1fr / 240），断点：≥1024 三栏、768–1024 两栏、
+   <768 单栏。这里量的是「真的三列、宽度对、左栏该显就显该藏就藏」。 */
+console.log('\n【三栏结构】');
+const ctx3 = await browser.createBrowserContext();
+const page = await ctx3.newPage();
+for (const [w, expect, note] of [
+  [1440, 3, '三栏'],
+  [1024, 3, '三栏'],
+  [820, 2, '两栏（左栏收起）'],
+  [390, 1, '单栏'],
+]) {
+  await page.setViewport({ width: w, height: 900 });
+  await page.goto(`${BASE}/`, { waitUntil: 'networkidle2', timeout: 60000 });
+  await sleep(900);
+  const cols = await page.evaluate(() => {
+    const shell = document.querySelector('.page-shell');
+    const left = document.querySelector('aside[aria-label="关于与分类"]');
+    const mid = document.querySelector('.page-shell section');
+    const right = document.querySelector('aside[aria-label="此刻"]');
+    const tpl = getComputedStyle(shell).gridTemplateColumns.split(' ').filter(Boolean);
+    const box = (e) => (e ? Math.round(e.getBoundingClientRect().width) : 0);
+    return {
+      n: tpl.length,
+      tpl,
+      leftW: box(left),
+      midW: box(mid),
+      rightW: box(right),
+      leftShown: left ? getComputedStyle(left).display !== 'none' : false,
+      overflow: document.documentElement.scrollWidth - window.innerWidth,
+    };
+  });
+  verdict(cols.n === expect, `${w}px ${note}：${cols.n} 列`, cols.tpl.join(' / '));
+  verdict(cols.overflow <= 0, `${w}px 无横向溢出`, `越界 ${cols.overflow}px`);
+  if (expect === 3) {
+    verdict(
+      cols.leftShown && cols.leftW >= 160 && cols.leftW <= 200 && cols.rightW >= 220 && cols.rightW <= 260,
+      `${w}px 两侧定宽合理（左 ~180 / 右 ~240）`,
+      `左 ${cols.leftW} 中 ${cols.midW} 右 ${cols.rightW}`,
+    );
+    verdict(cols.midW > cols.leftW && cols.midW > cols.rightW, `${w}px 中间最宽（是内容主体）`, `中 ${cols.midW}`);
+  }
+  if (expect === 2) {
+    verdict(!cols.leftShown, '820px 左栏已收起（不挤占中间）');
+  }
+}
+
+/* 三栏最容易出的事：左栏没压在版心线上（品牌图标与左栏左缘差几十像素）。
+   这条原来只靠 align-check，而它不覆盖首页 —— 三栏改版后必须单独补上。 */
+await page.setViewport({ width: 1440, height: 900 });
+await page.goto(`${BASE}/`, { waitUntil: 'networkidle2', timeout: 60000 });
+await sleep(4600);
+const edges = await page.evaluate(() => {
+  const brand = document.querySelector('header a[href="/"]');
+  const left = document.querySelector('aside[aria-label="关于与分类"]');
+  const midCard = document.querySelector('.page-shell section a[href^="/blog/"]');
+  return {
+    brand: brand ? Math.round(brand.getBoundingClientRect().left) : null,
+    left: left ? Math.round(left.getBoundingClientRect().left) : null,
+    midCard: midCard ? Math.round(midCard.getBoundingClientRect().left) : null,
+  };
+});
+verdict(
+  edges.brand !== null && edges.left !== null && Math.abs(edges.brand - edges.left) <= 1,
+  '首页左栏左缘 == 品牌图标左缘',
+  `品牌 ${edges.brand} / 左栏 ${edges.left}`,
+);
+verdict(
+  edges.midCard !== null && edges.midCard > edges.left,
+  '中间栏在左栏右侧（不是压上去）',
+  `左栏 ${edges.left} / 文章卡 ${edges.midCard}`,
+);
+
+
+/* ── 左栏分类链接真的会筛选 ───────────────────────────────
+   首页左栏是「按分类看」，点了要落到筛选后的列表，否则就是个假入口。 */
+await page.setViewport({ width: 1440, height: 900 });
+await page.goto(`${BASE}/`, { waitUntil: 'networkidle2', timeout: 60000 });
+await sleep(1200);
+const catLink = await page.evaluate(() => {
+  const a = document.querySelector('aside[aria-label="关于与分类"] nav a[href*="category="]');
+  return a ? { href: a.getAttribute('href'), label: a.textContent.trim() } : null;
+});
+verdict(!!catLink, '左栏有带 ?category= 的分类入口', catLink ? `${catLink.label} → ${catLink.href}` : '未找到');
+
+if (catLink) {
+  const cat = new URL(catLink.href, BASE).searchParams.get('category');
+  await page.goto(`${BASE}${catLink.href}`, { waitUntil: 'networkidle2', timeout: 60000 });
+  await sleep(900);
+  const filtered = await page.evaluate(() => {
+    const btn = document.querySelector(`#post-filters button[data-filter="${new URLSearchParams(location.search).get('category')}"]`);
+    const cards = Array.from(document.querySelectorAll('#post-list [data-category]'));
+    const visible = cards.filter((c) => getComputedStyle(c).display !== 'none');
+    return {
+      pressed: btn?.getAttribute('aria-pressed'),
+      active: btn?.classList.contains('is-active'),
+      total: cards.length,
+      shown: visible.length,
+      allMatch: visible.every((c) => c.getAttribute('data-category') === new URLSearchParams(location.search).get('category')),
+    };
+  });
+  verdict(
+    filtered.pressed === 'true' && filtered.active,
+    '带 ?category= 进来时该分类按钮是选中态',
+    `aria-pressed=${filtered.pressed} is-active=${filtered.active}`,
+  );
+  verdict(
+    filtered.shown > 0 && filtered.shown < filtered.total && filtered.allMatch,
+    `列表真的只剩「${cat}」分类`,
+    `${filtered.shown}/${filtered.total} 张可见`,
+  );
+}
+
+await ctx3.close();
+
 console.log(`\n合计失败 ${failed} 项`);
 await browser.close();
 process.exit(failed ? 1 : 0);
