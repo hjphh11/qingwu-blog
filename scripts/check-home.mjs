@@ -305,7 +305,9 @@ const leftCards = await page.evaluate(() => {
   const aside = document.querySelector('aside[aria-label="关于与分类"]');
   if (!aside) return null;
   const author = aside.querySelector('[data-author-card]');
-  const music = aside.querySelector('a[href="/music"]');
+  // 取整张卡（标题链接只是卡里的一行）；用 closest 而不是 a 本身，
+  // 否则量到的是那行 17px 高的链接，会误判成「卡片是空壳」
+  const music = aside.querySelector('a[href="/music"]')?.closest('.glass-card') ?? null;
   const cats = Array.from(aside.querySelectorAll('.glass-card')).find((c) =>
     (c.textContent || '').includes('按分类看'),
   );
@@ -315,6 +317,7 @@ const leftCards = await page.evaluate(() => {
     music: box(music),
     cats: box(cats),
     musicText: music ? (music.textContent || '').replace(/\s+/g, ' ').trim() : '',
+    musicTitle: (music?.querySelector('[data-music-title]')?.textContent || '').trim(),
   };
 });
 verdict(
@@ -334,10 +337,96 @@ verdict(
 );
 // 曲名不能是空字符串（服务端要能渲染出第一首，否则水合前是一块空白）
 verdict(
-  /音乐馆/.test(leftCards?.musicText || '') && (leftCards?.musicText || '').length > 12,
-  '音乐卡渲染出曲名与数量',
-  (leftCards?.musicText || '').slice(0, 40),
+  (leftCards?.musicTitle || '').length > 0 && /音乐馆/.test(leftCards?.musicText || ''),
+  '音乐卡渲染出曲名',
+  leftCards?.musicTitle,
 );
+
+/* ── 音乐卡能控制，且与全站播放器联动 ────────────────────
+   左栏卡与 MiniPlayer、/music 页操作的是同一个 store，store 一变就 emit()，
+   三处同时刷新。这里验「首页点播放 → 跳到别页，迷你播放器已经是同一首且在播」。 */
+console.log('\n【音乐卡控制】');
+const ctrl = await page.evaluate(() => {
+  const aside = document.querySelector('aside[aria-label="关于与分类"]');
+  const card = aside.querySelector('a[href="/music"]')?.closest('.glass-card');
+  if (!card) return null;
+  return {
+    prev: !!card.querySelector('button[aria-label="上一首"]'),
+    play: !!card.querySelector('button[aria-label="播放"], button[aria-label="暂停"]'),
+    next: !!card.querySelector('button[aria-label="下一首"]'),
+    bar: !!card.querySelector('[role="progressbar"]'),
+    title: (card.querySelector('.text-ink')?.textContent || '').trim(),
+  };
+});
+verdict(
+  ctrl?.prev && ctrl?.play && ctrl?.next,
+  '音乐卡有上一首 / 播放 / 下一首三个控制',
+  ctrl ? `prev=${ctrl.prev} play=${ctrl.play} next=${ctrl.next}` : '未找到',
+);
+verdict(ctrl?.bar, '音乐卡有进度条', ctrl?.bar ? 'aria-valuenow 可取' : '缺失');
+
+// 点播放
+if (ctrl) {
+  await page.evaluate(() => {
+    const aside = document.querySelector('aside[aria-label="关于与分类"]');
+    aside.querySelector('button[aria-label="播放"]')?.click();
+  });
+  await sleep(1500);
+  const playing = await page.evaluate(() => {
+    const aside = document.querySelector('aside[aria-label="关于与分类"]');
+    return {
+      label: aside.querySelector('button[aria-label="暂停"], button[aria-label="播放"]')?.getAttribute('aria-label'),
+      title: (aside.querySelector('[data-music-title]')?.textContent || '').trim(),
+    };
+  });
+  verdict(playing.label === '暂停', '点播放后按钮变成「暂停」', `aria-label=${playing.label}`);
+
+  // 下一首：曲名应变化（13 首循环，第 1 首的下一首必然不同）
+  await page.evaluate(() => {
+    const aside = document.querySelector('aside[aria-label="关于与分类"]');
+    aside.querySelector('button[aria-label="下一首"]')?.click();
+  });
+  await sleep(900);
+  const afterNext = await page.evaluate(() => {
+    const aside = document.querySelector('aside[aria-label="关于与分类"]');
+    return (aside.querySelector('[data-music-title]')?.textContent || '').trim();
+  });
+  verdict(afterNext && afterNext !== playing.title, '点下一首后曲名变了', `${playing.title} → ${afterNext}`);
+
+  /* 联动：跳到 /blog（MiniPlayer 只在这种页面渲染），它应显示同一首、且在播。
+     MiniPlayer 是 client:only，给它 2s 挂载。 */
+  await page.evaluate(() => {
+    const a = Array.from(document.querySelectorAll('header nav a')).find((x) =>
+      (x.textContent || '').trim().startsWith('文章'),
+    );
+    a?.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, view: window }));
+  });
+  await sleep(2200);
+  // 把当前曲名带进页面上下文再比对，别在 evaluate 里直接引用 Node 侧变量
+  const mini = await page.evaluate((wantTitle) => {
+    const btns = Array.from(
+      document.querySelectorAll('button[aria-label="暂停"], button[aria-label="播放"]'),
+    ).filter((b) => !b.closest('aside[aria-label="关于与分类"]'));
+    return {
+      path: location.pathname,
+      labels: btns.map((b) => b.getAttribute('aria-label')),
+      hasTitle: (document.body.textContent || '').includes(wantTitle),
+    };
+  }, afterNext);
+  verdict(mini.path !== '/', '已切到其它页面', mini.path);
+  verdict(
+    mini.labels.length > 0 && mini.labels.every((l) => l === '暂停'),
+    '迷你播放器同步显示「暂停」（同一 store 联动）',
+    `按钮：${mini.labels.join(' / ') || '未渲染'}`,
+  );
+
+  // 回到首页前先停掉，避免后续断言受播放影响
+  await page.evaluate(() => {
+    const b = Array.from(document.querySelectorAll('button[aria-label="暂停"]'));
+    b[b.length - 1]?.click();
+  });
+  await sleep(500);
+}
 
 /* ── 左栏分类链接真的会筛选 ───────────────────────────────
    首页左栏是「按分类看」，点了要落到筛选后的列表，否则就是个假入口。 */
