@@ -30,8 +30,10 @@ export interface Project {
   result: string;
   /** 关键数字，卡片与 sheet 都以小标签呈现 */
   facts: string[];
-  /** 没有对外地址就填 null（卡片与 sheet 都不出现外链） */
+  /** 有对外站点就填它（sheet 的主按钮）；没有就 null */
   link: string | null;
+  /** 源码仓库（可选）。与 link 分开：爱弥斯有站点，仓库是第二个入口 */
+  repo: string | null;
   /** 文案仍是占位 —— 页面据此显一条提示，别让占位文字被当成正式文案发出去 */
   placeholder?: boolean;
 }
@@ -56,6 +58,7 @@ const schema = z.object({
       result: z.string().min(1, '不能为空'),
       facts: z.array(z.string()).default([]),
       link: z.string().url('需要是完整 http(s) 链接').nullable().default(null),
+      repo: z.string().url('需要是完整 http(s) 链接').nullable().default(null),
       placeholder: z.boolean().default(false),
     }),
   ),

@@ -98,10 +98,24 @@ const pending = projects.filter((p) => p.placeholder).length;
                     ))}
                   </div>
                 )}
-                {p.link && (
-                  <a href={p.link} target="_blank" rel="noreferrer" class="q-sheet__link">
-                    打开 {p.link.replace(/^https?:\/\//, '')}
-                  </a>
+                {(p.link || p.repo) && (
+                  <div class="q-sheet__links">
+                    {p.link && (
+                      <a href={p.link} target="_blank" rel="noreferrer" class="q-sheet__link">
+                        打开 {p.link.replace(/^https?:\/\//, '').replace(/\/$/, '')}
+                      </a>
+                    )}
+                    {p.repo && (
+                      <a
+                        href={p.repo}
+                        target="_blank"
+                        rel="noreferrer"
+                        class="q-sheet__link q-sheet__link--ghost"
+                      >
+                        源码仓库
+                      </a>
+                    )}
+                  </div>
                 )}
               </template>
             </article>
@@ -206,6 +220,11 @@ const pending = projects.filter((p) => p.placeholder).length;
       const onOpen = () => {
         lastTrigger = trigger;
         body.replaceChildren(tpl.content.cloneNode(true));
+        /* 入口按钮从滚动区里**移出来**，挂到面板底部当固定页脚。
+           留在滚动区里就得用 sticky + 渐变遮罩，正文滚到那儿会被遮一条；
+           移到外面之后，内容区从按钮上方干净地结束。 */
+        const links = body.querySelector('.q-sheet__links');
+        if (links && panel) panel.appendChild(links);
 
         /* 从卡片位置「长」出来：先把面板压到卡片矩形，再在下一帧回到原位。
            这是共享元素转场的手写版 —— 只有两个元素，引 layoutId 不值当。 */

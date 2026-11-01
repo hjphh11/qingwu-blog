@@ -964,13 +964,21 @@
     margin: auto;
     width: min(92vw, 46rem);
     max-width: 46rem;
-    max-height: 84svh;
-    overflow: auto;
+    max-height: 88svh;
+    /* 只让内容区滚：dialog 自己滚的话，底部的两个入口会被推到视口外，
+       而那正是要点的那一颗按钮（实测 884px 内容 vs 756px 可视区）。 */
+    overflow: hidden;
     padding: 0;
     border: none;
     border-radius: var(--radius-card);
     background: transparent;
     overflow: visible;
+  }
+
+  /* dialog 拿到焦点时浏览器会画一圈 outline；这里弹出层是容器不是控件，
+     圈在整个面板外面很难看，焦点本身还在里面的按钮上。 */
+  .q-sheet:focus-visible {
+    outline: none;
   }
 
   .q-sheet::backdrop {
@@ -980,7 +988,10 @@
 
   .q-sheet__panel {
     position: relative;
-    padding: 2rem 2.1rem 2.2rem;
+    display: flex;
+    flex-direction: column;
+    max-height: 88svh;
+    padding: 2rem 2.1rem 1.6rem;
     border-radius: var(--radius-card);
     background: rgba(255, 253, 250, 0.96);
     border: 1px solid rgba(246, 165, 184, 0.4);
@@ -992,6 +1003,22 @@
 
   .q-sheet__panel:not([data-from='card']) {
     transform: translate(0, 0) scale(1);
+  }
+
+  [data-proj-sheet-body] {
+    min-height: 0;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    /* 给滚动条留出位置，否则它会压在文字右缘 */
+    padding-right: 0.35rem;
+  }
+
+  [data-proj-sheet-body] {
+    min-height: 0;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    /* 给滚动条留出位置，否则它会压在文字右缘 */
+    padding-right: 0.35rem;
   }
 
   .q-sheet__head {
@@ -1034,10 +1061,24 @@
     margin-top: 1.5rem;
   }
 
+  .q-sheet__links {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.6rem;
+  }
+
+  /* 被脚本移到面板底部的页脚版本：一条细线隔开，不再需要遮罩 */
+  .q-sheet__panel > .q-sheet__links {
+    flex: none;
+    margin-top: 0.9rem;
+    padding-top: 0.9rem;
+    border-top: 1px solid rgba(246, 165, 184, 0.32);
+  }
+
   .q-sheet__link {
     display: inline-flex;
     align-items: center;
-    margin-top: 1.5rem;
     min-height: 2.75rem;
     border-radius: 999px;
     background: var(--color-crimson);
@@ -1049,6 +1090,18 @@
 
   .q-sheet__link:hover {
     transform: scale(1.03);
+  }
+
+  /* 第二个入口（源码仓库）：不要和主按钮抢注意力，用描边样式 */
+  .q-sheet__link--ghost {
+    background: transparent;
+    border: 1px solid rgba(194, 58, 85, 0.35);
+    color: var(--color-crimson);
+  }
+
+  .q-sheet__link--ghost:hover {
+    border-color: rgba(194, 58, 85, 0.6);
+    background: rgba(194, 58, 85, 0.06);
   }
 
   .q-sheet__close {

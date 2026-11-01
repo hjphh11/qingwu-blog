@@ -200,6 +200,11 @@ const sheetState = await page.evaluate(() => {
     dds: body.querySelectorAll('dd').length,
     textLen: (body.textContent || '').trim().length,
     hasClose: !!d.querySelector('[data-proj-close]'),
+    // 爱弥斯既有线上站也有仓库：应当是「主链接 + 源码仓库」两个入口。
+    // ⚠️ 这两颗按钮会被脚本移到面板底部当页脚（不在滚动区里），所以要从 dialog 上找。
+    links: Array.from(d.querySelectorAll('a[href^="http"]')).map((a) =>
+      (a.getAttribute('href') || '').replace(/^https?:\/\//, ''),
+    ),
     focusInside: d.contains(document.activeElement),
   };
 });
@@ -210,6 +215,11 @@ verdict(
   `${sheetState.dts} 个 dt / ${sheetState.textLen} 字`,
 );
 verdict(sheetState.hasClose, '有关闭按钮');
+verdict(
+  sheetState.links.length === 2 && sheetState.links.some((h) => h.includes('emis.qingwu.ink')),
+  'sheet 里有两个入口（线上站 + 源码仓库）',
+  sheetState.links.join(' / '),
+);
 
 await page.keyboard.press('Escape');
 await sleep(400);
