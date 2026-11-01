@@ -16,7 +16,8 @@
     "check:home": "node scripts/check-home.mjs",
     "check:reading": "node scripts/check-reading.mjs",
     "check:sound": "node scripts/check-sound.mjs",
-    "check:pages": "node scripts/check-pages.mjs"
+    "check:pages": "node scripts/check-pages.mjs",
+    "check:final": "node scripts/check-final.mjs"
   },
   "dependencies": {
     "@astrojs/mdx": "^7.0.8",
