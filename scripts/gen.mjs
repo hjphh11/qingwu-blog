@@ -58,6 +58,7 @@ const entries = songs
     cover: ${q(cover)},
     audio: ${q(audio)},
     note: ${JSON.stringify(s.note ?? '')},
+    duration: ${Number.isFinite(s.duration) ? Math.round(s.duration) : 0},
     lrc: \`${lrc}\`,
   },`;
   })
@@ -69,6 +70,8 @@ const content = `export type Song = {
   cover: string;
   audio: string;
   note?: string;
+  /** 总时长（秒）。来自 music.json，用来在音频元数据到位之前就先显示真实时长 —— 详见 musicStore 的 primeDuration */
+  duration?: number;
   lrc?: string;
 };
 

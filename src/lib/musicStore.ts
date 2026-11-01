@@ -25,7 +25,17 @@ let isPlaying = false;
  */
 let isBuffering = false;
 let currentTime = 0;
-let duration = 0;
+/**
+ * 总时长（秒）。
+ *
+ * ⚠️ **初值必须来自数据，不能是 0。** 音频元素在「没设 src / 还没 loadedmetadata」
+ * 之前 duration 是 0，而播放器在首页、/music、迷你窗三处都读它 —— 一旦从 0 起步，
+ * 访客看到的就是 `0:00 / 0:00`、进度条 `aria-valuemax=0` 且点不动，像播放器坏了。
+ * 现在先用 music.json 里预置的时长（scripts/gen.mjs 透传），元数据到了再覆盖成精确值。
+ */
+let duration = Math.round(playlist[0]?.duration ?? 0);
+/** 数据里预置的时长（秒）。音频元数据还没到位时用它兜底。 */
+const metaDuration = () => Math.max(0, Math.round(playlist[currentIndex]?.duration ?? 0));
 let volume = 0.8;
 let isMuted = false;
 let playMode: PlayMode = 'order';
@@ -59,7 +69,9 @@ function getAudio(): HTMLAudioElement {
       emit();
     });
     audio.addEventListener('loadedmetadata', () => {
-      if (audio) duration = audio.duration || 0;
+      // ⚠️ 用 `||` 而不是直接赋值：元数据刚解析出来那一次 duration 仍可能是 0/NaN，
+      // 直接写会把数据里预置的时长（以及已经在显示的 3:19）清成 0:00。
+      if (audio) duration = Math.round(audio.duration) || metaDuration();
       emit();
     });
     audio.addEventListener('ended', onEnded);
@@ -119,6 +131,9 @@ function restore() {
     const mode = localStorage.getItem(S.mode);
     playMode = mode === 'one' || mode === 'random' ? mode : 'order';
     isPlaying = false; // 自动播放限制,恢复时默认暂停
+    // 还原出来的歌也要立刻有总时长（restore 发生在 any ensure 之前）
+    duration = metaDuration();
+    if (currentTime > duration) currentTime = 0;
   } catch {
     /* ignore */
   }
@@ -130,6 +145,8 @@ function ensure(index: number) {
     a.src = playlist[index].audio;
     a.volume = isMuted ? 0 : volume;
     loadedIndex = index;
+    // 换歌先把时长换成新歌在数据里预置的那个，别让它停在上一首的长度上
+    duration = Math.max(0, Math.round(playlist[index]?.duration ?? 0));
     // 换源相当于重新开始等数据,先把这个状态清掉(新源真的卡住时会再触发 waiting)
     isBuffering = false;
   }
@@ -140,7 +157,8 @@ function playSong(index: number) {
   if (index !== currentIndex) {
     currentIndex = index;
     currentTime = 0;
-    duration = 0;
+    // 不是 0 —— 换成新歌在数据里预置的时长，界面立刻显示正确总长
+    duration = Math.max(0, Math.round(playlist[index]?.duration ?? 0));
   }
   ensure(currentIndex);
   const a = getAudio();
