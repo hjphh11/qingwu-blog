@@ -12,6 +12,8 @@
  *   A4 裸写时长（不走 --dur-* token）
  *   B1 .page-shell 被覆盖 max-w（会让左缘横跳）
  *   B2 容器写了第三套宽度（不走 --shell-max）
+ *   C1 样式层出现循环依赖（分层必须是星形：index 单点汇总，叶子互不引用）
+ *   C2 手改了脚本生成的产物（fonts.css 会被下次重跑覆盖掉）
  */
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join, extname } from 'node:path';
@@ -83,6 +85,69 @@ const RULES = [
 let violations = 0;
 const report = [];
 
+/* ── C1 样式层循环依赖 ─────────────────────────────────────────────
+   分层约定是**星形**：index.css 汇总，7 个叶子文件互不 @import。
+   只要叶子之间出现互相引用就可能有循环，这里真的建图跑一遍 DFS。 */
+function checkStyleGraph() {
+  const dir = join(ROOT, 'styles');
+  const names = readdirSync(dir).filter((n) => n.endsWith('.css'));
+  const edges = new Map();
+  for (const n of names) {
+    const src = readFileSync(join(dir, n), 'utf8');
+    const deps = [...src.matchAll(/@import\s+["']\.\/([\w.-]+\.css)["']/g)].map((m) => m[1]);
+    edges.set(n, deps);
+  }
+  const state = new Map(); // 1=访问中 2=已完成
+  const cycles = [];
+  const dfs = (n, stack) => {
+    if (state.get(n) === 2) return;
+    if (state.get(n) === 1) {
+      cycles.push([...stack.slice(stack.indexOf(n)), n].join(' → '));
+      return;
+    }
+    state.set(n, 1);
+    for (const d of edges.get(n) || []) if (edges.has(d)) dfs(d, [...stack, n]);
+    state.set(n, 2);
+  };
+  for (const n of names) dfs(n, []);
+
+  const hits = [];
+  for (const c of cycles) hits.push(`循环依赖：${c}`);
+  // 叶子（除 index/global 外）不应该再引别的层
+  for (const [n, deps] of edges) {
+    if (n === 'index.css' || n === 'global.css') continue;
+    if (deps.length) hits.push(`${n} 反向引用了 ${deps.join(', ')}（叶子应互不依赖）`);
+  }
+  return hits;
+}
+
+/* ── C2 生成物被手改 ───────────────────────────────────────────────
+   fonts.css 头部有「不要手改」的标记，正常生成时也只会有 2 个 @font-face。 */
+function checkGenerated() {
+  const hits = [];
+  const p = join(ROOT, 'styles', 'fonts.css');
+  try {
+    const src = readFileSync(p, 'utf8');
+    if (!src.includes('由 scripts/subset-fonts.py 生成')) {
+      hits.push(`${p} 缺少「脚本生成」标记，可能被整份替换成手写内容了`);
+    }
+    if (!/@font-face/.test(src)) hits.push(`${p} 里没有 @font-face，跑一下 npm run fonts`);
+  } catch {
+    hits.push(`${p} 不存在 —— 跑 npm run fonts 生成`);
+  }
+  return hits;
+}
+
+for (const [rule, hits] of [
+  [{ id: 'C1', name: '样式层循环依赖' }, checkStyleGraph()],
+  [{ id: 'C2', name: '生成物被手改' }, checkGenerated()],
+]) {
+  if (hits.length) {
+    violations += hits.length;
+    report.push({ rule, hits });
+  }
+}
+
 for (const rule of RULES) {
   const hits = [];
   for (const f of files) {
@@ -119,7 +184,7 @@ if (violations === 0) {
 
 for (const { rule, hits } of report) {
   console.log(`\n❌ [${rule.id}] ${rule.name} —— ${hits.length} 处`);
-  console.log(`   修法：${rule.fix}`);
+  console.log(`   修法：${rule.fix ?? '见上方说明'}`);
   for (const h of hits.slice(0, 12)) console.log(`   · ${h}`);
   if (hits.length > 12) console.log(`   … 另有 ${hits.length - 12} 处`);
 }
