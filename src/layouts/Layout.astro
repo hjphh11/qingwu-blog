@@ -13,6 +13,7 @@ import Footer from '../components/Footer.astro';
 import BackgroundDecor from '../components/BackgroundDecor.tsx';
 import MiniPlayer from '../components/MiniPlayer.tsx';
 import Splash from '../components/Splash.tsx';
+import CanvasHost from '../components/gl/CanvasHost.tsx';
 
 interface Props {
   title?: string;
@@ -130,6 +131,22 @@ const url = SITE.url.replace(/\/$/, '') + pathname;
     </div>
 
     <Navbar pathname={pathname} client:load />
+
+    {/*
+      光场：全站唯一一块 WebGL 画布，跨路由常驻。
+      · `transition:persist` 让 Canvas 在切页时不重建（P0 实测：同一个 DOM 节点、
+        同一个 WebGL context，RAF 从不中断）。key 必须在所有页面完全一致。
+      · 放在 Layout 里、`<slot />` 之前 —— 不要放进 slot。放进 slot 的话，
+        切页时它会被搬到新页面 slot 的位置，导致重挂载。
+      · `client:only="react"`：这东西没有 SSR 的意义（服务端没有 WebGL），
+        而且必须保证客户端才生成，否则会先渲染一个空壳再替换。
+      · 层级由 styles/gl.css 的 `#gl-layer` 定（fixed + z-index:-5），
+        夹在 BackgroundDecor(-10) 与常规流内容之间。
+    */}
+    <div id="gl-layer" transition:persist="gl-layer">
+      <CanvasHost client:only="react" />
+    </div>
+
     {/* 开屏:只在首页播、每会话一次,三阶段总时长 2.0s(见 Splash.tsx 顶部说明)。
         改动只在这一个 prop 上 —— 1600 更紧凑、2400 更舒展,都不影响正确性。 */}
     <Splash client:load dur={2000} />
