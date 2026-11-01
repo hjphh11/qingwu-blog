@@ -5,7 +5,13 @@ import { Mail, BookOpen } from '../../lib/icons';
 import { aboutIcon } from '../../lib/aboutIcons';
 import { profile, info, emis, contacts } from '../../data/about';
 import ContactExpand from '../../components/ContactExpand.tsx';
+import StatsCard from '../../components/home/StatsCard.tsx';
+import TechStackCard from '../../components/home/TechStackCard.astro';
+import { getPublishedPosts } from '../../lib/posts';
 import { SITE } from '../../config';
+
+// 「文章数」要的是全部已发布文章，不是抽出来的前几篇
+const articleCount = (await getPublishedPosts()).length;
 ---
 
 <Layout title="关于 · 清吾">
@@ -127,6 +133,17 @@ import { SITE } from '../../config';
           </span>
         </a>
       </div>
+    </div>
+
+    {/*
+      ④ 本站的小统计 + 技术栈。
+      这两块原本在首页右栏，按 v6 §6.2「其余信息移到关于页」搬过来 ——
+      首页右栏已经压成一条 NowLine（时间 · 城市 · 亮灯天数），
+      想看细节的人自然会来这一页。
+    */}
+    <div class="mt-6 grid gap-6 sm:grid-cols-2">
+      <StatsCard articleCount={articleCount} client:load />
+      <TechStackCard />
     </div>
     </div>
   </div>

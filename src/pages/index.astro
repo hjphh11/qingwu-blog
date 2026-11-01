@@ -5,81 +5,75 @@ import { categoryLabel } from '../data/categories';
 import { categoryIcon } from '../lib/categoryIcons';
 import { getPublishedPosts, HOME_RECENT } from '../lib/posts';
 import Hero from '../components/Hero.tsx';
-import CurrentTime from '../components/home/CurrentTime.tsx';
-import VisitorCity from '../components/home/VisitorCity.tsx';
-import StatsCard from '../components/home/StatsCard.tsx';
-import TechStackCard from '../components/home/TechStackCard.astro';
-import UptimeCard from '../components/home/UptimeCard.tsx';
+import NowLine from '../components/home/NowLine.tsx';
 
-// 首页只展示最近 5 篇，但右栏「写下的故事」要的是**全部**已发布文章数，
-// 所以这里保留一份全量列表——之前直接把 posts.length 传给 StatsCard，
-// 而 posts 已经被 slice(0,5) 截断，导致文章数永远显示 5。
 const allPosts = await getPublishedPosts();
 const posts = allPosts.slice(0, HOME_RECENT);
 ---
 <Layout title="清吾 · qingwu.ink">
   <Hero client:load />
 
-  <div class="page-shell grid gap-10 lg:grid-cols-[minmax(0,1fr)_300px] lg:gap-14">
-    {/* 中央:文章流 */}
-    <section class="reveal min-w-0">
-      <h2 class="section-head mb-6">最近文章</h2>
+  <div class="page-shell">
+    {/*
+      右栏原来五张玻璃卡（时间 / 城市 / 文章数 / 技术栈 / 运行时长）加起来七百多像素，
+      把首屏挤得只剩一篇半文章。按 v6 §6.2 压成一条 NowLine（时间 · 城市 · 亮灯天数），
+      文章数与技术栈移到关于页。侧栏因此整个去掉 —— 只留一条窄带却占 300px 列宽，
+      会变成一大片空白。
+    */}
+    <NowLine client:load />
 
-      <div class="flex flex-col gap-6">
-        {
-          posts.map((post) => (
-            <a
-              href={`/blog/${post.id}`}
-              class="glass-card card-spotlight group relative block p-6 card-lift sm:p-7"
-            >
-              <span
-                class="absolute right-5 top-5 text-rose transition-colors group-hover:text-crimson"
-                aria-hidden="true"
+    {/*
+      窄栏下沉到内层，**不要**给 .page-shell 加 max-w ——
+      那会让容器按新宽度重新居中，内容左缘横跳（/about 踩过，差 44px）。
+      46rem ≈ 736px，与改造前左栏（1080 − 300 − 56）几乎一致，卡片观感不变。
+    */}
+    <div class="max-w-[46rem]">
+      <section class="reveal mt-10 min-w-0">
+        <h2 class="section-head mb-6">最近文章</h2>
+
+        <div class="flex flex-col gap-6">
+          {
+            posts.map((post) => (
+              <a
+                href={`/blog/${post.id}`}
+                class="glass-card card-spotlight group relative block p-6 card-lift sm:p-7"
               >
-                <MorphIcon
-                  icon={categoryIcon(post.data.category) as never}
-                  size={18}
-                  color="currentColor"
-                />
-              </span>
-              <div class="list-card-meta">
-                <span class="chip chip--category">{categoryLabel(post.data.category)}</span>
-                <time datetime={post.data.pubDate.toISOString()}>
-                  {post.data.pubDate.toLocaleDateString('zh-CN')}
-                </time>
-              </div>
-              <h3 class="list-card-title pr-8">{post.data.title}</h3>
-              <p class="list-card-desc line-clamp-2">{post.data.description}</p>
-              <div class="list-card-foot">
-                {post.data.tags.map((tag) => <span class="chip chip--tag">#{tag}</span>)}
-              </div>
-            </a>
-          ))
-        }
-      </div>
+                <span
+                  class="absolute right-5 top-5 text-rose transition-colors group-hover:text-crimson"
+                  aria-hidden="true"
+                >
+                  <MorphIcon
+                    icon={categoryIcon(post.data.category) as never}
+                    size={18}
+                    color="currentColor"
+                  />
+                </span>
+                <div class="list-card-meta">
+                  <span class="chip chip--category">{categoryLabel(post.data.category)}</span>
+                  <time datetime={post.data.pubDate.toISOString()}>
+                    {post.data.pubDate.toLocaleDateString('zh-CN')}
+                  </time>
+                </div>
+                <h3 class="list-card-title pr-8">{post.data.title}</h3>
+                <p class="list-card-desc line-clamp-2">{post.data.description}</p>
+                <div class="list-card-foot">
+                  {post.data.tags.map((tag) => <span class="chip chip--tag">#{tag}</span>)}
+                </div>
+              </a>
+            ))
+          }
+        </div>
 
-      <a
-        href="/blog"
-        class="group mt-7 inline-flex items-center gap-1.5 py-2.5 text-sm text-muted transition-colors hover:text-accent"
-      >
-        查看全部文章
-        <span aria-hidden="true" class="transition-transform duration-300 group-hover:translate-x-1"
-          >→</span
+        <a
+          href="/blog"
+          class="group mt-7 inline-flex items-center gap-1.5 py-2.5 text-sm text-muted transition-colors hover:text-accent"
         >
-      </a>
-    </section>
-
-    {/* 右栏卡片
-        这四张卡的数据都只能到客户端才有(时间/定位/localStorage/运行时长),
-        之前一律 client:only —— 服务端渲染为空,整栏会在 JS 到位后一起弹出来。
-        改成 client:load 后它们会参与服务端渲染:先出骨架,数据到位再换成真实
-        内容(见 components/home/CardShell.tsx)。TechStackCard 是静态的,不需要壳。 */}
-    <aside class="reveal flex min-w-0 flex-col gap-6">
-      <CurrentTime client:load />
-      <VisitorCity client:load />
-      <StatsCard articleCount={allPosts.length} client:load />
-      <TechStackCard />
-      <UptimeCard client:load />
-    </aside>
+          查看全部文章
+          <span aria-hidden="true" class="transition-transform duration-300 group-hover:translate-x-1"
+            >→</span
+          >
+        </a>
+      </section>
+    </div>
   </div>
 </Layout>
