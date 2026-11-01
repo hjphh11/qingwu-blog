@@ -9,6 +9,7 @@ import Hero from '../components/Hero.tsx';
 import CurrentTime from '../components/home/CurrentTime.tsx';
 import VisitorCity from '../components/home/VisitorCity.tsx';
 import StatsCard from '../components/home/StatsCard.tsx';
+import MusicCard from '../components/home/MusicCard.tsx';
 import TechStackCard from '../components/home/TechStackCard.astro';
 import UptimeCard from '../components/home/UptimeCard.tsx';
 
@@ -72,6 +73,11 @@ const catNav = [...categories]
           <span class="text-xs leading-relaxed text-subtle">{profile.tagline}</span>
         </div>
       </div>
+
+      {/* 音乐馆：夹在「我是谁」和「按分类看」之间。
+          只展示当前曲目、点整卡进 /music —— 播放控制留给右下角的 MiniPlayer，
+          两处各放一套会互相打架。 */}
+      <MusicCard client:load />
 
       <div class="glass-card p-1.5">
         <p class="px-2.5 pb-1 pt-1.5 text-[0.6875rem] tracking-[0.14em] text-subtle">按分类看</p>

@@ -297,6 +297,48 @@ await sleep(800);
 const aBack = await authorState();
 verdict(aBack && !aBack.collapsed && aBack.h > 100, '回到顶部重新展开', `h=${aBack?.h} collapsed=${aBack?.collapsed}`);
 
+/* ── 左栏三张卡（作者 / 音乐馆 / 按分类看）─────────────── */
+console.log('\n【左栏三张卡】');
+await page.evaluate(() => window.scrollTo(0, 0));
+await sleep(600);
+const leftCards = await page.evaluate(() => {
+  const aside = document.querySelector('aside[aria-label="关于与分类"]');
+  if (!aside) return null;
+  const author = aside.querySelector('[data-author-card]');
+  const music = aside.querySelector('a[href="/music"]');
+  const cats = Array.from(aside.querySelectorAll('.glass-card')).find((c) =>
+    (c.textContent || '').includes('按分类看'),
+  );
+  const box = (e) => (e ? { top: Math.round(e.getBoundingClientRect().top), h: Math.round(e.getBoundingClientRect().height) } : null);
+  return {
+    author: box(author),
+    music: box(music),
+    cats: box(cats),
+    musicText: music ? (music.textContent || '').replace(/\s+/g, ' ').trim() : '',
+  };
+});
+verdict(
+  !!leftCards?.author && !!leftCards?.music && !!leftCards?.cats,
+  '左栏有三张卡（作者 / 音乐馆 / 按分类看）',
+  leftCards ? `作者 ${leftCards.author?.h} · 音乐 ${leftCards.music?.h} · 分类 ${leftCards.cats?.h}` : '缺卡',
+);
+verdict(
+  leftCards?.author?.top < leftCards?.music?.top && leftCards?.music?.top < leftCards?.cats?.top,
+  '顺序是作者 → 音乐馆 → 分类（音乐卡在中间）',
+  leftCards ? `${leftCards.author?.top} / ${leftCards.music?.top} / ${leftCards.cats?.top}` : '',
+);
+verdict(
+  (leftCards?.music?.h ?? 0) > 60,
+  '音乐卡有实际高度（不是空壳）',
+  `h=${leftCards?.music?.h}`,
+);
+// 曲名不能是空字符串（服务端要能渲染出第一首，否则水合前是一块空白）
+verdict(
+  /音乐馆/.test(leftCards?.musicText || '') && (leftCards?.musicText || '').length > 12,
+  '音乐卡渲染出曲名与数量',
+  (leftCards?.musicText || '').slice(0, 40),
+);
+
 /* ── 左栏分类链接真的会筛选 ───────────────────────────────
    首页左栏是「按分类看」，点了要落到筛选后的列表，否则就是个假入口。 */
 await page.setViewport({ width: 1440, height: 900 });
