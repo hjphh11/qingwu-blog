@@ -260,6 +260,110 @@ verdict(
 await page.keyboard.press('Escape');
 await sleep(300);
 
+/* ── 导航下拉：文章 / 分享 合并成一组 ──────────────────────── */
+console.log('\n【导航下拉】');
+await page.setViewport({ width: 1440, height: 900 });
+await page.goto(`${BASE}/`, { waitUntil: 'networkidle2', timeout: 60000 });
+await sleep(4500); // 首页有开屏，幕布会挡住鼠标事件 —— 必须等它收完
+
+const nav = await page.evaluate(() => {
+  const el = document.querySelector('header nav');
+  if (!el) return null;
+  const tops = Array.from(el.querySelectorAll('a')).filter((a) => !a.closest('[role="menu"]'));
+  const parent = el.querySelector('a[aria-haspopup="true"]');
+  return {
+    labels: tops.map((a) => (a.textContent || '').trim()),
+    hrefs: tops.map((a) => a.getAttribute('href')),
+    hasParent: !!parent,
+    parentHref: parent?.getAttribute('href') ?? null,
+    expanded: parent?.getAttribute('aria-expanded') ?? null,
+    // 「分享」不该再作为顶层项出现（它已经进了下拉）
+    shareTopLevel: tops.some((a) => a.getAttribute('href') === '/share'),
+  };
+});
+verdict(
+  nav && nav.labels.length === 6,
+  '顶层导航 6 项（原来 7 项，「分享」并进了「文章」）',
+  nav ? nav.labels.join(' / ') : '未找到 nav',
+);
+verdict(!nav?.shareTopLevel, '「分享」不再是顶层项');
+verdict(nav?.hasParent && nav.parentHref === '/blog', '「文章」是可点的父项，且指向 /blog', `href=${nav?.parentHref}`);
+verdict(nav?.expanded === 'false', '初始未展开', `aria-expanded=${nav?.expanded}`);
+
+// 悬停展开
+const parentBox = await page.evaluate(() => {
+  const a = document.querySelector('header nav a[aria-haspopup="true"]');
+  const r = a.getBoundingClientRect();
+  return { x: r.x + r.width / 2, y: r.y + r.height / 2, cx: r.x + r.width / 2 };
+});
+await page.mouse.move(parentBox.x, parentBox.y);
+await sleep(450);
+const dd = await page.evaluate(() => {
+  const m = document.querySelector('[role="menu"]');
+  const parent = document.querySelector('header nav a[aria-haspopup="true"]');
+  if (!m) return { open: false };
+  const pr = parent.getBoundingClientRect();
+  const mr = m.getBoundingClientRect();
+  return {
+    open: true,
+    expanded: parent.getAttribute('aria-expanded'),
+    items: Array.from(m.querySelectorAll('a')).map((a) => ({
+      label: (a.textContent || '').trim(),
+      href: a.getAttribute('href'),
+    })),
+    // 居中对齐：面板中心与父项中心差 ≤ 2px（踩过 motion 覆盖 translate 的坑）
+    centerDiff: Math.round(Math.abs((mr.x + mr.width / 2) - (pr.x + pr.width / 2))),
+    below: mr.top >= pr.bottom - 4,
+  };
+});
+verdict(dd.open && dd.expanded === 'true', '悬停展开，aria-expanded 跟着变', `expanded=${dd.expanded}`);
+verdict(
+  dd.items?.length === 2 && dd.items[0].href === '/blog' && dd.items[1].href === '/share',
+  '下拉里是「文章列表 /blog」+「分享 /share」',
+  (dd.items || []).map((i) => `${i.label}→${i.href}`).join(' · '),
+);
+verdict(dd.centerDiff !== undefined && dd.centerDiff <= 2, '面板居中在父项下方', `中心偏差 ${dd.centerDiff}px`);
+verdict(dd.below, '面板在父项下方（不盖住导航条）');
+
+// Esc 关闭
+await page.keyboard.press('Escape');
+await sleep(350);
+const afterEsc = await page.evaluate(() => ({
+  menu: !!document.querySelector('[role="menu"]'),
+  expanded: document.querySelector('header nav a[aria-haspopup="true"]')?.getAttribute('aria-expanded'),
+}));
+verdict(!afterEsc.menu && afterEsc.expanded === 'false', 'Esc 能收起下拉', `expanded=${afterEsc.expanded}`);
+
+// 键盘：Tab 到父项应展开（键盘用户不能只能靠鼠标）
+await page.evaluate(() => document.body.focus());
+await page.keyboard.press('Tab'); // 品牌
+await page.keyboard.press('Tab'); // 首页
+await page.keyboard.press('Tab'); // 文章
+await sleep(400);
+const kb = await page.evaluate(() => ({
+  focused: (document.activeElement?.textContent || '').trim().slice(0, 6),
+  expanded: document.activeElement?.getAttribute?.('aria-expanded'),
+  menu: !!document.querySelector('[role="menu"]'),
+}));
+verdict(kb.expanded === 'true' && kb.menu, '键盘 Tab 到「文章」也会展开', `焦点=${kb.focused} expanded=${kb.expanded}`);
+
+// 移动端：折叠菜单里两项都在（不做二级展开）
+await page.setViewport({ width: 390, height: 844 });
+await page.goto(`${BASE}/`, { waitUntil: 'networkidle2', timeout: 60000 });
+await sleep(1200);
+await page.evaluate(() => document.querySelector('button[aria-label="打开菜单"]')?.click());
+await sleep(500);
+const mob = await page.evaluate(() => {
+  const panel = document.querySelector('header > nav');
+  const links = Array.from(panel?.querySelectorAll('a') ?? []).map((a) => a.getAttribute('href'));
+  return { links, hasMenu: !!panel };
+});
+verdict(
+  mob.links.includes('/blog') && mob.links.includes('/share'),
+  '移动端折叠菜单里「文章/分享」都平铺可见',
+  mob.links.join(' '),
+);
+
 /* ── 404 ──────────────────────────────────────────────── */
 console.log('\n【404】');
 await page.goto(`${BASE}/404.html`, { waitUntil: 'networkidle2', timeout: 60000 });

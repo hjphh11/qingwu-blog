@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { MorphIcon } from 'morphicons/react';
-import { Menu, X } from '../lib/icons';
+import { Menu, X, ChevronDown } from '../lib/icons';
 import ContrastToggle from './ContrastToggle';
 import {
   motion,
@@ -12,14 +12,30 @@ import {
   useMotionValue,
 } from 'motion/react';
 
-type NavItem = { label: string; href: string };
+type NavChild = { label: string; href: string };
+type NavItem = {
+  label: string;
+  href: string;
+  /**
+   * 有 children 的项带下拉（桌面端）。**父项仍然是链接**：
+   * 点它直接进 href（「文章」= 默认去看文章），要分享再从下拉里选。
+   * 移动端不用下拉 —— 折叠菜单里直接把 children 平铺成两行，少一层手势。
+   */
+  children?: NavChild[];
+};
 
 const NAV_ITEMS: NavItem[] = [
   { label: '首页', href: '/' },
-  { label: '文章', href: '/blog' },
+  {
+    label: '文章',
+    href: '/blog',
+    children: [
+      { label: '文章列表', href: '/blog' },
+      { label: '分享', href: '/share' },
+    ],
+  },
   { label: '音乐', href: '/music' },
   { label: '友链', href: '/links' },
-  { label: '分享', href: '/share' },
   { label: '项目', href: '/projects' },
   { label: '关于', href: '/about' },
 ];
@@ -41,6 +57,8 @@ export default function Navbar({ pathname = '/' }: Props) {
   const reduce = useReducedMotion();
   const [scrolled, setScrolled] = useState(false);
   const [open, setOpen] = useState(false);
+  /** 当前展开的下拉（存父项 href，同时只开一个） */
+  const [openGroup, setOpenGroup] = useState<string | null>(null);
 
   const itemRefs = useRef<(HTMLAnchorElement | null)[]>([]);
 
@@ -54,7 +72,10 @@ export default function Navbar({ pathname = '/' }: Props) {
 
   const isActive = (href: string) =>
     href === '/' ? pathname === '/' : pathname.startsWith(href);
-  const activeIdx = Math.max(0, NAV_ITEMS.findIndex((it) => isActive(it.href)));
+  /** 带下拉的项：自己或任一子项命中当前路径都算激活 */
+  const itemActive = (it: NavItem) =>
+    isActive(it.href) || !!it.children?.some((c) => isActive(c.href));
+  const activeIdx = Math.max(0, NAV_ITEMS.findIndex(itemActive));
 
   const dur = reduce ? 0 : 0.32;
 
@@ -98,6 +119,32 @@ export default function Navbar({ pathname = '/' }: Props) {
     window.addEventListener('resize', onResize);
     return () => window.removeEventListener('resize', onResize);
   }, [activeIdx, x, w]);
+
+  /* 下拉的关闭：Esc、点外面、路由变化。
+     不监听 pointerleave 到 window —— 鼠标移出即关会让「想移到下拉项」变成走钢丝，
+     所以只在离开**整个父项容器**时关（容器把下拉包在里面）。 */
+  useEffect(() => {
+    if (!openGroup) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setOpenGroup(null);
+    };
+    const onDown = (e: PointerEvent) => {
+      const t = e.target as HTMLElement | null;
+      if (!t?.closest('[data-nav-group]')) setOpenGroup(null);
+    };
+    document.addEventListener('keydown', onKey);
+    document.addEventListener('pointerdown', onDown);
+    return () => {
+      document.removeEventListener('keydown', onKey);
+      document.removeEventListener('pointerdown', onDown);
+    };
+  }, [openGroup]);
+
+  // 路由一变就收起（桌面下拉不该跨页残留）
+  useEffect(() => {
+    setOpenGroup(null);
+    setOpen(false);
+  }, [pathname]);
 
   return (
     <motion.header
@@ -166,20 +213,85 @@ export default function Navbar({ pathname = '/' }: Props) {
 
           {/* 菜单项 */}
           {NAV_ITEMS.map((item, i) => {
-            const active = isActive(item.href);
+            const active = itemActive(item);
+            const openNow = openGroup === item.href;
             return (
-              <a
+              <div
                 key={item.href}
-                href={item.href}
-                ref={(el) => {
-                  itemRefs.current[i] = el;
-                }}
-                className={`relative z-10 block rounded-full px-3.5 py-1.5 text-base font-medium transition-colors duration-200 active:scale-95 ${
-                  active ? 'text-crimson' : 'text-muted hover:text-crimson'
-                }`}
+                data-nav-group={item.children ? '' : undefined}
+                className="relative"
+                onPointerEnter={() => item.children && setOpenGroup(item.href)}
+                onPointerLeave={() => item.children && setOpenGroup(null)}
               >
-                {item.label}
-              </a>
+                <a
+                  href={item.href}
+                  ref={(el) => {
+                    itemRefs.current[i] = el;
+                  }}
+                  // 键盘用户：聚焦到父项就展开，Tab 能继续走进下拉项
+                  onFocus={() => item.children && setOpenGroup(item.href)}
+                  aria-haspopup={item.children ? 'true' : undefined}
+                  aria-expanded={item.children ? openNow : undefined}
+                  className={`relative z-10 flex items-center gap-0.5 rounded-full px-3.5 py-1.5 text-base font-medium transition-colors duration-200 active:scale-95 ${
+                    active ? 'text-crimson' : 'text-muted hover:text-crimson'
+                  }`}
+                >
+                  {item.label}
+                  {item.children && (
+                    <span
+                      aria-hidden="true"
+                      className={`transition-transform duration-200 ${openNow ? 'rotate-180' : ''}`}
+                    >
+                      <MorphIcon icon={ChevronDown} size={13} color="currentColor" />
+                    </span>
+                  )}
+                </a>
+
+                {/* 下拉：挂在父项正下方。
+                    ⚠️ 居中必须放在**外层** div 上：内层由 motion 驱动 y 动画，
+                    motion 会写内联 `transform: translateY(...)`，把 Tailwind 的
+                    `-translate-x-1/2` 整个覆盖掉 —— 第一版就这么偏了 31px。
+                    pt-1.5 是让面板和父项连成一片，鼠标横穿过去不会断。 */}
+                <AnimatePresence>
+                  {item.children && openNow && (
+                    <div className="absolute left-1/2 top-full z-20 -translate-x-1/2 pt-1.5">
+                      <motion.div
+                        key="dd"
+                        initial={reduce ? false : { opacity: 0, y: -6 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={reduce ? { opacity: 0 } : { opacity: 0, y: -6 }}
+                        transition={{ duration: dur || 0.12, ease: 'easeOut' }}
+                        role="menu"
+                        aria-label={`${item.label}相关`}
+                        className="min-w-[9.5rem] rounded-2xl p-1.5"
+                        style={{
+                          background: 'rgba(255, 252, 247, 0.96)',
+                          backdropFilter: 'blur(20px) saturate(160%)',
+                          WebkitBackdropFilter: 'blur(20px) saturate(160%)',
+                          border: '1px solid rgba(246, 165, 184, 0.45)',
+                          boxShadow: '0 16px 38px rgba(160, 100, 110, 0.18)',
+                        }}
+                      >
+                        {item.children.map((c) => (
+                          <a
+                            key={c.href}
+                            href={c.href}
+                            role="menuitem"
+                            onClick={() => setOpenGroup(null)}
+                            className={`block rounded-xl px-3 py-2 text-sm transition-colors ${
+                              isActive(c.href) && pathname === c.href
+                                ? 'bg-rose/25 text-crimson'
+                                : 'text-muted hover:bg-rose/15 hover:text-crimson'
+                            }`}
+                          >
+                            {c.label}
+                          </a>
+                        ))}
+                      </motion.div>
+                    </div>
+                  )}
+                </AnimatePresence>
+              </div>
             );
           })}
         </nav>
@@ -203,7 +315,8 @@ export default function Navbar({ pathname = '/' }: Props) {
         </div>
       </div>
 
-      {/* 移动端展开菜单 */}
+      {/* 移动端展开菜单 —— 下拉在这里**平铺成两行**，不做二级展开：
+          手机上多点一层没有收益，反而多一次误触。 */}
       <AnimatePresence>
         {open && (
           <motion.nav
@@ -221,7 +334,7 @@ export default function Navbar({ pathname = '/' }: Props) {
               boxShadow: '0 16px 40px rgba(246, 165, 184, 0.22)',
             }}
           >
-            {NAV_ITEMS.map((item) => (
+            {NAV_ITEMS.flatMap((item) => item.children ?? [item]).map((item) => (
               <a
                 key={item.href}
                 href={item.href}

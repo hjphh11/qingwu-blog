@@ -24,6 +24,7 @@ export {
   Heart,
   Flower2,
   ChevronRight,
+  ChevronDown,
   GitBranch,
   List,
   ArrowLeft,
