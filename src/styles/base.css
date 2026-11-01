@@ -1,0 +1,54 @@
+/* 基础层：重置、字体落到 body、标题字距、焦点环。
+   焦点环不设 border-radius —— 设了会把胶囊按钮的圆角在聚焦瞬间压成 6px。 */
+
+@layer base {
+  html {
+    scroll-behavior: auto;
+  }
+
+  body {
+    font-family: var(--font-body);
+    background-color: var(--color-cream);
+    color: var(--color-ink);
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+
+  h1,
+  h2,
+  h3 {
+    font-family: var(--font-display);
+    font-weight: 400;
+    /* 中文衬线在大字号下默认贴得太紧,撑开一点才有呼吸感(报刊级的做法) */
+    letter-spacing: 0.01em;
+  }
+
+  /* 大标题再松一档,小标题收紧一点 —— 字号越大越需要负/正字距补偿 */
+  h1 {
+    letter-spacing: 0.005em;
+    text-wrap: balance;
+  }
+
+  p {
+    text-wrap: pretty;
+  }
+
+  /* ── 高对比阅读（默认关，导航右侧开关）──────────────────────
+     只动两个「次要文字」的颜色变量。正文的 ink 与主强调 crimson 本来就
+     远超 AA，没必要再压；真正余量薄的是 muted / subtle 这两档。
+     `html.q-contrast` 比 `:root` 多一个类，选择器更具体，能盖住 @theme 的值。
+     放在 base 层：Tailwind 的层序是 theme → base → components → utilities，
+     base 在 theme 之后，所以这里的覆盖稳定生效。 */
+  html.q-contrast {
+    --color-muted: rgb(58, 43, 31);
+    --color-subtle: rgba(58, 43, 31, 0.92);
+  }
+
+  /* 键盘可用性:只在键盘操作时画焦点圈,且必须看得见(之前默认 outline 被浏览器
+     画成很淡的一圈,在粉色玻璃上几乎看不见)。
+     这里**不设** border-radius —— 设了会把胶囊按钮的圆角在聚焦瞬间压成 6px。 */
+  :focus-visible {
+    outline: 2px solid var(--color-accent);
+    outline-offset: 3px;
+  }
+}

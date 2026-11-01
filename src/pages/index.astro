@@ -1,13 +1,15 @@
 ---
 import Layout from '../layouts/Layout.astro';
 import MorphIcon from 'morphicons/astro';
-import { categoryLabel } from '../data/categories';
+import { categories, categoryLabel } from '../data/categories';
 import { categoryIcon } from '../lib/categoryIcons';
 import { getPublishedPosts, HOME_RECENT } from '../lib/posts';
+import { profile } from '../data/about';
 import Hero from '../components/Hero.tsx';
 import CurrentTime from '../components/home/CurrentTime.tsx';
 import VisitorCity from '../components/home/VisitorCity.tsx';
 import StatsCard from '../components/home/StatsCard.tsx';
+import MusicCard from '../components/home/MusicCard.tsx';
 import TechStackCard from '../components/home/TechStackCard.astro';
 import UptimeCard from '../components/home/UptimeCard.tsx';
 
@@ -16,16 +18,97 @@ import UptimeCard from '../components/home/UptimeCard.tsx';
 // 而 posts 已经被 slice(0,5) 截断，导致文章数永远显示 5。
 const allPosts = await getPublishedPosts();
 const posts = allPosts.slice(0, HOME_RECENT);
+
+/* 左栏分类导航：**不做顶栏的复制品**。
+   顶栏已经有「文章 / 音乐 / 友链 / 项目 / 关于」，左栏再列一遍只是重复；
+   这里换成「按分类看 + 每类几篇」—— 这是顶栏没有的增量信息，
+   点过去也能真的落到筛选后的列表（/blog?category=xxx，见 BlogList 的 init）。 */
+const catCounts = new Map<string, number>();
+for (const post of allPosts) {
+  catCounts.set(post.data.category, (catCounts.get(post.data.category) ?? 0) + 1);
+}
+const catNav = [...categories]
+  .sort((a, b) => a.order - b.order)
+  .map((c) => ({ id: c.id, label: c.label, count: catCounts.get(c.id) ?? 0 }));
 ---
 <Layout title="清吾 · qingwu.ink">
   <Hero client:load />
 
-  <div class="page-shell grid gap-10 lg:grid-cols-[minmax(0,1fr)_300px] lg:gap-14">
-    {/* 中央:文章流 */}
+  {/*
+    三栏：左「我」/ 中「文章」/ 右「此刻」。
+    · 中间是内容主体，宽度自适应（minmax(0,1fr)，写 0 是为了让长标题能收缩而不是撑破）；
+    · 两侧定宽 180 / 240 —— 参考里三栏博客的常见做法就是「两侧固定、中间 1fr」
+      （如 grid-template-columns: 200px 1fr 200px）。这里的版心只有 1000px 内容宽，
+      所以取 180 / 240 而非 200 / 200：右栏要放五张卡，比左栏更需要宽度。
+    · 断点：≥1024 三栏；768–1024 两栏（左栏收起，作者信息与快捷入口在 Hero 与顶栏里都有）；
+      <768 单栏，文章在上、卡片在下。
+  */}
+  <div
+    class="page-shell grid gap-5 md:grid-cols-[minmax(0,1fr)_240px] lg:grid-cols-[180px_minmax(0,1fr)_240px]"
+  >
+    {/* ── 左栏：我是谁 + 按分类看 ───────────────────────────── */}
+    <aside
+      class="reveal hidden lg:sticky lg:top-24 lg:flex lg:flex-col lg:gap-4 lg:self-start"
+      aria-label="关于与分类"
+    >
+      {/* data-author-card + q-author：吸顶时收起（见页面底部脚本）。
+          导航栏里已经有一个头像 +「清吾」，这一张跟它并排时重复得很明显。
+          ⚠️ padding 放在**内层**：收起靠 max-height: 0，而 padding 不会被 max-height
+          压掉（浏览器保证高度不小于 padding 之和），放外层会残留 32px。 */}
+      <div data-author-card class="q-author glass-card">
+        <div class="flex flex-col items-center gap-1.5 p-4 text-center">
+          <picture>
+            <source srcSet="/images/avatar.webp" type="image/webp" />
+            <img
+              src="/images/avatar.jpg"
+              alt="清吾头像"
+              width={48}
+              height={48}
+              decoding="async"
+              class="h-12 w-12 rounded-full object-cover ring-2 ring-white/70"
+            />
+          </picture>
+          <span class="font-hand text-[1.35rem] leading-none text-ink">{profile.name}</span>
+          {/* 简介直接取 about.json 的 tagline，不另写一段 —— 同一份信息两处措辞会打脸 */}
+          <span class="text-xs leading-relaxed text-subtle">{profile.tagline}</span>
+        </div>
+      </div>
+
+      {/* 音乐馆：夹在「我是谁」和「按分类看」之间。
+          只展示当前曲目、点整卡进 /music —— 播放控制留给右下角的 MiniPlayer，
+          两处各放一套会互相打架。 */}
+      <MusicCard client:load />
+
+      <div class="glass-card p-1.5">
+        <p class="px-2.5 pb-1 pt-1.5 text-[0.6875rem] tracking-[0.14em] text-subtle">按分类看</p>
+        <nav class="flex flex-col" aria-label="按分类看文章">
+          <a
+            href="/blog"
+            class="flex items-center justify-between rounded-xl px-2.5 py-1.5 text-[0.8125rem] text-muted transition-colors hover:bg-rose/15 hover:text-crimson"
+          >
+            <span>全部</span>
+            <span class="tabular-nums text-subtle">{allPosts.length}</span>
+          </a>
+          {
+            catNav.map((c) => (
+              <a
+                href={`/blog?category=${c.id}`}
+                class="flex items-center justify-between rounded-xl px-2.5 py-1.5 text-[0.8125rem] text-muted transition-colors hover:bg-rose/15 hover:text-crimson"
+              >
+                <span>{c.label}</span>
+                <span class="tabular-nums text-subtle">{c.count}</span>
+              </a>
+            ))
+          }
+        </nav>
+      </div>
+    </aside>
+
+    {/* ── 中栏：文章流 ─────────────────────────────────────── */}
     <section class="reveal min-w-0">
       <h2 class="section-head mb-6">最近文章</h2>
 
-      <div class="flex flex-col gap-6">
+      <div class="flex flex-col gap-5">
         {
           posts.map((post) => (
             <a
@@ -69,12 +152,12 @@ const posts = allPosts.slice(0, HOME_RECENT);
       </a>
     </section>
 
-    {/* 右栏卡片
+    {/* ── 右栏：此刻的五张卡 ──────────────────────────────────
         这四张卡的数据都只能到客户端才有(时间/定位/localStorage/运行时长),
         之前一律 client:only —— 服务端渲染为空,整栏会在 JS 到位后一起弹出来。
         改成 client:load 后它们会参与服务端渲染:先出骨架,数据到位再换成真实
         内容(见 components/home/CardShell.tsx)。TechStackCard 是静态的,不需要壳。 */}
-    <aside class="reveal flex min-w-0 flex-col gap-6">
+    <aside class="q-rail reveal flex min-w-0 flex-col gap-4 lg:self-start" aria-label="此刻">
       <CurrentTime client:load />
       <VisitorCity client:load />
       <StatsCard articleCount={allPosts.length} client:load />
@@ -82,4 +165,131 @@ const posts = allPosts.slice(0, HOME_RECENT);
       <UptimeCard client:load />
     </aside>
   </div>
+
+  <script>
+    /*
+     * 左栏作者卡：吸顶时收起，回顶部时展开。
+     *
+     * 为什么需要脚本：`position: sticky` 是否「已经粘住」在 CSS 里无法自证
+     * （除非用 animation-timeline，兼容性还不够）。所以只能比较几何：
+     * 卡片 sticky 的落点是 top-24 = 96px，**粘住之后 rect.top 恒等于 96**，
+     * 而还没粘住时它一定大于 96 —— 这一条判据既准又不需要知道 Hero 多高。
+     *
+     * 为什么按 rect.top 而不是 scrollY 阈值：Hero 的高度随视口变化，
+     * 写死一个 scrollY 数字在 900 高和 1200 高的屏上会差出上百像素。
+     *
+     * 与其它页面级脚本同样的模板（模块脚本首屏只跑一次，ClientRouter 换 body 后不重跑）：
+     * teardown + init + 监听 astro:page-load + DOM 就绪也跑一次。
+     */
+    const STICK_TOP = 96; // 与 aside 的 lg:top-24 一致，改一处要改另一处
+  
+    let teardownAuthor = () => {};
+  
+    function initAuthorCard() {
+      teardownAuthor();
+  
+    const card = document.querySelector<HTMLElement>('[data-author-card]');
+    if (!card) return;
+    // 诊断用：确认脚本真的跑到了这一步（与站内其它脚本一致的 __q* 标记习惯）
+    (window as unknown as Record<string, unknown>).__qAuthor = true;
+  
+      let settleRaf = 0;
+    let settleUntil = 0;
+    let collapsed = false;
+
+    const update = () => {
+      const top = card.getBoundingClientRect().top;
+      /* 判据是「真的粘住了」：sticky 落点就是 96，粘住后 top 恒等于 96。
+         收起阈值给 +1（亚像素容差），展开阈值给 +20 —— 收起后卡片带
+         translateY(-10px)，top 会变成 86，滞回必须大于这 10px，
+         否则会在边缘反复收展。
+         另外别写成 `collapsed ? top > B : top <= A`：那样算的是「另一个状态」的条件，
+         结果正好相反（吸顶时来回抖、回顶部反而收起）。 */
+      let next = collapsed;
+      if (top <= STICK_TOP + 1) next = true;
+      else if (top > STICK_TOP + 20) next = false;
+
+      if (next === collapsed) return;
+      collapsed = next;
+      card.classList.toggle('is-collapsed', next);
+      // 收起/展开改变左栏高度，读屏与键盘用户需要知道这块内容还在
+      card.setAttribute('aria-hidden', next ? 'true' : 'false');
+    };
+
+    /* ⚠️ 为什么不是「scroll 里跑一次 rAF」：
+       实测一次滚轮到位的滚动只派发 1 个 scroll 事件，而且**滚动结束后不再有事件**。
+       于是最后一次采样停在中间位置（99），位置落到 96 时没人再看一眼 ——
+       状态就卡住了。所以滚动后再持续追 400ms，直到位置稳定。
+       每帧只读一次 rect，页面元素不多，代价可忽略。 */
+    const settle = () => {
+      update();
+      if (performance.now() < settleUntil) settleRaf = requestAnimationFrame(settle);
+      else settleRaf = 0;
+    };
+
+    const onScroll = () => {
+      settleUntil = performance.now() + 400;
+      if (!settleRaf) settleRaf = requestAnimationFrame(settle);
+    };
+
+    window.addEventListener('scroll', onScroll, { passive: true });
+    window.addEventListener('scrollend', onScroll, { passive: true });
+    window.addEventListener('resize', onScroll);
+    update(); // 刷新后停在中间位置时也要有正确状态
+
+    teardownAuthor = () => {
+      window.removeEventListener('scroll', onScroll);
+      window.removeEventListener('scrollend', onScroll);
+      window.removeEventListener('resize', onScroll);
+      if (settleRaf) cancelAnimationFrame(settleRaf);
+    };
+    }
+  
+    document.addEventListener('astro:page-load', initAuthorCard);
+    if (document.readyState !== 'loading') initAuthorCard();
+    else document.addEventListener('DOMContentLoaded', initAuthorCard, { once: true });
+
+    /*
+     * 右栏「此刻」：装得下才吸顶。CSS 只定义 `.is-stuck` 长什么样，判不判由这里说了算。
+     *
+     * 为什么不用纯 CSS：右栏五张卡合计约 911px，能不能完整停在导航下面取决于
+     * **窗口多高**，CSS 没法自证。之前的写法是 sticky + max-height + 内部滚动，
+     * 在 1440×900 上把最后一张卡切掉一半、栏内还能单独滚 —— 用户原话是
+     * 「更加奇怪，就不能跟旁边对齐吗」。对齐的前提是完整显示。
+     *
+     * 判据只有一条：内容自然高 ≤ 视口 − 导航 − 底部余量 → 吸；否则回到普通文档流。
+     * 矮屏时右栏会跟着页面滚走，但至少不裁、不滚、不错位。
+     */
+    let teardownRail = () => {};
+
+    function initRail() {
+      teardownRail();
+      const rail = document.querySelector<HTMLElement>('.q-rail');
+      if (!rail) return;
+
+      const TOP = 96; // 与 .q-rail.is-stuck 的 top: 6rem 一致，改一处要改另一处
+      const BOTTOM = 16;
+
+      const decide = () => {
+        // aside 一直是 align-self: start，offsetHeight 就是内容自然高（不会被行高撑开）
+        const fits = rail.offsetHeight <= window.innerHeight - TOP - BOTTOM;
+        rail.classList.toggle('is-stuck', fits);
+      };
+
+      decide();
+      window.addEventListener('resize', decide);
+      // 卡片内容是客户端渲染的（时间/定位/统计），高度会变，盯住它
+      const ro = 'ResizeObserver' in window ? new ResizeObserver(decide) : null;
+      ro?.observe(rail);
+
+      teardownRail = () => {
+        window.removeEventListener('resize', decide);
+        ro?.disconnect();
+      };
+    }
+
+    document.addEventListener('astro:page-load', initRail);
+    if (document.readyState !== 'loading') initRail();
+    else document.addEventListener('DOMContentLoaded', initRail, { once: true });
+  </script>
 </Layout>

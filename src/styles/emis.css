@@ -1,0 +1,149 @@
+/*
+ * 爱弥斯 2.5D 在场（v6 第 5 条）。
+ *
+ * 只用官方立绘做活化，**不进 WebGL**（v6 §4.2）：DOM 图片更清晰、易做 FLIP 归位、
+ * 也不会因为贴图采样而失真。
+ *
+ * ── 三层结构，每层只负责一件事 ──────────────────────────────
+ *   .q-emis          perspective —— 只为下面 gaze 的 rotateY 提供纵深
+ *   .q-emis__gaze    视线跟随（指针驱动，JS 写 CSS 变量）
+ *   .q-emis__idle    呼吸 + 微摆（一条 CSS 动画同时表态 scale 与 rotate）
+ *
+ * 为什么拆三层而不是把 transform 写在一起：**同一元素上的多个 transform 会互相覆盖**，
+ * 两个各自带 `transform` 的动画只能有一个生效。分层之后每个动画各管一个盒子，
+ * 天然叠加，也便于单独关掉（比如减动效时只停 idle 不停 gaze）。
+ *
+ * ⚠️ 呼吸/微摆**必须等开屏交接完再开始**：
+ * 开屏用 getBoundingClientRect() 量 [data-emis-hero] 的落点，而这个矩形**包含 transform**。
+ * 动画提前跑起来，FLIP 就会落偏。门禁由 Hero.tsx 的 is-idle 类负责。
+ *
+ * ── 为什么没有「发梢光影」 ──────────────────────────────────
+ * 试过用整画布剪影当遮罩、叠一道暖白扫光。结论是**做不出效果**：
+ * 官方立绘本身是浅色暖调，screen 叠加的扫光只会把她的配色冲淡（红领结、棕裙发白），
+ * 强度降到 0.28 才不伤画面，可那时又几乎看不见 —— 看得见就毁、看不见就白做。
+ * 这和第 4 条光场失败的原因是同一个：**加色光落在浅色画面上只会变淡**。
+ * 与其留一个「只能调到看不见」的效果，不如不要。
+ */
+
+@layer components {
+  .q-emis {
+    position: relative;
+    /* 给 gaze 的 rotateY 一点纵深；数值小是因为只要「头稍微转一下」的错觉 */
+    perspective: 900px;
+    display: block;
+    width: fit-content;
+  }
+
+  /* 视线跟随。变量由 Hero.tsx 写，范围 -1..1；这里换算成位移与角度。
+     幅度刻意很小：位移 7px、转角 2.2°。再大就不是「看过来」而是「晃」了。
+     ⚠️ 这里**不要**加 transition —— 缓动在 JS 的 rAF 里做（每帧 lerp 0.12）。
+     两边都缓一次会叠成明显滞后，鼠标停了半天画面才跟上。 */
+  .q-emis__gaze {
+    display: block;
+    width: fit-content;
+    transform:
+      translate3d(calc(var(--emis-x, 0) * 7px), calc(var(--emis-y, 0) * 5px), 0)
+      rotateY(calc(var(--emis-x, 0) * 2.2deg))
+      rotateX(calc(var(--emis-y, 0) * -1.2deg));
+    transform-origin: 50% 80%;
+    will-change: transform;
+  }
+
+  .q-emis__idle {
+    position: relative;
+    /* ⚠️ 必须是 flex 而不是默认的 block：`.q-media` 是 inline-block，
+       放在块级容器里会落在一条 line box 上，底部多出行高descender 那几像素——
+       而立绘原本是 motion.div 的 flex item（被 blockify），没有这个间隙。
+       换成 flex 后 picture 重新变成 flex item，布局与改造前逐像素一致。 */
+    display: flex;
+    width: fit-content;
+    /* 以脚下为轴：她是在「站着呼吸」，绕中心缩放会显得像气球在鼓 */
+    transform-origin: 50% 100%;
+  }
+
+  /* 只有拿到 is-idle 才动。变量 --ease-soft 来自 tokens.css */
+  .q-emis.is-idle .q-emis__idle {
+    animation: q-emis-idle 9.2s var(--ease-soft) infinite;
+  }
+
+  /*
+   * 呼吸 + 微摆合成一条动画：两者共用一个周期，相位锁在一起像自然的重心转移。
+   * 拆成两条动画是不行的 —— 同一元素上两个都写 transform，只有后一条生效。
+   * 幅度上限：scale 1.4%、rotate 0.45°、位移 5px。再大就会从「活的」变成「在晃」。
+   */
+  @keyframes q-emis-idle {
+    0% {
+      transform: scale(1) rotate(0deg) translateY(0);
+    }
+    25% {
+      transform: scale(1.007) rotate(0.4deg) translateY(-2px);
+    }
+    50% {
+      transform: scale(1.014) rotate(0deg) translateY(-5px);
+    }
+    75% {
+      transform: scale(1.007) rotate(-0.4deg) translateY(-2px);
+    }
+    100% {
+      transform: scale(1) rotate(0deg) translateY(0);
+    }
+  }
+
+  /* 减动效：停呼吸与微摆。
+    但**保留视线跟随** —— 那是用户自己动鼠标触发的，属于「主动行为」，
+     v6 §5.3 明确要留。 */
+  @media (prefers-reduced-motion: reduce) {
+    .q-emis.is-idle .q-emis__idle {
+      animation: none;
+    }
+  }
+
+  /* ── 内容页小陪伴 ──────────────────────────────────────────
+     左下角。右下角是迷你播放器（bottom-6 right-6），两个叠在一起会打架。
+     z-index 低于导航（50），高于正文，但它 pointer-events:none，不挡任何东西。 */
+  .q-companion {
+    position: fixed;
+    left: 18px;
+    bottom: 0;
+    z-index: 30;
+    pointer-events: none;
+    width: clamp(76px, 8vw, 118px);
+    opacity: 0;
+    transform: translateY(22%);
+    transition:
+      opacity var(--dur-state) var(--ease-soft),
+      transform var(--dur-state) var(--ease-soft);
+    will-change: opacity, transform;
+  }
+
+  .q-companion.is-on {
+    opacity: 0.9;
+    transform: translateY(0);
+  }
+
+  /* corner 是「一直在」的形态，出现得比其它两个更轻一点：
+     没有从下方探头的过程，只有淡入。 */
+  .q-companion--corner {
+    transform: none;
+  }
+
+  .q-companion img {
+    display: block;
+    width: 100%;
+    height: auto;
+  }
+
+  /* 减动效：不做位移过渡，直接显隐 */
+  .q-companion.is-static {
+    transition: none;
+    transform: none;
+  }
+
+  /* 窄屏不显示：手机上一块固定的图很容易压住正文。
+     「不抢注意力」在手机上就等于「别出现」。 */
+  @media (max-width: 767px) {
+    .q-companion {
+      display: none;
+    }
+  }
+}

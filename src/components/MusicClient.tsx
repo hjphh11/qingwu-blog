@@ -2,7 +2,8 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { motion } from 'motion/react';
 import { MorphIcon } from 'morphicons/react';
 import { SkipBack, Play, Pause, SkipForward, Volume2, VolumeX, Repeat, Repeat1, Shuffle } from '../lib/icons';
-import { initMusic, subscribe, getMusicState, music } from '../lib/musicStore';
+import { initMusic, subscribe, getMusicState, getPristineState, music } from '../lib/musicStore';
+import Spectrum from './music/Spectrum';
 
 function fmt(sec: number) {
   if (!isFinite(sec)) return '0:00';
@@ -14,13 +15,21 @@ function fmt(sec: number) {
 const modeText = { order: '顺序', one: '单曲', random: '随机' } as const;
 
 export default function MusicClient() {
-  const [state, setState] = useState(getMusicState());
+  /* ⚠️ 首帧必须用「未被 restore 还原过」的快照，不能用 getMusicState()。
+     这个组件是 client:load —— 服务端渲染的 HTML 里是默认状态；而 MiniPlayer
+     是 client:only，它会先挂载并 restore()，把 localStorage 里的歌写进模块变量。
+     直接读 getMusicState() 就会拿到已还原的值，与水合时的服务端 HTML 对不上，
+     React 报 hydration mismatch 且**不会修补**（用户上次听的歌就不显示）。
+     真实状态在下面的 effect 里同步。 */
+  const [state, setState] = useState(getPristineState);
   const [tab, setTab] = useState<'lrc' | 'list'>('lrc');
   const [query, setQuery] = useState('');
   const lyricsRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     initMusic();
+    // initMusic 里的 emit() 发生在 subscribe 之前，会漏掉 —— 这里补同步一次
+    setState(getMusicState());
     return subscribe(() => setState(getMusicState()));
   }, []);
 
@@ -137,6 +146,9 @@ export default function MusicClient() {
               <span className={`q-buf-ring ${isBuffering ? 'is-on' : ''}`} aria-hidden="true" />
             </span>
             <div className="absolute h-14 w-14 rounded-full border-4 border-white/80 bg-cream/90 md:h-16 md:w-16" />
+            {/* 频谱柱搭在唱片下缘，absolute 不占布局（见 styles/ui.css 的 .q-spectrum）。
+                只在播放时出现，暂停后回落收起到不可见。 */}
+            <Spectrum playing={isPlaying} />
           </div>
 
           <div className="text-center">
@@ -172,6 +184,7 @@ export default function MusicClient() {
               aria-valuetext={`${fmt(currentTime)} / ${fmt(duration)}`}
             >
               <div
+                data-q-progress
                 className="relative h-2 rounded-full bg-crimson transition-[width] duration-150 ease-linear"
                 style={{ width: `${pct}%` }}
               >
@@ -273,7 +286,7 @@ export default function MusicClient() {
                       className={`block w-full py-2.5 text-center transition-all ${
                         i === activeLyricIndex
                           ? 'scale-105 rounded-xl bg-rose/10 font-display text-xl text-crimson'
-                          : 'text-sm text-subtle hover:text-ink/85'
+                          : 'text-sm text-subtle hover:text-muted'
                       }`}
                     >
                       {ln.text}
@@ -319,7 +332,10 @@ export default function MusicClient() {
                         className="h-11 w-11 shrink-0 rounded-lg object-cover"
                       />
                       <div className="min-w-0 flex-1">
-                        <p className={`truncate text-sm ${active ? 'font-medium text-crimson' : 'text-ink'}`}>
+                        <p
+                          data-track-title
+                          className={`truncate text-sm ${active ? 'font-medium text-crimson' : 'text-ink'}`}
+                        >
                           {s.title}
                         </p>
                         <p className="truncate text-xs text-subtle">

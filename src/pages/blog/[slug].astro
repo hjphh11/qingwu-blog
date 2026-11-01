@@ -1,6 +1,7 @@
 ---
 import Layout from '../../layouts/Layout.astro';
 import ReadingProgress from '../../components/ReadingProgress.tsx';
+import EmisCompanion from '../../components/emis/EmisCompanion.tsx';
 import ContactExpand from '../../components/ContactExpand.tsx';
 import MorphIcon from 'morphicons/astro';
 import { List, ArrowLeft } from '../../lib/icons';
@@ -51,7 +52,7 @@ const toc = headings.filter((h) => h.depth === 2 || h.depth === 3);
           <span aria-hidden="true">·</span>
           <span>阅读约 {readMin} 分钟</span>
         </div>
-        <h1 class="mt-5 font-display text-[length:var(--text-display)] leading-[1.2] text-ink">
+        <h1 class="q-post-title mt-5 font-display text-[length:var(--text-display)] leading-[1.2] text-ink">
           {post.data.title}
         </h1>
         <div class="mt-5 flex flex-wrap gap-x-3 gap-y-1">
@@ -87,13 +88,14 @@ const toc = headings.filter((h) => h.depth === 2 || h.depth === 3);
           <MorphIcon icon={List} size={16} color="currentColor" />
           目录
         </div>
-        <ul class="space-y-1.5 border-l border-rose/25 pl-4 text-sm">
+        <ul data-toc class="space-y-1.5 border-l border-rose/25 pl-4 text-sm">
           {
             toc.map((h) => (
-              <li class={`${h.depth === 3 ? 'pl-4' : ''}`}>
+              <li class={`q-toc__item${h.depth === 3 ? ' q-toc__item--sub pl-4' : ''}`}>
                 <a
                   href={`#${h.slug}`}
-                  class="block py-0.5 text-muted transition-colors hover:text-accent"
+                  data-toc-link={h.slug}
+                  class="q-toc__link block py-0.5 transition-colors hover:text-accent"
                 >
                   {h.text}
                 </a>
@@ -104,13 +106,104 @@ const toc = headings.filter((h) => h.depth === 2 || h.depth === 3);
       </nav>
     </aside>
   </div>
+
+  {/* 小陪伴：三种形态（角落 / 滚动探头 / 文末）每次进文章页随机掷一个。
+      client:only —— 形态是客户端随机决定的，服务端无从预知；
+      而且它只是个固定定位的装饰层，不需要 SSR。 */}
+  <EmisCompanion client:only="react" />
 </Layout>
 
 <script>
-  const back = document.getElementById('back-btn');
-  back?.addEventListener('click', () => {
-    if (history.length > 1) history.back();
-    else window.location.href = '/blog';
-  });
+  /*
+   * ⚠️ 两个必须：
+   * 1. **不能在这里直接绑元素**。Astro 的 `<script>` 是模块，首屏执行一次之后，
+   *    客户端路由切页不会重跑；而 ClientRouter 会把整个 body 换掉 —— 于是
+   *    「从别的页面点进文章」时绑定全落在已经丢弃的旧节点上（后退按钮原来就点不动）。
+   * 2. **首屏也要主动初始化一次**。不能只靠 `astro:page-load`：那个事件有可能在
+   *    本脚本求值之前就派发完了（实测首屏拿不到高亮，就是因为它错过了）。
+   *    所以「DOM 就绪就跑一次」+「监听后续导航」，并且做成幂等。
+   */
+  let teardown: (() => void) | null = null;
+
+  function init() {
+    // 幂等：重复进入（或首屏既跑了立即初始化、又收到 page-load）时先清掉上一次
+    teardown?.();
+    teardown = null;
+
+    const back = document.getElementById('back-btn');
+    const onBack = () => {
+      if (history.length > 1) history.back();
+      else window.location.href = '/blog';
+    };
+    back?.addEventListener('click', onBack);
+
+    const toc = document.querySelector('[data-toc]');
+    if (!toc) {
+      teardown = () => back?.removeEventListener('click', onBack);
+      return;
+    }
+
+    /* ── TOC 当前项（v6 §7.3：当前项左侧 2px 光线）──
+       ⚠️ 这里**没有**用 IntersectionObserver。原因是它的回调只在「相交状态发生变化」时
+       触发：当视口处在两个标题之间、且没有任何标题落在判定带里时，滚动不会产生回调，
+       目录就会卡在上一个高亮不动 —— 而这恰好是最需要更新的场景（实测复现）。
+       改成 rAF 节流的 scroll 计算：一帧最多算一次，9 个标题的 rect 读取代价可以忽略，
+       而且任何滚动位置都有确定结果。 */
+    const links = new Map<string, HTMLAnchorElement>();
+    toc.querySelectorAll<HTMLAnchorElement>('[data-toc-link]').forEach((a) => {
+      links.set(a.dataset.tocLink || '', a);
+    });
+
+    const heads = Array.from(
+      document.querySelectorAll<HTMLElement>('article h2[id], article h3[id]'),
+    );
+
+    let current = '';
+    const setActive = (id: string) => {
+      if (id === current) return;
+      current = id;
+      links.forEach((a, key) => a.classList.toggle('is-active', key === id));
+    };
+
+    let raf = 0;
+    const pick = () => {
+      raf = 0;
+      if (!heads.length) return;
+      /* 判定线放在视口 30% 处：最后一个「已经越过这条线」的标题就是当前章节。
+         全都没越过（还在引言）时点亮第一项 —— 不点亮任何一项会让人以为目录坏了。 */
+      const line = window.innerHeight * 0.3;
+      let idx = 0;
+      for (let i = 0; i < heads.length; i++) {
+        if (heads[i].getBoundingClientRect().top <= line) idx = i;
+        else break;
+      }
+      setActive(heads[idx].id);
+    };
+    const onScroll = () => {
+      if (!raf) raf = requestAnimationFrame(pick);
+    };
+
+    window.addEventListener('scroll', onScroll, { passive: true });
+    window.addEventListener('resize', onScroll);
+    pick();
+
+    // 带 hash 进来时以它为准（滚动位置可能还没生效，pick 会算错一帧）
+    const hash = decodeURIComponent(location.hash.slice(1));
+    if (hash && links.has(hash)) setActive(hash);
+
+    teardown = () => {
+      window.removeEventListener('scroll', onScroll);
+      window.removeEventListener('resize', onScroll);
+      if (raf) cancelAnimationFrame(raf);
+      back?.removeEventListener('click', onBack);
+    };
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', init, { once: true });
+  } else {
+    init();
+  }
+  document.addEventListener('astro:page-load', init);
 </script>
 

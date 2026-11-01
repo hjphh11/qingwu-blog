@@ -4,6 +4,8 @@ export type Song = {
   cover: string;
   audio: string;
   note?: string;
+  /** 总时长（秒）。来自 music.json，用来在音频元数据到位之前就先显示真实时长 —— 详见 musicStore 的 primeDuration */
+  duration?: number;
   lrc?: string;
 };
 
@@ -19,6 +21,7 @@ export const playlist: Song[] = [
     cover: 'https://qingwu.cn-nb1.rains3.com/music/covers/cover-1.webp',
     audio: 'https://qingwu.cn-nb1.rains3.com/music/audio/song-1.mp3',
     note: "《鸣潮》公测主题曲",
+    duration: 199,
     lrc: `{"t":0,"c":[{"tx":"特别呈现: "},{"tx":"先约电台"}]}
 {"t":1000,"c":[{"tx":"制作人: "},{"tx":"Terry Zhong钟天利"}]}
 {"t":2000,"c":[{"tx":"作曲: "},{"tx":"Terry Zhong钟天利"}]}
@@ -77,6 +80,7 @@ export const playlist: Song[] = [
     cover: 'https://qingwu.cn-nb1.rains3.com/music/covers/cover-2.webp',
     audio: 'https://qingwu.cn-nb1.rains3.com/music/audio/song-2.mp3',
     note: "卡提希娅主题曲",
+    duration: 232,
     lrc: `{"t":0,"c":[{"tx":"作词 Lyricist: "},{"tx":"Xulai"}]}
 {"t":1000,"c":[{"tx":"作曲 Composer: "},{"tx":"jixwang","li":"http://p1.music.126.net/BPFwKES7L6_QtLs0IcqMtw==/109951165820162174.jpg","or":"orpheus://nm/artist/home?id=13005455&type=artist"}]}
 {"t":2000,"c":[{"tx":"编曲 Arranger: "},{"tx":"jixwang","li":"http://p1.music.126.net/BPFwKES7L6_QtLs0IcqMtw==/109951165820162174.jpg","or":"orpheus://nm/artist/home?id=13005455&type=artist"}]}
@@ -142,6 +146,7 @@ export const playlist: Song[] = [
     cover: 'https://qingwu.cn-nb1.rains3.com/music/covers/cover-3.webp',
     audio: 'https://qingwu.cn-nb1.rains3.com/music/audio/song-3.mp3',
     note: "罗蕾莱 Boss 主题曲",
+    duration: 144,
     lrc: `{"t":0,"c":[{"tx":"作曲 Composer: "},{"tx":"十音"},{"tx":"/"},{"tx":"jixwang"}]}
 {"t":416,"c":[{"tx":"编曲 Arranger: "},{"tx":"十音"}]}
 {"t":832,"c":[{"tx":"混音师 Mixing Engineer: "},{"tx":"十音"}]}
@@ -162,6 +167,7 @@ export const playlist: Song[] = [
     cover: 'https://qingwu.cn-nb1.rains3.com/music/covers/cover-4.webp',
     audio: 'https://qingwu.cn-nb1.rains3.com/music/audio/song-4.mp3',
     note: "长离与今汐师徒印象曲",
+    duration: 256,
     lrc: `{"t":0,"c":[{"tx":"作词: "},{"tx":"梨华rika","li":"http://p1.music.126.net/8ztNf4L7coEkdBl_YaQjtA==/109951165018020054.jpg","or":"orpheus://nm/artist/home?id=28187377&type=artist"}]}
 [00:01.710]今州鸾鸣
 [00:06.606]《鸣潮》一周年庆——长离与今汐师徒印象曲
@@ -222,6 +228,7 @@ export const playlist: Song[] = [
     cover: 'https://qingwu.cn-nb1.rains3.com/music/covers/cover-5.webp',
     audio: 'https://qingwu.cn-nb1.rains3.com/music/audio/song-5.mp3',
     note: "尤诺 BGM",
+    duration: 198,
     lrc: `{"t":0,"c":[{"tx":"作曲 Composer: "},{"tx":"jixwang"}]}
 {"t":766,"c":[{"tx":"编曲 Arranger: "},{"tx":"jixwang"}]}
 {"t":1532,"c":[{"tx":"弦乐编写 Strings Arrangement: "},{"tx":"markmilian"}]}
@@ -275,6 +282,7 @@ export const playlist: Song[] = [
     cover: 'https://qingwu.cn-nb1.rains3.com/music/covers/cover-6.webp',
     audio: 'https://qingwu.cn-nb1.rains3.com/music/audio/song-6.mp3',
     note: "罗蕾莱云海隐藏约会曲",
+    duration: 200,
     lrc: `{"t":0,"c":[{"tx":"作曲 Composer: "},{"tx":"jixwang"}]}
 {"t":562,"c":[{"tx":"编曲 Arranger: "},{"tx":"jixwang"}]}
 {"t":1124,"c":[{"tx":"作词 Lyricist: "},{"tx":"XuLai"}]}
@@ -328,6 +336,7 @@ export const playlist: Song[] = [
     cover: 'https://qingwu.cn-nb1.rains3.com/music/covers/cover-7.webp',
     audio: 'https://qingwu.cn-nb1.rains3.com/music/audio/song-7.mp3',
     note: "",
+    duration: 256,
     lrc: `{"t":0,"c":[{"tx":"出品: "},{"tx":"鸣潮先约电台"}]}
 {"t":1000,"c":[{"tx":"演唱: "},{"tx":"蔡明希（不才）"}]}
 {"t":2000,"c":[{"tx":"制作人: "},{"tx":"宫阁"}]}
@@ -389,6 +398,7 @@ export const playlist: Song[] = [
     cover: 'https://qingwu.cn-nb1.rains3.com/music/covers/cover-8.webp',
     audio: 'https://qingwu.cn-nb1.rains3.com/music/audio/song-8.mp3',
     note: "",
+    duration: 256,
     lrc: `{"t":-1000,"c":[{"tx":"出品: "},{"tx":"鸣潮先约电台"}]}
 {"t":-965,"c":[{"tx":"演唱: "},{"tx":"黄霄雲"}]}
 {"t":-930,"c":[{"tx":"制作人: "},{"tx":"杨秉音@TME制作人联盟"}]}
@@ -467,6 +477,7 @@ export const playlist: Song[] = [
     cover: 'https://qingwu.cn-nb1.rains3.com/music/covers/cover-9.webp',
     audio: 'https://qingwu.cn-nb1.rains3.com/music/audio/song-9.mp3',
     note: "",
+    duration: 278,
     lrc: `{"t":0,"c":[{"tx":"作词: "},{"tx":"冉语优","li":"http://p1.music.126.net/VTaVMTrMCzI8iEP_G4ojAA==/109951163596197517.jpg","or":"orpheus://nm/artist/home?id=34875386&type=artist"}]}
 {"t":717,"c":[{"tx":"作曲: "},{"tx":"jkinss","li":"http://p1.music.126.net/pd6qh284zi4vsS44vLQeuA==/109951165321518435.jpg","or":"orpheus://nm/artist/home?id=36778576&type=artist"}]}
 {"t":1434,"c":[{"tx":"编曲: "},{"tx":"jkinss","li":"http://p1.music.126.net/pd6qh284zi4vsS44vLQeuA==/109951165321518435.jpg","or":"orpheus://nm/artist/home?id=36778576&type=artist"}]}
@@ -539,6 +550,7 @@ export const playlist: Song[] = [
     cover: 'https://qingwu.cn-nb1.rains3.com/music/covers/cover-10.webp',
     audio: 'https://qingwu.cn-nb1.rains3.com/music/audio/song-10.mp3',
     note: "",
+    duration: 263,
     lrc: `{"t":0,"c":[{"tx":"作曲 Composer: "},{"tx":"jixwang"}]}
 {"t":1000,"c":[{"tx":"编曲 Arranger: "},{"tx":"jixwang"}]}
 {"t":2000,"c":[{"tx":"作词 Lyricist: "},{"tx":"Xulai"}]}
@@ -604,6 +616,7 @@ export const playlist: Song[] = [
     cover: 'https://qingwu.cn-nb1.rains3.com/music/covers/cover-11.webp',
     audio: 'https://qingwu.cn-nb1.rains3.com/music/audio/song-11.mp3',
     note: "",
+    duration: 241,
     lrc: `{"t":0,"c":[{"tx":"作曲 Composer: "},{"tx":"jixwang"}]}
 {"t":754,"c":[{"tx":"编曲 Arranger: "},{"tx":"jixwang"}]}
 {"t":1508,"c":[{"tx":"作词 Lyricist: "},{"tx":"Xulai"}]}
@@ -679,6 +692,7 @@ export const playlist: Song[] = [
     cover: 'https://qingwu.cn-nb1.rains3.com/music/covers/cover-12.webp',
     audio: 'https://qingwu.cn-nb1.rains3.com/music/audio/song-12.mp3',
     note: "",
+    duration: 234,
     lrc: `{"t":0,"c":[{"tx":"出品: "},{"tx":"鸣潮先约电台"}]}
 {"t":1000,"c":[{"tx":"演唱: "},{"tx":"飞行雪绒"}]}
 {"t":2000,"c":[{"tx":"音乐制作人: "},{"tx":"Haruno"}]}
@@ -735,6 +749,7 @@ export const playlist: Song[] = [
     cover: 'https://qingwu.cn-nb1.rains3.com/music/covers/cover-13.webp',
     audio: 'https://qingwu.cn-nb1.rains3.com/music/audio/song-13.mp3',
     note: "",
+    duration: 225,
     lrc: `{"t":0,"c":[{"tx":"作曲 Composer: "},{"tx":"jixwang"}]}
 {"t":1000,"c":[{"tx":"编曲 Arranger: "},{"tx":"jixwang"}]}
 {"t":2000,"c":[{"tx":"作词 Lyricist: "},{"tx":"Xulai"}]}

@@ -1,4 +1,5 @@
 import { playlist } from '../data/music';
+import { attachAnalyser, resumeAnalyser } from './audioAnalyser';
 
 type Listener = () => void;
 type PlayMode = 'order' | 'one' | 'random';
@@ -24,7 +25,17 @@ let isPlaying = false;
  */
 let isBuffering = false;
 let currentTime = 0;
-let duration = 0;
+/**
+ * 总时长（秒）。
+ *
+ * ⚠️ **初值必须来自数据，不能是 0。** 音频元素在「没设 src / 还没 loadedmetadata」
+ * 之前 duration 是 0，而播放器在首页、/music、迷你窗三处都读它 —— 一旦从 0 起步，
+ * 访客看到的就是 `0:00 / 0:00`、进度条 `aria-valuemax=0` 且点不动，像播放器坏了。
+ * 现在先用 music.json 里预置的时长（scripts/gen.mjs 透传），元数据到了再覆盖成精确值。
+ */
+let duration = Math.round(playlist[0]?.duration ?? 0);
+/** 数据里预置的时长（秒）。音频元数据还没到位时用它兜底。 */
+const metaDuration = () => Math.max(0, Math.round(playlist[currentIndex]?.duration ?? 0));
 let volume = 0.8;
 let isMuted = false;
 let playMode: PlayMode = 'order';
@@ -49,12 +60,18 @@ function parseLRC(lrc = ''): { time: number; text: string }[] {
 function getAudio(): HTMLAudioElement {
   if (!audio) {
     audio = new Audio();
+    // ⚠️ crossOrigin **必须赶在 src 之前**设。跨域音频不走 CORS 的话，
+    // Web Audio 的输出会被规范要求静音 → 声音正常但频谱永远全 0（见 lib/audioAnalyser.ts）。
+    // 对象存储回的是 `Access-Control-Allow-Origin: *`，所以这里安全；换托管商要重新确认。
+    audio.crossOrigin = 'anonymous';
     audio.addEventListener('timeupdate', () => {
       if (audio) currentTime = audio.currentTime;
       emit();
     });
     audio.addEventListener('loadedmetadata', () => {
-      if (audio) duration = audio.duration || 0;
+      // ⚠️ 用 `||` 而不是直接赋值：元数据刚解析出来那一次 duration 仍可能是 0/NaN，
+      // 直接写会把数据里预置的时长（以及已经在显示的 3:19）清成 0:00。
+      if (audio) duration = Math.round(audio.duration) || metaDuration();
       emit();
     });
     audio.addEventListener('ended', onEnded);
@@ -74,6 +91,17 @@ function getAudio(): HTMLAudioElement {
     audio.addEventListener('pause', () => setBuffering(false));
   }
   return audio;
+}
+
+/**
+ * 播放时把分析器接上。放在这里而不是组件里，是因为「一个元素只能建一个
+ * MediaElementAudioSource」—— 两处各建一次必然抛异常。
+ * AudioContext 在首次播放（必然由点击触发）时创建，才不会是 suspended。
+ * 取不到 Web Audio 就静默返回：没有声波而已，播放不受影响。
+ */
+function hookAnalyser(a: HTMLAudioElement) {
+  if (!attachAnalyser(a)) return;
+  resumeAnalyser();
 }
 
 function emit() {
@@ -103,6 +131,9 @@ function restore() {
     const mode = localStorage.getItem(S.mode);
     playMode = mode === 'one' || mode === 'random' ? mode : 'order';
     isPlaying = false; // 自动播放限制,恢复时默认暂停
+    // 还原出来的歌也要立刻有总时长（restore 发生在 any ensure 之前）
+    duration = metaDuration();
+    if (currentTime > duration) currentTime = 0;
   } catch {
     /* ignore */
   }
@@ -114,6 +145,8 @@ function ensure(index: number) {
     a.src = playlist[index].audio;
     a.volume = isMuted ? 0 : volume;
     loadedIndex = index;
+    // 换歌先把时长换成新歌在数据里预置的那个，别让它停在上一首的长度上
+    duration = Math.max(0, Math.round(playlist[index]?.duration ?? 0));
     // 换源相当于重新开始等数据,先把这个状态清掉(新源真的卡住时会再触发 waiting)
     isBuffering = false;
   }
@@ -124,10 +157,12 @@ function playSong(index: number) {
   if (index !== currentIndex) {
     currentIndex = index;
     currentTime = 0;
-    duration = 0;
+    // 不是 0 —— 换成新歌在数据里预置的时长，界面立刻显示正确总长
+    duration = Math.max(0, Math.round(playlist[index]?.duration ?? 0));
   }
   ensure(currentIndex);
   const a = getAudio();
+  hookAnalyser(a);
   if (loadedIndex === currentIndex && currentTime > 0 && a.currentTime !== currentTime) {
     a.currentTime = currentTime;
   }
@@ -153,6 +188,7 @@ function togglePlay() {
     a.pause();
     isPlaying = false;
   } else {
+    hookAnalyser(a);
     if (loadedIndex === currentIndex && currentTime > 0 && a.currentTime !== currentTime) {
       a.currentTime = currentTime;
     }
@@ -269,6 +305,24 @@ export function subscribe(cb: Listener) {
 
 export function getMusicState() {
   return getState();
+}
+
+/**
+ * 模块求值那一刻的状态快照 —— 也就是**还没被 restore() 还原过**的那份默认值。
+ *
+ * 为什么需要它：MusicClient 是 `client:load`，服务端会先渲染一份 HTML，
+ * 那里面的状态就是这份默认值。但 MiniPlayer 是 `client:only`，它会先挂载并调用
+ * `initMusic()` → `restore()`，把 localStorage 里的歌写进模块变量。
+ * 之后 MusicClient 水合时再 `useState(getMusicState())`，拿到的就是「已还原」的状态，
+ * 与服务端 HTML 对不上 —— React 报 hydration mismatch，而且明确说**不会修补**，
+ * 界面会停在服务端那份（用户上次听的那首歌不显示）。
+ *
+ * 所以首帧必须用这份快照，等水合完成后再同步成真实状态。
+ */
+const PRISTINE_STATE = getState();
+
+export function getPristineState() {
+  return PRISTINE_STATE;
 }
 
 export function audioElement() {

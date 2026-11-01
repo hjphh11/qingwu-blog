@@ -1,0 +1,214 @@
+/* 版式骨架：页面容器、页标题、区块标题、卡内小标题、列表卡片外框。
+
+   .page-shell 是**唯一**的横轴来源。任何页面都不要给它覆盖 max-w ——
+   改了会让它按新宽度重新居中,内容左缘跟着横跳（实测 /about 差 44px）。
+   需要窄栏时把 max-w 下沉到内层 div 上。 */
+
+@layer components {
+  /* —— 页面容器:全站统一 ——
+     原来 index/share 用 max-w-4xl(896)、about 用 max-w-3xl(768)、
+     blog post / music 用 max-w-5xl(1024),换页时左缘会跳 64~128px。
+     现在统一到一个 1080px 的画布 + 一致的左右留白,所有页面共用一条左边线。 */
+  .page-shell {
+    width: 100%;
+    max-width: var(--shell-max);
+    margin-inline: auto;
+    padding-inline: var(--shell-gutter);
+    padding-bottom: 5rem;
+    /* 顶部留出固定导航的高度:导航 68px + 一段呼吸 */
+    padding-top: clamp(6rem, 5rem + 3vw, 7.5rem);
+  }
+
+  /* 导航与页脚的横轴跟 .page-shell 完全一致 ——
+     不再各写一套 max-width + padding（那样必然错位几十像素）。
+     两者只需要「同样的最大宽度 + 同样的留白」,不需要 .page-shell 的上下 padding。 */
+  .shell-inline {
+    width: 100%;
+    max-width: var(--shell-max);
+    margin-inline: auto;
+    padding-inline: var(--shell-gutter);
+  }
+
+  /* —— 页面级标题区(标题 + 一句副标) ——
+     统一字号阶梯与下方间距,不再各页自定 mb-8/mt-2。 */
+  .page-head {
+    margin-bottom: var(--space-section);
+  }
+
+  /* —— 文章大标题的断行 ——
+     中文默认可以在**任意两字之间**断行,于是「克制的动效」会被拆成「…的动 / 效」,
+     核心词被劈开,是这一页最扎眼的排版失误。
+
+     实测过四种写法（1440 宽、同一条标题）:
+       · 默认                    → 「…的动」/「效：滚动…」     ← 拆词
+       · text-wrap: balance      → 同上，孤儿行没消掉
+       · word-break: auto-phrase → 同上（Chrome 里它不改变这条的断点）
+       · keep-all + strict       → 「…的动效：」/「滚动…」     ← 断在标点后
+     所以用最后一组。`overflow-wrap: anywhere` 是兜底:纯汉字、又没有标点的标题
+     在 keep-all 下无处可断,这一条让它退回「塞满再硬断」,不会撑破容器。
+
+     ⚠️ **窄屏必须关掉 keep-all**。手机一行只放得下十来个字,而 keep-all 会把
+     「内容集合与静态路径：」这种没有空格的整串当成一个词 —— 实测 390 宽时
+     标题碎成 [77 / 335 / 335 / 134] 四行,首行只剩一个 "Astro"。
+     窄屏退回普通断行（可能仍会拆词），至少不会一行只放一个词。 */
+  .q-post-title {
+    word-break: keep-all;
+    overflow-wrap: anywhere;
+    line-break: strict;
+  }
+  @media (max-width: 767px) {
+    .q-post-title {
+      word-break: normal;
+      overflow-wrap: break-word;
+    }
+  }
+  .page-head__title {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    font-family: var(--font-display);
+    font-size: var(--text-page);
+    line-height: 1.15;
+    color: var(--color-ink);
+  }
+  /* 标题前那根绯红小竖条 —— 全站统一的品牌标记 */
+  .page-head__title::before {
+    content: '';
+    flex: none;
+    width: 0.375rem;
+    height: 1.15em;
+    border-radius: var(--radius-pill);
+    background: linear-gradient(
+      to bottom,
+      var(--color-crimson),
+      color-mix(in oklab, var(--color-crimson) 55%, var(--color-amber))
+    );
+  }
+  .page-head__sub {
+    margin-top: 0.6rem;
+    font-size: 0.9375rem;
+    line-height: 1.6;
+    color: var(--color-muted);
+  }
+
+  /* —— 区块标题(首页「最近文章」之类) —— */
+  .section-head {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    font-family: var(--font-display);
+    font-size: var(--text-section);
+    line-height: 1.2;
+    color: var(--color-ink);
+  }
+  .section-head::before {
+    content: '';
+    flex: none;
+    width: 0.3rem;
+    height: 0.9em;
+    border-radius: var(--radius-pill);
+    background: var(--color-crimson);
+  }
+
+  /* —— 首页右栏「此刻」：装得下才吸顶 ——
+     左栏一直是 sticky，右栏不是，于是往下滚一段之后右边整片空白、
+     只剩中间一列在动，看着像版面塌了一半。
+
+     但右栏五张卡合计约 911px，比 1440×900 的可用高度（视口 − 导航 96 − 余量）
+     还高。这里踩过一次：写死 `sticky + max-height + overflow: auto` 之后，
+     矮一点的屏上右栏被硬裁，「陪你多久」整张卡切一半，而且栏内自己滚 ——
+     比原来的空白更奇怪。用户的原话是「跟旁边对齐」，对齐的前提是**完整显示**。
+
+     所以改成按内容高度决定：
+       · 装得下 → `.is-stuck`（吸顶，整列完整停在导航下面）
+       · 装不下 → 不加类，回到普通文档流，正常跟着页面滚（不裁、不滚）
+     判定在页面脚本里（ResizeObserver + resize），CSS 只负责「吸住是什么样」。 */
+  .q-rail.is-stuck {
+    position: sticky;
+    top: 6rem;
+  }
+
+  /* —— 卡片里的小标题(关于页「清吾 / 爱弥斯 / 联系 / 刷题」) —— */
+  .card-head {
+    font-family: var(--font-display);
+    font-size: var(--text-subsection);
+    line-height: 1.3;
+    color: var(--color-ink);
+  }
+
+  .glass-card {
+    border-radius: var(--radius-card);    background: rgba(255, 255, 255, 0.55);
+    border: 1px solid rgba(255, 255, 255, 0.7);
+    /* 只写标准写法:前缀交给构建的 Lightning CSS 按目标浏览器补。
+       (自己手写 -webkit- 前缀反而会被压缩器当成重复声明、把标准写法丢掉,
+       导致新版 Chrome 里模糊完全失效 —— 2026-09-12 实测踩到) */
+    backdrop-filter: blur(16px) saturate(160%);
+    box-shadow: 0 10px 30px rgba(246, 165, 184, 0.16);
+  }
+  /* 移动端:backdrop-filter 在手机上代价很高(每个玻璃卡都要重采样一次背景),
+     而小屏上本来也看不出模糊。直接去掉模糊、把底色加实,观感一致、滚动更顺。 */
+  @media (max-width: 640px) {
+    .glass-card {
+      background: rgba(255, 255, 255, 0.72);
+      backdrop-filter: none;
+      box-shadow: 0 6px 18px rgba(246, 165, 184, 0.14);
+    }
+  }
+
+  /* 高对比阅读：把玻璃面加实。
+     半透明玻璃会透出背后的极光，浅色区域叠浅色文字时余量最薄 ——
+     所以这一档不只要提亮文字，还要让背景不再「渗」上来。
+     不碰模糊：去掉模糊会改变卡片的质感，而质感不是对比度问题。 */
+  html.q-contrast .glass-card {
+    background: rgba(255, 252, 248, 0.94);
+  }
+
+  /* —— 列表卡片(文章/收藏/友链共用同一套内部节奏) ——
+     之前「卡内间距 < 卡间距」:卡间 gap-6(24px)、卡内标题 mt-3(12px)、
+     摘要 mt-2(8px) —— 元素反而比卡片之间贴得更近,层级是塌的。
+     现在卡内用 8 / 14 / 18 / 24 的递增节奏,永远 ≥ 卡间距。 */
+  .list-card-meta {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.5rem 0.75rem;
+    font-size: var(--text-label);
+    color: var(--color-subtle);
+    font-variant-numeric: tabular-nums;
+  }
+  .list-card-title {
+    margin-top: 0.625rem;
+    font-family: var(--font-display);
+    font-size: var(--text-cardtitle);
+    line-height: 1.45;
+    color: var(--color-ink);
+    text-wrap: balance;
+    transition: color var(--dur-micro) var(--ease-soft);
+  }
+  /* 摘要限宽：14px 下原来一行能排 72~94 个汉字（实测 942px 宽），
+     远超中文舒适阅读区（约 28~40 字/行）—— 眼睛要长距离回扫才找得到下一行开头。
+     **用 em 不用 ch**：ch 是数字 `0` 的宽度，这个字体下 ch≈0.585em，
+     写 34ch 实际只有 279px（21 字/行），比目标窄了一半。
+     中文全角字宽≈1em，所以 34em 正好 34 个字。窄屏时卡片本身更窄，em 会跟着字号走。 */
+  .list-card-desc {
+    margin-top: 0.5rem;
+    max-width: 34em;
+    font-size: 0.875rem;
+    line-height: 1.65;
+    color: var(--color-muted);
+  }
+  .list-card-foot {
+    margin-top: 1rem;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.375rem 0.75rem;
+    font-size: var(--text-label);
+    color: var(--color-subtle);
+  }
+  /* 悬停时标题转绯红 —— 整卡可点,给一个明确的「要往哪去」的信号 */
+  a:hover > .list-card-title,
+  a:focus-visible > .list-card-title {
+    color: var(--color-accent);
+  }
+
+}

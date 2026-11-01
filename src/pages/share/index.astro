@@ -150,45 +150,55 @@ const tagsOf = (item: { tags?: string[] }) => (item.tags ?? []).join('|');
 </Layout>
 
 <script>
-  const list = document.querySelector('[data-share-list]');
-  const filters = Array.from(document.querySelectorAll('[data-share-filters] button'));
-  const tagBtns = Array.from(document.querySelectorAll('[data-share-tags] button'));
+  /*
+   * ⚠️ 和文章页同一个坑：这里的模块脚本**首屏只执行一次**，而 ClientRouter
+   * 会换掉整个 body —— 直接 querySelector 绑事件的话，从别的页面点进分享页时
+   * 筛选按钮和翻卡全都是死的（既有 bug，2026-11-01 修）。
+   * 所以包成 init()：监听 astro:page-load，**并且 DOM 就绪自己也跑一次**
+   * （首屏的 page-load 可能在本脚本求值之前就派发完了）。
+   */
+  let teardown = () => {};
 
-  // 类型 + 标签**叠加**筛选（方案第 38 条）
-  let activeType = 'all';
-  let activeTag: string | null = null;
+  function init() {
+    teardown();
 
-  const apply = () => {
+    const list = document.querySelector('[data-share-list]');
     if (!list) return;
-    list.querySelectorAll<HTMLElement>('[data-type]').forEach((card) => {
-      const typeOk = activeType === 'all' || card.getAttribute('data-type') === activeType;
-      const tags = (card.getAttribute('data-tags') || '').split('|').filter(Boolean);
-      const tagOk = !activeTag || tags.includes(activeTag);
-      card.classList.toggle('is-hidden', !(typeOk && tagOk));
-    });
-  };
 
-  // 选中态统一走 aria-pressed + .is-active,不再靠临时拼 Tailwind 类名
-  // （旧写法 classList.remove('bg-rose/70') 里的斜杠会被当成普通字符，
-  //   实际能不能生效全看构建出的类名，脆而且初始态完全没有高亮）
-  const markActive = (btn: Element | null | undefined) => {
-    filters.forEach((b) => {
-      const on = b === btn;
-      b.setAttribute('aria-pressed', on ? 'true' : 'false');
-      b.classList.toggle('is-active', on);
-    });
-  };
+    const filters = Array.from(document.querySelectorAll('[data-share-filters] button'));
+    const tagBtns = Array.from(document.querySelectorAll('[data-share-tags] button'));
 
-  filters.forEach((btn) => {
-    btn.addEventListener('click', () => {
+    // 类型 + 标签**叠加**筛选（方案第 38 条）
+    let activeType = 'all';
+    let activeTag: string | null = null;
+
+    const apply = () => {
+      list.querySelectorAll<HTMLElement>('[data-type]').forEach((card) => {
+        const typeOk = activeType === 'all' || card.getAttribute('data-type') === activeType;
+        const tags = (card.getAttribute('data-tags') || '').split('|').filter(Boolean);
+        const tagOk = !activeTag || tags.includes(activeTag);
+        card.classList.toggle('is-hidden', !(typeOk && tagOk));
+      });
+    };
+
+    // 选中态统一走 aria-pressed + .is-active,不再靠临时拼 Tailwind 类名
+    // （旧写法 classList.remove('bg-rose/70') 里的斜杠会被当成普通字符，
+    //   实际能不能生效全看构建出的类名，脆而且初始态完全没有高亮）
+    const markActive = (btn: Element | null | undefined) => {
+      filters.forEach((b) => {
+        const on = b === btn;
+        b.setAttribute('aria-pressed', on ? 'true' : 'false');
+        b.classList.toggle('is-active', on);
+      });
+    };
+
+    const onFilter = (btn: Element) => () => {
       activeType = btn.getAttribute('data-filter') || 'all';
       markActive(btn);
       apply();
-    });
-  });
+    };
 
-  tagBtns.forEach((btn) => {
-    btn.addEventListener('click', () => {
+    const onTag = (btn: Element) => () => {
       const tag = btn.getAttribute('data-tag');
       // 再点一次取消选中
       activeTag = activeTag === tag ? null : tag;
@@ -198,18 +208,47 @@ const tagsOf = (item: { tags?: string[] }) => (item.tags ?? []).join('|');
         b.classList.toggle('is-active', on);
       });
       apply();
-    });
-  });
+    };
 
-  // 点击 / 回车 / 空格 都能翻转(桌面 + 触屏 + 键盘统一)
-  document.querySelectorAll<HTMLElement>('.flip-card[data-type="quote"]').forEach((card) => {
-    const flip = () => card.classList.toggle('is-flipped');
-    card.addEventListener('click', flip);
-    card.addEventListener('keydown', (e) => {
+    /* 先把「绑定好的函数」存下来再 addEventListener —— 否则 removeEventListener
+       拿到的是另一次 onFilter(btn) 产生的新闭包，摘不掉（内存泄漏 + 切回页面时
+       同一张卡上叠两个 listener，点一下翻两次 = 看起来没反应）。 */
+    const filterHooks = filters.map((btn) => [btn, onFilter(btn)] as const);
+    const tagHooks = tagBtns.map((btn) => [btn, onTag(btn)] as const);
+    filterHooks.forEach(([el, fn]) => el.addEventListener('click', fn));
+    tagHooks.forEach(([el, fn]) => el.addEventListener('click', fn));
+
+    // 点击 / 回车 / 空格 都能翻转(桌面 + 触屏 + 键盘统一)
+    const cards = Array.from(
+      document.querySelectorAll<HTMLElement>('.flip-card[data-type="quote"]'),
+    );
+    const flipOf = (card: HTMLElement) => () => card.classList.toggle('is-flipped');
+    const keyOf = (card: HTMLElement) => (e: KeyboardEvent) => {
       if (e.key === 'Enter' || e.key === ' ') {
         e.preventDefault();
-        flip();
+        card.classList.toggle('is-flipped');
       }
+    };
+
+    const flips = cards.map((card) => {
+      const f = flipOf(card);
+      const k = keyOf(card);
+      card.addEventListener('click', f);
+      card.addEventListener('keydown', k);
+      return { card, f, k };
     });
-  });
+
+    teardown = () => {
+      filterHooks.forEach(([el, fn]) => el.removeEventListener('click', fn));
+      tagHooks.forEach(([el, fn]) => el.removeEventListener('click', fn));
+      flips.forEach(({ card, f, k }) => {
+        card.removeEventListener('click', f);
+        card.removeEventListener('keydown', k);
+      });
+    };
+  }
+
+  document.addEventListener('astro:page-load', init);
+  if (document.readyState !== 'loading') init();
+  else document.addEventListener('DOMContentLoaded', init, { once: true });
 </script>

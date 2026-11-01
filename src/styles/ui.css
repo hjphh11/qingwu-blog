@@ -1,0 +1,236 @@
+/* 可复用的界面零件：芯片、页码、卡片抬升。
+   这一层只为「重复出现的形状」存在。 */
+
+@layer components {
+  /* —— 标签 / 分类芯片:全站统一 ——
+     小字号必须走 accent(--color-crimson 在小字上只有 3.5:1,不达标)。 */
+  .chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    border-radius: var(--radius-pill);
+    padding: 0.2rem 0.625rem;
+    font-size: var(--text-label);
+    line-height: 1.5;
+    white-space: nowrap;
+  }
+  .chip--category {
+    background: color-mix(in oklab, var(--color-rose) 30%, transparent);
+    color: var(--color-accent);
+    font-weight: 500;
+  }
+  .chip--tag {
+    color: var(--color-subtle);
+  }
+
+  /* —— 筛选芯片(分类 / 分享筛选):带明确的选中态 ——
+     之前初始加载时「全部」和别的按钮长得一模一样,用户不知道当前在看什么。 */
+  .filter-chip {
+    display: inline-flex;
+    align-items: center;
+    border-radius: var(--radius-pill);
+    border: 1px solid color-mix(in oklab, var(--color-rose) 34%, transparent);
+    background: rgba(255, 255, 255, 0.5);
+    padding: 0.4rem 1rem;
+    font-size: 0.875rem;
+    line-height: 1.5;
+    color: var(--color-muted);
+    transition: color var(--dur-micro) var(--ease-soft), border-color var(--dur-micro) var(--ease-soft),
+      background-color var(--dur-micro) var(--ease-soft), transform var(--dur-micro) var(--ease-soft);
+    /* 移动端点击区域 ≥ 44px 高 */
+    min-height: 2.25rem;
+  }
+  @media (max-width: 640px) {
+    .filter-chip {
+      min-height: 2.75rem;
+    }
+  }
+  .filter-chip:hover {
+    border-color: color-mix(in oklab, var(--color-rose) 60%, transparent);
+    color: var(--color-accent);
+  }
+  /* 抬升只在「有 hover 且不禁用动效」时生效 —— 与 .q-empty-btn 同一做法 */
+  @media (hover: hover) and (prefers-reduced-motion: no-preference) {
+    .filter-chip:hover {
+      transform: translateY(-1px);
+    }
+  }
+  .filter-chip[aria-pressed='true'],
+  .filter-chip.is-active {
+    background: color-mix(in oklab, var(--color-rose) 62%, transparent);
+    border-color: transparent;
+    color: var(--color-ink);
+    font-weight: 500;
+  }
+
+  /* —— 页码 —— */
+  .page-link {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 2.25rem;
+    min-height: 2.25rem;
+    border-radius: var(--radius-pill);
+    font-size: 0.875rem;
+    color: var(--color-muted);
+    transition: color var(--dur-micro) var(--ease-soft), background-color var(--dur-micro) var(--ease-soft);
+  }
+  .page-link:hover {
+    color: var(--color-accent);
+    background: color-mix(in oklab, var(--color-rose) 22%, transparent);
+  }
+  .page-link--current {
+    background: color-mix(in oklab, var(--color-rose) 62%, transparent);
+    color: var(--color-ink);
+    font-weight: 600;
+  }
+  .page-link--edge {
+    padding-inline: 1rem;
+    border: 1px solid color-mix(in oklab, var(--color-rose) 34%, transparent);
+    background: rgba(255, 255, 255, 0.5);
+  }
+  .page-link--disabled {
+    color: color-mix(in oklab, var(--color-ink) 32%, transparent);
+    border-color: color-mix(in oklab, var(--color-rose) 22%, transparent);
+    background: rgba(255, 255, 255, 0.28);
+  }
+
+  /* 筛选后隐藏:用类名而不是内联 display —— 多列瀑布流里 display:none 的元素
+     仍会参与列平衡计算,用类名方便统一处理,也避免和 tailwind 的 display 打架 */
+  [data-share-list] .is-hidden {
+    display: none !important;
+  }
+
+  /* —— 卡片悬停抬升:一处定义,整站复用 ——
+     之前各页写的是 `hover:-translate-y-1`,reduce-motion 下照样会动。
+     这里把「位移 + 阴影 + 边框高亮」打包,并在降低动效时整体关掉。 */
+  .card-lift {
+    transition:
+      transform 0.35s var(--ease-soft),
+      box-shadow 0.35s var(--ease-soft),
+      border-color 0.35s var(--ease-soft);
+  }
+  @media (hover: hover) and (prefers-reduced-motion: no-preference) {
+    .card-lift:hover {
+      transform: translateY(-4px);
+      box-shadow: 0 16px 40px rgba(246, 165, 184, 0.24);
+      border-color: rgba(246, 165, 184, 0.5);
+    }
+  }
+  /* 触摸设备:hover 不可靠,改成按下时的轻微内缩反馈 */
+  @media (hover: none) {
+    .card-lift:active {
+      transform: scale(0.985);
+    }
+  }
+
+  /* ── 文章目录（v6 §7.3）────────────────────────────────────
+     当前项左侧一道 2px 光线。光线落点要对准 ul 那条 border-left，
+     而不是紧贴文字 —— 所以用负 left 把伪元素拽回去：
+       · h2 项：li 没有额外内边距，anchor 距 border 正好 1rem（ul 的 pl-4）
+       · h3 项：li 还有一层 pl-4，anchor 距 border 2rem
+     写成两个绝对值比用 calc 叠加更好读，也免得以后改间距时算错。 */
+  .q-toc__link {
+    position: relative;
+    color: var(--color-muted);
+  }
+
+  .q-toc__link.is-active {
+    color: var(--color-accent);
+  }
+
+  .q-toc__link.is-active::before {
+    content: '';
+    position: absolute;
+    left: -1rem;
+    top: 0;
+    bottom: 0;
+    width: 2px;
+    border-radius: 2px;
+    /* 玫瑰→琥珀的渐变，与站点的光同源；纯色会显得像一条分隔线而不是光 */
+    background: linear-gradient(180deg, var(--color-rose), var(--color-amber));
+  }
+
+  .q-toc__item--sub .q-toc__link.is-active::before {
+    left: -2rem;
+  }
+
+  /* ── 频谱柱（v6 §8.2）────────────────────────────────────────
+     40 根，absolute 挂在唱片下缘 —— **不占布局**：加一排柱子本来就该零位移，
+     一旦进常规流，md 断点的播放器卡片（固定 560px）会被顶出去。
+     高度用 scaleY 变，不用 height：transform 走合成层，不会触发重排。
+     data-state 由 React 控制：off 时整块淡出并 display:none，
+     没有 Web Audio 或跨域静音的环境下就真的什么都不显示。 */
+  .q-spectrum {
+    position: absolute;
+    left: 50%;
+    /* 实测播放器卡片只剩 2px 余量（固定的 560px 基本被填满），所以只能借
+       唱片与歌名之间那 16px 的空隙。压到 -14px 正好整条落在空隙里：
+       不会盖住唱片暗面（那里柱子看不见），也不会碰到歌名。 */
+    bottom: -14px;
+    width: 80%;
+    height: 14px;
+    display: flex;
+    align-items: flex-end;
+    /* 间距只能给 1px：40 根挤在 205px 里，2px 间距时柱身只剩 3px 宽，
+       远看像一条虚线而不是均衡器。 */
+    gap: 1px;
+    transform: translateX(-50%);
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity var(--dur-state) var(--ease-soft);
+  }
+
+  .q-spectrum[data-state='on'] {
+    opacity: 0.75;
+  }
+
+  .q-spectrum[data-state='off'] {
+    /* 用 visibility 而不是 display:none —— 后者会把淡出吃掉，柱子会「啪」地消失 */
+    visibility: hidden;
+  }
+
+  .q-spectrum > span {
+    flex: 1 1 0;
+    height: 100%;
+    border-radius: 1.5px;
+    /* 用 crimson→rose 而不是 amber→rose：玫瑰色落在奶油底上等于消失
+       （第一版就是这样，柱子只剩顶端一截看得见）。crimson 在浅底和暗面上都读得出。 */
+    background: linear-gradient(180deg, var(--color-crimson), var(--color-rose));
+    transform: scaleY(0.015);
+    transform-origin: 50% 100%;
+    will-change: transform;
+  }
+  /* ── 首页左栏「作者卡」：吸顶时收起 ────────────────────────────
+     吸顶之后它和导航栏里的头像 + 「清吾」并排，同一个头像出现两次很扎眼。
+     收起方向朝上（负 translateY + 略缩），读起来像「缩进导航栏」，而不是原地消失。
+     max-height 取接近真实高度（约 10.5rem）：给太大（比如 20rem）时前半段过渡是空转，
+     看起来像卡了一下才开始收。
+     ⚠️ 是否「已经粘住」由脚本判（比较 rect.top 与 top-24），CSS 看不出来。 */
+  .q-author {
+    overflow: hidden;
+    max-height: 10.5rem;
+    transform-origin: 50% 0;
+    transition:
+      max-height var(--dur-state) var(--ease-soft),
+      opacity var(--dur-state) var(--ease-soft),
+      transform var(--dur-state) var(--ease-soft),
+      /* 左栏是 gap-4（16px），收起后要把它一起抵消，否则还留一道空档 */
+      margin-bottom var(--dur-state) var(--ease-soft);
+  }
+
+  .q-author.is-collapsed {
+    max-height: 0;
+    margin-bottom: -1rem;
+    opacity: 0;
+    transform: translateY(-10px) scale(0.94);
+    pointer-events: none;
+  }
+
+  /* 减动效：不做过渡，但仍然要收起 —— 否则「两个头像」这个问题原样存在 */
+  @media (prefers-reduced-motion: reduce) {
+    .q-author {
+      transition: none;
+    }
+  }
+}

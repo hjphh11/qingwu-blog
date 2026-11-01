@@ -122,24 +122,49 @@ const nextHref = currentPage < lastPage ? pageHref(currentPage + 1) : null;
 </nav>
 
 <script>
-  const list = document.getElementById('post-list');
-  const buttons = Array.from(document.querySelectorAll('#post-filters button'));
+  /*
+   * ⚠️ 两个坑都在这里：
+   * ① 直接 querySelector 绑事件在客户端路由下会失效（模块脚本首屏只跑一次，
+   *    ClientRouter 换掉 body 后不重跑）—— 从首页点进文章列表时筛选按钮是死的。
+   *    所以包成 init()：监听 astro:page-load，**并且 DOM 就绪自己也跑一次**
+   *    （首屏的 page-load 可能在本脚本求值之前就派发完了）。
+   * ② 首页左栏的分类链接带 ?category=xxx，之前读都没读，点过来还是「全部」。
+   */
+  let teardown = () => {};
 
-  const setActive = (key: string) => {
-    buttons.forEach((b) => {
-      const on = b.getAttribute('data-filter') === key;
-      b.setAttribute('aria-pressed', on ? 'true' : 'false');
-      b.classList.toggle('is-active', on);
-    });
-    if (!list) return;
-    list.querySelectorAll<HTMLElement>('[data-category]').forEach((card) => {
-      const cat = card.getAttribute('data-category');
-      const show = key === 'all' || cat === key;
-      card.style.display = show ? '' : 'none';
-    });
-  };
+  function init() {
+    teardown();
 
-  buttons.forEach((btn) => {
-    btn.addEventListener('click', () => setActive(btn.getAttribute('data-filter') || 'all'));
-  });
+    const list = document.getElementById('post-list');
+    const buttons = Array.from(document.querySelectorAll<HTMLButtonElement>('#post-filters button'));
+    if (!buttons.length) return;
+
+    const setActive = (key: string) => {
+      buttons.forEach((b) => {
+        const on = b.getAttribute('data-filter') === key;
+        b.setAttribute('aria-pressed', on ? 'true' : 'false');
+        b.classList.toggle('is-active', on);
+      });
+      if (!list) return;
+      list.querySelectorAll<HTMLElement>('[data-category]').forEach((card) => {
+        const cat = card.getAttribute('data-category');
+        const show = key === 'all' || cat === key;
+        card.style.display = show ? '' : 'none';
+      });
+    };
+
+    // 先存「绑定好的函数」再 addEventListener，否则 removeEventListener
+    // 拿到的是另一个新闭包，摘不掉（切回页面会叠监听）
+    const hooks = buttons.map((b) => [b, () => setActive(b.getAttribute('data-filter') || 'all')] as const);
+    hooks.forEach(([b, fn]) => b.addEventListener('click', fn));
+    teardown = () => hooks.forEach(([b, fn]) => b.removeEventListener('click', fn));
+
+    // 从首页左栏的分类进来：/blog?category=tech
+    const wanted = new URLSearchParams(location.search).get('category');
+    if (wanted && buttons.some((b) => b.getAttribute('data-filter') === wanted)) setActive(wanted);
+  }
+
+  document.addEventListener('astro:page-load', init);
+  if (document.readyState !== 'loading') init();
+  else document.addEventListener('DOMContentLoaded', init, { once: true });
 </script>

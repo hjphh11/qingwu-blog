@@ -1,6 +1,9 @@
 ---
-import '@fontsource/ma-shan-zheng';
-import '@fontsource/zcool-xiaowei';
+/*
+ * 字体不再从 @fontsource 全量引入（那会带进 174 个分片 / 13MB）。
+ * 现在用 scripts/subset-fonts.py 生成的子集，@font-face 在 fonts.css 里，
+ * 由 styles/index.css 统一引 —— 所以这里只留一个样式入口。
+ */
 import '../styles/global.css';
 import ClientRouter from 'astro/components/ClientRouter.astro';
 import { SITE } from '../config';
@@ -46,9 +49,33 @@ const url = SITE.url.replace(/\/$/, '') + pathname;
       />
     )}
 
+    {/* 标题字体预加载：首屏每个页面都有 .page-head 标题，用的就是 ZCOOL XiaoWei。
+        不 preload 的话浏览器要等 CSS 解析完才发现它，标题会先以系统宋体出现再换 —— 
+        947KB 的字体在慢网下这段闪烁会很长。
+        只 preload 标题体，**不 preload 手写体**（10KB 且只在开屏/空态出现，优先级低）。 */}
+    <link
+      rel="preload"
+      as="font"
+      type="font/woff2"
+      href="/fonts/zcool-xiaowei-subset.woff2"
+      crossorigin
+    />
+
     {/* 滚动揭示启用标记:让 .reveal 只在 JS 可用时才隐藏,避免无 JS 时内容缺失 */}
     <script is:inline>
       document.documentElement.classList.add('qjs');
+    </script>
+
+    {/* 高对比阅读:在首次绘制之前把类加上,否则开过这个开关的人会先看到
+        一帧低对比、再跳成高对比。默认关,所以只对开过的人生效。 */}
+    <script is:inline>
+      try {
+        if (localStorage.getItem('qingwu:contrast') === '1') {
+          document.documentElement.classList.add('q-contrast');
+        }
+      } catch (e) {
+        /* 隐私模式下读不到,就按默认（关）走 */
+      }
     </script>
 
     {/* 开屏:在第一次绘制之前就判定这次要不要播,并给 <html> 打标记 ——

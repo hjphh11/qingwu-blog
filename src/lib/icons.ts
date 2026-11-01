@@ -24,6 +24,7 @@ export {
   Heart,
   Flower2,
   ChevronRight,
+  ChevronDown,
   GitBranch,
   List,
   ArrowLeft,
@@ -48,4 +49,5 @@ export {
   CircleAlert,
   Info,
   LoaderCircle,
+  Contrast,
 } from 'lucide';

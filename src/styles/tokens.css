@@ -1,0 +1,85 @@
+/*
+ * 设计 tokens —— 全站唯一的数值来源。
+ * 取自主题形象「爱弥斯」的暖色系统(见 docs/项目设计.md 第 6 节)。
+ * 形状: 统一圆润(圆角卡片/胶囊按钮)   主题: 仅暖色,不做深浅切换
+ *
+ * 这个文件只放 @theme 与变量,不写任何规则。
+ * 它被 index.css 导入,Tailwind v4 会把 @theme 正常编进产物 ——
+ * 已用真实构建验证：变量定义与 text- bg- 两类工具类都能生成。
+ */
+
+@theme {
+  /* —— 配色(取自爱弥斯) —— */
+  --color-rose: #f6a5b8;    /* 主色 · 玫瑰粉(发色/裙)—— 大面积色块/标签底/氛围层专用 */
+  /* 强调色 · 绯红(蝴蝶结)。
+     原值 #e0526b 在奶油白上只有 3.51:1、白字压在上面只有 3.76:1,
+     两个方向都不达标。压深到 #c23a55 后:奶油白上 5.0:1、白字 5.1:1,
+     色相(349°)与饱和度基本不变,仍然是同一支绯红。 */
+  --color-crimson: #c23a55;
+  --color-cream: #fdf6f0;   /* 底色 · 奶油白(衬衫/背景) */
+  --color-amber: #e8b04b;   /* 点睛 · 琥珀金(眼睛) */
+  --color-brown: #8b5a3c;   /* 暖棕 · 皮质(包/鞋) */
+  --color-ink: #4a3728;     /* 文字 · 深暖棕(正文) */
+
+  /* —— 语义色 ——
+     正文级强调文字直接用 crimson(已达标);muted/subtle 是暖棕的不同透明度,
+     对应「次要 / 三级」文字。 */
+  --color-accent: var(--color-crimson);
+  --color-accent-soft: #a8324a; /* 更暗一档 · 用于 ≤12px 的极小字 */
+  --color-cta: var(--color-crimson); /* 实心按钮底色(配白字) */
+  --color-muted: rgba(74, 55, 40, 0.9);    /* 次要文字(正文级) · 5.8:1 */
+  --color-subtle: rgba(74, 55, 40, 0.75);  /* 三级文字 · 小字/元信息,实测 4.85:1 */
+  --color-hairline: rgba(194, 58, 85, 0.16); /* 分隔线统一色 */
+
+  /* —— 字体 —— */
+  --font-display: "ZCOOL XiaoWei", "Noto Serif SC", "Songti SC", serif;
+  --font-hand: "Ma Shan Zheng", "STKaiti", "KaiTi", cursive;
+  --font-body: "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Noto Sans SC", sans-serif;
+
+  /* —— 字号阶梯(fluid) ——
+     之前每页各写各的:text-3xl(30px) / text-2xl(24px) / text-xl(20px) 三层挨得太近,
+     页面级标题和卡片标题几乎一样大。这里定死五级,相邻层差 ≥ 1.25 倍、跨层差 ≥ 1.6 倍:
+       页标题 34 → 区块标题 30 → 卡内小标题 24 → 卡片标题 18 → 元信息 13 */
+  --text-display: clamp(2rem, 1.5rem + 2.2vw, 3rem);        /* 48px  · 文章详情大标题 */
+  --text-page: clamp(1.75rem, 1.5rem + 1vw, 2.125rem);      /* 34px  · 页面标题 */
+  --text-section: clamp(1.5rem, 1.35rem + 0.6vw, 1.875rem); /* 30px  · 区块标题 */
+  --text-subsection: 1.5rem;                                /* 24px  · 卡内小标题 */
+  --text-cardtitle: 1.125rem;                               /* 18px  · 卡片标题 */
+  --text-label: 0.8125rem;                                  /* 13px  · 标签/元信息 */
+
+  /* —— 形状 —— */
+  --radius-card: 1.25rem;
+  --radius-pill: 9999px;
+
+  /* —— 间距节奏(区块之间统一用它,别再各处 mt-6/mt-8/mt-12 乱给) —— */
+  --space-block: 1.75rem;
+  --space-section: 3.5rem;
+
+  /* —— 版心(横轴唯一来源) ——
+     导航、正文、页脚三者共用这两个值,谁的左缘都不许自己算。
+     --shell-max: 内容最大宽度
+     --shell-gutter: 两侧留白(clamp,窄屏自动收窄)
+     ⚠️ 用它们的方式只有两种:
+        ① .page-shell 容器(正文、页脚直接套)
+        ② 需要单独控制的组件用 var(--shell-max) + 相同 gutter 外包一层
+        绝对不要写第三个数(比如 max-w-4xl),那必然错开。 */
+  --shell-max: 1080px;
+  --shell-gutter: clamp(1.25rem, 0.6rem + 2.2vw, 2.5rem);
+
+  /* —— 动效(克制的、有目的的动效) —— */
+  --ease-soft: cubic-bezier(0.22, 0.61, 0.36, 1);
+  --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
+
+  /* —— 时长梯队(见 docs/开屏与全部加载动画-完整设计文档.html 第 01 节) ——
+     微反馈 150–200ms · 状态切换 300–400ms · 位移 500–600ms · 电影级 800–1200ms。
+     开屏总时长不在这里 —— 它是三档可选值(1.6/2.0/2.4s),由 Splash 的 dur 给。
+
+     ⚠️ 纪律：组件里不要写裸数字（0.2s / 200ms 之类）。
+        按语义挑一档，写作 var(--dur-micro) 等。
+        scripts/check-tokens.mjs 会扫出漏网的裸数字。 */
+  --dur-micro: 180ms;    /* 悬停、按下、颜色渐变这类即时反馈 */
+  --dur-state: 340ms;    /* 展开/收起、状态切换 */
+  --dur-move: 560ms;     /* 元素位移、FLIP 归位 */
+  --dur-cinematic: 900ms;/* 场景过渡、光散重组（v6 光场用） */
+  --dur-splash-move: 820ms; /* 开屏立绘归位专用，与 Splash 的算式绑定，别挪作他用 */
+}

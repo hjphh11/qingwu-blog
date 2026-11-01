@@ -1,6 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { MorphIcon } from 'morphicons/react';
-import { Menu, X } from '../lib/icons';
+import { Menu, X, ChevronDown } from '../lib/icons';
+import ContrastToggle from './ContrastToggle';
 import {
   motion,
   AnimatePresence,
@@ -11,15 +12,41 @@ import {
   useMotionValue,
 } from 'motion/react';
 
-type NavItem = { label: string; href: string };
+type NavChild = { label: string; href: string };
+type NavItem = {
+  label: string;
+  href: string;
+  /**
+   * 有 children 的项带下拉（桌面端）。**父项仍然是链接**：
+   * 点它直接进 href（「文章」= 默认去看文章），要分享再从下拉里选。
+   * 移动端不用下拉 —— 折叠菜单里直接把 children 平铺成两行，少一层手势。
+   */
+  children?: NavChild[];
+};
 
 const NAV_ITEMS: NavItem[] = [
   { label: '首页', href: '/' },
-  { label: '文章', href: '/blog' },
+  {
+    label: '文章',
+    href: '/blog',
+    children: [
+      { label: '文章列表', href: '/blog' },
+      { label: '分享', href: '/share' },
+    ],
+  },
   { label: '音乐', href: '/music' },
   { label: '友链', href: '/links' },
-  { label: '分享', href: '/share' },
-  { label: '关于', href: '/about' },
+  { label: '项目', href: '/projects' },
+  {
+    // 父项仍然是链接：点「关于」直接进关于页，更新日志从下拉里选。
+    // 与「文章」同一套写法，别在这里另起一套。
+    label: '关于',
+    href: '/about',
+    children: [
+      { label: '关于我', href: '/about' },
+      { label: '更新日志', href: '/changelog' },
+    ],
+  },
 ];
 
 interface Props {
@@ -39,8 +66,30 @@ export default function Navbar({ pathname = '/' }: Props) {
   const reduce = useReducedMotion();
   const [scrolled, setScrolled] = useState(false);
   const [open, setOpen] = useState(false);
+  /** 当前展开的下拉（存父项 href，同时只开一个） */
+  const [openGroup, setOpenGroup] = useState<string | null>(null);
 
   const itemRefs = useRef<(HTMLAnchorElement | null)[]>([]);
+  /** 量位置要以 nav 为原点，不能用 offsetLeft —— 原因见 measure() */
+  const navRef = useRef<HTMLElement>(null);
+
+  /**
+   * 量某个导航项相对 nav 的左缘与宽度（= 指示胶囊该待的位置）。
+   *
+   * ⚠️ 这里**不能用 `el.offsetLeft`**。offsetLeft 是相对「最近的定位祖先」
+   * 计算的，而为了让下拉面板有定位上下文，每个导航项外面都包了一层
+   * `<div class="relative">` —— 于是每一项的 offsetLeft 都变成 0，
+   * 胶囊就永远停在第一项上（切到「音乐」时文字红了、背景还留在「首页」）。
+   * 宽度用 offsetWidth 时不受影响，所以只错位置、不错大小，很容易看漏。
+   * 改成「两者 getBoundingClientRect 相减」：与定位上下文无关，也天然免疫滚动。
+   */
+  const measure = (el: HTMLAnchorElement | null) => {
+    const nav = navRef.current;
+    if (!el || !nav) return { left: 0, width: 0 };
+    const er = el.getBoundingClientRect();
+    const nr = nav.getBoundingClientRect();
+    return { left: er.left - nr.left, width: er.width };
+  };
 
   useMotionValueEvent(scrollY, 'change', (latest) => {
     setScrolled(latest > 80);
@@ -52,7 +101,10 @@ export default function Navbar({ pathname = '/' }: Props) {
 
   const isActive = (href: string) =>
     href === '/' ? pathname === '/' : pathname.startsWith(href);
-  const activeIdx = Math.max(0, NAV_ITEMS.findIndex((it) => isActive(it.href)));
+  /** 带下拉的项：自己或任一子项命中当前路径都算激活 */
+  const itemActive = (it: NavItem) =>
+    isActive(it.href) || !!it.children?.some((c) => isActive(c.href));
+  const activeIdx = Math.max(0, NAV_ITEMS.findIndex(itemActive));
 
   const dur = reduce ? 0 : 0.32;
 
@@ -64,22 +116,20 @@ export default function Navbar({ pathname = '/' }: Props) {
     : ({ type: 'spring', stiffness: 300, damping: 24 } as const);
 
   useLayoutEffect(() => {
-    const cur = itemRefs.current[activeIdx];
-    const curLeft = cur?.offsetLeft ?? 0;
-    const curW = cur?.offsetWidth ?? 0;
+    const cur = measure(itemRefs.current[activeIdx]);
     // 上次挂载记录的激活项 = 上一个来源;有且和当前不同时,从它滑到当前;否则直接落到当前项
     const prev =
       lastActiveIdx >= 0 && lastActiveIdx !== activeIdx
-        ? itemRefs.current[lastActiveIdx]
+        ? measure(itemRefs.current[lastActiveIdx])
         : null;
     if (reduce || !prev) {
-      x.set(curLeft);
-      w.set(curW);
+      x.set(cur.left);
+      w.set(cur.width);
     } else {
-      x.set(prev.offsetLeft);
-      w.set(prev.offsetWidth);
-      animate(x, curLeft, spring);
-      animate(w, curW, spring);
+      x.set(prev.left);
+      w.set(prev.width);
+      animate(x, cur.left, spring);
+      animate(w, cur.width, spring);
     }
     lastActiveIdx = activeIdx;
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -87,24 +137,58 @@ export default function Navbar({ pathname = '/' }: Props) {
 
   useEffect(() => {
     const onResize = () => {
-      const cur = itemRefs.current[activeIdx];
-      if (cur) {
-        x.set(cur.offsetLeft);
-        w.set(cur.offsetWidth);
-      }
+      const cur = measure(itemRefs.current[activeIdx]);
+      x.set(cur.left);
+      w.set(cur.width);
     };
     window.addEventListener('resize', onResize);
     return () => window.removeEventListener('resize', onResize);
   }, [activeIdx, x, w]);
+
+  /* 下拉的关闭：Esc、点外面、路由变化。
+     不监听 pointerleave 到 window —— 鼠标移出即关会让「想移到下拉项」变成走钢丝，
+     所以只在离开**整个父项容器**时关（容器把下拉包在里面）。 */
+  useEffect(() => {
+    if (!openGroup) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setOpenGroup(null);
+    };
+    const onDown = (e: PointerEvent) => {
+      const t = e.target as HTMLElement | null;
+      if (!t?.closest('[data-nav-group]')) setOpenGroup(null);
+    };
+    document.addEventListener('keydown', onKey);
+    document.addEventListener('pointerdown', onDown);
+    return () => {
+      document.removeEventListener('keydown', onKey);
+      document.removeEventListener('pointerdown', onDown);
+    };
+  }, [openGroup]);
+
+  // 路由一变就收起（桌面下拉不该跨页残留）
+  useEffect(() => {
+    setOpenGroup(null);
+    setOpen(false);
+  }, [pathname]);
 
   return (
     <motion.header
       initial={false}
       animate={{ y: glass ? 0 : -4 }}
       transition={{ duration: dur, ease: 'easeOut' }}
-      className="fixed inset-x-0 top-0 z-50 flex justify-center px-4 pt-4"
+      className="fixed inset-x-0 top-0 z-50 flex justify-center pt-4"
     >
-      <div className="relative flex w-full max-w-4xl items-center justify-between gap-4 py-2 pl-4 pr-3">
+      {/*
+        横轴对齐：这里的三条规则必须一起看 ——
+        ① 外层 w-full + max-w-[var(--shell-max)] + padding-inline[var(--shell-gutter)]
+           = 与 .page-shell 完全同一套值（别再写 max-w-4xl，它比正文窄 184px）。
+        ② 内层胶囊条本身有一圈内边距（pl-4 = 16px），品牌图标落在它内侧。
+           所以用 -ml-4 把这 16px 抵消掉，图标左缘才真正压在内容左边线上。
+        ③ -ml-4 与 pl-4 必须等值，改一个要改另一个。
+        实测修正前品牌比页标题右移 68px(1440) / 48px(1024) / 12px(390)。
+      */}
+      <div className="flex w-full max-w-[var(--shell-max)] px-[var(--shell-gutter)]">
+        <div className="relative -ml-4 flex w-full items-center justify-between gap-4 py-2 pl-4 pr-3">
         {/* 液态玻璃背景层:透明 → 玻璃的淡入 */}
         <motion.div
           aria-hidden="true"
@@ -143,7 +227,7 @@ export default function Navbar({ pathname = '/' }: Props) {
         </a>
 
         {/* 导航项 → 右侧(桌面) · 透明玻璃胶囊滑动指示 */}
-        <nav className="relative z-10 hidden items-center gap-1 md:flex">
+        <nav ref={navRef} className="relative z-10 hidden items-center gap-1 md:flex">
           {/* 指示层:透明玻璃胶囊(叠在菜单项之后),随弹簧滑动到当前页 */}
           <div className="pointer-events-none absolute inset-0" aria-hidden="true">
             <motion.div
@@ -154,37 +238,110 @@ export default function Navbar({ pathname = '/' }: Props) {
 
           {/* 菜单项 */}
           {NAV_ITEMS.map((item, i) => {
-            const active = isActive(item.href);
+            const active = itemActive(item);
+            const openNow = openGroup === item.href;
             return (
-              <a
+              <div
                 key={item.href}
-                href={item.href}
-                ref={(el) => {
-                  itemRefs.current[i] = el;
-                }}
-                className={`relative z-10 block rounded-full px-3.5 py-1.5 text-base font-medium transition-colors duration-200 active:scale-95 ${
-                  active ? 'text-crimson' : 'text-muted hover:text-crimson'
-                }`}
+                data-nav-group={item.children ? '' : undefined}
+                className="relative"
+                onPointerEnter={() => item.children && setOpenGroup(item.href)}
+                onPointerLeave={() => item.children && setOpenGroup(null)}
               >
-                {item.label}
-              </a>
+                <a
+                  href={item.href}
+                  ref={(el) => {
+                    itemRefs.current[i] = el;
+                  }}
+                  // 键盘用户：聚焦到父项就展开，Tab 能继续走进下拉项
+                  onFocus={() => item.children && setOpenGroup(item.href)}
+                  aria-haspopup={item.children ? 'true' : undefined}
+                  aria-expanded={item.children ? openNow : undefined}
+                  className={`relative z-10 flex items-center gap-0.5 rounded-full px-3.5 py-1.5 text-base font-medium transition-colors duration-200 active:scale-95 ${
+                    active ? 'text-crimson' : 'text-muted hover:text-crimson'
+                  }`}
+                >
+                  {item.label}
+                  {item.children && (
+                    <span
+                      aria-hidden="true"
+                      className={`transition-transform duration-200 ${openNow ? 'rotate-180' : ''}`}
+                    >
+                      <MorphIcon icon={ChevronDown} size={13} color="currentColor" />
+                    </span>
+                  )}
+                </a>
+
+                {/* 下拉：挂在父项正下方。
+                    ⚠️ 居中必须放在**外层** div 上：内层由 motion 驱动 y 动画，
+                    motion 会写内联 `transform: translateY(...)`，把 Tailwind 的
+                    `-translate-x-1/2` 整个覆盖掉 —— 第一版就这么偏了 31px。
+                    pt-1.5 是让面板和父项连成一片，鼠标横穿过去不会断。 */}
+                <AnimatePresence>
+                  {item.children && openNow && (
+                    <div className="absolute left-1/2 top-full z-20 -translate-x-1/2 pt-1.5">
+                      <motion.div
+                        key="dd"
+                        initial={reduce ? false : { opacity: 0, y: -6 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={reduce ? { opacity: 0 } : { opacity: 0, y: -6 }}
+                        transition={{ duration: dur || 0.12, ease: 'easeOut' }}
+                        role="menu"
+                        aria-label={`${item.label}相关`}
+                        className="min-w-[9.5rem] rounded-2xl p-1.5"
+                        style={{
+                          background: 'rgba(255, 252, 247, 0.96)',
+                          backdropFilter: 'blur(20px) saturate(160%)',
+                          WebkitBackdropFilter: 'blur(20px) saturate(160%)',
+                          border: '1px solid rgba(246, 165, 184, 0.45)',
+                          boxShadow: '0 16px 38px rgba(160, 100, 110, 0.18)',
+                        }}
+                      >
+                        {item.children.map((c) => (
+                          <a
+                            key={c.href}
+                            href={c.href}
+                            role="menuitem"
+                            onClick={() => setOpenGroup(null)}
+                            className={`block rounded-xl px-3 py-2 text-sm transition-colors ${
+                              isActive(c.href) && pathname === c.href
+                                ? 'bg-rose/25 text-crimson'
+                                : 'text-muted hover:bg-rose/15 hover:text-crimson'
+                            }`}
+                          >
+                            {c.label}
+                          </a>
+                        ))}
+                      </motion.div>
+                    </div>
+                  )}
+                </AnimatePresence>
+              </div>
             );
           })}
         </nav>
 
-        {/* 移动端折叠按钮 → 右侧(移动) */}
-        <button
-          type="button"
-          aria-label="打开菜单"
-          aria-expanded={open}
-          onClick={() => setOpen((v) => !v)}
-          className="relative z-10 grid h-9 w-9 place-items-center rounded-full text-ink transition-colors hover:bg-rose/15 md:hidden"
-        >
-          <MorphIcon icon={open ? X : Menu} size={20} color="currentColor" />
-        </button>
+        {/* 右侧动作区：高对比开关 + 移动端菜单。
+            两个放一个容器里，免得 justify-between 把它们分到两端。 */}
+        <div className="relative z-10 flex shrink-0 items-center gap-1">
+          <ContrastToggle />
+
+          {/* 移动端折叠按钮 → 右侧(移动) */}
+          <button
+            type="button"
+            aria-label="打开菜单"
+            aria-expanded={open}
+            onClick={() => setOpen((v) => !v)}
+            className="relative z-10 grid h-9 w-9 place-items-center rounded-full text-ink transition-colors hover:bg-rose/15 md:hidden"
+          >
+            <MorphIcon icon={open ? X : Menu} size={20} color="currentColor" />
+          </button>
+        </div>
+        </div>
       </div>
 
-      {/* 移动端展开菜单 */}
+      {/* 移动端展开菜单 —— 下拉在这里**平铺成两行**，不做二级展开：
+          手机上多点一层没有收益，反而多一次误触。 */}
       <AnimatePresence>
         {open && (
           <motion.nav
@@ -202,7 +359,7 @@ export default function Navbar({ pathname = '/' }: Props) {
               boxShadow: '0 16px 40px rgba(246, 165, 184, 0.22)',
             }}
           >
-            {NAV_ITEMS.map((item) => (
+            {NAV_ITEMS.flatMap((item) => item.children ?? [item]).map((item) => (
               <a
                 key={item.href}
                 href={item.href}
@@ -210,7 +367,7 @@ export default function Navbar({ pathname = '/' }: Props) {
                 className={`rounded-xl px-4 py-2.5 text-base font-medium transition active:scale-95 ${
                   isActive(item.href)
                     ? 'bg-rose/25 text-crimson'
-                    : 'text-ink/85 hover:bg-rose/15'
+                    : 'text-muted hover:bg-rose/15'
                 }`}
               >
                 {item.label}

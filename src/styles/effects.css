@@ -1,0 +1,1365 @@
+/* 氛围与特效：唱片、声波、骨架屏、加载指示、进度条、缓冲环、提交扫光、
+   图片占位、空态、隐藏滚动条、聚光卡、翻卡、涟漪、极光光斑。
+
+   这一层的规则几乎全部挂在 .q-  .flip-  .card-  .aurora- 前缀上,
+   不参与普通排版,改这里不会影响正文。
+
+   ⚠️ 顺序与原文件保持一致,不要因为「看起来更整齐」而重排 ——
+      .q-empty / .q-lost 等规则之间存在先后依赖。 */
+
+@layer components {
+  /* 旋转光盘 */
+  @keyframes disc-spin {
+    to {
+      transform: rotate(360deg);
+    }
+  }
+  .disc {
+    border-radius: 9999px;
+    animation: disc-spin 8s linear infinite;
+    animation-play-state: paused;
+  }
+  .disc.playing {
+    animation-play-state: running;
+  }
+
+  /* 播放波纹 */
+  @keyframes wave {
+    0%,
+    100% {
+      transform: scaleY(0.35);
+    }
+    50% {
+      transform: scaleY(1);
+    }
+  }
+  .wave-bar {
+    width: 3px;
+    border-radius: 9999px;
+    background: var(--color-crimson);
+    animation: wave 1s ease-in-out infinite;
+    transform-origin: center;
+  }
+  /* 三根声波条错峰起跳，延时是**有序序列**(0/0.2/0.4)，
+     不是「微反馈/状态切换」那种语义档位，所以这里不用 --dur-* token。 */
+  .wave-bar:nth-child(1) {
+    animation-delay: 0s;
+  }
+  .wave-bar:nth-child(2) {
+    animation-delay: 0.2s;
+  }
+  .wave-bar:nth-child(3) {
+    animation-delay: 0.4s;
+  }
+
+  /* ============================================================
+     加载动画家族 —— 统一隐喻「暖光 + 角色」
+     骨架是玫瑰色扫光、通用指示是花瓣舒展、缓冲是琥珀环,
+     全部只动 transform / opacity / filter / background-position。
+     设计与验收见 docs/开屏与全部加载动画-完整设计文档.html。
+     ============================================================ */
+
+  /* —— ① 骨架屏:玫瑰色扫光,不是灰块 ——
+     ⚠️ 这几张卡的数据只能到客户端才拿得到,没有 JS 时骨架永远不会被真实内容
+     替换 —— 那就成了「永远在加载」。所以无 JS 时整张壳直接藏掉(和它以前是
+     client:only、服务端什么都不渲染的行为一致),而不是留几个假色块。
+     .qjs 由 Layout 的 is:inline 脚本加上,和 .reveal 用的是同一套约定。 */
+  html:not(.qjs) [data-card-shell] {
+    display: none;
+  }
+  .q-skel {
+    background: linear-gradient(
+      90deg,
+      rgba(246, 165, 184, 0.16) 0%,
+      rgba(246, 165, 184, 0.36) 48%,
+      rgba(246, 165, 184, 0.16) 100%
+    );
+    background-size: 220% 100%;
+    animation: q-skel-sweep 1.25s ease-in-out infinite;
+    border-radius: 7px;
+  }
+  @keyframes q-skel-sweep {
+    from {
+      background-position: 140% 0;
+    }
+    to {
+      background-position: -60% 0;
+    }
+  }
+  .q-skel-line {
+    height: 9px;
+  }
+
+  /* —— 骨架卡里的爱弥斯剪影水印(文档第 08 节「占位块换成剪影」的落地) ——
+     没有把骨架线**替换**掉,而是把剪影垫在它们下面当占位主体。两条硬约束使然:
+     ① 骨架线是「与真实内容逐元素等高」的,换掉就破坏了 CLS 归零的前提;
+     ② 四张卡的内容区高度分别是 34 / 68 / 78 / 144px,直接替换的话最矮那张
+        (运行时长卡)里的剪影只有 34px 高,根本认不出是谁。
+     素材由 scripts/gen-emis-silhouette.py 从立绘 alpha 派生(245×560,10.5KB)。
+     ⚠️ 必须给卡片显式建 stacking context(position + z-index: 0):
+     水印靠 z-index: -1 压在内容下面,而 640px 以下 .glass-card 会去掉
+     backdrop-filter —— 那就不再形成 stacking context,水印会掉到卡片底色
+     后面彻底看不见。 */
+  .q-skel-shell {
+    position: relative;
+    z-index: 0;
+  }
+  .q-skel-mark {
+    position: absolute;
+    z-index: -1;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    height: 92%;
+    pointer-events: none;
+    background: linear-gradient(168deg, rgba(246, 165, 184, 0.52) 0%, rgba(232, 176, 75, 0.34) 100%);
+    mask-image: url('/images/emis/silhouette.webp');
+    mask-repeat: no-repeat;
+    mask-position: right bottom;
+    mask-size: contain;
+  }
+
+  /* —— ② 通用加载指示:三片花瓣依次舒展 + 底盘缓慢自转 ——
+     ⚠️ 自转必须挂在**外层 <g>**(.hub)上。若把 rotate 写在各片 path 的
+     SVG transform 属性里,CSS 的 transform 会整体覆盖那个属性 → 三片全叠在
+     同一处。2026-09 实际踩过,详见 docs/项目Bug记录.md。 */
+  .q-petal {
+    /* 行内块 + 中间对齐:放在文字旁边或 flex 容器里都不会把自己撑歪 */
+    display: inline-block;
+    vertical-align: middle;
+  }
+  .q-petal .hub {
+    transform-origin: 20px 20px;
+    animation: q-hub-turn 2.4s linear infinite;
+  }
+  .q-petal .petal {
+    transform-origin: 20px 20px;
+    animation: q-petal-breathe 1.25s var(--ease-soft) infinite;
+  }
+  .q-petal .petal--b {
+    animation-delay: 0.16s;
+  }
+  .q-petal .petal--c {
+    animation-delay: 0.32s;
+  }
+  @keyframes q-petal-breathe {
+    0%,
+    100% {
+      transform: scale(0.86);
+      opacity: 0.58;
+    }
+    48% {
+      transform: scale(1);
+      opacity: 1;
+    }
+  }
+  @keyframes q-hub-turn {
+    to {
+      transform: rotate(360deg);
+    }
+  }
+
+  /* 行内小转圈:白字按钮上用 .q-spin,浅底上用 .q-spin--ink */
+  .q-spin {
+    display: inline-block;
+    width: 15px;
+    height: 15px;
+    border-radius: 50%;
+    border: 2px solid rgba(255, 255, 255, 0.38);
+    border-top-color: #fff;
+    animation: q-spin-turn 0.8s linear infinite;
+  }
+  .q-spin--ink {
+    border-color: rgba(194, 58, 85, 0.24);
+    border-top-color: var(--color-crimson);
+  }
+  @keyframes q-spin-turn {
+    to {
+      transform: rotate(360deg);
+    }
+  }
+
+  /* —— ③ 路由切换进度条:顶部 2px 绯红→琥珀 ——
+     宽度与透明度都用 transition(不是 keyframes):进度只能前进,
+     用 transition 才不会在推进时抖动。 */
+  .q-route {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 2px;
+    z-index: 60;
+    pointer-events: none;
+  }
+  .q-route__bar {
+    height: 100%;
+    width: 0;
+    opacity: 0;
+    border-radius: 0 2px 2px 0;
+    background: linear-gradient(90deg, var(--color-crimson), var(--color-amber));
+    transition:
+      width var(--dur-state) var(--ease-soft),
+      opacity var(--dur-state) var(--ease-soft);
+  }
+
+  /* —— ④ 音乐缓冲:琥珀色缓冲环 + 唱片降速 + 声波降幅 ——
+     现在只要 isPlaying 为真唱片就全速转,而音频还在 buffering 时
+     视觉已经在「播」了。这三条让状态与事实一致。 */
+  .q-buf-ring {
+    position: absolute;
+    inset: -7px;
+    border-radius: 50%;
+    border: 2px solid transparent;
+    border-top-color: var(--color-amber);
+    animation: q-spin-turn 1.05s linear infinite;
+    opacity: 0;
+    transition: opacity var(--dur-state) var(--ease-soft);
+    pointer-events: none;
+  }
+  .q-buf-ring.is-on {
+    opacity: 1;
+  }
+  /* 紧凑版:给迷你播放器那种 44px 的小封面用,外扩太多会顶到卡片内边距 */
+  .q-buf-ring--tight {
+    inset: -4px;
+  }
+  /* 降速而不是停:告诉访客「还在转,只是卡住了」 */
+  .disc.is-buffering {
+    animation-duration: 16s;
+  }
+  .wave-bar.is-buffering,
+  .is-buffering .wave-bar {
+    animation-duration: 2.3s;
+    opacity: 0.5;
+  }
+
+  /* —— ⑤ 表单提交扫光:按钮底部一条光 ——
+     不动按钮尺寸、不改变文案位置,所以不会引起布局抖动。 */
+  .q-submit-sweep {
+    position: relative;
+    overflow: hidden;
+  }
+  .q-submit-sweep::after {
+    content: '';
+    position: absolute;
+    left: 0;
+    bottom: 0;
+    height: 2px;
+    width: 40%;
+    background: linear-gradient(90deg, transparent, #fff, transparent);
+    animation: q-sweep 1.05s var(--ease-soft) infinite;
+  }
+  @keyframes q-sweep {
+    from {
+      transform: translateX(-110%);
+    }
+    to {
+      transform: translateX(320%);
+    }
+  }
+
+  /* —— ⑥ 图片占位与淡入:玫瑰渐变占位 + 加载完淡出 ——
+     用法:把 .q-media 加在图片的**容器**上(现有的 <picture> 或一层 span 都行),
+     容器尺寸就等于图片尺寸,占位层正好盖在图片上。
+     ⚠️ 三个要点:
+     · 占位是「盖一层再淡出」,不是「给容器上底色 + 图片淡入」。
+       底色那版实测踩到过:首页立绘是**带透明边距**的角色立绘,容器底色会在图片
+       加载完之后继续从透明区域里露出来 —— 立绘看起来被一个玫瑰色矩形框住。
+       盖一层就没这个问题:图加载完它自己淡走,不留任何痕迹。
+     · 只在 JS 可用(<html>.qjs)时才画这层。否则无 JS 环境下它会永远盖着图片
+       (占位不是内容)。.qjs 由 Layout 的 is:inline 脚本加上。
+     · 圆角给容器加与图片一致的圆角类 —— 占位层用 border-radius:inherit 跟着走。
+       容器**不要**加 overflow:hidden:立绘、封面这类图带外投影,裁掉会切出一条直边。
+     · 命中缓存的图不会再触发 load 事件,由 Layout 的全局脚本补扫 .complete。 */
+  .q-media {
+    position: relative;
+    display: inline-block;
+  }
+  /* 加载期间把真图藏起来:占位层是半透明的(alpha .28/.2),不藏图的话
+     看到的是「图被蒙了一层粉」,而不是「本来就在那儿、只是还没填好」。 */
+  .qjs .q-media img {
+    opacity: 0;
+    transition: opacity var(--dur-move) var(--ease-soft);
+  }
+  .qjs .q-media::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    z-index: 1;
+    pointer-events: none;
+    border-radius: inherit;
+    background: linear-gradient(135deg, rgba(246, 165, 184, 0.28), rgba(232, 176, 75, 0.2));
+    transition: opacity var(--dur-move) var(--ease-soft);
+  }
+  .qjs .q-media.is-loaded img {
+    opacity: 1;
+  }
+  .qjs .q-media.is-loaded::before {
+    opacity: 0;
+  }
+
+  /* ── 首页笔顺问候的格子 ─────────────────────────────────────────
+     两行固定（4 + 5，见 Hero.tsx 的 GREET_LINES），宽度随**这一列的实际宽度**收缩。
+     之前是 92px 写死在 JS 里、再让 flex-wrap 自由折行 —— 390 宽碎成 3+3+3，
+     320 宽碎成 2+2+2+2+1，「到」一个人占一行，整块标题吃掉 552px。
+
+     ⚠️ 为什么用容器查询（cqw）而不是视口（vw）:
+     md 区间（768–1023）右侧立绘是 shrink-0、固定占 338–374px，左列真正可用的
+     宽度远小于视口。按 vw 算会得出 5 个 92px 的格子（一行 492px），左列被撑到 492，
+     立绘被挤出视口 —— 实测 768 溢出 138px、820 溢出 109px。
+     inline-size 容器让左列的宽度不再由内容撑开（size containment），
+     再按 100cqw 算格子，任何断点都刚好放得下。
+
+     第一行声明是兜底：不支持容器查询的浏览器不认识 cqw，整条失效后回落到 vw 算式。 */
+  .q-greet-host {
+    container-type: inline-size;
+  }
+  .q-greet {
+    --greet-cell: min(92px, calc((100vw - 5rem) / 5));
+    --greet-cell: min(92px, calc((100cqw - 2rem) / 5));
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+  .q-greet__line {
+    display: flex;
+    gap: 0.5rem;
+  }
+  .q-greet .char-cell {
+    flex: none;
+    display: grid;
+    place-items: center;
+    width: var(--greet-cell);
+    height: calc(var(--greet-cell) * 104 / 92);
+  }
+  /* HanziWriter 生成的 svg 带固定 width/height：窗口变化时让它跟着格子缩放，
+     而不是溢出格子（不重建 writer，重建会把已写好的字清空）。 */
+  .q-greet .char-cell svg {
+    display: block;
+    width: 100%;
+    height: 100%;
+  }
+  /* 「跳过笔顺」时直接落的静态字，字号跟着格子走 */
+  .q-greet__char {
+    font-size: calc(var(--greet-cell) * 0.95);
+    line-height: 1;
+    color: var(--color-ink);
+  }
+
+  /* ── 首页副标：逐词浮现（纯 CSS，不等水合）────────────────────
+     原先是 motion 的 variants，要等 React 水合才可见 —— 在「4G + 4× 降速」下
+     首屏 LCP 被拖到 8.3s（LCP 元素就是最后一个词）。这里改成 CSS 动画：
+     .qjs 由 Layout 在首帧前加上，SSR 出来就能播；每个词的间隔由内联
+     animation-delay 服务端算好。没有 blur —— 那东西每帧重绘，低端机上很贵。 */
+  .q-sub {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+  }
+  /* 窄屏折行时，分隔的「·」会跟着下一个短语跑到**行首**（中文排版里的避头点）。
+     640 以下干脆不要这个点，改由短语间距分隔 —— 比让标点顶在行首干净。 */
+  @media (max-width: 639px) {
+    .q-sub {
+      gap: 0 0.85rem;
+    }
+    .q-sub__sep {
+      display: none;
+    }
+  }
+  .qjs .q-sub__part {
+    opacity: 0;
+    animation: q-sub-in 0.5s var(--ease-out-expo) forwards;
+  }
+  @keyframes q-sub-in {
+    from {
+      opacity: 0;
+      transform: translateY(8px);
+    }
+    to {
+      opacity: 1;
+      transform: none;
+    }
+  }
+
+  /* ============================================================
+     开屏动画 —— 爱弥斯现身 → 打招呼 → FLIP 位移归位到首页立绘原位
+     三阶段时间线与验收标准见 docs/开屏与全部加载动画-完整设计文档.html 第 02 节。
+     只动 transform / opacity / filter。
+     ============================================================ */
+
+  /* 首帧之前的「幕布」:由 Layout 的 is:inline 脚本给 <html> 打上 .q-splash-pending。
+     它同时做三件事 ——
+     ① 先铺上奶油底色,不让首页内容在开屏之前露出来;
+     ② 把首页立绘藏起来(否则开屏下面会先看到一张「替身」);
+     ③ 锁住滚动 —— 这同时是归位能算准的前提:首页立绘带滚动缩放(scale 1→0.6),
+        只有锁住 scrollY === 0,量到的才是它的最终位置。
+     React 的开屏层挂上之后,in-line 把 pending 换成 running(帷幕交还给开屏层自己)。 */
+  html.q-splash-pending,
+  html.q-splash-running {
+    overflow: hidden;
+  }
+  /* ⚠️ 这里隐藏首页立绘用的是 visibility(不是 opacity):
+     立绘本身还挂着 .q-media 的「加载完淡入」(opacity 0 → 1),两条规则都会写
+     opacity,而且 .q-media.is-loaded 的优先级更高 —— 用 opacity 藏不住它。
+     visibility 不参与那条竞争,而且元素仍占位,getBoundingClientRect 照常可量,
+     归位的落点测量不受影响。副作用也是正向的:立绘在开屏底下就把淡入走完了,
+     归位结束时它已经是完全不透明的,交接看不出任何变化。 */
+  html.q-splash-pending [data-emis-hero],
+  html.q-splash-running [data-emis-hero] {
+    visibility: hidden;
+  }
+  html.q-splash-pending::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    z-index: 54;
+    /* 与 .q-splash__bg 用同一道渐变 —— 幕布交给开屏层时看不出换手 */
+    background: radial-gradient(120% 92% at 50% 44%, #fff9f3 0%, var(--color-cream) 64%);
+  }
+
+  .q-splash {
+    position: fixed;
+    inset: 0;
+    z-index: 55;
+  }
+  .q-splash__bg {
+    position: absolute;
+    inset: 0;
+    background: radial-gradient(120% 92% at 50% 44%, #fff9f3 0%, var(--color-cream) 64%);
+    transition: opacity var(--dur-move) var(--ease-out-expo);
+  }
+  .q-splash__glow {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    width: 62%;
+    aspect-ratio: 1;
+    transform: translate(-50%, -42%) scale(0.6);
+    border-radius: 50%;
+    background: radial-gradient(
+      circle,
+      rgba(232, 176, 75, 0.42) 0%,
+      rgba(246, 165, 184, 0.3) 44%,
+      transparent 70%
+    );
+    opacity: 0.7;
+    transition:
+      opacity 0.7s var(--ease-out-expo),
+      transform 0.7s var(--ease-out-expo);
+    animation: q-glow-breathe 2.6s var(--ease-soft) infinite;
+  }
+  @keyframes q-glow-breathe {
+    0%,
+    100% {
+      filter: brightness(0.94);
+    }
+    50% {
+      filter: brightness(1.12);
+    }
+  }
+
+  /* 开屏层的爱弥斯。⚠️ 它的 drop-shadow 必须与首页立绘
+     ([data-emis-hero] 上的 drop-shadow-[0_18px_40px_...])完全一致 ——
+     归位交接时两张图会重叠,阴影不一样就能看出换手。
+
+     尺寸:比首页立绘**更大**,归位时是「缩小 + 位移」到位
+     (首页立绘桌面 64svh / 手机 46svh;这里桌面 82svh、手机约 507px,都大一档)。
+     只影响「亮相时多大」,不影响归位 —— 缩放是运行时反算的
+     (scale = 目标高 / 未变换基准高),阴影补偿也跟着重算。
+
+     上限取三个值里的最小,每条都有具体原因:
+     · 82svh        —— 起始尺寸本身(用 svh 不用 vh:和首页立绘同一套单位,
+                       手机上不随地址栏收起而跳动)
+     · 130vw        —— 图是 2658×4096(宽高比 .649),130vw 保证画出来的宽度不超过
+                       视口的 85%,手机上不会横向溢出。
+                       **不要改用 max-width 压宽度**:那会让元素盒子与画面不等比
+                       (object-contain 留白),而归位是按盒子反算缩放的 → 落点会偏。
+     · 100svh-120px —— 给底部那行手写体问候留位置。不加这条,矮视口
+                       (横屏手机 390 高)时立绘会压到问候上。
+     下限 200px 兜住极矮视口。 */
+  .q-splash__emis {
+    position: absolute;
+    left: 50%;
+    /* 略高于正中:给底部那行问候留出呼吸(横屏手机上最明显) */
+    top: 46%;
+    height: clamp(200px, min(82svh, 130vw, calc(100svh - 120px)), 820px);
+    width: auto;
+    transform: translate(-50%, -50%) scale(0.9);
+    opacity: 0;
+    filter: blur(10px) drop-shadow(0 18px 40px rgba(246, 165, 184, 0.35));
+    will-change: transform, opacity, filter;
+    transition:
+      opacity 0.5s var(--ease-out-expo),
+      transform 0.62s var(--ease-out-expo),
+      filter 0.5s var(--ease-out-expo);
+  }
+  .q-splash__emis.is-in {
+    opacity: 1;
+    filter: blur(0) drop-shadow(0 18px 40px rgba(246, 165, 184, 0.35));
+    transform: translate(-50%, -50%) scale(1);
+  }
+  /* 轻轻「点头」一次。⚠️ 启动位移前必须先摘掉这个类:
+     CSS 动画的 transform 会整体盖掉 inline 的 FLIP 位移。 */
+  .q-splash__emis.is-nod {
+    animation: q-emis-nod 0.7s var(--ease-soft);
+  }
+  @keyframes q-emis-nod {
+    0%,
+    100% {
+      transform: translate(-50%, -50%) scale(1);
+    }
+    45% {
+      transform: translate(-50%, calc(-50% - 9px)) scale(1.015);
+    }
+  }
+
+  /* 手写体问候(与首页笔顺问候同源)。 */
+  .q-splash__greet {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 46px;
+    text-align: center;
+    font-family: var(--font-hand);
+    font-size: clamp(17px, 2.8vh, 22px);
+    color: var(--color-crimson);
+    letter-spacing: 0.06em;
+  }
+  .q-splash__greet span {
+    display: inline-block;
+    opacity: 0;
+    transform: translateY(9px);
+  }
+  .q-splash__greet span.is-in {
+    opacity: 1;
+    transform: none;
+    transition:
+      opacity 0.34s var(--ease-out-expo),
+      transform 0.34s var(--ease-out-expo);
+  }
+
+  /* 跳过:常驻右下角。⚠️ 内边距要保证可点区 ≥ 32px(设计规范第 6 节)。 */
+  .q-splash__skip {
+    position: absolute;
+    right: 12px;
+    bottom: 8px;
+    padding: 10px 10px;
+    font: inherit;
+    font-size: 11.5px;
+    line-height: 1.4;
+    color: var(--color-subtle);
+    background: none;
+    border: 0;
+    cursor: pointer;
+    text-decoration: underline dotted;
+    text-underline-offset: 3px;
+  }
+  .q-splash__skip:hover {
+    color: var(--color-accent);
+  }
+
+  /* 阶段 C:暖光、蒙层、问候一起散开 */
+  .q-splash.is-leaving .q-splash__bg,
+  .q-splash.is-leaving .q-splash__glow {
+    opacity: 0;
+  }
+  .q-splash.is-leaving .q-splash__greet span {
+    opacity: 0;
+    transition: opacity var(--dur-state) linear;
+  }
+
+  /* —— ⑦ 空态出口:统一四处空态的按钮与手写体字号 ——
+     四处空态(文章/友链/音乐馆/分享)现在各写各的。这里收拢成同一套,
+     按钮给**真实去向**(空态是构建期内容决定的,「重新加载」给不出出口)。 */
+  .q-empty {
+    display: grid;
+    justify-items: center;
+    gap: 0.5rem;
+    text-align: center;
+  }
+  .q-empty__hand {
+    font-family: var(--font-hand);
+    font-size: var(--text-subsection);
+    line-height: 1.4;
+    color: var(--color-accent);
+  }
+  .q-empty__sub {
+    font-size: 0.875rem;
+    line-height: 1.7;
+    color: var(--color-muted);
+  }
+  .q-empty-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.375rem;
+    margin-top: 0.75rem;
+    min-height: 2.75rem;
+    border-radius: var(--radius-pill);
+    border: 1px solid color-mix(in oklab, var(--color-rose) 60%, transparent);
+    background: rgba(255, 255, 255, 0.5);
+    padding-inline: 1.25rem;
+    font-size: 0.875rem;
+    line-height: 1.5;
+    color: var(--color-accent);
+    transition:
+      border-color var(--dur-micro) var(--ease-soft),
+      background-color var(--dur-micro) var(--ease-soft),
+      transform var(--dur-micro) var(--ease-soft);
+  }
+  /* 抬升只在「有 hover 且不禁用动效」时生效 —— 全站统一的做法 */
+  @media (hover: hover) and (prefers-reduced-motion: no-preference) {
+    .q-empty-btn:hover {
+      border-color: color-mix(in oklab, var(--color-rose) 92%, transparent);
+      background: color-mix(in oklab, var(--color-rose) 18%, transparent);
+      transform: translateY(-1px);
+    }
+  }
+  /* 触屏没有 hover:用按下时的轻微内缩给反馈(同样尊重「减少动效」) */
+  @media (hover: none) and (prefers-reduced-motion: no-preference) {
+    .q-empty-btn:active {
+      transform: scale(0.985);
+    }
+  }
+
+  /* ============================================================
+     404 页 · 爱弥斯「找不到路」
+     复用关于页那张半身立绘,靠身体语言表达:以脚下为轴左右张望的摇摆,
+     头顶再浮一个「?」。只动 transform / opacity。
+     没有为此新出一张「迷路」pose 的图 —— AI 生成授权角色既不合规,
+     画风也对不上官方立绘;既有素材本身就能把这个意思说清楚。
+     ============================================================ */
+  .q-lost {
+    position: relative;
+    display: inline-block;
+  }
+  .q-lost__pic {
+    display: block;
+    width: clamp(132px, 20svh, 200px);
+  }
+  .q-lost__img {
+    display: block;
+    width: 100%;
+    height: auto;
+    /* 以脚下为轴:像站着来回张望,而不是整张图在原地打转 */
+    transform-origin: 50% 100%;
+    animation: q-lost-sway 7.5s var(--ease-soft) infinite;
+    filter: drop-shadow(0 14px 30px rgba(246, 165, 184, 0.32));
+  }
+  /* 摇摆中间留停顿:停住的那两拍才是「在看」,匀速摆只会像晃动 */
+  @keyframes q-lost-sway {
+    0%,
+    10% {
+      transform: rotate(-4deg);
+    }
+    40%,
+    60% {
+      transform: rotate(4deg);
+    }
+    90%,
+    100% {
+      transform: rotate(-4deg);
+    }
+  }
+  .q-lost__q {
+    position: absolute;
+    top: -0.1em;
+    right: 2%;
+    font-family: var(--font-hand);
+    font-size: clamp(26px, 4.4svh, 40px);
+    line-height: 1;
+    color: var(--color-crimson);
+    animation: q-lost-bob 3.4s var(--ease-soft) infinite;
+  }
+  @keyframes q-lost-bob {
+    0%,
+    100% {
+      transform: translateY(0);
+    }
+    50% {
+      transform: translateY(-7px);
+    }
+  }
+
+  .no-scrollbar {
+    scrollbar-width: none;
+  }
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+
+  /* 卡片聚光(借鉴 MotionVault「SpotlightCard」思路,MIT,按爱弥斯暖色重写)
+     ::before 用 z-index:-1 + 卡片自身建立 stacking context( z-index:0 ),
+     使聚光层位于玻璃背景之上、内容文字之下 —— 文字仍清晰可读。
+     --mx / --my 由全局脚本按指针位置写入(单位为 px)。 */
+  .card-spotlight {
+    position: relative;
+    z-index: 0;
+    overflow: hidden;
+  }
+  .card-spotlight::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    opacity: 0;
+    pointer-events: none;
+    border-radius: inherit;
+    transition: opacity var(--dur-move) var(--ease-soft);
+    background: radial-gradient(
+      280px circle at var(--mx, 50%) var(--my, 50%),
+      rgba(246, 165, 184, 0.3),
+      transparent 72%
+    );
+  }
+  .card-spotlight:hover::before {
+    opacity: 1;
+  }
+  /* 悬停时:上浮 + 暖色边缘发光 */
+  .glass-card.card-spotlight:hover {
+    border-color: rgba(246, 165, 184, 0.55);
+    box-shadow: 0 16px 40px rgba(246, 165, 184, 0.22);
+  }
+
+  /* 3D 翻转卡(借鉴 MotionVault「FlipCard」,MIT,按爱弥斯暖色)     .flip-inner 绕 Y 轴 180° 翻转;正/背面是 .flip-face,点击加 .is-flipped 切换。
+
+     ⚠️ **玻璃效果必须放在两个面上,绝不能放在 .flip-inner 上**:
+     `backdrop-filter` / `filter` / `opacity<1` 这类「分组属性」会让元素的
+     `preserve-3d` **实际失效**(算出来的 transform-style 仍显示 preserve-3d,
+     但渲染被扁平化)→ 翻转后正面内容被 2D 镜像绘制、背面也显示不出来。
+     2026-09-12 实测踩到,详见 docs/项目Bug记录.md。 */
+  .flip-card {
+    perspective: 1200px;
+  }
+  /* 高度由内容决定(不再写死高度):.flip-inner 用 grid 让两个面**叠在同一格**,
+     容器高度自然跟随较高的那一面。之前固定 h-[210px] 时,短句下面会空一大截。 */
+  .flip-inner {
+    position: relative;
+    width: 100%;
+    height: 100%;
+    display: grid;
+    transform-style: preserve-3d;
+    transition: transform var(--dur-move) var(--ease-soft);
+  }
+  .flip-card.is-flipped .flip-inner {
+    transform: rotateY(180deg);
+  }
+  .flip-face {
+    grid-area: 1 / 1;
+    backface-visibility: hidden;
+  }
+  .flip-back {
+    transform: rotateY(180deg);
+  }
+  /* 背面配色:等价于原来的「玻璃白 55% + 玫瑰 20%」两层叠加 */
+  .flip-back-tint {
+    background:
+      linear-gradient(rgba(246, 165, 184, 0.2), rgba(246, 165, 184, 0.2)),
+      rgba(255, 255, 255, 0.55);
+  }
+  /* 键盘可达:翻转卡用 tabindex+role=button,必须给看得见的焦点圈 */
+  .flip-card:focus-visible {
+    outline: 2px solid var(--color-accent);
+    outline-offset: 4px;
+    border-radius: var(--radius-card);
+  }
+
+  /* 按钮波纹涟漪(借鉴 MotionVault 按钮涟漪,MIT,按爱弥斯暖色重写)
+     点击时在指针处扩散一圈玫瑰粉涟漪;降级见底部 @media。 */
+  .btn-ripple {
+    position: relative;
+    overflow: hidden;
+  }
+  .btn-ripple .ripple {
+    position: absolute;
+    border-radius: 9999px;
+    background: rgba(246, 165, 184, 0.45);
+    transform: scale(0);
+    animation: ripple 0.55s var(--ease-soft) forwards;
+    pointer-events: none;
+  }
+  @keyframes ripple {
+    to {
+      transform: scale(2.6);
+      opacity: 0;
+    }
+  }
+
+  /* 暖色氛围光斑(借鉴 MotionVault 背景渐变光斑思路,MIT,按爱弥斯暖色)
+     三团大而柔的渐变光缓慢漂浮融合,营造温馨氛围;仅 transform/scale,
+     GPU 合成,无逐帧重绘。放在樱花/星光之后,支持 prefers-reduced-motion。 */
+  .aurora-blob {
+    position: absolute;
+    aspect-ratio: 1;
+    border-radius: 50%;
+    pointer-events: none;
+    will-change: transform;
+  }
+  .blob-1 {
+    width: 62vmax;
+    top: -20vmax;
+    left: -18vmax;
+    background: radial-gradient(
+      circle,
+      rgba(246, 165, 184, 0.48) 0%,
+      rgba(246, 165, 184, 0.15) 44%,
+      transparent 68%
+    );
+    animation: aurora-a 28s ease-in-out infinite alternate;
+  }
+  .blob-2 {
+    width: 54vmax;
+    top: -10vmax;
+    right: -18vmax;
+    background: radial-gradient(
+      circle,
+      rgba(232, 176, 75, 0.4) 0%,
+      rgba(232, 176, 75, 0.13) 44%,
+      transparent 68%
+    );
+    animation: aurora-b 34s ease-in-out infinite alternate;
+  }
+  .blob-3 {
+    width: 58vmax;
+    bottom: -22vmax;
+    left: 14vmax;
+    background: radial-gradient(
+      circle,
+      rgba(194, 58, 85, 0.34) 0%,
+      rgba(194, 58, 85, 0.12) 46%,
+      transparent 70%
+    );
+    animation: aurora-c 40s ease-in-out infinite alternate;
+  }
+  @keyframes aurora-a {
+    from {
+      transform: translate(0, 0) scale(1);
+    }
+    to {
+      transform: translate(10vmax, 8vmax) scale(1.18);
+    }
+  }
+  @keyframes aurora-b {
+    from {
+      transform: translate(0, 0) scale(1.05);
+    }
+    to {
+      transform: translate(-12vmax, 10vmax) scale(0.95);
+    }
+  }
+  @keyframes aurora-c {
+    from {
+      transform: translate(0, 0) scale(1);
+    }
+    to {
+      transform: translate(-8vmax, -8vmax) scale(1.12);
+    }
+  }
+  /* ── 项目卡（v6 §9.3，浅色版）──────────────────────────────
+     方案原本是深色卡 + 镭射箔膜（暗底才有「稀有卡」质感），这里改成浅色：
+     做法不变（错位排列 / 箔膜随指针 / 倾斜 ±8° / 展开 sheet），只是不上彩虹
+     —— 彩虹箔膜压在奶油底上会糊成一片脏色，等于把这站的「薄透轻」弄没了。
+
+     ⚠️ 这里**没有** preserve-3d。倾斜是 `perspective() rotateX() rotateY()`
+     写在同一层的 transform 上，属于「平面绕轴微转」，不建立 3D 上下文，
+     所以卡上的 backdrop-filter 照常生效。真要 preserve-3d，就得像翻卡那样
+     把玻璃下沉到子元素，那是另一套结构。 */
+  .q-proj-wrap {
+    position: relative;
+  }
+
+  /* 共享光扫：一层，两张卡同一道扫过。CSS 实现 → WebGL 上下文 0 个，
+     比方案里「一张共享画布」还省，也不会和卡上的玻璃层打架。 */
+  .q-proj-sweep {
+    position: absolute;
+    inset: 0;
+    z-index: 3;
+    pointer-events: none;
+    border-radius: var(--radius-card);
+    background: linear-gradient(
+      105deg,
+      transparent 43%,
+      rgba(255, 255, 255, 0.26) 49%,
+      rgba(246, 165, 184, 0.12) 51%,
+      transparent 57%
+    );
+    background-size: 260% 100%;
+    background-position: 150% 0;
+    animation: q-proj-sweep 9s linear infinite;
+  }
+
+  .q-proj-grid {
+    display: grid;
+    gap: 1.75rem;
+  }
+
+  @media (min-width: 768px) {
+    .q-proj-grid {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      /* 错位：第二张整体下沉，不做等宽齐平的网格 —— 那是列表，不是「两张卡」 */
+      padding-bottom: 2.75rem;
+    }
+    .q-proj--low {
+      transform: translateY(2.75rem);
+    }
+  }
+
+  .q-proj__inner {
+    --mx: 50%;
+    --my: 50%;
+    --rx: 0deg;
+    --ry: 0deg;
+
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.85rem;
+    width: 100%;
+    padding: 1.9rem;
+    text-align: left;
+    overflow: hidden;
+    /* 只在离开时回弹；跟指针时要跟得紧，所以时长用最小的那档 */
+    transform: perspective(900px) rotateX(var(--rx)) rotateY(var(--ry));
+    /* glass-card 自带的是白色描边，压在奶油底上等于没有边 —— 这里换成玫瑰淡边，
+       卡片才有轮廓。悬停再加深一档。 */
+    border-color: rgba(246, 165, 184, 0.28);
+    transition:
+      transform var(--dur-micro) var(--ease-soft),
+      border-color var(--dur-micro) var(--ease-soft);
+  }
+
+  .q-proj__inner:hover {
+    border-color: rgba(246, 165, 184, 0.6);
+  }
+
+  /* 箔膜：跟着指针走的一团柔光。用 normal 混合而不是 screen —— 浅底上
+     screen 只会把整块刷白（第 4 条与「发梢光影」都是这么死的）。 */
+  .q-proj__foil {
+    position: absolute;
+    inset: 0;
+    z-index: 0;
+    pointer-events: none;
+    border-radius: inherit;
+    background:
+      radial-gradient(
+        22rem circle at var(--mx) var(--my),
+        rgba(255, 255, 255, 0.75),
+        rgba(246, 165, 184, 0.3) 32%,
+        rgba(232, 176, 75, 0.14) 52%,
+        transparent 68%
+      );
+    opacity: 0;
+    transition: opacity var(--dur-micro) var(--ease-soft);
+  }
+
+  .q-proj__inner:hover .q-proj__foil,
+  .q-proj__inner:focus-visible .q-proj__foil {
+    opacity: 1;
+  }
+
+  /* 内容压在箔膜之上 */
+  .q-proj__top,
+  .q-proj__summary,
+  .q-proj__stack,
+  .q-proj__more {
+    position: relative;
+    z-index: 1;
+  }
+
+  .q-proj__top {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 0.75rem;
+    width: 100%;
+  }
+
+  .q-proj__name {
+    font-family: var(--font-display);
+    /* 用 --text-cardtitle（18px）。别再写 --text-h3/--text-h2 —— 这两个名字
+       在本项目里根本不存在，font-size 会静默回落到继承值（16px），
+       看起来「就是有点小」，很难联想到是变量名写错。 */
+    font-size: var(--text-cardtitle);
+    color: var(--color-ink);
+    letter-spacing: 0.01em;
+  }
+
+  .q-proj__year {
+    font-size: var(--text-label);
+    letter-spacing: 0.1em;
+    color: var(--color-subtle);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .q-sheet__year {
+    margin-top: 0.3rem;
+    font-size: var(--text-label);
+    letter-spacing: 0.1em;
+    color: var(--color-subtle);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .q-proj__kind {
+    flex: none;
+    border-radius: 999px;
+    border: 1px solid rgba(246, 165, 184, 0.45);
+    background: rgba(246, 165, 184, 0.14);
+    padding: 0.15rem 0.6rem;
+    font-size: var(--text-label);
+    color: var(--color-accent);
+  }
+
+  .q-proj__summary {
+    max-width: 26em;
+    font-size: 0.9375rem;
+    line-height: 1.8;
+    color: var(--color-muted);
+  }
+
+  .q-proj__stack {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.375rem;
+  }
+
+  .q-proj__more {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    margin-top: auto;
+    padding-top: 0.5rem;
+    font-size: 0.875rem;
+    color: var(--color-accent);
+  }
+
+  .q-proj__arrow {
+    transition: transform var(--dur-micro) var(--ease-soft);
+  }
+
+  .q-proj__inner:hover .q-proj__arrow {
+    transform: translateX(4px);
+  }
+
+  /* ── 全屏 sheet ─────────────────────────────────────────── */
+  .q-sheet {
+    /* ⚠️ margin:auto 不能省。原生 dialog:modal 靠它居中，而 Tailwind 的 preflight
+       把 margin 全归零 —— 不写就会贴在左上角（实测 inset 0 + margin 0）。 */
+    margin: auto;
+    width: min(92vw, 46rem);
+    max-width: 46rem;
+    max-height: 88svh;
+    /* 只让内容区滚：dialog 自己滚的话，底部的两个入口会被推到视口外，
+       而那正是要点的那一颗按钮（实测 884px 内容 vs 756px 可视区）。 */
+    overflow: hidden;
+    padding: 0;
+    border: none;
+    border-radius: var(--radius-card);
+    background: transparent;
+    overflow: visible;
+  }
+
+  /* dialog 拿到焦点时浏览器会画一圈 outline；这里弹出层是容器不是控件，
+     圈在整个面板外面很难看，焦点本身还在里面的按钮上。 */
+  .q-sheet:focus-visible {
+    outline: none;
+  }
+
+  .q-sheet::backdrop {
+    background: rgba(58, 43, 31, 0.28);
+    backdrop-filter: blur(6px);
+  }
+
+  .q-sheet__panel {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    max-height: 88svh;
+    padding: 2rem 2.1rem 1.6rem;
+    border-radius: var(--radius-card);
+    background: rgba(255, 253, 250, 0.96);
+    border: 1px solid rgba(246, 165, 184, 0.4);
+    box-shadow: 0 30px 70px rgba(120, 70, 80, 0.18);
+    /* 从卡片位置「长」出来：--fx/--fy/--fs 由脚本按卡片矩形写入 */
+    transform: translate(var(--fx, 0), var(--fy, 0)) scale(var(--fs, 1));
+    transition: transform var(--dur-state) var(--ease-out-expo);
+  }
+
+  .q-sheet__panel:not([data-from='card']) {
+    transform: translate(0, 0) scale(1);
+  }
+
+  [data-proj-sheet-body] {
+    min-height: 0;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    /* 给滚动条留出位置，否则它会压在文字右缘 */
+    padding-right: 0.35rem;
+  }
+
+  [data-proj-sheet-body] {
+    min-height: 0;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    /* 给滚动条留出位置，否则它会压在文字右缘 */
+    padding-right: 0.35rem;
+  }
+
+  .q-sheet__head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 0.75rem;
+    /* 关闭按钮占 2.25rem + 右边距，头部要让出这些位置，否则标签会压在按钮下面 */
+    padding-right: 3.1rem;
+  }
+
+  .q-sheet__name {
+    font-family: var(--font-display);
+    font-size: var(--text-subsection);
+    color: var(--color-ink);
+  }
+
+  .q-sheet__dl {
+    display: grid;
+    gap: 0.35rem 1rem;
+    margin-top: 1.5rem;
+  }
+
+  .q-sheet__dl dt {
+    margin-top: 0.9rem;
+    font-size: var(--text-label);
+    color: var(--color-subtle);
+  }
+
+  .q-sheet__dl dd {
+    font-size: 0.9375rem;
+    line-height: 1.85;
+    color: var(--color-muted);
+  }
+
+  .q-sheet__stack {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.375rem;
+    margin-top: 1.5rem;
+  }
+
+  .q-sheet__links {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.6rem;
+  }
+
+  /* 被脚本移到面板底部的页脚版本：一条细线隔开，不再需要遮罩 */
+  .q-sheet__panel > .q-sheet__links {
+    flex: none;
+    margin-top: 0.9rem;
+    padding-top: 0.9rem;
+    border-top: 1px solid rgba(246, 165, 184, 0.32);
+  }
+
+  .q-sheet__link {
+    display: inline-flex;
+    align-items: center;
+    min-height: 2.75rem;
+    border-radius: 999px;
+    background: var(--color-crimson);
+    padding: 0 1.35rem;
+    font-size: 0.875rem;
+    color: #fff;
+    transition: transform var(--dur-micro) var(--ease-soft);
+  }
+
+  .q-sheet__link:hover {
+    transform: scale(1.03);
+  }
+
+  /* 第二个入口（源码仓库）：不要和主按钮抢注意力，用描边样式 */
+  .q-sheet__link--ghost {
+    background: transparent;
+    border: 1px solid rgba(194, 58, 85, 0.35);
+    color: var(--color-crimson);
+  }
+
+  .q-sheet__link--ghost:hover {
+    border-color: rgba(194, 58, 85, 0.6);
+    background: rgba(194, 58, 85, 0.06);
+  }
+
+  .q-sheet__close {
+    position: absolute;
+    top: 1rem;
+    right: 1rem;
+    display: grid;
+    place-items: center;
+    height: 2.25rem;
+    width: 2.25rem;
+    border-radius: 999px;
+    color: var(--color-ink);
+    transition: background-color var(--dur-micro) var(--ease-soft);
+  }
+
+  .q-sheet__close:hover {
+    background: rgba(246, 165, 184, 0.22);
+  }
+
+  @keyframes q-proj-sweep {
+    from {
+      background-position: 150% 0;
+    }
+    to {
+      background-position: -60% 0;
+    }
+  }
+
+  /* 光扫的降级统一放在 motion.css（与其它持续动画同一处），这里只管
+     倾斜与 sheet 这两处「交互位移」——它们不是 loop 动画。 */
+  @media (prefers-reduced-motion: reduce) {
+    .q-proj__inner {
+      transform: none;
+      transition: none;
+    }
+    .q-sheet__panel {
+      transform: none;
+      transition: none;
+    }
+  }
+
+  /* ── 更新日志（/changelog）· 竖向时间轴 ─────────────────────────────
+     轴线只走卡片左侧的 padding 区，不压在玻璃卡上 —— 压在卡上会显脏，
+     圆点正好骑在「轴线—卡片」之间。
+     窄屏（≤640）整条收掉：卡片几乎贴着屏幕边，一根竖线贴边只会像描边。 */
+  .q-log {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    gap: 2rem;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+  .q-log::before {
+    content: '';
+    position: absolute;
+    left: 7px;
+    top: 1rem;
+    bottom: 1rem;
+    width: 2px;
+    border-radius: var(--radius-pill);
+    /* 末端不要收到 0.06 —— 时间轴要能一路看到底，太淡就只剩圆点在飘 */
+    background: linear-gradient(
+      to bottom,
+      rgba(194, 58, 85, 0.46),
+      rgba(194, 58, 85, 0.3) 50%,
+      rgba(194, 58, 85, 0.22)
+    );
+  }
+  .q-log__item {
+    position: relative;
+    padding-left: 2.25rem;
+  }
+  .q-log__dot {
+    position: absolute;
+    left: 0;
+    top: 2rem;
+    width: 16px;
+    height: 16px;
+    border-radius: var(--radius-pill);
+    background: var(--color-cream);
+    border: 2px solid rgba(194, 58, 85, 0.45);
+    /* 用底色描一圈，把轴线从圆点背后「擦掉」——比再叠一个遮罩层省事 */
+    box-shadow: 0 0 0 4px var(--color-cream);
+  }
+  /* 最新一版：实心绯红。全站只有这一个，靠 changelog.ts 的校验钉住 */
+  .q-log__item--latest .q-log__dot {
+    background: var(--color-crimson);
+    border-color: var(--color-crimson);
+  }
+
+  .q-log__ver {
+    font-family: var(--font-display);
+    font-size: 1.375rem;
+    line-height: 1.1;
+    color: var(--color-crimson);
+    letter-spacing: 0.01em;
+  }
+  .q-log__badge {
+    padding: 0.125rem 0.5rem;
+    border-radius: var(--radius-pill);
+    background: var(--color-crimson);
+    color: #fff;
+    font-size: 0.75rem;
+    line-height: 1.5;
+    letter-spacing: 0.06em;
+  }
+  .q-log__date {
+    margin-left: auto;
+    font-size: 0.8125rem;
+    color: var(--color-subtle);
+  }
+
+  /* 分组标签 + 一条右向渐隐细线：比小标题更轻，也不跟卡内 h2 抢层级。
+     两点是实测调出来的，别改回去：
+     ① 字体显式用 --font-body —— 全局给 h3 挂的是 ZCOOL，那套字在 14px
+        只有一笔细线，压在玻璃卡上等于浅粉，看着像没上色；
+     ② 色值走更暗的 accent-soft，并补一根实心小竖条压住。 */
+  .q-log__label {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-family: var(--font-body);
+    font-size: 0.875rem;
+    font-weight: 500;
+    letter-spacing: 0.02em;
+    color: var(--color-accent-soft);
+  }
+  .q-log__label::before {
+    content: '';
+    flex: none;
+    width: 3px;
+    height: 0.8em;
+    border-radius: var(--radius-pill);
+    background: var(--color-crimson);
+  }
+  .q-log__label::after {
+    content: '';
+    flex: 1;
+    height: 1px;
+    background: linear-gradient(to right, rgba(194, 58, 85, 0.26), transparent);
+  }
+
+  .q-log__li {
+    display: flex;
+    gap: 0.625rem;
+    font-size: 0.9375rem;
+    line-height: 1.8;
+    color: var(--color-muted);
+  }
+  .q-log__bullet {
+    flex: none;
+    /* 用 em 对齐首行中线：换字号也不用跟着调 */
+    margin-top: 0.7em;
+    width: 6px;
+    height: 6px;
+    border-radius: var(--radius-pill);
+    background: rgba(194, 58, 85, 0.38);
+  }
+
+  @media (max-width: 640px) {
+    .q-log {
+      gap: 1.5rem;
+    }
+    .q-log__item {
+      padding-left: 0;
+    }
+    .q-log::before,
+    .q-log__dot {
+      display: none;
+    }
+    .q-log__date {
+      margin-left: 0;
+      flex-basis: 100%;
+    }
+  }
+}
