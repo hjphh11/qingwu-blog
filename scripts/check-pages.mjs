@@ -113,7 +113,13 @@ const proj = await page.evaluate(() => {
     sweeps: sweep.length,
     sweepAnim: sweep[0] ? getComputedStyle(sweep[0]).animationName : null,
     foilOpacity: getComputedStyle(cards[0].querySelector('.q-proj__foil')).opacity,
-    placeholderNote: (document.body.textContent || '').includes('占位'),
+    /* 文案已按源码事实补全，内容区不该再有占位标记。
+       ⚠️ 判据要限定在 .page-shell 内、且用占位文案真实用过的标记：
+       直接扫 document.body.textContent 会命中 Layout 内联脚本里的注释
+       （「图挂了也把占位层撤掉」），那是文字不是内容 —— 我第一版就这么误报了。 */
+    placeholderLeft: /\[占位\]|—— 待补/.test(
+      document.querySelector('.page-shell')?.textContent ?? '',
+    ),
   };
 });
 verdict(proj.count === 2, '两张项目卡', `实际 ${proj.count} 张`);
@@ -130,7 +136,7 @@ verdict(
 verdict(proj.sweeps === 1, '共享光扫只有一层（不是每卡一个）', `${proj.sweeps} 层`);
 verdict(proj.sweepAnim === 'q-proj-sweep', '光扫动画在跑', `animation-name=${proj.sweepAnim}`);
 verdict(proj.foilOpacity === '0', '未悬停时箔膜不显形', `opacity=${proj.foilOpacity}`);
-verdict(proj.placeholderNote, '页面明确标注了文案仍是占位');
+verdict(!proj.placeholderLeft, '文案已补全，页面上没有「占位/待补」残留');
 
 // 倾斜 ±8° + 箔膜跟随：把指针移到卡片右上方，再移到左下方，看角度与位移是否跟着变
 const box = await page.evaluate(() => {
@@ -199,8 +205,8 @@ const sheetState = await page.evaluate(() => {
 });
 verdict(sheetState.open, '点击卡片后 sheet 打开');
 verdict(
-  sheetState.dts === 3 && sheetState.dds === 3 && sheetState.textLen > 20,
-  'sheet 里有「是什么/为什么/最难」三段',
+  sheetState.dts === 4 && sheetState.dds === 4 && sheetState.textLen > 120,
+  'sheet 里有「是什么/为什么做/最难/做成了什么」四段',
   `${sheetState.dts} 个 dt / ${sheetState.textLen} 字`,
 );
 verdict(sheetState.hasClose, '有关闭按钮');

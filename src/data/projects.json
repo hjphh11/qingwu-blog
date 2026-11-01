@@ -2,25 +2,31 @@
   "projects": [
     {
       "slug": "emis-envcheck",
-      "name": "emis-envcheck",
-      "kind": "环境检测",
-      "stack": [],
-      "summary": "[占位] 一句话说清它是干什么的 —— 待补",
-      "motivation": "[占位] 为什么要做它 —— 待补",
-      "hardest": "[占位] 最难的一点是什么 —— 待补",
-      "link": null,
-      "placeholder": true
+      "year": "2026",
+      "name": "爱弥斯 · 环境检测",
+      "kind": "Windows 工具",
+      "stack": ["PowerShell 5.1", "Tauri 2", "React 19", "TypeScript"],
+      "summary": "一个 6.1MB 的绿色单文件 exe，把一台 Windows 电脑从硬件到运行库体检一遍。",
+      "motivation": "起因很具体：帮朋友装机，CPU 型号在任务管理器里，运行库要另开一个工具，能不能升 Win11 又得翻微软的说明 —— 一台机器要开四五个窗口。我想要一个双击就能看全、拷进 U 盘就能带走的东西，顺便把爱弥斯画上去。",
+      "hardest": "把 3055 行 PowerShell 采集器塞进一个 6.1MB 的单文件里，还得扛住编码：脚本保持纯 ASCII、中文文案走 Base64 块，无论 PowerShell 按 ANSI 还是 UTF-8 解码都不乱码；再用一份 540 行的逐字段契约校验（存在性、类型、可空性、哨兵值、时间格式）保证字段不漂。拿不到的项宁可显示「未知」并写清原因，也不猜成通过。",
+      "result": "四个页签：体检（0–100 评分 + 处理器/内存/存储/显卡/系统五维子分）、环境（运行库与已装软件）、兼容（17 项 Win11 要求逐项判定）、监控（每核 CPU / 内存 / 网络，1 秒采样）。不写 HKCU/HKLM 注册表、不装服务、不进开机启动，删掉 exe 即卸载。",
+      "facts": ["6.1MB 单文件", "3055 行采集脚本", "17 项兼容判定", "4 个页签"],
+      "link": "https://github.com/hjphh11/emis-envcheck",
+      "placeholder": false
     },
     {
-      "slug": "boot-qingwu-ink",
-      "name": "boot.qingwu.ink",
-      "kind": "自建 API",
-      "stack": ["Cloudflare Workers", "D1", "TypeScript"],
-      "summary": "[占位] 一句话说清它对外提供什么 —— 待补",
-      "motivation": "[占位] 为什么自己搭一套而不是用现成服务 —— 待补",
-      "hardest": "[占位] 最难的一点是什么 —— 待补",
+      "slug": "qingwu-api",
+      "year": "2026",
+      "name": "清吾 API",
+      "kind": "后端服务",
+      "stack": ["Spring Boot 3.2", "MySQL 8", "MyBatis-Plus", "JWT"],
+      "summary": "一套真跑起来的 Spring Boot 服务：注册登录、设备会话、地区树、资讯、搜索、天气。",
+      "motivation": "想做一个「不是 demo」的后端 —— 有鉴权、有设备会话、有管理端、有完整错误码，而不是几个 CRUD 摆在那里。",
+      "hardest": "会话与安全最花时间：刷新令牌、全设备下线、登录记录、在线设备、换绑邮箱与手机、注销账号，每一条都要处理旧令牌失效与并发。其次是地区树的十几种查询（路径、祖先、同级、拼音前缀、代码反查、坐标反查、三级归属校验）要在 MySQL 里保持一次查询；资讯侧的相邻篇、按月归档、发布日历、站点地图、运营统计也都得各自可查。",
+      "result": "131 个接口、19 个控制器，配一份可交互的接口文档站（boot.qingwu.ink）：左侧模块树、右侧完整说明，每个接口带 8 种语言的请求示例。另有 32 项端到端冒烟测试跑在 H2 内存库上，一条 mvn test 全部验证。",
+      "facts": ["131 个接口", "909 条省市区数据", "8 种语言示例", "32 项冒烟测试"],
       "link": "https://boot.qingwu.ink",
-      "placeholder": true
+      "placeholder": false
     }
   ]
 }

@@ -42,9 +42,11 @@ const pending = projects.filter((p) => p.placeholder).length;
                 <span class="q-proj__foil" aria-hidden="true" />
 
                 <span class="q-proj__top">
-                  <span class="q-proj__name">{p.name}</span>
+                  <span class="q-proj__year">{p.year}</span>
                   <span class="q-proj__kind">{p.kind}</span>
                 </span>
+
+                <span class="q-proj__name">{p.name}</span>
 
                 <span class="q-proj__summary">{p.summary}</span>
 
@@ -57,7 +59,7 @@ const pending = projects.filter((p) => p.placeholder).length;
                 )}
 
                 <span class="q-proj__more">
-                  展开看动机与难点
+                  展开看完整记录
                   <span aria-hidden="true" class="q-proj__arrow">
                     →
                   </span>
@@ -71,6 +73,7 @@ const pending = projects.filter((p) => p.placeholder).length;
                   <span class="q-sheet__name">{p.name}</span>
                   <span class="q-proj__kind">{p.kind}</span>
                 </div>
+                <p class="q-sheet__year">{p.year}</p>
                 <dl class="q-sheet__dl">
                   <dt>是什么</dt>
                   <dd>{p.summary}</dd>
@@ -78,7 +81,16 @@ const pending = projects.filter((p) => p.placeholder).length;
                   <dd>{p.motivation}</dd>
                   <dt>最难的一点</dt>
                   <dd>{p.hardest}</dd>
+                  <dt>做成了什么</dt>
+                  <dd>{p.result}</dd>
                 </dl>
+                {p.facts.length > 0 && (
+                  <div class="q-sheet__stack">
+                    {p.facts.map((f) => (
+                      <span class="chip chip--tag bg-amber/15 px-2 text-ink">{f}</span>
+                    ))}
+                  </div>
+                )}
                 {p.stack.length > 0 && (
                   <div class="q-sheet__stack">
                     {p.stack.map((s) => (

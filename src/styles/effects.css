@@ -901,6 +901,21 @@
     letter-spacing: 0.01em;
   }
 
+  .q-proj__year {
+    font-size: var(--text-label);
+    letter-spacing: 0.1em;
+    color: var(--color-subtle);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .q-sheet__year {
+    margin-top: 0.3rem;
+    font-size: var(--text-label);
+    letter-spacing: 0.1em;
+    color: var(--color-subtle);
+    font-variant-numeric: tabular-nums;
+  }
+
   .q-proj__kind {
     flex: none;
     border-radius: 999px;
