@@ -178,6 +178,14 @@ const pending = projects.filter((p) => p.placeholder).length;
     let lastTrigger: HTMLElement | null = null;
     const cleanups: Array<() => void> = [];
 
+    /* 面板底部的入口按钮是**手动搬过去**的页脚，不在滚动区里 ——
+       所以 onClose 清空 body 清不到它。第一次漏了这一步，表现为
+       「每开一次多一组按钮」（用户截图里堆了五组）。
+       统一用这个函数收干净，开关两侧都调一次。 */
+    const clearFooter = () => {
+      panel?.querySelectorAll(':scope > .q-sheet__links').forEach((n) => n.remove());
+    };
+
     /* ── 倾斜 + 箔膜跟随 ────────────────────────────────────
        触屏与减动效下不倾斜：手机上 pointermove 只在按下时才有，倾斜会变成
        「按住才动」的半残效果；减动效下这是明确的持续动效，应当关掉。 */
@@ -223,6 +231,7 @@ const pending = projects.filter((p) => p.placeholder).length;
         /* 入口按钮从滚动区里**移出来**，挂到面板底部当固定页脚。
            留在滚动区里就得用 sticky + 渐变遮罩，正文滚到那儿会被遮一条；
            移到外面之后，内容区从按钮上方干净地结束。 */
+        clearFooter();
         const links = body.querySelector('.q-sheet__links');
         if (links && panel) panel.appendChild(links);
 
@@ -262,6 +271,7 @@ const pending = projects.filter((p) => p.placeholder).length;
     const onClose = () => {
       delete (panel as HTMLElement).dataset.from;
       body?.replaceChildren();
+      clearFooter();
       // 焦点还给触发它的那张卡，别让键盘用户掉到 body 上
       lastTrigger?.focus();
     };
@@ -278,6 +288,7 @@ const pending = projects.filter((p) => p.placeholder).length;
 
     teardown = () => {
       cleanups.forEach((fn) => fn());
+      clearFooter();
       sheet.removeEventListener('click', onBackdrop);
       sheet.removeEventListener('close', onClose);
       sheet.querySelector('[data-proj-close]')?.removeEventListener('click', onCloseBtn);

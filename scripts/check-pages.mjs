@@ -233,6 +233,33 @@ const closed = await page.evaluate(() => {
 verdict(!closed.open, 'Esc 能关掉 sheet');
 verdict(closed.focusOnCard, '关闭后焦点回到原来那张卡（键盘不掉队）');
 
+/* 反复打开不能累积页脚 —— 曾经每开一次就多堆一组按钮（用户截图里堆了五组）。
+   根因：页脚是手动从滚动区搬到面板的，onClose 只清滚动区，清不到它。 */
+for (let i = 0; i < 3; i++) {
+  await page.evaluate((idx) => document.querySelectorAll('[data-proj-open]')[idx].click(), i % 2);
+  await sleep(500);
+  await page.keyboard.press('Escape');
+  await sleep(350);
+}
+await page.evaluate(() => document.querySelectorAll('[data-proj-open]')[1].click());
+await sleep(700);
+const footer = await page.evaluate(() => {
+  const d = document.querySelector('[data-proj-sheet]');
+  return {
+    groups: d.querySelectorAll('.q-sheet__links').length,
+    buttons: d.querySelectorAll('.q-sheet__links a').length,
+    href: d.querySelector('.q-sheet__links a')?.getAttribute('href') ?? '',
+  };
+});
+verdict(footer.groups === 1, '反复开关后页脚只有一组', `实际 ${footer.groups} 组`);
+verdict(
+  footer.buttons === 1 && footer.href.includes('boot.qingwu.ink'),
+  '最后打开的是清吾 API，页脚只剩它的入口',
+  `${footer.buttons} 个：${footer.href}`,
+);
+await page.keyboard.press('Escape');
+await sleep(300);
+
 /* ── 404 ──────────────────────────────────────────────── */
 console.log('\n【404】');
 await page.goto(`${BASE}/404.html`, { waitUntil: 'networkidle2', timeout: 60000 });
