@@ -17,6 +17,7 @@
     "check:reading": "node scripts/check-reading.mjs",
     "check:sound": "node scripts/check-sound.mjs",
     "check:pages": "node scripts/check-pages.mjs",
+    "check:changelog": "node scripts/check-changelog.mjs",
     "check:final": "node scripts/check-final.mjs"
   },
   "dependencies": {

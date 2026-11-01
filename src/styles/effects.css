@@ -1142,4 +1142,141 @@
       transition: none;
     }
   }
+
+  /* ── 更新日志（/changelog）· 竖向时间轴 ─────────────────────────────
+     轴线只走卡片左侧的 padding 区，不压在玻璃卡上 —— 压在卡上会显脏，
+     圆点正好骑在「轴线—卡片」之间。
+     窄屏（≤640）整条收掉：卡片几乎贴着屏幕边，一根竖线贴边只会像描边。 */
+  .q-log {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    gap: 2rem;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+  .q-log::before {
+    content: '';
+    position: absolute;
+    left: 7px;
+    top: 1rem;
+    bottom: 1rem;
+    width: 2px;
+    border-radius: var(--radius-pill);
+    /* 末端不要收到 0.06 —— 时间轴要能一路看到底，太淡就只剩圆点在飘 */
+    background: linear-gradient(
+      to bottom,
+      rgba(194, 58, 85, 0.46),
+      rgba(194, 58, 85, 0.3) 50%,
+      rgba(194, 58, 85, 0.22)
+    );
+  }
+  .q-log__item {
+    position: relative;
+    padding-left: 2.25rem;
+  }
+  .q-log__dot {
+    position: absolute;
+    left: 0;
+    top: 2rem;
+    width: 16px;
+    height: 16px;
+    border-radius: var(--radius-pill);
+    background: var(--color-cream);
+    border: 2px solid rgba(194, 58, 85, 0.45);
+    /* 用底色描一圈，把轴线从圆点背后「擦掉」——比再叠一个遮罩层省事 */
+    box-shadow: 0 0 0 4px var(--color-cream);
+  }
+  /* 最新一版：实心绯红。全站只有这一个，靠 changelog.ts 的校验钉住 */
+  .q-log__item--latest .q-log__dot {
+    background: var(--color-crimson);
+    border-color: var(--color-crimson);
+  }
+
+  .q-log__ver {
+    font-family: var(--font-display);
+    font-size: 1.375rem;
+    line-height: 1.1;
+    color: var(--color-crimson);
+    letter-spacing: 0.01em;
+  }
+  .q-log__badge {
+    padding: 0.125rem 0.5rem;
+    border-radius: var(--radius-pill);
+    background: var(--color-crimson);
+    color: #fff;
+    font-size: 0.75rem;
+    line-height: 1.5;
+    letter-spacing: 0.06em;
+  }
+  .q-log__date {
+    margin-left: auto;
+    font-size: 0.8125rem;
+    color: var(--color-subtle);
+  }
+
+  /* 分组标签 + 一条右向渐隐细线：比小标题更轻，也不跟卡内 h2 抢层级。
+     两点是实测调出来的，别改回去：
+     ① 字体显式用 --font-body —— 全局给 h3 挂的是 ZCOOL，那套字在 14px
+        只有一笔细线，压在玻璃卡上等于浅粉，看着像没上色；
+     ② 色值走更暗的 accent-soft，并补一根实心小竖条压住。 */
+  .q-log__label {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-family: var(--font-body);
+    font-size: 0.875rem;
+    font-weight: 500;
+    letter-spacing: 0.02em;
+    color: var(--color-accent-soft);
+  }
+  .q-log__label::before {
+    content: '';
+    flex: none;
+    width: 3px;
+    height: 0.8em;
+    border-radius: var(--radius-pill);
+    background: var(--color-crimson);
+  }
+  .q-log__label::after {
+    content: '';
+    flex: 1;
+    height: 1px;
+    background: linear-gradient(to right, rgba(194, 58, 85, 0.26), transparent);
+  }
+
+  .q-log__li {
+    display: flex;
+    gap: 0.625rem;
+    font-size: 0.9375rem;
+    line-height: 1.8;
+    color: var(--color-muted);
+  }
+  .q-log__bullet {
+    flex: none;
+    /* 用 em 对齐首行中线：换字号也不用跟着调 */
+    margin-top: 0.7em;
+    width: 6px;
+    height: 6px;
+    border-radius: var(--radius-pill);
+    background: rgba(194, 58, 85, 0.38);
+  }
+
+  @media (max-width: 640px) {
+    .q-log {
+      gap: 1.5rem;
+    }
+    .q-log__item {
+      padding-left: 0;
+    }
+    .q-log::before,
+    .q-log__dot {
+      display: none;
+    }
+    .q-log__date {
+      margin-left: 0;
+      flex-basis: 100%;
+    }
+  }
 }

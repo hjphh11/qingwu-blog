@@ -1,7 +1,7 @@
 ---
 import Layout from '../../layouts/Layout.astro';
 import MorphIcon from 'morphicons/astro';
-import { Mail, BookOpen, Sparkles } from '../../lib/icons';
+import { Mail, BookOpen, Sparkles, GitBranch } from '../../lib/icons';
 import { aboutIcon } from '../../lib/aboutIcons';
 import { profile, info, emis, contacts } from '../../data/about';
 import ContactExpand from '../../components/ContactExpand.tsx';
@@ -198,6 +198,30 @@ import { SITE } from '../../config';
               />
             </div>
           </section>
+
+          {/* 尾巴：更新日志入口。不占编号 —— 它不是「关于我」的第五件事，
+              而是「关于这座小屋」的一个旁注，所以做成长条而不是方形卡。 */}
+          <a
+            href="/changelog"
+            class="group card-lift flex items-center justify-between gap-4 rounded-[var(--radius-card)] border border-rose/25 bg-white/40 px-6 py-4 hover:border-rose/50 hover:bg-rose/10"
+          >
+            <span class="flex items-center gap-3">
+              <span class="text-crimson/80">
+                <MorphIcon icon={GitBranch} size={18} color="currentColor" />
+              </span>
+              <span>
+                <span class="block font-display text-base text-ink transition-colors group-hover:text-accent">
+                  更新日志
+                </span>
+                <span class="mt-0.5 block text-xs text-muted">这站改过什么，按版本都记着</span>
+              </span>
+            </span>
+            <span
+              aria-hidden="true"
+              class="text-sm text-accent transition-transform duration-300 group-hover:translate-x-1"
+              >→</span
+            >
+          </a>
         </div>
       </div>
     </div>

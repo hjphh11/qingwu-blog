@@ -37,7 +37,16 @@ const NAV_ITEMS: NavItem[] = [
   { label: '音乐', href: '/music' },
   { label: '友链', href: '/links' },
   { label: '项目', href: '/projects' },
-  { label: '关于', href: '/about' },
+  {
+    // 父项仍然是链接：点「关于」直接进关于页，更新日志从下拉里选。
+    // 与「文章」同一套写法，别在这里另起一套。
+    label: '关于',
+    href: '/about',
+    children: [
+      { label: '关于我', href: '/about' },
+      { label: '更新日志', href: '/changelog' },
+    ],
+  },
 ];
 
 interface Props {
