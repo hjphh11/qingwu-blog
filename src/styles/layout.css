@@ -34,6 +34,34 @@
   .page-head {
     margin-bottom: var(--space-section);
   }
+
+  /* —— 文章大标题的断行 ——
+     中文默认可以在**任意两字之间**断行,于是「克制的动效」会被拆成「…的动 / 效」,
+     核心词被劈开,是这一页最扎眼的排版失误。
+
+     实测过四种写法（1440 宽、同一条标题）:
+       · 默认                    → 「…的动」/「效：滚动…」     ← 拆词
+       · text-wrap: balance      → 同上，孤儿行没消掉
+       · word-break: auto-phrase → 同上（Chrome 里它不改变这条的断点）
+       · keep-all + strict       → 「…的动效：」/「滚动…」     ← 断在标点后
+     所以用最后一组。`overflow-wrap: anywhere` 是兜底:纯汉字、又没有标点的标题
+     在 keep-all 下无处可断,这一条让它退回「塞满再硬断」,不会撑破容器。
+
+     ⚠️ **窄屏必须关掉 keep-all**。手机一行只放得下十来个字,而 keep-all 会把
+     「内容集合与静态路径：」这种没有空格的整串当成一个词 —— 实测 390 宽时
+     标题碎成 [77 / 335 / 335 / 134] 四行,首行只剩一个 "Astro"。
+     窄屏退回普通断行（可能仍会拆词），至少不会一行只放一个词。 */
+  .q-post-title {
+    word-break: keep-all;
+    overflow-wrap: anywhere;
+    line-break: strict;
+  }
+  @media (max-width: 767px) {
+    .q-post-title {
+      word-break: normal;
+      overflow-wrap: break-word;
+    }
+  }
   .page-head__title {
     display: flex;
     align-items: center;
