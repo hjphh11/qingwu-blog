@@ -40,7 +40,8 @@
 .qhidden .q-submit-sweep::after,
 .qhidden .q-splash__glow,
 .qhidden .q-lost__img,
-.qhidden .q-lost__q {
+.qhidden .q-lost__q,
+.qhidden .q-proj-sweep {
   animation-play-state: paused !important;
 }
 
@@ -59,8 +60,13 @@
   .q-petal .petal,
   .q-spin,
   .q-buf-ring,
-  .q-submit-sweep::after {
+  .q-submit-sweep::after,
+  .q-proj-sweep {
     animation: none !important;
+  }
+  /* 光扫停下之后留着会是一道静止的亮带，反而更扎眼 —— 直接藏掉 */
+  .q-proj-sweep {
+    opacity: 0;
   }
   .q-buf-ring.is-on {
     opacity: 1;

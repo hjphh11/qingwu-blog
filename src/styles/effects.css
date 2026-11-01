@@ -771,4 +771,307 @@
       transform: translate(-8vmax, -8vmax) scale(1.12);
     }
   }
+  /* ── 项目卡（v6 §9.3，浅色版）──────────────────────────────
+     方案原本是深色卡 + 镭射箔膜（暗底才有「稀有卡」质感），这里改成浅色：
+     做法不变（错位排列 / 箔膜随指针 / 倾斜 ±8° / 展开 sheet），只是不上彩虹
+     —— 彩虹箔膜压在奶油底上会糊成一片脏色，等于把这站的「薄透轻」弄没了。
+
+     ⚠️ 这里**没有** preserve-3d。倾斜是 `perspective() rotateX() rotateY()`
+     写在同一层的 transform 上，属于「平面绕轴微转」，不建立 3D 上下文，
+     所以卡上的 backdrop-filter 照常生效。真要 preserve-3d，就得像翻卡那样
+     把玻璃下沉到子元素，那是另一套结构。 */
+  .q-proj-wrap {
+    position: relative;
+  }
+
+  /* 共享光扫：一层，两张卡同一道扫过。CSS 实现 → WebGL 上下文 0 个，
+     比方案里「一张共享画布」还省，也不会和卡上的玻璃层打架。 */
+  .q-proj-sweep {
+    position: absolute;
+    inset: 0;
+    z-index: 3;
+    pointer-events: none;
+    border-radius: var(--radius-card);
+    background: linear-gradient(
+      105deg,
+      transparent 43%,
+      rgba(255, 255, 255, 0.26) 49%,
+      rgba(246, 165, 184, 0.12) 51%,
+      transparent 57%
+    );
+    background-size: 260% 100%;
+    background-position: 150% 0;
+    animation: q-proj-sweep 9s linear infinite;
+  }
+
+  .q-proj-grid {
+    display: grid;
+    gap: 1.75rem;
+  }
+
+  @media (min-width: 768px) {
+    .q-proj-grid {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      /* 错位：第二张整体下沉，不做等宽齐平的网格 —— 那是列表，不是「两张卡」 */
+      padding-bottom: 2.75rem;
+    }
+    .q-proj--low {
+      transform: translateY(2.75rem);
+    }
+  }
+
+  .q-proj__inner {
+    --mx: 50%;
+    --my: 50%;
+    --rx: 0deg;
+    --ry: 0deg;
+
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.85rem;
+    width: 100%;
+    padding: 1.9rem;
+    text-align: left;
+    overflow: hidden;
+    /* 只在离开时回弹；跟指针时要跟得紧，所以时长用最小的那档 */
+    transform: perspective(900px) rotateX(var(--rx)) rotateY(var(--ry));
+    /* glass-card 自带的是白色描边，压在奶油底上等于没有边 —— 这里换成玫瑰淡边，
+       卡片才有轮廓。悬停再加深一档。 */
+    border-color: rgba(246, 165, 184, 0.28);
+    transition:
+      transform var(--dur-micro) var(--ease-soft),
+      border-color var(--dur-micro) var(--ease-soft);
+  }
+
+  .q-proj__inner:hover {
+    border-color: rgba(246, 165, 184, 0.6);
+  }
+
+  /* 箔膜：跟着指针走的一团柔光。用 normal 混合而不是 screen —— 浅底上
+     screen 只会把整块刷白（第 4 条与「发梢光影」都是这么死的）。 */
+  .q-proj__foil {
+    position: absolute;
+    inset: 0;
+    z-index: 0;
+    pointer-events: none;
+    border-radius: inherit;
+    background:
+      radial-gradient(
+        22rem circle at var(--mx) var(--my),
+        rgba(255, 255, 255, 0.75),
+        rgba(246, 165, 184, 0.3) 32%,
+        rgba(232, 176, 75, 0.14) 52%,
+        transparent 68%
+      );
+    opacity: 0;
+    transition: opacity var(--dur-micro) var(--ease-soft);
+  }
+
+  .q-proj__inner:hover .q-proj__foil,
+  .q-proj__inner:focus-visible .q-proj__foil {
+    opacity: 1;
+  }
+
+  /* 内容压在箔膜之上 */
+  .q-proj__top,
+  .q-proj__summary,
+  .q-proj__stack,
+  .q-proj__more {
+    position: relative;
+    z-index: 1;
+  }
+
+  .q-proj__top {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 0.75rem;
+    width: 100%;
+  }
+
+  .q-proj__name {
+    font-family: var(--font-display);
+    /* 用 --text-cardtitle（18px）。别再写 --text-h3/--text-h2 —— 这两个名字
+       在本项目里根本不存在，font-size 会静默回落到继承值（16px），
+       看起来「就是有点小」，很难联想到是变量名写错。 */
+    font-size: var(--text-cardtitle);
+    color: var(--color-ink);
+    letter-spacing: 0.01em;
+  }
+
+  .q-proj__kind {
+    flex: none;
+    border-radius: 999px;
+    border: 1px solid rgba(246, 165, 184, 0.45);
+    background: rgba(246, 165, 184, 0.14);
+    padding: 0.15rem 0.6rem;
+    font-size: var(--text-label);
+    color: var(--color-accent);
+  }
+
+  .q-proj__summary {
+    max-width: 26em;
+    font-size: 0.9375rem;
+    line-height: 1.8;
+    color: var(--color-muted);
+  }
+
+  .q-proj__stack {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.375rem;
+  }
+
+  .q-proj__more {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    margin-top: auto;
+    padding-top: 0.5rem;
+    font-size: 0.875rem;
+    color: var(--color-accent);
+  }
+
+  .q-proj__arrow {
+    transition: transform var(--dur-micro) var(--ease-soft);
+  }
+
+  .q-proj__inner:hover .q-proj__arrow {
+    transform: translateX(4px);
+  }
+
+  /* ── 全屏 sheet ─────────────────────────────────────────── */
+  .q-sheet {
+    /* ⚠️ margin:auto 不能省。原生 dialog:modal 靠它居中，而 Tailwind 的 preflight
+       把 margin 全归零 —— 不写就会贴在左上角（实测 inset 0 + margin 0）。 */
+    margin: auto;
+    width: min(92vw, 46rem);
+    max-width: 46rem;
+    max-height: 84svh;
+    overflow: auto;
+    padding: 0;
+    border: none;
+    border-radius: var(--radius-card);
+    background: transparent;
+    overflow: visible;
+  }
+
+  .q-sheet::backdrop {
+    background: rgba(58, 43, 31, 0.28);
+    backdrop-filter: blur(6px);
+  }
+
+  .q-sheet__panel {
+    position: relative;
+    padding: 2rem 2.1rem 2.2rem;
+    border-radius: var(--radius-card);
+    background: rgba(255, 253, 250, 0.96);
+    border: 1px solid rgba(246, 165, 184, 0.4);
+    box-shadow: 0 30px 70px rgba(120, 70, 80, 0.18);
+    /* 从卡片位置「长」出来：--fx/--fy/--fs 由脚本按卡片矩形写入 */
+    transform: translate(var(--fx, 0), var(--fy, 0)) scale(var(--fs, 1));
+    transition: transform var(--dur-state) var(--ease-out-expo);
+  }
+
+  .q-sheet__panel:not([data-from='card']) {
+    transform: translate(0, 0) scale(1);
+  }
+
+  .q-sheet__head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 0.75rem;
+    /* 关闭按钮占 2.25rem + 右边距，头部要让出这些位置，否则标签会压在按钮下面 */
+    padding-right: 3.1rem;
+  }
+
+  .q-sheet__name {
+    font-family: var(--font-display);
+    font-size: var(--text-subsection);
+    color: var(--color-ink);
+  }
+
+  .q-sheet__dl {
+    display: grid;
+    gap: 0.35rem 1rem;
+    margin-top: 1.5rem;
+  }
+
+  .q-sheet__dl dt {
+    margin-top: 0.9rem;
+    font-size: var(--text-label);
+    color: var(--color-subtle);
+  }
+
+  .q-sheet__dl dd {
+    font-size: 0.9375rem;
+    line-height: 1.85;
+    color: var(--color-muted);
+  }
+
+  .q-sheet__stack {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.375rem;
+    margin-top: 1.5rem;
+  }
+
+  .q-sheet__link {
+    display: inline-flex;
+    align-items: center;
+    margin-top: 1.5rem;
+    min-height: 2.75rem;
+    border-radius: 999px;
+    background: var(--color-crimson);
+    padding: 0 1.35rem;
+    font-size: 0.875rem;
+    color: #fff;
+    transition: transform var(--dur-micro) var(--ease-soft);
+  }
+
+  .q-sheet__link:hover {
+    transform: scale(1.03);
+  }
+
+  .q-sheet__close {
+    position: absolute;
+    top: 1rem;
+    right: 1rem;
+    display: grid;
+    place-items: center;
+    height: 2.25rem;
+    width: 2.25rem;
+    border-radius: 999px;
+    color: var(--color-ink);
+    transition: background-color var(--dur-micro) var(--ease-soft);
+  }
+
+  .q-sheet__close:hover {
+    background: rgba(246, 165, 184, 0.22);
+  }
+
+  @keyframes q-proj-sweep {
+    from {
+      background-position: 150% 0;
+    }
+    to {
+      background-position: -60% 0;
+    }
+  }
+
+  /* 光扫的降级统一放在 motion.css（与其它持续动画同一处），这里只管
+     倾斜与 sheet 这两处「交互位移」——它们不是 loop 动画。 */
+  @media (prefers-reduced-motion: reduce) {
+    .q-proj__inner {
+      transform: none;
+      transition: none;
+    }
+    .q-sheet__panel {
+      transform: none;
+      transition: none;
+    }
+  }
 }

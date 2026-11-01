@@ -20,6 +20,7 @@ const NAV_ITEMS: NavItem[] = [
   { label: '音乐', href: '/music' },
   { label: '友链', href: '/links' },
   { label: '分享', href: '/share' },
+  { label: '项目', href: '/projects' },
   { label: '关于', href: '/about' },
 ];
 

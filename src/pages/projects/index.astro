@@ -1,0 +1,260 @@
+---
+import Layout from '../../layouts/Layout.astro';
+import MorphIcon from 'morphicons/astro';
+import { Sparkles, X } from '../../lib/icons';
+import { projects } from '../../data/projects';
+
+const pending = projects.filter((p) => p.placeholder).length;
+---
+
+<Layout title="项目 · 清吾" description="自己做的小东西 —— 两个都还在长。">
+  {/*
+    v6 §9.3 原本要求「深色卡（#241a14 半透明）+ 镭射箔膜」，理由是箔膜在暗底才有
+    「稀有卡」质感。用户选择了**浅色版**：结构与交互照方案做（两张错位、箔膜流动、
+    倾斜、展开 sheet），但不做深底 —— 这个站的气质是薄透轻，一整块深色会把页面压塌。
+
+    ⚠️ 方案里「不要每张卡一个 WebGL 上下文，改用一张共享光扫画布」这条，
+    在这里自动满足并且更好：箔膜与光扫**全部是 CSS**，WebGL 上下文 0 个。
+    共享光扫是网格上的一层 div，两张卡同一道光扫过，不是各扫各的。
+  */}
+  <div class="page-shell">
+    <header class="page-head">
+      <h1 class="page-head__title">项目</h1>
+      <p class="page-head__sub">自己做的小东西 —— 两个都还在长 ~</p>
+    </header>
+
+    <div class="q-proj-wrap" data-proj-grid>
+      {/* 共享光扫：一层，铺在两张卡上面。不进布局，也不吃指针事件。 */}
+      <div class="q-proj-sweep" aria-hidden="true"></div>
+
+      <div class="q-proj-grid reveal">
+        {
+          projects.map((p, i) => (
+            <article class={`q-proj ${i % 2 === 1 ? 'q-proj--low' : ''}`} data-proj-card>
+              <button
+                type="button"
+                class="q-proj__inner glass-card"
+                data-proj-open
+                aria-label={`展开项目详情：${p.name}`}
+              >
+                {/* 箔膜：跟着指针走的一团柔光。浅色版不能上彩虹，会糊成一片脏色，
+                    只用玫瑰→琥珀的低透明度柔光。 */}
+                <span class="q-proj__foil" aria-hidden="true" />
+
+                <span class="q-proj__top">
+                  <span class="q-proj__name">{p.name}</span>
+                  <span class="q-proj__kind">{p.kind}</span>
+                </span>
+
+                <span class="q-proj__summary">{p.summary}</span>
+
+                {p.stack.length > 0 && (
+                  <span class="q-proj__stack">
+                    {p.stack.map((s) => (
+                      <span class="chip chip--tag bg-rose/15 px-2">{s}</span>
+                    ))}
+                  </span>
+                )}
+
+                <span class="q-proj__more">
+                  展开看动机与难点
+                  <span aria-hidden="true" class="q-proj__arrow">
+                    →
+                  </span>
+                </span>
+              </button>
+
+              {/* 详情内容放 template 里：SSR 就带在页面里，展开时克隆进 sheet，
+                  不用再请求一次，也不会被搜索引擎当成正文。 */}
+              <template data-proj-detail>
+                <div class="q-sheet__head">
+                  <span class="q-sheet__name">{p.name}</span>
+                  <span class="q-proj__kind">{p.kind}</span>
+                </div>
+                <dl class="q-sheet__dl">
+                  <dt>是什么</dt>
+                  <dd>{p.summary}</dd>
+                  <dt>为什么做</dt>
+                  <dd>{p.motivation}</dd>
+                  <dt>最难的一点</dt>
+                  <dd>{p.hardest}</dd>
+                </dl>
+                {p.stack.length > 0 && (
+                  <div class="q-sheet__stack">
+                    {p.stack.map((s) => (
+                      <span class="chip chip--tag bg-rose/15 px-2">{s}</span>
+                    ))}
+                  </div>
+                )}
+                {p.link && (
+                  <a href={p.link} target="_blank" rel="noreferrer" class="q-sheet__link">
+                    打开 {p.link.replace(/^https?:\/\//, '')}
+                  </a>
+                )}
+              </template>
+            </article>
+          ))
+        }
+      </div>
+    </div>
+
+    {
+      pending > 0 && (
+        <p class="mt-14 flex items-start gap-2 text-xs leading-relaxed text-subtle">
+          <span class="mt-0.5 shrink-0 text-crimson/70">
+            <MorphIcon icon={Sparkles} size={13} color="currentColor" />
+          </span>
+          <span>
+            还有 {pending} 个项目的正文是<strong class="text-ink">占位</strong>：动机与难点还没写。补齐后只改
+            <code class="mx-1 rounded bg-rose/12 px-1 py-0.5 text-[0.95em] text-ink">src/data/projects.json</code>
+            ，页面结构不用动。
+          </span>
+        </p>
+      )
+    }
+  </div>
+
+  {/* 全屏 sheet：用原生 dialog，焦点陷阱、Esc 关闭、::backdrop 都是白送的 */}
+  <dialog class="q-sheet" data-proj-sheet aria-labelledby="q-sheet-title">
+    <div class="q-sheet__panel" data-proj-sheet-panel>
+      <h2 id="q-sheet-title" class="sr-only">项目详情</h2>
+      <div data-proj-sheet-body></div>
+      <button type="button" class="q-sheet__close" data-proj-close aria-label="关闭详情">
+        <MorphIcon icon={X} size={18} color="currentColor" />
+      </button>
+    </div>
+  </dialog>
+</Layout>
+
+<script>
+  /*
+   * ⚠️ 老规矩：模块脚本首屏只跑一次，ClientRouter 会换掉整个 body。
+   * 直接 querySelector 绑事件的话，从别的页面点进 /projects 会全都不响应
+   * （文章页和分享页都踩过）。所以 init + astro:page-load + DOM 就绪也跑一次，
+   * 并且 teardown 时把监听器摘干净、把 dialog 关掉（否则换页后 modal 还挂着）。
+   */
+  const MAX_DEG = 8;
+
+  let teardown = () => {};
+
+  function init() {
+    teardown();
+
+    const grid = document.querySelector('[data-proj-grid]');
+    const sheet = document.querySelector<HTMLDialogElement>('[data-proj-sheet]');
+    if (!grid || !sheet) return;
+
+    const body = sheet.querySelector('[data-proj-sheet-body]');
+    const panel = sheet.querySelector<HTMLElement>('[data-proj-sheet-panel]');
+    const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    const coarse = window.matchMedia('(pointer: coarse)').matches;
+
+    let lastTrigger: HTMLElement | null = null;
+    const cleanups: Array<() => void> = [];
+
+    /* ── 倾斜 + 箔膜跟随 ────────────────────────────────────
+       触屏与减动效下不倾斜：手机上 pointermove 只在按下时才有，倾斜会变成
+       「按住才动」的半残效果；减动效下这是明确的持续动效，应当关掉。 */
+    const cards = Array.from(grid.querySelectorAll<HTMLElement>('[data-proj-card]'));
+
+    for (const card of cards) {
+      const inner = card.querySelector<HTMLElement>('.q-proj__inner');
+      if (!inner) continue;
+
+      if (!reduce && !coarse) {
+        const onMove = (e: PointerEvent) => {
+          const r = inner.getBoundingClientRect();
+          const px = (e.clientX - r.left) / Math.max(r.width, 1);
+          const py = (e.clientY - r.top) / Math.max(r.height, 1);
+          inner.style.setProperty('--mx', `${(px * 100).toFixed(1)}%`);
+          inner.style.setProperty('--my', `${(py * 100).toFixed(1)}%`);
+          // 水平位移 → 绕 Y 轴；垂直位移 → 绕 X 轴（方向要反过来才跟手）
+          inner.style.setProperty('--ry', `${((px - 0.5) * 2 * MAX_DEG).toFixed(2)}deg`);
+          inner.style.setProperty('--rx', `${((0.5 - py) * 2 * MAX_DEG).toFixed(2)}deg`);
+        };
+        const onLeave = () => {
+          inner.style.setProperty('--rx', '0deg');
+          inner.style.setProperty('--ry', '0deg');
+          inner.style.setProperty('--mx', '50%');
+          inner.style.setProperty('--my', '50%');
+        };
+        card.addEventListener('pointermove', onMove);
+        card.addEventListener('pointerleave', onLeave);
+        cleanups.push(() => {
+          card.removeEventListener('pointermove', onMove);
+          card.removeEventListener('pointerleave', onLeave);
+        });
+      }
+
+      /* ── 展开 sheet ─────────────────────────────────────── */
+      const trigger = card.querySelector<HTMLElement>('[data-proj-open]');
+      const tpl = card.querySelector<HTMLTemplateElement>('template[data-proj-detail]');
+      if (!trigger || !tpl || !body || !panel) continue;
+
+      const onOpen = () => {
+        lastTrigger = trigger;
+        body.replaceChildren(tpl.content.cloneNode(true));
+
+        /* 从卡片位置「长」出来：先把面板压到卡片矩形，再在下一帧回到原位。
+           这是共享元素转场的手写版 —— 只有两个元素，引 layoutId 不值当。 */
+        if (!reduce) {
+          const r = trigger.getBoundingClientRect();
+          const vw = window.innerWidth;
+          const vh = window.innerHeight;
+          panel.style.setProperty('--fx', `${r.left + r.width / 2 - vw / 2}px`);
+          panel.style.setProperty('--fy', `${r.top + r.height / 2 - vh / 2}px`);
+          panel.style.setProperty('--fs', String(Math.max(0.6, r.width / Math.min(vw * 0.92, 720))));
+          panel.dataset.from = 'card';
+        } else {
+          delete panel.dataset.from;
+        }
+
+        sheet.showModal();
+
+        if (!reduce) {
+          requestAnimationFrame(() => {
+            requestAnimationFrame(() => {
+              delete panel.dataset.from;
+            });
+          });
+        }
+      };
+
+      trigger.addEventListener('click', onOpen);
+      cleanups.push(() => trigger.removeEventListener('click', onOpen));
+    }
+
+    const close = () => {
+      if (sheet.open) sheet.close();
+    };
+
+    const onClose = () => {
+      delete (panel as HTMLElement).dataset.from;
+      body?.replaceChildren();
+      // 焦点还给触发它的那张卡，别让键盘用户掉到 body 上
+      lastTrigger?.focus();
+    };
+
+    const onBackdrop = (e: MouseEvent) => {
+      // dialog 的「点外面」= 目标是 dialog 本身（面板之内是 panel）
+      if (e.target === sheet) close();
+    };
+    const onCloseBtn = () => close();
+
+    sheet.addEventListener('click', onBackdrop);
+    sheet.addEventListener('close', onClose);
+    sheet.querySelector('[data-proj-close]')?.addEventListener('click', onCloseBtn);
+
+    teardown = () => {
+      cleanups.forEach((fn) => fn());
+      sheet.removeEventListener('click', onBackdrop);
+      sheet.removeEventListener('close', onClose);
+      sheet.querySelector('[data-proj-close]')?.removeEventListener('click', onCloseBtn);
+      if (sheet.open) sheet.close();
+    };
+  }
+
+  document.addEventListener('astro:page-load', init);
+  if (document.readyState !== 'loading') init();
+  else document.addEventListener('DOMContentLoaded', init, { once: true });
+</script>

@@ -13,7 +13,17 @@ const require = createRequire(import.meta.url);
 const puppeteer = require('C:/Users/hjiap/.workbuddy/binaries/node/workspace/node_modules/puppeteer-core');
 
 const BASE = 'http://127.0.0.1:4399';
-const PAGES = ['/', '/blog/', '/about/', '/links/', '/share/', '/music/', '/blog/offline-python-quiz-app/', '/404.html'];
+const PAGES = [
+  '/',
+  '/blog/',
+  '/about/',
+  '/links/',
+  '/share/',
+  '/music/',
+  '/projects/',
+  '/blog/offline-python-quiz-app/',
+  '/404.html',
+];
 
 (async () => {
   const browser = await puppeteer.launch({

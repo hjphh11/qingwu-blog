@@ -14,6 +14,7 @@
  *   B2 容器写了第三套宽度（不走 --shell-max）
  *   C1 样式层出现循环依赖（分层必须是星形：index 单点汇总，叶子互不引用）
  *   C2 手改了脚本生成的产物（fonts.css 会被下次重跑覆盖掉）
+ *   C3 var(--x) 引用了不存在的变量，且没写 fallback
  */
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join, extname } from 'node:path';
@@ -138,9 +139,50 @@ function checkGenerated() {
   return hits;
 }
 
+/* ── C3 引用了不存在的 CSS 变量 ────────────────────────────────────
+   踩过的坑：`.q-proj__name` 写了 `font-size: var(--text-h3)`，而本项目根本没有
+   `--text-h3` 这个 token —— **font-size 静默回落到继承值**，卡片标题变成 16px。
+   看起来「就是有点小」，完全联想不到是变量名写错，靠肉眼永远查不出来。
+
+   判据收得很紧，只报「既没有 fallback、也确实没被定义过」的：
+     · `var(--x, 0)` 有 fallback → 放过（大量运行时变量走这种写法）
+     · 同文件里 `--x:` 定义过 → 放过（组件内部变量，如 --mx/--rx）
+     · tokens.css 的 @theme 里定义过 → 放过
+   宁可漏报，也不要制造一堆噪音 —— 噪音会让人关掉这个检查。 */
+function checkUnknownVars() {
+  const dir = join(ROOT, 'styles');
+  const files = readdirSync(dir).filter((n) => n.endsWith('.css'));
+  const defined = new Set();
+  const read = (n) => readFileSync(join(dir, n), 'utf8');
+
+  // 全站定义过的变量（含 tokens.css 的 @theme）
+  for (const n of files) {
+    const src = read(n);
+    for (const m of src.matchAll(/(--[\w-]+)\s*:/g)) defined.add(m[1]);
+  }
+  // 运行时由 JS 写进去的（约定位在 styles 里以 fallback 形式出现，这里兜一层）
+  const runtime = new Set(['--fx', '--fy', '--fs', '--emis-x', '--emis-y']);
+
+  const hits = [];
+  for (const n of files) {
+    const src = read(n);
+    // 去掉注释，避免把说明文字里的示例当成真实用法
+    const code = src.replace(/\/\*[\s\S]*?\*\//g, ' ');
+    for (const m of code.matchAll(/var\(\s*(--[\w-]+)\s*([,)])/g)) {
+      const name = m[1];
+      const hasFallback = m[2] === ',';
+      if (hasFallback) continue;
+      if (defined.has(name) || runtime.has(name)) continue;
+      hits.push(`${n}：var(${name}) 没有定义，也没写 fallback`);
+    }
+  }
+  return hits;
+}
+
 for (const [rule, hits] of [
   [{ id: 'C1', name: '样式层循环依赖' }, checkStyleGraph()],
   [{ id: 'C2', name: '生成物被手改' }, checkGenerated()],
+  [{ id: 'C3', name: '引用了不存在的 CSS 变量' }, checkUnknownVars()],
 ]) {
   if (hits.length) {
     violations += hits.length;

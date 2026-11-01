@@ -1,0 +1,26 @@
+{
+  "projects": [
+    {
+      "slug": "emis-envcheck",
+      "name": "emis-envcheck",
+      "kind": "环境检测",
+      "stack": [],
+      "summary": "[占位] 一句话说清它是干什么的 —— 待补",
+      "motivation": "[占位] 为什么要做它 —— 待补",
+      "hardest": "[占位] 最难的一点是什么 —— 待补",
+      "link": null,
+      "placeholder": true
+    },
+    {
+      "slug": "boot-qingwu-ink",
+      "name": "boot.qingwu.ink",
+      "kind": "自建 API",
+      "stack": ["Cloudflare Workers", "D1", "TypeScript"],
+      "summary": "[占位] 一句话说清它对外提供什么 —— 待补",
+      "motivation": "[占位] 为什么自己搭一套而不是用现成服务 —— 待补",
+      "hardest": "[占位] 最难的一点是什么 —— 待补",
+      "link": "https://boot.qingwu.ink",
+      "placeholder": true
+    }
+  ]
+}

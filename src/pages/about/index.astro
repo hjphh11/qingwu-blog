@@ -1,7 +1,7 @@
 ---
 import Layout from '../../layouts/Layout.astro';
 import MorphIcon from 'morphicons/astro';
-import { Mail, BookOpen } from '../../lib/icons';
+import { Mail, BookOpen, Sparkles } from '../../lib/icons';
 import { aboutIcon } from '../../lib/aboutIcons';
 import { profile, info, emis, contacts } from '../../data/about';
 import ContactExpand from '../../components/ContactExpand.tsx';
@@ -13,121 +13,193 @@ import { SITE } from '../../config';
     窄栏：**不要给 .page-shell 覆盖 max-w**。.page-shell 是 max-width:1080px + margin-inline:auto，
     改了它的 max-width 会让它按新宽度重新居中 —— 内容左缘跟着横跳（实测 /about 比其它页右移 44px）。
     正确做法是外壳保持 .page-shell 不动，把窄栏下沉到内层这个 div 上。
+
+    版式（v6 §9.2）：左侧爱弥斯半身**粘住**，右侧四个编号区块
+    01 我是清吾 / 02 爱弥斯 / 03 做过的事 / 04 联系。
+    粘性只在 lg 生效 —— 小屏两列并排会挤成一条竖缝，所以直接单列堆叠。
   */}
   <div class="page-shell">
     <div class="max-w-[62rem]">
-    <header class="page-head">
-      <h1 class="page-head__title">关于</h1>
-      <p class="page-head__sub">这里是清吾的小屋，和你打个招呼 ~</p>
-    </header>
+      <header class="page-head">
+        <h1 class="page-head__title">关于</h1>
+        <p class="page-head__sub">这里是清吾的小屋，和你打个招呼 ~</p>
+      </header>
 
-    {/* ① 我是清吾 */}
-    <div class="glass-card reveal p-7 sm:p-9">
-      <div class="flex flex-col items-center gap-5 sm:flex-row sm:items-start">
-        {/* 头像 webp 版 16KB(原 jpg 734KB),立绘用 webp 同上 */}
-        <picture class="q-media block h-20 w-20 shrink-0 rounded-full ring-2 ring-white/70">
-          <source srcset="/images/avatar.webp" type="image/webp" />
-          <img
-            src="/images/avatar.jpg"
-            alt={profile.name}
-            width={80}
-            height={80}
-            loading="lazy"
-            decoding="async"
-            class="h-full w-full rounded-full object-cover"
-          />
-        </picture>
-        <div class="text-center sm:text-left">
-          <h2 class="card-head">{profile.name}</h2>
-          <p class="mt-1.5 text-sm text-muted">{profile.tagline}</p>
-        </div>
-      </div>
-
-      <div class="mt-7 space-y-3.5 leading-[1.85] text-muted">
-        <p>{profile.whyName}</p>
-        <p>{profile.whyBlog}</p>
-        <p>{profile.whatWrite}</p>
-      </div>
-
-      {/* 信息条目 */}
-      <dl class="mt-7 grid gap-2.5 border-t border-rose/20 pt-6 sm:grid-cols-2">
-        {
-          info.map((it) => (
-            <div class="flex items-center gap-2 text-sm">
-              <span class="text-crimson/80">
-                <MorphIcon icon={aboutIcon(it.icon) as never} size={16} color="currentColor" />
-              </span>
-              <dt class="text-subtle">{it.label}</dt>
-              <dd class="text-ink">{it.value}</dd>
-            </div>
-          ))
-        }
-      </dl>
-    </div>
-
-    {/* ② 爱弥斯 */}
-    <div class="glass-card reveal mt-6 flex flex-col gap-7 p-7 sm:flex-row sm:p-9">
-      <picture class="q-media mx-auto h-[180px] w-[180px] shrink-0 rounded-2xl sm:mx-0">
-        <source srcset="/images/emis/portrait.webp" type="image/webp" />
-        <img
-          src={emis.img}
-          alt="爱弥斯"
-          width={180}
-          height={180}
-          loading="lazy"
-          decoding="async"
-          class="h-full w-full rounded-2xl object-cover"
-        />
-      </picture>
-      <div class="min-w-0">
-        <h2 class="card-head text-accent">爱弥斯</h2>
-        <div class="mt-4 space-y-3.5 leading-[1.85] text-muted">
-          {emis.persona.map((p) => <p>{p}</p>)}
-        </div>
-      </div>
-    </div>
-
-    {/* ③ 联系 / 社交 + 刷题(左右两半) */}
-    <div class="glass-card reveal mt-6 grid gap-8 p-7 sm:grid-cols-2 sm:p-9">
-      {/* 左半:联系 / 社交 */}
-      <div class="flex flex-col items-center gap-6">
-        <h2 class="card-head flex w-full items-center gap-2">
-          <MorphIcon icon={Mail} size={18} color="currentColor" /> 联系 / 社交
-        </h2>
-        <ContactExpand
-          client:load
-          variant="contact"
-          label="联系我们"
-          email={SITE.email}
-          github="https://github.com/hjphh11"
-          contacts={contacts}
-        />
-      </div>
-
-      {/* 右半:刷题入口 */}
-      <div class="flex flex-col items-center gap-6 sm:border-l sm:border-rose/20 sm:pl-8">
-        <h2 class="card-head flex w-full items-center gap-2">
-          <MorphIcon icon={BookOpen} size={18} color="currentColor" /> 刷题
-        </h2>
-        <a
-          href="/quiz/"
-          class="group card-lift flex w-full flex-col items-center gap-2.5 rounded-[var(--radius-card)] border border-rose/25 bg-white/40 p-6 text-center hover:border-rose/50 hover:bg-rose/10"
-        >
-          <MorphIcon icon={BookOpen} size={24} color="currentColor" />
-          <span class="font-display text-lg text-ink transition-colors group-hover:text-accent">
-            Python 二级刷题
-          </span>
-          <span class="text-xs text-muted">选择题 · 随机抽题 · 自动判分与解析</span>
-          <span class="mt-1 inline-flex items-center gap-1 text-sm text-accent">
-            进入题库
+      <div class="grid gap-10 lg:grid-cols-[minmax(0,15.5rem)_minmax(0,1fr)] lg:gap-12">
+        {/* ── 左：立绘（粘住） ─────────────────────────────────
+            用 portrait.webp（71KB）。.q-media 负责「白→图」的淡入；
+            圆角写在容器与 img 上，ring 之类**不要**写在 img 上 ——
+            那会露出容器渐变的一圈玫瑰色边（友链头像踩过同样的坑）。 */}
+        <aside class="lg:sticky lg:top-28 lg:self-start">
+          <div class="relative flex flex-col items-center gap-4">
             <span
-              aria-hidden="true"
-              class="transition-transform duration-300 group-hover:translate-x-1">→</span
-            >
-          </span>
-        </a>
+              class="pointer-events-none absolute top-2 -z-10 h-56 w-56 rounded-full bg-rose/25 blur-3xl"
+              aria-hidden="true"></span>
+            <picture class="q-media block w-[13.5rem] max-w-full">
+              <source srcset="/images/emis/portrait.webp" type="image/webp" />
+              <img
+                src="/images/emis/portrait.png"
+                alt="爱弥斯"
+                width={360}
+                height={497}
+                loading="lazy"
+                decoding="async"
+                class="h-auto w-full object-contain drop-shadow-[0_14px_32px_rgba(246,165,184,0.3)]"
+              />
+            </picture>
+            <p class="text-center font-display text-lg text-ink">{profile.name}</p>
+            <p class="-mt-2 text-center text-xs text-subtle">{profile.tagline}</p>
+          </div>
+        </aside>
+
+        {/* ── 右：四个编号区块 ─────────────────────────────── */}
+        <div class="min-w-0 space-y-6">
+          {/* 01 我是清吾 */}
+          <section class="glass-card reveal p-7 sm:p-9" aria-labelledby="about-01">
+            <div class="flex items-center gap-3">
+              <span
+                class="font-display text-2xl leading-none text-rose/55 tabular-nums"
+                aria-hidden="true">01</span
+              >
+              <h2 id="about-01" class="card-head">我是清吾</h2>
+            </div>
+
+            <div class="mt-6 flex flex-col items-center gap-5 sm:flex-row sm:items-start">
+              {/* 头像 webp 版 16KB（原 jpg 734KB） */}
+              <picture class="q-media block h-20 w-20 shrink-0 rounded-full ring-2 ring-white/70">
+                <source srcset="/images/avatar.webp" type="image/webp" />
+                <img
+                  src="/images/avatar.jpg"
+                  alt={profile.name}
+                  width="80"
+                  height="80"
+                  loading="lazy"
+                  decoding="async"
+                  class="h-full w-full rounded-full object-cover"
+                />
+              </picture>
+              <div class="text-center sm:text-left">
+                <p class="font-display text-lg text-ink">{profile.name}</p>
+                <p class="mt-1.5 text-sm text-muted">{profile.tagline}</p>
+              </div>
+            </div>
+
+            <div class="mt-7 space-y-3.5 leading-[1.85] text-muted">
+              <p>{profile.whyName}</p>
+              <p>{profile.whyBlog}</p>
+              <p>{profile.whatWrite}</p>
+            </div>
+
+            <dl class="mt-7 grid gap-2.5 border-t border-rose/20 pt-6 sm:grid-cols-2">
+              {
+                info.map((it) => (
+                  <div class="flex items-center gap-2 text-sm">
+                    <span class="text-crimson/80">
+                      <MorphIcon icon={aboutIcon(it.icon) as never} size={16} color="currentColor" />
+                    </span>
+                    <dt class="text-subtle">{it.label}</dt>
+                    <dd class="text-ink">{it.value}</dd>
+                  </div>
+                ))
+              }
+            </dl>
+          </section>
+
+          {/* 02 爱弥斯 */}
+          <section class="glass-card reveal p-7 sm:p-9" aria-labelledby="about-02">
+            <div class="flex items-center gap-3">
+              <span
+                class="font-display text-2xl leading-none text-rose/55 tabular-nums"
+                aria-hidden="true">02</span
+              >
+              <h2 id="about-02" class="card-head text-accent">爱弥斯</h2>
+            </div>
+            <div class="mt-5 space-y-3.5 leading-[1.85] text-muted">
+              {emis.persona.map((p) => <p>{p}</p>)}
+            </div>
+          </section>
+
+          {/* 03 做过的事 —— 只放**入口**，不放统计。
+              技术栈与运行天数留在首页侧栏（用户明确要保留），这里再列一遍就是重复。 */}
+          <section class="glass-card reveal p-7 sm:p-9" aria-labelledby="about-03">
+            <div class="flex items-center gap-3">
+              <span
+                class="font-display text-2xl leading-none text-rose/55 tabular-nums"
+                aria-hidden="true">03</span
+              >
+              <h2 id="about-03" class="card-head">做过的事</h2>
+            </div>
+
+            <div class="mt-6 grid gap-4 sm:grid-cols-2">
+              <a
+                href="/projects"
+                class="group card-lift flex flex-col items-start gap-2.5 rounded-[var(--radius-card)] border border-rose/25 bg-white/40 p-6 hover:border-rose/50 hover:bg-rose/10"
+              >
+                <span class="text-crimson/80">
+                  <MorphIcon icon={Sparkles} size={22} color="currentColor" />
+                </span>
+                <span class="font-display text-lg text-ink transition-colors group-hover:text-accent">
+                  项目
+                </span>
+                <span class="text-xs leading-relaxed text-muted"> 自己做的小东西，都还在长 </span>
+                <span class="mt-1 inline-flex items-center gap-1 text-sm text-accent">
+                  去看看
+                  <span
+                    aria-hidden="true"
+                    class="transition-transform duration-300 group-hover:translate-x-1">→</span
+                  >
+                </span>
+              </a>
+
+              <a
+                href="/quiz/"
+                class="group card-lift flex flex-col items-start gap-2.5 rounded-[var(--radius-card)] border border-rose/25 bg-white/40 p-6 hover:border-rose/50 hover:bg-rose/10"
+              >
+                <span class="text-crimson/80">
+                  <MorphIcon icon={BookOpen} size={22} color="currentColor" />
+                </span>
+                <span class="font-display text-lg text-ink transition-colors group-hover:text-accent">
+                  Python 二级刷题
+                </span>
+                <span class="text-xs leading-relaxed text-muted">
+                  选择题 · 随机抽题 · 自动判分与解析
+                </span>
+                <span class="mt-1 inline-flex items-center gap-1 text-sm text-accent">
+                  进入题库
+                  <span
+                    aria-hidden="true"
+                    class="transition-transform duration-300 group-hover:translate-x-1">→</span
+                  >
+                </span>
+              </a>
+            </div>
+          </section>
+
+          {/* 04 联系 / 社交 */}
+          <section class="glass-card reveal p-7 sm:p-9" aria-labelledby="about-04">
+            <div class="flex items-center gap-3">
+              <span
+                class="font-display text-2xl leading-none text-rose/55 tabular-nums"
+                aria-hidden="true">04</span
+              >
+              <h2 id="about-04" class="card-head flex items-center gap-2">
+                <MorphIcon icon={Mail} size={18} color="currentColor" /> 联系 / 社交
+              </h2>
+            </div>
+
+            <div class="mt-6 flex flex-col items-center gap-6">
+              <ContactExpand
+                client:load
+                variant="contact"
+                label="联系我们"
+                email={SITE.email}
+                github="https://github.com/hjphh11"
+                contacts={contacts}
+              />
+            </div>
+          </section>
+        </div>
       </div>
-    </div>
     </div>
   </div>
 </Layout>
