@@ -1,6 +1,15 @@
 import { useEffect, useState } from 'react';
 import { MorphIcon } from 'morphicons/react';
-import { Music, Play, Pause, SkipBack, SkipForward } from '../../lib/icons';
+import {
+  Music,
+  Play,
+  Pause,
+  SkipBack,
+  SkipForward,
+  Repeat,
+  Repeat1,
+  Shuffle,
+} from '../../lib/icons';
 import {
   initMusic,
   subscribe,
@@ -12,39 +21,57 @@ import {
 /** 状态类型直接取 store 的返回值，不另立 interface —— 免得字段改名后两处不同步 */
 type MusicView = ReturnType<typeof getPristineState>;
 
-/**
- * 左栏的「音乐馆」卡：当前曲目 + 进度 + 上一首/播放/下一首。
- *
- * 关于「两处都有控制」：右下角的 MiniPlayer 和这张卡操作的是**同一个 store**
- * （`music.togglePlay` 等），store 一变就 `emit()`，两边通过 `subscribe` 同时刷新 ——
- * 左栏点播放，迷你播放器会立刻变成「暂停」，/music 页也跟着变。不是各控各的。
- *
- * 为什么首帧用 getPristineState：MiniPlayer 是 `client:only`，会先挂载并
- * initMusic() 从 localStorage 还原上次听的歌。这里若首帧读 getMusicState()，
- * 服务端 HTML（默认第 1 首）与客户端首帧（已还原）对不上 —— 就是 /music 那次
- * hydration mismatch 的同款问题。
- */
+const fmt = (sec: number) => {
+  if (!Number.isFinite(sec) || sec < 0) sec = 0;
+  const m = Math.floor(sec / 60);
+  const s = Math.floor(sec % 60);
+  return `${m}:${String(s).padStart(2, '0')}`;
+};
+
+const MODE_ICON = { order: Repeat, one: Repeat1, random: Shuffle } as const;
+const MODE_LABEL = { order: '顺序播放', one: '单曲循环', random: '随机播放' } as const;
+
 function view(s: MusicView) {
   return {
     title: s.currentSong?.title ?? '还没开始听',
     artist: s.currentSong?.artist ?? '挑一首听听',
+    cover: s.currentSong?.cover ?? '',
     isPlaying: s.isPlaying,
-    count: s.playlist.length,
+    currentTime: s.currentTime,
+    duration: s.duration,
+    mode: s.playMode,
     pct: s.duration > 0 ? Math.min(100, (s.currentTime / s.duration) * 100) : 0,
   };
 }
 
+/**
+ * 左栏「音乐馆」卡：圆形封面 + 歌名/音乐人 + 时间 + 可点进度 + 循环/上一首/播放/下一首。
+ *
+ * 为什么是纵向版：参考的横向布局（封面在左、信息在右、音量贴右）至少需要 400px，
+ * 左栏只有 148px 内容宽，只能把封面居中、信息往下堆。
+ *
+ * 与全站播放器的关系：左栏卡、MiniPlayer、/music 页操作同一个 store，
+ * 一处 `emit()` 三处同时刷新。注意 MiniPlayer 在 `/` 与 `/music` **不渲染**
+ * （见 MiniPlayer.tsx 开头），所以首页的播放入口就是这张卡。
+ *
+ * 首帧用 getPristineState：MiniPlayer 是 client:only，会先 initMusic() 从
+ * localStorage 还原上次听的歌；这里若读实时状态，服务端 HTML 与客户端首帧对不上。
+ */
 export default function MusicCard() {
   const [v, setV] = useState(() => view(getPristineState()));
 
   useEffect(() => {
     initMusic();
-    // subscribe 注册时会立即回调一次，正好把还原后的真实状态同步进来
     return subscribe(() => setV(view(getMusicState())));
   }, []);
 
-  /* 卡片里既有链接又有按钮，所以不能整张卡包成 <a>（a 里套 button 是非法嵌套，
-     键盘与读屏都会出问题）。标题那一行才是入口。 */
+  const seek = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (!v.duration) return;
+    const rect = e.currentTarget.getBoundingClientRect();
+    music.handleSeek(((e.clientX - rect.left) / rect.width) * v.duration);
+  };
+
+  /* 卡里既有链接又有按钮，所以不能整卡包 <a>（a 里套 button 非法，键盘与读屏都会坏）。 */
   return (
     <div className="glass-card p-4">
       <a
@@ -58,33 +85,82 @@ export default function MusicCard() {
         </span>
       </a>
 
-      {/* 固定两行 + truncate：曲名长短不一，而左栏是 sticky 容器，
-          高度跳动会带着下面「按分类看」一起跳 */}
+      {/* 封面：底下先放图标兜底，img 盖在上面；外站图挂了就 onError 藏掉自己，
+          露出底色与图标 —— 不会出现破图方块 */}
+      <div className="relative mx-auto mt-3 grid h-[68px] w-[68px] place-items-center overflow-hidden rounded-full bg-gradient-to-br from-rose/45 to-amber/35 ring-1 ring-white/60">
+        <MorphIcon icon={Music} size={22} color="rgba(255,255,255,0.85)" />
+        {v.cover && (
+          <img
+            src={v.cover}
+            alt=""
+            aria-hidden="true"
+            loading="lazy"
+            decoding="async"
+            referrerPolicy="no-referrer"
+            className="absolute inset-0 h-full w-full object-cover"
+            onError={(e) => {
+              e.currentTarget.style.display = 'none';
+            }}
+          />
+        )}
+      </div>
+
+      {/* 固定行数 + truncate：曲名长短不一，而左栏是 sticky 容器，高度跳动会带着下面的卡一起跳 */}
       <p
         data-music-title
-        className="mt-1.5 truncate font-display text-[0.9375rem] leading-normal text-ink"
+        className="mt-2.5 truncate text-center font-display text-[0.9375rem] leading-normal text-ink"
       >
         {v.title}
       </p>
-      <p className="truncate text-[0.6875rem] text-subtle">{v.artist}</p>
+      <p className="truncate text-center text-[0.6875rem] text-subtle">{v.artist}</p>
 
-      {/* 进度条只读：148px 宽上做拖拽精度太差、容易误触。
-          要拖进度去 /music 或右下角迷你播放器。 */}
+      {/* 时间贴着进度条两端，像参考那样「0:00 / 0:00」 */}
       <div
-        className="mt-2 h-[3px] overflow-hidden rounded-full bg-rose/25"
-        role="progressbar"
-        aria-label="播放进度"
-        aria-valuenow={Math.round(v.pct)}
-        aria-valuemin={0}
-        aria-valuemax={100}
+        data-music-time
+        className="mt-2 flex justify-between text-[0.625rem] tabular-nums text-subtle"
       >
-        <div
-          className="h-full rounded-full bg-crimson transition-[width] duration-300 ease-linear"
-          style={{ width: `${v.pct}%` }}
-        />
+        <span>{fmt(v.currentTime)}</span>
+        <span>{fmt(v.duration)}</span>
       </div>
 
-      <div className="mt-2 flex items-center gap-1">
+      {/* 进度：可点跳转 + 方向键 ±5s（与 /music 页同一套无障碍语义） */}
+      <div
+        className="group mt-1 h-[7px] cursor-pointer rounded-full bg-rose/25"
+        onClick={seek}
+        onKeyDown={(e) => {
+          if (!v.duration) return;
+          if (e.key === 'ArrowRight') music.handleSeek(Math.min(v.duration, v.currentTime + 5));
+          if (e.key === 'ArrowLeft') music.handleSeek(Math.max(0, v.currentTime - 5));
+        }}
+        role="slider"
+        tabIndex={0}
+        aria-label="播放进度"
+        aria-valuemin={0}
+        aria-valuemax={Math.round(v.duration)}
+        aria-valuenow={Math.round(v.currentTime)}
+        aria-valuetext={`${fmt(v.currentTime)} / ${fmt(v.duration)}`}
+      >
+        <div
+          className="relative h-full rounded-full bg-crimson transition-[width] duration-300 ease-linear"
+          style={{ width: `${v.pct}%` }}
+        >
+          <span className="absolute -right-1 top-1/2 h-2.5 w-2.5 -translate-y-1/2 rounded-full bg-crimson opacity-0 shadow-[0_1px_4px_rgba(194,58,85,0.45)] transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100" />
+        </div>
+      </div>
+
+      <div className="mt-2.5 flex items-center justify-between">
+        <button
+          type="button"
+          onClick={() => music.togglePlayMode()}
+          aria-label={`播放模式：${MODE_LABEL[v.mode]}（点击切换）`}
+          title={MODE_LABEL[v.mode]}
+          className={`grid h-6 w-6 place-items-center rounded-full transition-colors hover:bg-rose/20 ${
+            v.mode === 'order' ? 'text-subtle' : 'text-crimson'
+          }`}
+        >
+          <MorphIcon icon={MODE_ICON[v.mode]} size={13} color="currentColor" />
+        </button>
+
         <button
           type="button"
           onClick={() => music.prevSong()}
@@ -98,9 +174,9 @@ export default function MusicCard() {
           type="button"
           onClick={() => music.togglePlay()}
           aria-label={v.isPlaying ? '暂停' : '播放'}
-          className="grid h-8 w-8 place-items-center rounded-full bg-crimson text-white transition-transform hover:scale-105 active:scale-95"
+          className="grid h-9 w-9 place-items-center rounded-full bg-crimson text-white transition-transform hover:scale-105 active:scale-95"
         >
-          <MorphIcon icon={v.isPlaying ? Pause : Play} size={15} color="currentColor" />
+          <MorphIcon icon={v.isPlaying ? Pause : Play} size={16} color="currentColor" />
         </button>
 
         <button
@@ -111,8 +187,6 @@ export default function MusicCard() {
         >
           <MorphIcon icon={SkipForward} size={14} color="currentColor" />
         </button>
-
-        <span className="ml-auto text-[0.6875rem] tabular-nums text-subtle">{v.count} 首</span>
       </div>
     </div>
   );

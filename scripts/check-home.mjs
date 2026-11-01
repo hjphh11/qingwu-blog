@@ -350,20 +350,43 @@ const ctrl = await page.evaluate(() => {
   const aside = document.querySelector('aside[aria-label="关于与分类"]');
   const card = aside.querySelector('a[href="/music"]')?.closest('.glass-card');
   if (!card) return null;
+  const modeBtn = card.querySelector('button[aria-label^="播放模式"]');
+  const cover = card.querySelector('img');
+  const bar = card.querySelector('[role="slider"]');
+  // ⚠️ 别用 .tabular-nums 取时间：时间行的父 div 自己也带这个类，
+  // 直接 textContent 会把「0:00」和「0:00」拼成「0:000:00」
+  const times = Array.from(card.querySelectorAll('[data-music-time] > span')).map((e) =>
+    (e.textContent || '').trim(),
+  );
   return {
     prev: !!card.querySelector('button[aria-label="上一首"]'),
     play: !!card.querySelector('button[aria-label="播放"], button[aria-label="暂停"]'),
     next: !!card.querySelector('button[aria-label="下一首"]'),
-    bar: !!card.querySelector('[role="progressbar"]'),
-    title: (card.querySelector('.text-ink')?.textContent || '').trim(),
+    mode: modeBtn ? modeBtn.getAttribute('aria-label') : null,
+    bar: !!bar,
+    times,
+    coverLoaded: cover ? cover.naturalWidth > 0 : null,
+    title: (card.querySelector('[data-music-title]')?.textContent || '').trim(),
   };
 });
 verdict(
-  ctrl?.prev && ctrl?.play && ctrl?.next,
-  '音乐卡有上一首 / 播放 / 下一首三个控制',
-  ctrl ? `prev=${ctrl.prev} play=${ctrl.play} next=${ctrl.next}` : '未找到',
+  ctrl?.prev && ctrl?.play && ctrl?.next && ctrl?.mode,
+  '音乐卡有循环 / 上一首 / 播放 / 下一首',
+  ctrl ? `prev=${ctrl.prev} play=${ctrl.play} next=${ctrl.next} mode=${!!ctrl.mode}` : '未找到',
 );
-verdict(ctrl?.bar, '音乐卡有进度条', ctrl?.bar ? 'aria-valuenow 可取' : '缺失');
+verdict(ctrl?.bar, '音乐卡有可点的进度条（role=slider）', ctrl?.bar ? '可取 aria-valuenow' : '缺失');
+verdict(
+  Array.isArray(ctrl?.times) &&
+    ctrl.times.length === 2 &&
+    ctrl.times.every((x) => /^\d+:\d{2}$/.test(x)),
+  '时间是「已播 / 总长」两段 m:ss',
+  (ctrl?.times || []).join(' / '),
+);
+verdict(
+  ctrl?.coverLoaded === true,
+  '专辑封面真的加载了（不是兜底图标）',
+  ctrl?.coverLoaded === true ? 'naturalWidth > 0' : `coverLoaded=${ctrl?.coverLoaded}`,
+);
 
 // 点播放
 if (ctrl) {
