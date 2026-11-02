@@ -5,14 +5,14 @@ import { ChevronRight, Send } from '../../lib/icons';
 import { friends } from '../../data/links';
 
 /**
- * 站点预览图的三档来源（越靠前越优先）：
- *   1. links.json 里的 shot —— 申请时填的那张，或自己镜像到站内的
- *   2. Worker 每天抓到的 og:image（页面加载后由脚本补上，见 initLinkStats）
- *   3. 都没有 → 露出 CSS 占位层（暖色渐变 + 网站名首字）
+ * 站点预览图：**只认 links.json 里的 shot** —— 放上去才显示，没放就是占位。
  *
- * 为什么**不做自动截图**：mShots 直接 403；thum.io 能出图，但抓 ragnote.top
- * 拿到的是 Cloudflare 的「Performing security verification」验证页。
- * 有防护的站全废，截一张验证页比没有图更糟。
+ * 不做自动截图（mShots 403、thum.io 只会截到 Cloudflare 验证页），
+ * 也不用 Worker 抓的 og:image 顶上 —— 试过一版「没填就自动捞 og:image」，
+ * 结果是每张卡都冒出别人的图，和「放上去才显示」相反。
+ *
+ * Worker 那边仍在每天抓 og_image 存 D1（8 次请求/天，几乎无成本），
+ * 留着是给以后「申请没填、我手动挑一张」时用；前端不自动读它。
  */
 const TRANSPARENT_PIXEL =
   'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7';
@@ -389,7 +389,6 @@ const TRANSPARENT_PIXEL =
           ok?: boolean;
           items?: Record<string, number>;
           feeds?: Record<string, string>;
-          shots?: Record<string, string>;
         } | null) => {
           if (!alive || !data?.items) return;
           for (const card of cards) {
@@ -405,13 +404,6 @@ const TRANSPARENT_PIXEL =
               up.hidden = false;
             }
 
-            // 站点代表图：自己填过 shot 的不覆盖，其余用抓到的 og:image
-            const og = data.shots?.[host];
-            const shotImg = card.querySelector<HTMLImageElement>('[data-shot]');
-            if (og && shotImg && shotImg.dataset.own !== '1') {
-              shotImg.dataset.own = '1';
-              shotImg.src = og;
-            }
           }
         })
         .catch(() => {

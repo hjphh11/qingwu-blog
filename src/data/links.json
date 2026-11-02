@@ -14,7 +14,8 @@
       "intro": "综合性网站",
       "url": "https://hty.rest",
       "visible": true,
-      "addedAt": "2026-10-14"
+      "addedAt": "2026-10-14",
+      "shot": "https://hty.rest/dog.png"
     },
     {
       "name": "AIOVTUE-雪",
@@ -22,7 +23,8 @@
       "intro": "雨滴会记录生命中的每一个瞬间",
       "url": "https://daily.yybb.us",
       "visible": true,
-      "addedAt": "2026-10-15"
+      "addedAt": "2026-10-15",
+      "shot": "https://daily.yybb.us/hero/tt3.webp"
     },
     {
       "name": "冷月笙寒的小窝",
@@ -30,7 +32,8 @@
       "intro": " 发现巷子里的那颗星星(技术与生活分享)",
       "url": "https://lygalaxy.cn/",
       "visible": true,
-      "addedAt": "2026-10-15"
+      "addedAt": "2026-10-15",
+      "shot": "https://lygalaxy.cn/uploads/20260128_200240_6979fae094c7b.jpg"
     },
     {
       "name": "夏夜流萤",
@@ -38,23 +41,26 @@
       "intro": "飞萤之火自无梦的长夜亮起，绽放在终竟的明天。",
       "url": "https://blog.cuteleaf.cn",
       "visible": true,
-      "addedAt": "2026-10-15"
+      "addedAt": "2026-10-15",
+      "shot": "https://blog.cuteleaf.cn/_astro/firefly-light.DZ-mS7Sc.png"
     },
     {
-"name": "时光潜流",
+      "name": "时光潜流",
       "avatar": "https://www.dreamcenter.top/imgs/avatar.jpg",
       "intro": "妹控的中二君！",
       "url": "https://www.dreamcenter.top",
       "visible": true,
-      "addedAt": "2026-10-15"
-      },
-      {
-"name": "SamsBlog",
+      "addedAt": "2026-10-15",
+      "shot": "https://www.dreamcenter.top/imgs/avatar.jpg"
+    },
+    {
+      "name": "SamsBlog",
       "avatar": "https://blog.moesam.com/media/brand/logo.jpg",
       "intro": "只是一只大黄狗",
       "url": "https://blog.moesam.com",
       "visible": true,
-      "addedAt": "2026-10-31"
+      "addedAt": "2026-10-31",
+      "shot": "https://blog.moesam.com/media/anime/hero/1719656915755.webp"
     },
     {
       "name": "RAGNote",
@@ -62,7 +68,8 @@
       "intro": "Life is code. I will debug it.",
       "url": "https://ragnote.top",
       "visible": true,
-      "addedAt": "2026-11-02"
+      "addedAt": "2026-11-02",
+      "shot": "https://ragnote.top/default-favicon.png"
     }
   ]
 }
