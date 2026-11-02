@@ -16,6 +16,7 @@
 import MorphIcon from 'morphicons/astro';
 import { Copy, Check, ClipboardList, Info, CircleCheck, Rss } from '../lib/icons';
 import { SITE } from '../config';
+import { COMMENT_TEMPLATE } from '../lib/friendsBoard';
 
 /** 我这边要提供的信息。顺序 = 对方抄写时的顺序，别乱调 */
 const MY_FIELDS = [
@@ -26,16 +27,6 @@ const MY_FIELDS = [
   { key: 'shot', label: '主页截图', value: `${SITE.url}/images/home.png` },
   { key: 'rss', label: 'RSS 地址', value: `${SITE.url}/rss.xml` },
 ];
-
-/** 给访客复制走的模板：留空让他自己填 */
-const TEMPLATE = [
-  '站点名称：你的站点名称',
-  '站点描述：你的站点描述',
-  '站点链接：你的站点链接',
-  '头像链接：你的站点头像',
-  '主页截图：你的主页截图（选填）',
-  'RSS 地址：你的 RSS 地址（选填）',
-].join('\n');
 
 const NOTES = [
   { title: '互换原则', text: '请先把本站加到你的友链页面，我看到之后就会把你加进来。' },
@@ -147,7 +138,7 @@ const NOTES = [
               <div class="relative mt-3 rounded-[calc(var(--radius-card)-8px)] border border-rose/20 bg-white/60 p-3.5 pr-12">
                 <pre
                   id="ag-template"
-                  class="whitespace-pre-wrap [overflow-wrap:anywhere] font-[var(--font-body)] text-[12.5px] leading-relaxed text-muted">{TEMPLATE}</pre>
+                  class="whitespace-pre-wrap [overflow-wrap:anywhere] font-[var(--font-body)] text-[12.5px] leading-relaxed text-muted">{COMMENT_TEMPLATE}</pre>
                 <button
                   type="button"
                   data-copy-target="ag-template"

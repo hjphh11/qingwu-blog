@@ -39,6 +39,21 @@ export interface FriendEntry {
 export const FRIENDS_BOARD_DEMO = true;
 
 /**
+ * 留言模板 —— 指引区和评论框的「插入模板」共用这一份。
+ *
+ * 分成两处写会在改动时漏掉一边（之前友链表单和文档就对不上过），
+ * 所以放在数据层，两个组件都从这里取。
+ */
+export const COMMENT_TEMPLATE = [
+  '站点名称：你的站点名称',
+  '站点描述：你的站点描述',
+  '站点链接：你的站点链接',
+  '头像链接：你的站点头像',
+  '主页截图：你的主页截图（选填）',
+  'RSS 地址：你的 RSS 地址（选填）',
+].join('\n');
+
+/**
  * 演示数据。
  *
  * 前三批「已通过」直接取自 `src/data/links.json` 的真实友链，
@@ -144,8 +159,11 @@ export async function loadFriendEntries(): Promise<FriendEntry[]> {
 
 export interface SubmitInput {
   name: string;
+  /** 联系邮箱 —— 公开列表里不会出现这个字段 */
+  email?: string;
   url: string;
-  avatar: string;
+  /** 头像直链 —— 评论框里没有这一格，留空即可（列表会走首字母兜底） */
+  avatar?: string;
   intro: string;
 }
 
@@ -178,7 +196,13 @@ export async function submitFriendEntry(input: SubmitInput): Promise<SubmitResul
     const res = await fetch(`${WORKER_BASE}/friends-board`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ name: input.name.trim(), url, avatar, intro: input.intro.trim() }),
+      body: JSON.stringify({
+        name: input.name.trim(),
+        email: (input.email || '').trim(),
+        url,
+        avatar,
+        intro: input.intro.trim(),
+      }),
       signal: AbortSignal.timeout(12000),
     });
     const data = (await res.json().catch(() => ({}))) as {

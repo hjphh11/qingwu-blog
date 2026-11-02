@@ -1,20 +1,18 @@
-import { useEffect, useId, useMemo, useRef, useState } from 'react';
-import { motion, useReducedMotion } from 'motion/react';
+import { useEffect, useId, useMemo, useState } from 'react';
 import { MorphIcon } from 'morphicons/react';
 import {
-  MessageCircle,
   Send,
   CircleCheck,
   CircleAlert,
   LoaderCircle,
+  Mail,
   Link2,
   Globe,
-  ImageIcon,
-  MessageSquareText,
-  ChevronDown,
+  ClipboardList,
   Sparkles,
 } from '../lib/icons';
 import {
+  COMMENT_TEMPLATE,
   FRIENDS_BOARD_DEMO,
   hostOf,
   loadFriendEntries,
@@ -28,10 +26,10 @@ import { APPLY_LIMITS } from '../lib/applyValidation';
 /**
  * 友链页底部 · 申请友链的评论区
  *
- * 形态对齐的是「留言板」而不是「表单页」：
- *   · 已收到的申请直接铺在公开列表里（头像 / 站点名 / 时间 / 一句话）
- *   · 写的那一头默认只露出一行，点了才展开成表单 —— 一行的时候门槛最低
- *   · 详细字段仍然走 /links/apply（那个页面有照片、邮箱、人机验证）
+ * 形态对齐参考站（Waline）：**评论框常驻在列表上方**，不是「点开才展开」。
+ *   · 上面一行三个字段：站点名称 / 邮箱（不公开）/ 网址
+ *   · 下面一个大文本框写介绍或留言，左下角能一键插入模板
+ *   · 提交后新条目插进列表最前，提示就贴在表单下面
  *
  * 数据现在是演示的（见 `src/lib/friendsBoard.ts` 的 FRIENDS_BOARD_DEMO）。
  * ⚠️ 预览阶段提交只插在本地、不落库，界面上会明说，不能假装成功。
@@ -39,22 +37,21 @@ import { APPLY_LIMITS } from '../lib/applyValidation';
 
 type Status = 'idle' | 'submitting';
 
-const EMPTY = { name: '', url: '', avatar: '', intro: '' };
+/** 留言比「一句介绍」长得多 —— 贴完整模板也放得下 */
+const CONTENT_MAX = 300;
+
+const EMPTY = { name: '', email: '', url: '', intro: '' };
 
 export default function FriendsBoard() {
-  const reduce = useReducedMotion();
   const uid = useId();
   const [entries, setEntries] = useState<FriendEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [now, setNow] = useState(0);
 
-  const [open, setOpen] = useState(false);
-  const [clipped, setClipped] = useState(true);
   const [values, setValues] = useState(EMPTY);
   const [errors, setErrors] = useState<Partial<Record<keyof typeof EMPTY, string>>>({});
   const [status, setStatus] = useState<Status>('idle');
   const [notice, setNotice] = useState<{ kind: 'ok' | 'warn'; text: string } | null>(null);
-  const nameRef = useRef<HTMLInputElement>(null);
 
   // 相对时间要等客户端算：SSR 与客户端各算一次会水合不匹配（见 timeAgo 注释）
   useEffect(() => setNow(Date.now()), []);
@@ -68,7 +65,7 @@ export default function FriendsBoard() {
         setEntries([...list].sort((a, b) => Date.parse(b.at) - Date.parse(a.at)));
       })
       .catch(() => {
-        if (alive) setNotice({ kind: 'warn', text: '申请列表没加载出来，不过下面照样可以写 ~' });
+        if (alive) setNotice({ kind: 'warn', text: '申请列表没加载出来，不过上面照样可以写 ~' });
       })
       .finally(() => {
         if (alive) setLoading(false);
@@ -78,16 +75,9 @@ export default function FriendsBoard() {
     };
   }, []);
 
-  // 展开后把焦点送进第一个输入框；收起时归还焦点给那一行
-  useEffect(() => {
-    if (open) nameRef.current?.focus({ preventScroll: true });
-  }, [open]);
-
   const count = entries.length;
-  const canSubmit = useMemo(
-    () => values.name.trim() !== '' && values.url.trim() !== '' && values.intro.trim() !== '',
-    [values],
-  );
+  /** 只报第一条错：三个字段挤在一行，每条都堆一行红字会把表单撑散 */
+  const firstError = useMemo(() => Object.values(errors).find(Boolean) ?? '', [errors]);
 
   function setField(key: keyof typeof EMPTY, v: string) {
     setValues((prev) => ({ ...prev, [key]: v }));
@@ -99,12 +89,16 @@ export default function FriendsBoard() {
     const name = values.name.trim();
     const url = normalizeUrl(values.url);
     const intro = values.intro.trim();
-    if (!name) e.name = '还没写站点名字';
-    else if (name.length > APPLY_LIMITS.name) e.name = `名字请控制在 ${APPLY_LIMITS.name} 字以内`;
-    if (!values.url.trim()) e.url = '还没填网址';
+    const email = values.email.trim();
+
+    if (!name) e.name = '请填一下站点名称';
+    else if (name.length > APPLY_LIMITS.name) e.name = `名称最多 ${APPLY_LIMITS.name} 个字`;
+    if (!values.url.trim()) e.url = '请填一下站点网址';
     else if (!/^https?:\/\/[^\s/]+\.[^\s]+$/i.test(url)) e.url = '网址看起来不太对，例如 example.com';
+    if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email)) e.email = '邮箱格式看起来不太对';
     if (!intro) e.intro = '写一句介绍吧，哪怕只有几个字';
-    else if (intro.length > APPLY_LIMITS.intro) e.intro = `最多 ${APPLY_LIMITS.intro} 个字`;
+    else if (intro.length > CONTENT_MAX) e.intro = `最多 ${CONTENT_MAX} 个字`;
+
     setErrors(e);
     return Object.keys(e).length === 0;
   }
@@ -122,7 +116,6 @@ export default function FriendsBoard() {
     }
     setEntries((prev) => [res.entry, ...prev]);
     setValues(EMPTY);
-    setOpen(false);
     setNotice({
       kind: 'ok',
       // 预览阶段必须说清楚：没有真的发出去
@@ -130,6 +123,15 @@ export default function FriendsBoard() {
         ? '已经加进下面这一页了 —— 预览模式，这条没有真的发出去。'
         : '收到啦，等我看到就会回你 ~',
     });
+  }
+
+  function fillTemplate() {
+    setValues((prev) => {
+      const body = prev.intro.trim();
+      // 有内容就追加，别把人家写了半天的东西盖掉
+      return { ...prev, intro: body ? `${body}\n${COMMENT_TEMPLATE}` : COMMENT_TEMPLATE };
+    });
+    if (errors.intro) setErrors((prev) => ({ ...prev, intro: undefined }));
   }
 
   return (
@@ -161,7 +163,7 @@ export default function FriendsBoard() {
         </header>
 
         {FRIENDS_BOARD_DEMO && (
-          <p className="relative mt-5 flex items-start gap-2 rounded-[calc(var(--radius-card)-6px)] border border-dashed border-amber/50 bg-amber/12 px-3.5 py-2.5 text-xs leading-relaxed text-muted">
+          <p className="relative mt-4 flex items-start gap-2 rounded-[calc(var(--radius-card)-6px)] border border-dashed border-amber/50 bg-amber/12 px-3.5 py-2.5 text-xs leading-relaxed text-muted">
             <span className="mt-0.5 shrink-0 text-amber">
               <MorphIcon icon={Sparkles} size={14} color="currentColor" />
             </span>
@@ -172,8 +174,178 @@ export default function FriendsBoard() {
           </p>
         )}
 
+        {/* ——— 评论框：常驻在列表上方 ——— */}
+        <form
+          onSubmit={(ev) => {
+            ev.preventDefault();
+            void handleSubmit();
+          }}
+          noValidate
+          className="relative mt-4 rounded-[var(--radius-card)] border border-rose/25 bg-white/55 transition-colors focus-within:border-rose/45"
+        >
+          {/* 三字段一行。参考站是「昵称 / 邮箱 / 网址」，我们第一格用站点名 */}
+          <div className="grid divide-y divide-dashed divide-rose/25 border-b border-dashed border-rose/25 sm:grid-cols-3 sm:divide-x sm:divide-y-0">
+            <label className="flex min-w-0 items-center gap-2 px-4 py-3">
+              <span className="text-rose">
+                <MorphIcon icon={Globe} size={14} color="currentColor" />
+              </span>
+              <span className="sr-only">站点名称</span>
+              <input
+                id={`${uid}-name`}
+                name="name"
+                value={values.name}
+                maxLength={APPLY_LIMITS.name}
+                placeholder="站点名称"
+                autoComplete="off"
+                onChange={(ev) => setField('name', ev.target.value)}
+                aria-invalid={errors.name ? true : undefined}
+                className={inputCls(Boolean(errors.name))}
+              />
+            </label>
+
+            <label className="flex min-w-0 items-center gap-2 px-4 py-3">
+              <span className="text-rose">
+                <MorphIcon icon={Mail} size={14} color="currentColor" />
+              </span>
+              <span className="sr-only">联系邮箱（不公开）</span>
+              <input
+                id={`${uid}-email`}
+                name="email"
+                type="email"
+                inputMode="email"
+                value={values.email}
+                maxLength={APPLY_LIMITS.email}
+                placeholder="邮箱（不公开）"
+                autoComplete="email"
+                onChange={(ev) => setField('email', ev.target.value)}
+                aria-invalid={errors.email ? true : undefined}
+                className={inputCls(Boolean(errors.email))}
+              />
+            </label>
+
+            <label className="flex min-w-0 items-center gap-2 px-4 py-3">
+              <span className="text-rose">
+                <MorphIcon icon={Link2} size={14} color="currentColor" />
+              </span>
+              <span className="sr-only">站点网址</span>
+              <input
+                id={`${uid}-url`}
+                name="url"
+                value={values.url}
+                maxLength={APPLY_LIMITS.url}
+                placeholder="网址"
+                inputMode="url"
+                autoComplete="url"
+                onChange={(ev) => setField('url', ev.target.value)}
+                aria-invalid={errors.url ? true : undefined}
+                className={inputCls(Boolean(errors.url))}
+              />
+            </label>
+          </div>
+
+          {/* 正文 */}
+          <div className="px-4 pt-3.5">
+            <label htmlFor={`${uid}-intro`} className="sr-only">
+              介绍或留言
+            </label>
+            <textarea
+              id={`${uid}-intro`}
+              name="intro"
+              value={values.intro}
+              maxLength={CONTENT_MAX}
+              rows={6}
+              placeholder="写一句介绍，或者只是说句你好 ~ 也可以点左下角「插入模板」。"
+              onChange={(ev) => setField('intro', ev.target.value)}
+              aria-invalid={errors.intro ? true : undefined}
+              className="block w-full resize-none bg-transparent text-sm leading-relaxed text-ink outline-none placeholder:text-subtle/85"
+            />
+          </div>
+
+          {firstError && (
+            <p
+              role="alert"
+              className="flex items-center gap-1.5 px-4 pb-1 text-xs text-crimson"
+            >
+              <MorphIcon icon={CircleAlert} size={12} color="currentColor" />
+              {firstError}
+            </p>
+          )}
+
+          {/* 工具条：左边模板/表单，右边字数/发送。
+              分成两组是有原因的 —— 全塞进一个 flex 时，窄屏换行会把「发送」甩到第二行最左，
+              ml-auto 只对同一行里的下一个元素生效。 */}
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-2 px-3 pb-3 pt-1.5">
+            <div className="flex items-center gap-1">
+              <button
+                type="button"
+                onClick={fillTemplate}
+                className="inline-flex min-h-8 items-center gap-1.5 rounded-full border border-rose/25 bg-white/60 px-3 text-xs text-muted transition-colors hover:border-rose/45 hover:bg-rose/10 hover:text-crimson"
+              >
+                <MorphIcon icon={ClipboardList} size={13} color="currentColor" />
+                插入模板
+              </button>
+
+              <a
+                href="/links/apply"
+                title="要填站点照片、邮箱这些不公开的信息时用"
+                className="inline-flex min-h-8 items-center rounded-full px-2 text-xs text-subtle underline underline-offset-2 transition-colors hover:text-crimson"
+              >
+                完整申请表
+              </a>
+            </div>
+
+            <div className="ml-auto flex items-center gap-2.5">
+              <span className="text-[11px] tabular-nums text-subtle">
+                {values.intro.length} / {CONTENT_MAX}
+              </span>
+
+              <button
+                type="submit"
+                disabled={status === 'submitting'}
+                className="btn-ripple inline-flex min-h-9 items-center gap-1.5 rounded-lg bg-crimson px-4 text-sm font-medium text-white shadow-[0_6px_18px_rgba(194,58,85,0.3)] transition-[transform,background-color,color] duration-300 hover:scale-[1.03] active:scale-95 disabled:cursor-not-allowed disabled:bg-rose/30 disabled:text-muted disabled:shadow-none disabled:hover:scale-100"
+              >
+                {status === 'submitting' ? (
+                  <>
+                    <span className="animate-spin">
+                      <MorphIcon icon={LoaderCircle} size={14} color="#fff" />
+                    </span>
+                    发送中…
+                  </>
+                ) : (
+                  <>
+                    <MorphIcon icon={Send} size={14} color="currentColor" />
+                    发送
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </form>
+
+        {notice && (
+          <p
+            role={notice.kind === 'ok' ? 'status' : 'alert'}
+            className={`relative mt-3 flex items-start gap-1.5 rounded-xl px-3 py-2.5 text-xs leading-relaxed ${
+              notice.kind === 'ok'
+                ? 'border border-rose/25 bg-rose/12 text-muted'
+                : 'bg-crimson/8 text-crimson'
+            }`}
+          >
+            <span
+              className={`mt-0.5 shrink-0 ${notice.kind === 'ok' ? 'text-crimson' : ''}`}
+            >
+              <MorphIcon
+                icon={notice.kind === 'ok' ? CircleCheck : CircleAlert}
+                size={13}
+                color="currentColor"
+              />
+            </span>
+            {notice.text}
+          </p>
+        )}
+
         {/* ——— 公开列表 ——— */}
-        <ol className="relative mt-2">
+        <ol className="relative mt-3">
           {loading
             ? Array.from({ length: 3 }).map((_, i) => (
                 <li key={i} className="flex gap-3.5 py-3.5 first:pt-3">
@@ -192,213 +364,6 @@ export default function FriendsBoard() {
             </li>
           )}
         </ol>
-
-        {/* ——— 写的那一头 ——— */}
-        <div className="relative mt-6">
-          {!open ? (
-            <button
-              type="button"
-              onClick={() => {
-                setNotice(null);
-                setOpen(true);
-                setClipped(true);
-              }}
-              className="group flex w-full items-center gap-3 rounded-full border border-rose/25 bg-white/55 px-3 py-2.5 text-left transition-colors hover:border-rose/45 hover:bg-white/75"
-            >
-              <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-rose/25 text-crimson">
-                <MorphIcon icon={MessageCircle} size={17} color="currentColor" />
-              </span>
-              <span className="min-w-0 flex-1 truncate text-sm text-subtle">
-                写一句，交个朋友…
-              </span>
-              <span className="btn-ripple inline-flex min-h-9 shrink-0 items-center rounded-full bg-crimson px-4 text-xs font-medium text-white transition-transform duration-300 group-hover:scale-[1.04]">
-                写一条
-              </span>
-            </button>
-          ) : (
-            <motion.div
-              initial={reduce ? false : { height: 0, opacity: 0 }}
-              animate={reduce ? {} : { height: 'auto', opacity: 1 }}
-              transition={{ duration: 0.42, ease: [0.16, 1, 0.3, 1] }}
-              onAnimationComplete={() => setClipped(false)}
-              style={clipped ? { overflow: 'hidden' } : undefined}
-            >
-              <form
-                onSubmit={(ev) => {
-                  ev.preventDefault();
-                  void handleSubmit();
-                }}
-                noValidate
-                className="rounded-[var(--radius-card)] border border-rose/25 bg-white/55 p-4 sm:p-5"
-              >
-                <div className="flex items-center gap-2">
-                  <span className="grid h-8 w-8 place-items-center rounded-full bg-rose/25 text-crimson">
-                    <MorphIcon icon={MessageCircle} size={15} color="currentColor" />
-                  </span>
-                  <p className="text-sm font-medium text-ink">说点什么</p>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setOpen(false);
-                      setErrors({});
-                    }}
-                    className="ml-auto inline-flex items-center gap-1 rounded-full px-2.5 py-1.5 text-xs text-subtle transition-colors hover:text-crimson"
-                  >
-                    <MorphIcon icon={ChevronDown} size={13} color="currentColor" />
-                    收起
-                  </button>
-                </div>
-
-                <div className="mt-4 grid gap-3 sm:grid-cols-2">
-                  <Field
-                    id={`${uid}-name`}
-                    label="站点名称"
-                    icon={<MorphIcon icon={Globe} size={14} color="currentColor" />}
-                    error={errors.name}
-                    required
-                  >
-                    <input
-                      ref={nameRef}
-                      id={`${uid}-name`}
-                      name="name"
-                      value={values.name}
-                      maxLength={APPLY_LIMITS.name}
-                      placeholder="你的站点名"
-                      autoComplete="off"
-                      onChange={(ev) => setField('name', ev.target.value)}
-                      aria-invalid={errors.name ? true : undefined}
-                      className={inputCls(Boolean(errors.name))}
-                    />
-                  </Field>
-
-                  <Field
-                    id={`${uid}-url`}
-                    label="站点网址"
-                    icon={<MorphIcon icon={Link2} size={14} color="currentColor" />}
-                    error={errors.url}
-                    required
-                  >
-                    <input
-                      id={`${uid}-url`}
-                      name="url"
-                      value={values.url}
-                      maxLength={APPLY_LIMITS.url}
-                      placeholder="example.com"
-                      inputMode="url"
-                      autoComplete="url"
-                      onChange={(ev) => setField('url', ev.target.value)}
-                      aria-invalid={errors.url ? true : undefined}
-                      className={inputCls(Boolean(errors.url))}
-                    />
-                  </Field>
-
-                  <Field
-                    id={`${uid}-avatar`}
-                    label="头像链接"
-                    hint="选填"
-                    icon={<MorphIcon icon={ImageIcon} size={14} color="currentColor" />}
-                    error={errors.avatar}
-                  >
-                    <input
-                      id={`${uid}-avatar`}
-                      name="avatar"
-                      value={values.avatar}
-                      maxLength={APPLY_LIMITS.avatar}
-                      placeholder="https://…/avatar.png"
-                      inputMode="url"
-                      autoComplete="off"
-                      onChange={(ev) => setField('avatar', ev.target.value)}
-                      className={inputCls(Boolean(errors.avatar))}
-                    />
-                  </Field>
-
-                  <Field
-                    id={`${uid}-intro`}
-                    label="一句介绍"
-                    icon={<MorphIcon icon={MessageSquareText} size={14} color="currentColor" />}
-                    error={errors.intro}
-                    required
-                    counter={`${values.intro.length}/${APPLY_LIMITS.intro}`}
-                  >
-                    <textarea
-                      id={`${uid}-intro`}
-                      name="intro"
-                      value={values.intro}
-                      maxLength={APPLY_LIMITS.intro}
-                      rows={2}
-                      placeholder="写技术、记生活的一个小站；或者只是说句你好 ~"
-                      onChange={(ev) => setField('intro', ev.target.value)}
-                      aria-invalid={errors.intro ? true : undefined}
-                      className={`${inputCls(Boolean(errors.intro))} resize-none leading-relaxed`}
-                    />
-                  </Field>
-                </div>
-
-                {notice?.kind === 'warn' && (
-                  <p
-                    role="alert"
-                    className="mt-3 flex items-start gap-1.5 rounded-xl bg-crimson/8 px-3 py-2 text-xs leading-relaxed text-crimson"
-                  >
-                    <span className="mt-0.5 shrink-0">
-                      <MorphIcon icon={CircleAlert} size={13} color="currentColor" />
-                    </span>
-                    {notice.text}
-                  </p>
-                )}
-
-                <div className="mt-4 flex flex-wrap items-center gap-3">
-                  <button
-                    type="submit"
-                    disabled={status === 'submitting' || !canSubmit}
-                    className="btn-ripple inline-flex min-h-10 items-center gap-2 rounded-full bg-crimson px-4 text-sm font-medium text-white shadow-[0_6px_18px_rgba(194,58,85,0.3)] transition-[transform,background-color,color] duration-300 hover:scale-[1.03] active:scale-95 disabled:cursor-not-allowed disabled:bg-rose/30 disabled:text-muted disabled:shadow-none disabled:hover:scale-100"
-                  >
-                    {status === 'submitting' ? (
-                      <>
-                        <span className="animate-spin">
-                          <MorphIcon icon={LoaderCircle} size={15} color="#fff" />
-                        </span>
-                        发送中…
-                      </>
-                    ) : (
-                      <>
-                        <MorphIcon icon={Send} size={15} color="currentColor" />
-                        发送
-                      </>
-                    )}
-                  </button>
-
-                  <p className="text-xs leading-relaxed text-subtle">
-                    我会尽快看，通过了就加进上面的友链墙 ~
-                  </p>
-                </div>
-
-                {/* 公开可见 + 隐私边界：写在提交按钮旁边，比写在标题下更容易被看到 */}
-                <p className="mt-3 text-[11px] leading-relaxed text-subtle">
-                  发送后会公开显示在上面。站点照片、邮箱这类不公开的信息，走
-                  <a
-                    href="/links/apply"
-                    className="mx-0.5 text-crimson underline-offset-2 hover:underline"
-                  >
-                    完整申请表
-                  </a>
-                  填。
-                </p>
-              </form>
-            </motion.div>
-          )}
-
-          {notice?.kind === 'ok' && (
-            <p
-              role="status"
-              className="mt-3 flex items-start gap-1.5 rounded-xl border border-rose/25 bg-rose/12 px-3 py-2.5 text-xs leading-relaxed text-muted"
-            >
-              <span className="mt-0.5 shrink-0 text-crimson">
-                <MorphIcon icon={CircleCheck} size={13} color="currentColor" />
-              </span>
-              {notice.text}
-            </p>
-          )}
-        </div>
       </div>
     </section>
   );
@@ -472,7 +437,7 @@ function EntryRow({ entry, now }: { entry: FriendEntry; now: number }) {
         {/* 内容包成气泡：参考站就是这么区分的 —— 头像 + 一块浅底文本，
             比「一条条横线」更像在说话，也更省分隔线。上左圆角收小一点，
             让气泡看起来是从头像那一侧发出来的。 */}
-        <p className="mt-2 w-fit max-w-full rounded-xl rounded-tl-[6px] bg-rose/12 px-3.5 py-2.5 text-sm leading-relaxed text-muted">
+        <p className="mt-2 w-fit max-w-full whitespace-pre-wrap rounded-xl rounded-tl-[6px] bg-rose/12 px-3.5 py-2.5 text-sm leading-relaxed text-muted">
           {entry.intro}
         </p>
       </div>
@@ -484,54 +449,7 @@ function EntryRow({ entry, now }: { entry: FriendEntry; now: number }) {
 
 function inputCls(bad: boolean) {
   return [
-    'w-full rounded-xl border bg-white/70 px-3 py-2 text-sm text-ink outline-none transition-colors',
-    'placeholder:text-subtle/70',
-    bad
-      ? 'border-crimson/60 focus:border-crimson'
-      : 'border-rose/25 focus:border-rose/60 focus:bg-white/90',
+    'w-full min-w-0 bg-transparent text-sm text-ink outline-none',
+    bad ? 'placeholder:text-crimson/80' : 'placeholder:text-subtle/85',
   ].join(' ');
-}
-
-function Field({
-  id,
-  label,
-  icon,
-  hint,
-  error,
-  counter,
-  required,
-  children,
-}: {
-  id: string;
-  label: string;
-  icon: React.ReactNode;
-  hint?: string;
-  error?: string;
-  counter?: string;
-  required?: boolean;
-  children: React.ReactNode;
-}) {
-  return (
-    <div className="flex min-w-0 flex-col gap-1.5">
-      <label htmlFor={id} className="flex items-center gap-1.5 text-xs font-medium text-muted">
-        <span className="text-rose">{icon}</span>
-        {label}
-        {required ? (
-          <span className="text-crimson">*</span>
-        ) : (
-          hint && <span className="font-normal text-subtle">· {hint}</span>
-        )}
-        {counter && (
-          <span className="ml-auto font-normal tabular-nums text-subtle">{counter}</span>
-        )}
-      </label>
-      {children}
-      {error && (
-        <p role="alert" className="flex items-center gap-1 pl-1 text-[11px] text-crimson">
-          <MorphIcon icon={CircleAlert} size={11} color="currentColor" />
-          {error}
-        </p>
-      )}
-    </div>
-  );
 }
