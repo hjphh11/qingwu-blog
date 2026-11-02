@@ -34,6 +34,11 @@ import { friends } from '../../data/links';
               data-host={f.url.replace(/^https?:\/\//, '').replace(/^www\./i, '').split('/')[0]}
               data-url={f.url}
             >
+              {/* 氛围底：拿这家的头像铺满卡片、狠狠模糊，当作这张卡的底色。
+                  纯装饰，读屏跳过；aria-hidden + 空 alt 一起给，免得被当成图片内容。 */}
+              <span class="q-links-card__bg" aria-hidden="true">
+                <img src={f.avatar} alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer" />
+              </span>
               {/* 友链头像是外站图,最容易出现「白 → 图」的硬切,所以占位最有用。
                   白色描边(.ring)挪到占位容器上:留在 img 上会露出容器渐变
                   的一圈玫瑰色边。 */}
