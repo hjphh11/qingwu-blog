@@ -494,14 +494,69 @@
     letter-spacing: 0.02em;
     color: var(--color-subtle);
   }
-  .q-links-card__go {
+  /* 底部一行：左边「去看看」，右边速度徽标。margin-top:auto 从 __go 挪到这里，
+     否则两个元素各自贴底，会把「去看看」和速度挤到不同高度。 */
+  .q-links-card__foot {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+    width: 100%;
     margin-top: auto;
+    padding-top: 0.35rem;
+  }
+  .q-links-card__go {
     display: inline-flex;
     align-items: center;
     gap: 0.2rem;
-    padding-top: 0.35rem;
     font-size: var(--text-label);
     color: var(--color-accent);
+  }
+
+  /* 速度徽标：一颗圆点 + 毫秒数。颜色按实测分四档 ——
+     「有响应」比「快」更重要，所以 404 也算通（只要 onerror 触发就说明服务器活着）。
+     数值用等宽数字，8 张卡的数字才不会左右跳。 */
+  .q-links-card__speed {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    font-size: 0.6875rem;
+    line-height: 1;
+    color: var(--color-subtle);
+    font-variant-numeric: tabular-nums;
+  }
+  .q-links-card__dot {
+    width: 0.4rem;
+    height: 0.4rem;
+    border-radius: var(--radius-pill);
+    background: var(--color-subtle);
+    opacity: 0.45;
+    transition:
+      background var(--dur-state) var(--ease-soft),
+      opacity var(--dur-state) var(--ease-soft);
+  }
+  .q-links-card__dot[data-state='fast'] {
+    background: #3d9b6a;
+    opacity: 1;
+  }
+  .q-links-card__dot[data-state='ok'] {
+    background: #c98a22;
+    opacity: 1;
+  }
+  .q-links-card__dot[data-state='slow'] {
+    background: var(--color-crimson);
+    opacity: 1;
+  }
+  /* 点击数：拿到统计之前是空的，:empty 直接不占位，不会先闪一个 0 */
+  .q-links-card__clicks {
+    font-size: 0.6875rem;
+    line-height: 1;
+    color: var(--color-subtle);
+  }
+  .q-links-card__clicks:not(:empty)::after {
+    content: '·';
+    margin-left: 0.25rem;
+    opacity: 0.6;
   }
 
   /* 入场：轻微错峰淡入。--i 由页面按下标给，无 JS 时整块可见。 */

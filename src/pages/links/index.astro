@@ -31,6 +31,7 @@ import { friends } from '../../data/links';
               rel="noreferrer"
               class="q-links-card glass-card card-spotlight group"
               style={`--i:${i};--tall:${[1, 0.86, 1.18, 0.94][i % 4]}`}
+              data-host={f.url.replace(/^https?:\/\//, '').replace(/^www\./i, '').split('/')[0]}
             >
               {/* 友链头像是外站图,最容易出现「白 → 图」的硬切,所以占位最有用。
                   白色描边(.ring)挪到占位容器上:留在 img 上会露出容器渐变
@@ -57,9 +58,20 @@ import { friends } from '../../data/links';
               {/* 域名放在最后一行：卡片是竖长条，只有名字+一句话会空掉半张，
                   补个域名既填了空、也让人一眼看到跳去哪 */}
               <p class="q-links-card__host">{f.url.replace(/^https?:\/\//, '').replace(/\/$/, '')}</p>
-              <span class="q-links-card__go">
-                去看看
-                <MorphIcon icon={ChevronRight} size={12} />
+              <span class="q-links-card__foot">
+                <span class="q-links-card__go">
+                  去看看
+                  <MorphIcon icon={ChevronRight} size={12} />
+                </span>
+                {/* 速度：进入视口后由脚本用 favicon 探一次 RTT。
+                    值是实测出来的（见页面底部脚本），不是写死的。 */}
+                <span class="q-links-card__speed" data-speed data-origin={f.url}>
+                  {/* 点击数：拿到统计之前这里是空的（:empty 不显示），
+                      不会先闪一个 0 再跳数 */}
+                  <span class="q-links-card__clicks" data-clicks></span>
+                  <i class="q-links-card__dot" data-state="idle" aria-hidden="true"></i>
+                  <span class="q-links-card__ms">—</span>
+                </span>
               </span>
             </a>
           ))}
@@ -151,5 +163,169 @@ import { friends } from '../../data/links';
     document.addEventListener('astro:page-load', initLinksFlow);
     if (document.readyState !== 'loading') initLinksFlow();
     else document.addEventListener('DOMContentLoaded', initLinksFlow, { once: true });
+
+    /*
+     * 友链速度：卡片滚进视口时探一次，用 favicon 的加载耗时当 RTT。
+     *
+     * 为什么是 favicon 而不是 fetch：跨域 fetch 会被 CORS 挡在 response 之外，
+     * 拿不到时间；<img> 是 no-cors 请求，load / error 都会触发 ——
+     * **error 也算通**（404 的 favicon 同样证明那台服务器应答了），这是关键。
+     *
+     * 为什么要加随机 query：不加的话第二次进来全是缓存命中，显示 0~2ms，等于撒谎。
+     * 为什么进视口才测：一屏 8 张卡同时打 8 个外站，会把友链页自己拖慢。
+     *
+     * ⚠️ 这个数是「从这台机器到对方站」的往返，不是对方的真实负载；
+     *    代理、跨境线路都会算进去。它只能回答「现在点进去会不会卡」。
+     */
+    let teardownSpeed = () => {};
+
+    function initLinkSpeed() {
+      teardownSpeed();
+      const nodes = Array.from(document.querySelectorAll<HTMLElement>('[data-speed]:not([data-measured])'));
+      if (!nodes.length || !('IntersectionObserver' in window)) return;
+
+      const timers = new Set<number>();
+
+      const measure = (el: HTMLElement) => {
+        if (el.dataset.measured === '1') return;
+        el.dataset.measured = '1';
+
+        let origin = '';
+        try {
+          origin = new URL(el.dataset.origin || '').origin;
+        } catch {
+          return;
+        }
+
+        const dot = el.querySelector<HTMLElement>('.q-links-card__dot');
+        const msEl = el.querySelector<HTMLElement>('.q-links-card__ms');
+        const t0 = performance.now();
+        let settled = false;
+
+        const settle = (state: string, text: string) => {
+          if (settled) return;
+          settled = true;
+          if (dot) dot.dataset.state = state;
+          if (msEl) msEl.textContent = text;
+        };
+
+        const img = new Image();
+        const done = () => {
+          const ms = Math.round(performance.now() - t0);
+          // 分档按「跨境实际」定：<500 绿、<1200 琥珀、其余红。
+          // 阈值试过 300/900 —— 国内访问境外站几乎全落在琥珀，等于没有信息量。
+          settle(ms < 500 ? 'fast' : ms < 1200 ? 'ok' : 'slow', `${ms} ms`);
+        };
+        img.onload = done;
+        img.onerror = done;
+
+        // 站点挂掉时 load/error 都不来，得自己兜个底
+        const timer = window.setTimeout(() => settle('slow', '超时'), 6000);
+        timers.add(timer);
+
+        img.src = `${origin}/favicon.ico?_=${Date.now()}`;
+      };
+
+      const io = new IntersectionObserver(
+        (entries) => {
+          for (const entry of entries) {
+            if (!entry.isIntersecting) continue;
+            io.unobserve(entry.target);
+            measure(entry.target as HTMLElement);
+          }
+        },
+        { rootMargin: '150px' },
+      );
+
+      nodes.forEach((n) => io.observe(n));
+
+      teardownSpeed = () => {
+        io.disconnect();
+        timers.forEach((t) => clearTimeout(t));
+        timers.clear();
+      };
+    }
+
+    document.addEventListener('astro:page-load', initLinkSpeed);
+    if (document.readyState !== 'loading') initLinkSpeed();
+    else document.addEventListener('DOMContentLoaded', initLinkSpeed, { once: true });
+
+    /*
+     * 友链点击统计。读 + 写两条路：
+     *   读：GET /link-stats 拿每个域名累计点击数，填进卡片
+     *   写：点击时 POST /link-click 上报一次
+     *
+     * 为什么用 sendBeacon + text/plain 而不是 fetch + application/json：
+     *   sendBeacon 是「简单请求」通道，**不能处理 CORS 预检**；
+     *   而 application/json 恰好会触发预检 → beacon 直接被丢掉。
+     *   text/plain 不触发预检，服务端 request.json() 照样能解析（它不看 Content-Type）。
+     *
+     * 统计接口没上线（Worker 还没部署）时，fetch 会 404 —— 上面那条 catch 吞掉，
+     * 卡片上那一格本来就是空的，看不出任何异常。
+     */
+    const LINK_API = (import.meta.env.PUBLIC_HIT_WORKER_URL || 'https://api.qingwu.ink').replace(/\/$/, '');
+
+    let teardownStats = () => {};
+
+    function initLinkStats() {
+      const cards = Array.from(document.querySelectorAll<HTMLElement>('.q-links-card[data-host]'));
+      if (!cards.length) return;
+      /* 首屏有两个入口会调用本函数（astro:page-load 与 DOMContentLoaded 都可能已经派发），
+         不去重的话 /link-stats 会被打两次。挂个标记：换页后是新 DOM，标记自然消失。
+         ⚠️ 必须先判断再 teardown —— 反过来写的话，第二次调用会把第一次刚发出的 fetch
+            用 abort() 掐掉、然后自己又因为标记而 return，结果一次都没成（踩过）。 */
+      if (cards[0].dataset.statsBound === '1') return;
+      teardownStats();
+      cards[0].dataset.statsBound = '1';
+
+      let alive = true;
+      const ac = new AbortController();
+
+      fetch(`${LINK_API}/link-stats`, { signal: ac.signal })
+        .then((r) => (r.ok ? r.json() : null))
+        .then((data: { ok?: boolean; items?: Record<string, number> } | null) => {
+          if (!alive || !data?.items) return;
+          for (const card of cards) {
+            const n = data.items[card.dataset.host || ''];
+            const slot = card.querySelector<HTMLElement>('[data-clicks]');
+            if (slot && n && n > 0) slot.textContent = String(n);
+          }
+        })
+        .catch(() => {
+          /* 没上线 / 被墙都无所谓，空格子本来就不显示 */
+        });
+
+      const onClick = (event: MouseEvent) => {
+        const target = event.target as HTMLElement | null;
+        const card = target?.closest<HTMLElement>('.q-links-card[data-host]');
+        const host = card?.dataset.host;
+        if (!host) return;
+
+        const payload = new Blob([JSON.stringify({ url: host })], {
+          type: 'text/plain;charset=UTF-8',
+        });
+        if (navigator.sendBeacon) {
+          navigator.sendBeacon(`${LINK_API}/link-click`, payload);
+        } else {
+          // 老浏览器退化：keepalive 让请求在页面卸载之后继续发
+          fetch(`${LINK_API}/link-click`, { method: 'POST', body: payload, keepalive: true }).catch(
+            () => {},
+          );
+        }
+      };
+
+      // capture：赶在 <a> 的默认跳转之前拿到这一次点击
+      document.addEventListener('click', onClick, { capture: true });
+
+      teardownStats = () => {
+        alive = false;
+        ac.abort();
+        document.removeEventListener('click', onClick, { capture: true });
+      };
+    }
+
+    document.addEventListener('astro:page-load', initLinkStats);
+    if (document.readyState !== 'loading') initLinkStats();
+    else document.addEventListener('DOMContentLoaded', initLinkStats, { once: true });
   </script>
 </Layout>

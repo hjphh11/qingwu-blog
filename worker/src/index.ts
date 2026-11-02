@@ -12,6 +12,7 @@
 // 第 3~5 步的路由（/comments、/likes、Cron）以后再加，别现在就把口子开着。
 
 import { getApply, patchApply, postApply } from './apply';
+import { getLinkStats, postLinkClick } from './link';
 import { getHit, postHit } from './hit';
 import { getStats } from './stats';
 import { json, originAllowed, parseOrigins } from './util';
@@ -61,6 +62,16 @@ export default {
     if (applyId) {
       if (request.method === 'PATCH') return patchApply(request, env, applyId);
       return json({ ok: false, reason: 'method_not_allowed' }, 405);
+    }
+
+    if (path === '/link-click') {
+      if (request.method === 'POST') return postLinkClick(request, env);
+      return json({ ok: false, reason: 'method_not_allowed' }, 405);
+    }
+
+    if (path === '/link-stats') {
+      if (request.method !== 'GET') return json({ ok: false, reason: 'method_not_allowed' }, 405);
+      return getLinkStats(request, env);
     }
 
     if (path === '/stats') {
