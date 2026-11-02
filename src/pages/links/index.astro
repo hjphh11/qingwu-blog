@@ -32,6 +32,7 @@ import { friends } from '../../data/links';
               class="q-links-card glass-card card-spotlight group"
               style={`--i:${i};--tall:${[1, 0.86, 1.18, 0.94][i % 4]}`}
               data-host={f.url.replace(/^https?:\/\//, '').replace(/^www\./i, '').split('/')[0]}
+              data-url={f.url}
             >
               {/* 友链头像是外站图,最容易出现「白 → 图」的硬切,所以占位最有用。
                   白色描边(.ring)挪到占位容器上:留在 img 上会露出容器渐变
@@ -298,10 +299,18 @@ import { friends } from '../../data/links';
       const onClick = (event: MouseEvent) => {
         const target = event.target as HTMLElement | null;
         const card = target?.closest<HTMLElement>('.q-links-card[data-host]');
-        const host = card?.dataset.host;
-        if (!host) return;
+        if (!card) return;
+        /* 上报要传**完整 URL**：后端自己会归一成主机名。
+           以前这里传的是 data-host（`ragnote.top` 这种），后端 new URL() 直接抛错，
+           接口回 200 + bad_request，数字静默不涨 —— 线上跑了半天才发现。 */
+        const url = card.dataset.url || card.dataset.host;
+        if (!url) return;
 
-        const payload = new Blob([JSON.stringify({ url: host })], {
+        // 立刻 +1：不然点完这一下，页面上什么都不会变，要等下次进页面才看得到
+        const slot = card.querySelector<HTMLElement>('[data-clicks]');
+        if (slot) slot.textContent = String(Number(slot.textContent || 0) + 1);
+
+        const payload = new Blob([JSON.stringify({ url })], {
           type: 'text/plain;charset=UTF-8',
         });
         if (navigator.sendBeacon) {

@@ -34,9 +34,15 @@ function withCors(request: Request, env: Env) {
  * 把任意 URL 归一成一个主机名：去协议、去 www.、去端口、去路径。
  * 归一化是关键 —— 不归一的话 `https://a.com`、`http://a.com/`、`https://www.a.com/x`
  * 会变成三条互不相干的记录，点进去看统计全是 1。
+ *
+ * ⚠️ 必须容忍**不带协议**的输入（`a.com`）：
+ *    前端上报传的一直是归一化后的主机名，`new URL('a.com')` 会直接抛
+ *    `Invalid URL`，请求体被吞、接口回 200 + bad_request，统计静默不涨 ——
+ *    这个坑线上跑了半天才发现（用 curl 传完整 URL 测是通的，所以没暴露）。
  */
 function toHostKey(raw: string): string {
-  const u = new URL(raw);
+  const input = /^[a-z][a-z0-9+.-]*:\/\//i.test(raw) ? raw : `https://${raw}`;
+  const u = new URL(input);
   return u.host.replace(/^www\./i, '').toLowerCase();
 }
 
