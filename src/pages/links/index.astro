@@ -2,6 +2,7 @@
 import Layout from '../../layouts/Layout.astro';
 import MorphIcon from 'morphicons/astro';
 import { ChevronRight, Send } from '../../lib/icons';
+import FriendsBoard from '../../components/FriendsBoard.tsx';
 import { friends } from '../../data/links';
 
 /**
@@ -144,16 +145,10 @@ friends.forEach((f, i) => wallColumns[i % WALL_COLS]!.push({ f, i }));
       )
     }
 
-    <p class="mx-auto mt-12 max-w-[34rem] text-center text-sm leading-loose text-muted">
-      想互换友链吗?<a
-        href="/links/apply"
-        class="inline-block px-1.5 py-2 text-accent underline-offset-2 hover:underline"
-        >填写申请表</a
-      >，或在<a
-        href="/about"
-        class="inline-block px-1.5 py-2 text-accent underline-offset-2 hover:underline">关于</a
-      >页联系我 ~
-    </p>
+    {/* 友链评论区：申请入口从「跳去表单页」改成「在这儿说一句」。
+        数据层见 src/lib/friendsBoard.ts（现在是演示数据）；
+        详细字段（站点照片、邮箱、人机验证）仍然走 /links/apply。 */}
+    <FriendsBoard client:visible />
   </div>
 
   <script>

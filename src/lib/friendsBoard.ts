@@ -1,0 +1,203 @@
+/**
+ * 友链评论区 · 数据层
+ *
+ * 这一版只做「前端形态」，数据全部是演示用的：
+ *   · `FRIENDS_BOARD_DEMO = true` → 读本地 `DEMO_ENTRIES`，提交只在前端插入，不落库
+ *   · 接好后端后把它改成 false，并实现下面两个函数真正的请求即可，
+ *     组件（`FriendsBoard.tsx`）不用动。
+ *
+ * 为什么单独抽一层：评论区要的是「公开可读的申请列表」，而现有 Worker 的
+ * `GET /apply` 带口令才给数据（里面含访客邮箱，是隐私）。公开读必须走一条
+ * **新接口只吐公开字段**（name / url / avatar / intro / created_at），
+ * 这件事在预览阶段还没定，所以先把契约钉在这里：
+ *
+ *   GET  {WORKER}/friends-board        → { ok: true, items: FriendEntry[] }
+ *   POST {WORKER}/friends-board        → 复用 /apply 的校验、去重与限流
+ *
+ * ⚠️ 公开列表里**绝不能有 email**。字段名就叫 email 也一样会漏，
+ *    所以这里返回的是单独定义的 `FriendEntry`，不是 `ApiApplication`。
+ */
+
+/** 一条公开可见的友链申请 / 留言 */
+export interface FriendEntry {
+  id: string;
+  /** 站点名（也是评论区里的昵称） */
+  name: string;
+  /** 站点地址 */
+  url: string;
+  /** 头像直链，可为空 —— 空的时候用站点 favicon 兜底 */
+  avatar: string;
+  /** 一句介绍 / 留言内容 */
+  intro: string;
+  /** ISO 时间 */
+  at: string;
+  /** approved = 已经是友链；pending = 还在等我审 */
+  status: 'approved' | 'pending';
+}
+
+/** 演示模式开关：接上后端后改成 false */
+export const FRIENDS_BOARD_DEMO = true;
+
+/**
+ * 演示数据。
+ *
+ * 前三批「已通过」直接取自 `src/data/links.json` 的真实友链，
+ * 这样预览时和上面的友链墙是同一批人，看起来不像假数据；
+ * 后两条「申请中」是编的占位，用来展示待审核徽章。
+ */
+export const DEMO_ENTRIES: FriendEntry[] = [
+  {
+    id: 'demo-1',
+    name: '朝朝听雨',
+    url: 'http://rainzt.cn',
+    avatar: 'https://rainzt.cn/zzty.png',
+    intro: '物物而不物于物，念念而不念于念。路过打个招呼，欢迎常来坐坐 ~',
+    at: '2026-10-31T09:20:00+08:00',
+    status: 'approved',
+  },
+  {
+    id: 'demo-2',
+    name: '吴彦祖论坛',
+    url: 'https://hty.rest',
+    // 故意留空：很多申请方不填头像，正好验证首字母兜底的样子
+    avatar: '',
+    intro: '综合性网站，主要写前端和折腾记录，已经把你加进友链啦。',
+    at: '2026-10-30T21:05:00+08:00',
+    status: 'approved',
+  },
+  {
+    id: 'demo-3',
+    name: 'AIOVTUE-雪',
+    url: 'https://r2tc.20030327.xyz',
+    avatar: 'https://r2tc.20030327.xyz/file/博客/主题/1780655293662_avatar_me.jpg.PNG',
+    intro: '一个喜欢拍照和写代码的小站，风格偏安静。申请互换友链 ~',
+    at: '2026-10-29T14:42:00+08:00',
+    status: 'pending',
+  },
+  {
+    id: 'demo-4',
+    name: '某个路过的旅人',
+    url: 'https://example.com',
+    avatar: '',
+    intro: '不申请友链，只是想说你的站很好看，尤其是开屏那一下。',
+    at: '2026-10-28T23:10:00+08:00',
+    status: 'pending',
+  },
+];
+
+/** 域名归一：去掉协议 / www / 路径，用来展示也用来做站内去重 */
+export function hostOf(raw: string): string {
+  return (raw || '')
+    .trim()
+    .replace(/^https?:\/\//i, '')
+    .replace(/^www\./i, '')
+    .replace(/\/.*$/, '');
+}
+
+/** 补全协议头：访客填 example.com 也能用 */
+export function normalizeUrl(raw: string): string {
+  const t = (raw || '').trim();
+  if (!t) return '';
+  return /^https?:\/\//i.test(t) ? t : `https://${t}`;
+}
+
+/**
+ * 把 ISO 时间说成人话。
+ *
+ * `now` 由调用方传进来（组件里用 effect 拿一次），**不要在这里直接 Date.now()** ——
+ * 组件是 SSR + 水合的，服务端与客户端各算一次时间，跨分钟就会水合不匹配。
+ */
+export function timeAgo(iso: string, now: number): string {
+  const t = Date.parse(iso);
+  if (!Number.isFinite(t) || !now) return '';
+  const diff = Math.max(0, now - t);
+  const min = 60_000;
+  const hour = 60 * min;
+  const day = 24 * hour;
+
+  if (diff < min) return '刚刚';
+  if (diff < hour) return `${Math.floor(diff / min)} 分钟前`;
+  if (diff < day) return `${Math.floor(diff / hour)} 小时前`;
+  if (diff < 30 * day) return `${Math.floor(diff / day)} 天前`;
+  // 再久就直接写日期，比「13 个月前」好读
+  const d = new Date(t);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+const WORKER_BASE = (import.meta.env.PUBLIC_HIT_WORKER_URL || 'https://api.qingwu.ink').replace(/\/$/, '');
+
+/** 读公开列表 */
+export async function loadFriendEntries(): Promise<FriendEntry[]> {
+  if (FRIENDS_BOARD_DEMO) {
+    // 演示：假装请求了一次，顺便让加载态有真实的手感
+    await new Promise((r) => setTimeout(r, 320));
+    return DEMO_ENTRIES;
+  }
+  const res = await fetch(`${WORKER_BASE}/friends-board`, {
+    headers: { accept: 'application/json' },
+    signal: AbortSignal.timeout(8000),
+  });
+  if (!res.ok) throw new Error(`load ${res.status}`);
+  const data = (await res.json()) as { items?: FriendEntry[] };
+  return Array.isArray(data.items) ? data.items : [];
+}
+
+export interface SubmitInput {
+  name: string;
+  url: string;
+  avatar: string;
+  intro: string;
+}
+
+export type SubmitResult =
+  | { ok: true; entry: FriendEntry }
+  | { ok: false; reason: 'duplicate' | 'limited' | 'unavailable' | 'error'; message: string };
+
+/** 提交一条申请 */
+export async function submitFriendEntry(input: SubmitInput): Promise<SubmitResult> {
+  const url = normalizeUrl(input.url);
+  const avatar = input.avatar ? normalizeUrl(input.avatar) : '';
+
+  if (FRIENDS_BOARD_DEMO) {
+    await new Promise((r) => setTimeout(r, 700));
+    return {
+      ok: true,
+      entry: {
+        id: `local-${Date.now()}`,
+        name: input.name.trim(),
+        url,
+        avatar,
+        intro: input.intro.trim(),
+        at: new Date().toISOString(),
+        status: 'pending',
+      },
+    };
+  }
+
+  try {
+    const res = await fetch(`${WORKER_BASE}/friends-board`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ name: input.name.trim(), url, avatar, intro: input.intro.trim() }),
+      signal: AbortSignal.timeout(12000),
+    });
+    const data = (await res.json().catch(() => ({}))) as {
+      error?: string;
+      message?: string;
+      entry?: FriendEntry;
+    };
+    if (res.ok && data.entry) return { ok: true, entry: data.entry };
+    if (res.status === 409) {
+      return { ok: false, reason: 'duplicate', message: data.message || '这条申请已经在列表里了 ~' };
+    }
+    if (res.status === 429) {
+      return { ok: false, reason: 'limited', message: data.message || '提交得有点频繁，先歇一会儿 ~' };
+    }
+    if (res.status === 503) {
+      return { ok: false, reason: 'unavailable', message: data.message || '通道还没开放' };
+    }
+    return { ok: false, reason: 'error', message: data.message || '这条没能送出去，稍后再试一次' };
+  } catch {
+    return { ok: false, reason: 'error', message: '网络好像不太顺，稍后再试一次' };
+  }
+}
