@@ -51,10 +51,36 @@ function pickLatestDate(text: string): string | null {
   return latest;
 }
 
+/**
+ * 从首页 HTML 里取 og:image。
+ *
+ * 属性顺序不固定（`property` 在前 / `content` 在前 都有），所以两套正则都试。
+ * 取到之后按 base 解析成绝对地址 —— 不少主题这里写的是相对路径。
+ */
+function pickOgImage(html: string, base: string): string | null {
+  const patterns = [
+    /<meta[^>]+property=["']og:image["'][^>]*content=["']([^"']+)["']/i,
+    /<meta[^>]+content=["']([^"']+)["'][^>]*property=["']og:image["']/i,
+  ];
+  for (const re of patterns) {
+    const m = html.match(re);
+    const raw = m?.[1];
+    if (!raw) continue;
+    try {
+      const abs = new URL(raw, base).href;
+      if (/^https?:/i.test(abs)) return abs;
+    } catch {
+      // 相对路径解析失败就跳过
+    }
+  }
+  return null;
+}
+
 interface ProbeResult {
   host: string;
   date: string | null;
   source: string;
+  og: string | null;
 }
 
 async function probeHost(host: string): Promise<ProbeResult> {
@@ -70,12 +96,32 @@ async function probeHost(host: string): Promise<ProbeResult> {
       // 只读前 200KB：有的 sitemap 能到几 MB，读全了纯浪费
       const text = (await res.text()).slice(0, 200_000);
       const date = pickLatestDate(text);
-      if (date) return { host, date, source: path };
+      if (date) return { host, date, source: path, og: null };
     } catch {
       // 超时 / DNS 挂 / 证书错 —— 换下一个路径，别中断整轮
     }
   }
-  return { host, date: null, source: '' };
+  return { host, date: null, source: '', og: null };
+}
+
+/**
+ * 单独抓一次首页取 og:image。
+ * 和 feed 探测分开做：feed 抓到日期就提前 return 了，不能再顺手拿 og。
+ * 每个站多一次出站请求，8 个站 + 4 路径 = 40 次，仍在免费版 50 的上限内。
+ */
+async function probeOgImage(host: string): Promise<string | null> {
+  try {
+    const res = await fetch(`https://${host}/`, {
+      headers: { 'user-agent': 'Mozilla/5.0 (compatible; qingwu-links/1.0; +https://qingwu.ink)' },
+      signal: AbortSignal.timeout(6000),
+      redirect: 'follow',
+    });
+    if (!res.ok) return null;
+    const html = (await res.text()).slice(0, 200_000);
+    return pickOgImage(html, `https://${host}/`);
+  } catch {
+    return null;
+  }
 }
 
 /** 取「种子 + 点过」的并集，去掉 www. */
@@ -101,33 +147,45 @@ export interface RefreshSummary {
 /** 跑一轮全量探测并写库。站与站之间并发，单站内部串行试路径。 */
 export async function refreshAllFeeds(env: Env): Promise<RefreshSummary> {
   const hosts = await collectHosts(env);
-  const results = await Promise.allSettled(hosts.map((h) => probeHost(h)));
+
+  // 两件事并发：探测 feed 日期、抓首页 og:image
+  const [probes, ogs] = await Promise.all([
+    Promise.allSettled(hosts.map((h) => probeHost(h))),
+    Promise.allSettled(hosts.map((h) => probeOgImage(h))),
+  ]);
   const now = Date.now();
 
-  const statements = results.map((r, i) => {
+  const statements = probes.map((r, i) => {
     const host = hosts[i]!;
+    const ogRes = ogs[i];
+    const og = ogRes && ogRes.status === 'fulfilled' ? ogRes.value : null;
+
     if (r.status === 'fulfilled' && r.value.date) {
       return env.DB.prepare(
-        `INSERT INTO link_feeds (url, last_updated, source, checked_at, ok) VALUES (?, ?, ?, ?, 1)
+        `INSERT INTO link_feeds (url, last_updated, source, checked_at, ok, og_image) VALUES (?, ?, ?, ?, 1, ?)
          ON CONFLICT(url) DO UPDATE SET
            last_updated = excluded.last_updated,
            source = excluded.source,
            checked_at = excluded.checked_at,
-           ok = 1`,
-      ).bind(host, r.value.date, r.value.source, now);
+           ok = 1,
+           og_image = COALESCE(excluded.og_image, link_feeds.og_image)`,
+      ).bind(host, r.value.date, r.value.source, now, og);
     }
-    // 这次没抓到：保留上次的日期（站点临时挂掉不该把「最近更新」抹成空）
+    // 这次没抓到日期：保留上次的日期（站点临时挂掉不该把「最近更新」抹成空）
     return env.DB.prepare(
-      `INSERT INTO link_feeds (url, last_updated, source, checked_at, ok) VALUES (?, NULL, '', ?, 0)
-       ON CONFLICT(url) DO UPDATE SET checked_at = excluded.checked_at, ok = 0`,
-    ).bind(host, now);
+      `INSERT INTO link_feeds (url, last_updated, source, checked_at, ok, og_image) VALUES (?, NULL, '', ?, 0, ?)
+       ON CONFLICT(url) DO UPDATE SET
+         checked_at = excluded.checked_at,
+         ok = 0,
+         og_image = COALESCE(excluded.og_image, link_feeds.og_image)`,
+    ).bind(host, now, og);
   });
 
   let updated = 0;
   let failed = 0;
   try {
     await env.DB.batch(statements);
-    for (const r of results) {
+    for (const r of probes) {
       if (r.status === 'fulfilled' && r.value.date) updated++;
       else failed++;
     }

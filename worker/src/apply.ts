@@ -24,7 +24,7 @@ import { json, secretEqual } from './util';
 const COOLDOWN_MS = 24 * 60 * 60 * 1000;
 
 /** 字段长度上限 —— 与 `src/lib/applyValidation.ts` 的 APPLY_LIMITS 保持一致 */
-const LIMITS = { name: 30, intro: 60, url: 300, avatar: 300, email: 254 };
+const LIMITS = { name: 30, intro: 60, url: 300, avatar: 300, shot: 400, email: 254 };
 
 /** 简单频率限制：同一 IP 哈希 10 分钟内最多 5 次提交（D1 计数，不依赖 Upstash） */
 const RATE_WINDOW_MS = 10 * 60 * 1000;
@@ -34,6 +34,7 @@ interface ApplyBody {
   name?: unknown;
   url?: unknown;
   avatar?: unknown;
+  shot?: unknown;
   intro?: unknown;
   email?: unknown;
   turnstileToken?: unknown;
@@ -76,7 +77,7 @@ function urlKey(raw: string): string {
     .replace(/\/+$/, '');
 }
 
-function validate(v: { name: string; url: string; avatar: string; intro: string; email: string }) {
+function validate(v: { name: string; url: string; avatar: string; intro: string; shot: string; email: string }) {
   const e: Record<string, string> = {};
   if (!v.name) e.name = '请填写站点名称';
   else if (v.name.length > LIMITS.name) e.name = `名称最多 ${LIMITS.name} 个字`;
@@ -84,6 +85,11 @@ function validate(v: { name: string; url: string; avatar: string; intro: string;
   else if (!URL_RE.test(v.url)) e.url = '地址看起来不对（需要 http:// 或 https:// 开头）';
   else if (v.url.length > LIMITS.url) e.url = '地址太长了';
   if (v.avatar && !URL_RE.test(v.avatar)) e.avatar = '头像地址看起来不对';
+  // 站点照片选填：留空不报错，填了必须是链接且不超长
+  if (v.shot) {
+    if (v.shot.length > LIMITS.shot) e.shot = '照片链接太长了';
+    else if (!URL_RE.test(v.shot)) e.shot = '照片地址看起来不对';
+  }
   if (v.intro.length > LIMITS.intro) e.intro = `介绍最多 ${LIMITS.intro} 个字`;
   if (v.email && !EMAIL_RE.test(v.email)) e.email = '邮箱格式看起来不对';
   return e;
@@ -185,11 +191,14 @@ export async function postApply(request: Request, env: Env): Promise<Response> {
     return json({ ok: true, id: 'ignored', notified: false });
   }
 
+  // shot（站点照片）是选填：留空合法，填了才补协议头
+  const shotRaw = String(body.shot ?? '').trim();
   const values = {
     name: String(body.name ?? '').trim(),
     url: normalizeUrl(String(body.url ?? '')),
     avatar: normalizeUrl(String(body.avatar ?? '')),
     intro: String(body.intro ?? '').trim(),
+    shot: shotRaw ? normalizeUrl(shotRaw) : '',
     email: String(body.email ?? '').trim(),
   };
 
@@ -269,10 +278,10 @@ export async function postApply(request: Request, env: Env): Promise<Response> {
   try {
     const res = await db
       .prepare(
-        `INSERT INTO applications (name, url, avatar, intro, email, status, created_at, ip_key)
-         VALUES (?, ?, ?, ?, ?, 'pending', ?, ?)`,
+        `INSERT INTO applications (name, url, avatar, intro, shot, email, status, created_at, ip_key)
+         VALUES (?, ?, ?, ?, ?, ?, 'pending', ?, ?)`,
       )
-      .bind(values.name, values.url, values.avatar, values.intro, values.email, now, ipKeyVal)
+      .bind(values.name, values.url, values.avatar, values.intro, values.shot, values.email, now, ipKeyVal)
       .run();
     const id = `d1-${res.meta.last_row_id}`;
     return json({ ok: true, id, notified: false });

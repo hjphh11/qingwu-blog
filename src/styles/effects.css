@@ -493,6 +493,59 @@
     z-index: 1;
   }
 
+  /* ── 站点预览 ─────────────────────────────────────────────
+     贴卡片顶部、撑满宽度（负 margin 抵掉卡片 padding），16:10。
+     底下垫一层占位：暖色渐变 + 网站名首字，抓不到图时露出来 ——
+     比一个灰色破图框体面，也让人知道「这儿本来有张图」。
+
+     img 的淡入交给 [data-loaded]：mShots 首次抓站要几秒，
+     不淡入的话会先看到一块半透明的图压在占位上。 */
+  .q-links-card__shot {
+    display: block;
+    align-self: stretch;
+    margin: -1.6rem -1rem 0.9rem;
+    aspect-ratio: 16 / 10;
+    overflow: hidden;
+    background:
+      radial-gradient(120% 120% at 15% 0%, rgb(246 165 184 / 0.3), transparent 55%),
+      radial-gradient(110% 110% at 85% 100%, rgb(232 176 75 / 0.24), transparent 60%),
+      linear-gradient(160deg, #fdf4f5, #fbf2e8);
+  }
+  .q-links-card__shot::before {
+    content: attr(data-letter);
+    position: absolute;
+    inset: 0;
+    display: grid;
+    place-items: center;
+    font-family: var(--font-display);
+    font-size: 2.2rem;
+    color: rgb(74 55 40 / 0.26);
+  }
+  .q-links-card__shot img {
+    position: relative;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    object-position: top center;
+    opacity: 1;
+  }
+  .qjs .q-links-card__shot img {
+    opacity: 0;
+    transition: opacity var(--dur-state) var(--ease-soft);
+  }
+  .qjs .q-links-card__shot img[data-loaded='1'] {
+    opacity: 1;
+  }
+  .q-links-card__shot.is-empty img {
+    display: none;
+  }
+  /* 小图（favicon、几十像素的头像）不拉伸，居中摆着，四周留给渐变底 ——
+     铺满 240 宽会糊成马赛克，还不如让它老老实实当一个小图标。 */
+  .q-links-card__shot.is-small img {
+    object-fit: contain;
+    padding: 1.1rem;
+  }
+
   .q-links-card__avatar {
     display: block;
     width: 68px;

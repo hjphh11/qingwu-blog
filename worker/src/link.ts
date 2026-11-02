@@ -97,7 +97,7 @@ export async function getLinkStats(request: Request, env: Env, ctx?: ExecutionCo
 
   const origin = request.headers.get('origin') || '';
   if (origin && !originAllowed(origin, parseOrigins(env.ALLOWED_ORIGINS))) {
-    return json({ ok: false, items: {}, feeds: {} }, 200, headers);
+    return json({ ok: false, items: {}, feeds: {}, shots: {} }, 200, headers);
   }
 
   try {
@@ -111,12 +111,17 @@ export async function getLinkStats(request: Request, env: Env, ctx?: ExecutionCo
     }
 
     // 最近更新时间：ok=0 的不回日期，前端据此不显示（抓不到 ≠ 很久没更新）
+    // shots：站点代表图（og:image），和日期一起回，省一次往返
     const feeds: Record<string, string> = {};
+    const shots: Record<string, string> = {};
     try {
       const frows = await env.DB.prepare(
-        `SELECT url, last_updated FROM link_feeds WHERE ok = 1 AND last_updated IS NOT NULL`,
-      ).all<{ url: string; last_updated: string }>();
-      for (const r of frows.results ?? []) feeds[r.url] = r.last_updated;
+        `SELECT url, last_updated, og_image FROM link_feeds`,
+      ).all<{ url: string; last_updated: string | null; og_image: string | null }>();
+      for (const r of frows.results ?? []) {
+        if (r.last_updated) feeds[r.url] = r.last_updated;
+        if (r.og_image) shots[r.url] = r.og_image;
+      }
     } catch {
       // link_feeds 还没建（迁移未应用）—— 只回点击数，前端不显示更新日期
     }
@@ -124,8 +129,8 @@ export async function getLinkStats(request: Request, env: Env, ctx?: ExecutionCo
     // 过期的就在后台补一轮，不拖慢这次响应
     if (ctx) ctx.waitUntil(maybeRefreshFeeds(env).catch(() => {}));
 
-    return json({ ok: true, items, feeds }, 200, headers);
+    return json({ ok: true, items, feeds, shots }, 200, headers);
   } catch {
-    return json({ ok: false, items: {}, feeds: {} }, 200, headers);
+    return json({ ok: false, items: {}, feeds: {}, shots: {} }, 200, headers);
   }
 }

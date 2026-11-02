@@ -17,6 +17,11 @@ export interface Friend {
   visible?: boolean;
   /** 后台用：添加时间（后台自动记录，如 2026-09-12）。前台不展示 */
   addedAt?: string;
+  /**
+   * 站点截图（可选）。留空时前台会自动去 mShots 抓一张。
+   * 值可以是绝对 URL，也可以是站内路径（/images/links/xxx.png）。
+   */
+  shot?: string;
 }
 
 const schema = z.object({
@@ -28,6 +33,8 @@ const schema = z.object({
       url: urlLike,
       visible: z.boolean().default(true),
       addedAt: z.string().optional(),
+      // 选填：不写这个键就是 undefined；写了就必须是合法链接（不允许空字符串）
+      shot: urlLike.optional(),
     }),
   ),
 });

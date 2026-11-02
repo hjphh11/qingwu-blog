@@ -5,6 +5,7 @@ import {
   Globe,
   Link2,
   ImageIcon,
+  Camera,
   MessageSquareText,
   Mail,
   Send,
@@ -18,6 +19,7 @@ import {
 import { SITE } from '../config';
 import {
   APPLY_EMPTY,
+  APPLY_REQUIRED_KEYS,
   APPLY_FIELD_KEYS,
   APPLY_LIMITS,
   normalizeValues,
@@ -86,6 +88,13 @@ const FIELDS: FieldDef[] = [
     icon: ImageIcon,
     placeholder: 'https://example.com/avatar.png',
     hint: '一张方形头像的图片直链',
+  },
+  {
+    key: 'shot',
+    label: '站点照片',
+    icon: Camera,
+    placeholder: 'https://example.com/screenshot.png',
+    hint: '选填。贴一张主页截图或代表图，会显示在友链卡片顶部；不填我抓你站点的分享图',
   },
   {
     key: 'intro',
@@ -704,7 +713,11 @@ export default function LinkApply({ siteKey = '' }: { siteKey?: string }) {
                           <MorphIcon icon={f.icon as never} size={16} color="currentColor" />
                         </span>
                         {f.label}
-                        <span className="text-crimson">*</span>
+                        {APPLY_REQUIRED_KEYS.includes(f.key) ? (
+                          <span className="text-crimson">*</span>
+                        ) : (
+                          <span className="text-xs font-normal text-subtle">选填</span>
+                        )}
                         {f.maxLength && (
                           <span className="ml-auto text-xs font-normal text-subtle tabular-nums">
                             {values[f.key].length} / {f.maxLength}

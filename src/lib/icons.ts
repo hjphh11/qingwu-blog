@@ -44,6 +44,7 @@ export {
   Send,
   // 友链申请页(阶段 A/B)用到的图标
   Image as ImageIcon,
+  Camera,
   MessageSquareText,
   CircleCheck,
   CircleAlert,

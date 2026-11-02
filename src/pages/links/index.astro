@@ -3,6 +3,19 @@ import Layout from '../../layouts/Layout.astro';
 import MorphIcon from 'morphicons/astro';
 import { ChevronRight, Send } from '../../lib/icons';
 import { friends } from '../../data/links';
+
+/**
+ * 站点预览图的三档来源（越靠前越优先）：
+ *   1. links.json 里的 shot —— 申请时填的那张，或自己镜像到站内的
+ *   2. Worker 每天抓到的 og:image（页面加载后由脚本补上，见 initLinkStats）
+ *   3. 都没有 → 露出 CSS 占位层（暖色渐变 + 网站名首字）
+ *
+ * 为什么**不做自动截图**：mShots 直接 403；thum.io 能出图，但抓 ragnote.top
+ * 拿到的是 Cloudflare 的「Performing security verification」验证页。
+ * 有防护的站全废，截一张验证页比没有图更糟。
+ */
+const TRANSPARENT_PIXEL =
+  'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7';
 ---
 
 <Layout title="友链 · 清吾">
@@ -38,6 +51,20 @@ import { friends } from '../../data/links';
                   纯装饰，读屏跳过；aria-hidden + 空 alt 一起给，免得被当成图片内容。 */}
               <span class="q-links-card__bg" aria-hidden="true">
                 <img src={f.avatar} alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer" />
+              </span>
+              {/* 站点预览：贴在卡片最上面，缺图时露出下面那层占位（首字 + 渐变） */}
+              <span class="q-links-card__shot" data-letter={f.name.slice(0, 1)}>
+                {/* 没有 shot 时先放一张 1×1 透明图：不请求任何外站，
+                    等接口回了 og:image 再由脚本换上真图。 */}
+                <img
+                  src={f.shot || TRANSPARENT_PIXEL}
+                  data-shot
+                  data-own={f.shot ? '1' : undefined}
+                  alt=""
+                  loading="lazy"
+                  decoding="async"
+                  referrerpolicy="no-referrer"
+                />
               </span>
               {/* 友链头像是外站图,最容易出现「白 → 图」的硬切,所以占位最有用。
                   白色描边(.ring)挪到占位容器上:留在 img 上会露出容器渐变
@@ -262,6 +289,55 @@ import { friends } from '../../data/links';
     else document.addEventListener('DOMContentLoaded', initLinkSpeed, { once: true });
 
     /*
+     * 站点预览：加载完淡入，失败就露出占位层。
+     *
+     * mShots 的坑：它第一次被请求某个站时，会先返回一张「生成中」的图，
+     * 几秒后再请求才是真截图。所以这里**只处理成功/失败，不做重试** ——
+     * 重试会让 8 张卡各多打一次外站请求，代价比「第一次可能看到灰块」大。
+     */
+    let teardownShots = () => {};
+
+    function initShots() {
+      teardownShots();
+      const imgs = Array.from(document.querySelectorAll<HTMLImageElement>('[data-shot]'));
+      if (!imgs.length) return;
+
+      const offs: Array<() => void> = [];
+
+      for (const img of imgs) {
+        const box = img.closest<HTMLElement>('.q-links-card__shot');
+        const onLoad = () => {
+          img.dataset.loaded = '1';
+          /* 太小的图（favicon 之类，几十像素）铺满 240 宽会糊成马赛克。
+             给它加个标记，CSS 里改成「居中摆放」而不是拉伸。 */
+          if (box && img.naturalWidth > 0 && img.naturalWidth < 320) box.classList.add('is-small');
+        };
+        const onError = () => box?.classList.add('is-empty');
+
+        img.addEventListener('load', onLoad);
+        img.addEventListener('error', onError);
+        offs.push(() => {
+          img.removeEventListener('load', onLoad);
+          img.removeEventListener('error', onError);
+        });
+
+        // 命中缓存时 load 不会再派发，得自己判一次
+        if (img.complete) {
+          if (img.naturalWidth > 0) onLoad();
+          else onError();
+        }
+      }
+
+      teardownShots = () => {
+        offs.forEach((fn) => fn());
+      };
+    }
+
+    document.addEventListener('astro:page-load', initShots);
+    if (document.readyState !== 'loading') initShots();
+    else document.addEventListener('DOMContentLoaded', initShots, { once: true });
+
+    /*
      * 友链点击统计。读 + 写两条路：
      *   读：GET /link-stats 拿每个域名累计点击数，填进卡片
      *   写：点击时 POST /link-click 上报一次
@@ -306,7 +382,12 @@ import { friends } from '../../data/links';
 
       fetch(`${LINK_API}/link-stats`, { signal: ac.signal })
         .then((r) => (r.ok ? r.json() : null))
-        .then((data: { ok?: boolean; items?: Record<string, number>; feeds?: Record<string, string> } | null) => {
+        .then((data: {
+          ok?: boolean;
+          items?: Record<string, number>;
+          feeds?: Record<string, string>;
+          shots?: Record<string, string>;
+        } | null) => {
           if (!alive || !data?.items) return;
           for (const card of cards) {
             const host = card.dataset.host || '';
@@ -319,6 +400,14 @@ import { friends } from '../../data/links';
             if (iso && up) {
               up.textContent = relativeUpdate(iso);
               up.hidden = false;
+            }
+
+            // 站点代表图：自己填过 shot 的不覆盖，其余用抓到的 og:image
+            const og = data.shots?.[host];
+            const shotImg = card.querySelector<HTMLImageElement>('[data-shot]');
+            if (og && shotImg && shotImg.dataset.own !== '1') {
+              shotImg.dataset.own = '1';
+              shotImg.src = og;
             }
           }
         })

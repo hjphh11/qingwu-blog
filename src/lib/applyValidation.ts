@@ -2,19 +2,25 @@
 // 前端(LinkApply.tsx)用它做即时校验，服务端(/api/links/apply)用它做最终校验。
 // 只写一份的目的：避免出现「前端放过去了、后端拒了」这种不一致。
 
-export type ApplyFieldKey = 'name' | 'url' | 'avatar' | 'intro' | 'email';
+export type ApplyFieldKey = 'name' | 'url' | 'avatar' | 'intro' | 'shot' | 'email';
 
 export type ApplyValues = Record<ApplyFieldKey, string>;
 
 export type ApplyErrors = Partial<Record<ApplyFieldKey, string>>;
 
-export const APPLY_FIELD_KEYS: ApplyFieldKey[] = ['name', 'url', 'avatar', 'intro', 'email'];
+export const APPLY_FIELD_KEYS: ApplyFieldKey[] = ['name', 'url', 'avatar', 'intro', 'shot', 'email'];
+
+/** 必填项：
+ * `shot`（站点照片）是选填的，不能算进「是否填完」的判断里 ——
+ * 之前 isApplyValuesComplete 直接 every 了全部 key，加一个选填字段就会让按钮永远灰着。 */
+export const APPLY_REQUIRED_KEYS = APPLY_FIELD_KEYS.filter((k) => k !== 'shot');
 
 export const APPLY_EMPTY: ApplyValues = {
   name: '',
   url: '',
   avatar: '',
   intro: '',
+  shot: '',
   email: '',
 };
 
@@ -24,6 +30,7 @@ export const APPLY_LIMITS = {
   intro: 60,
   url: 300,
   avatar: 300,
+  shot: 400,
   email: 254, // RFC 5321
 } as const;
 
@@ -44,6 +51,8 @@ export function normalizeValues(input: Partial<ApplyValues>): ApplyValues {
     url: normalizeUrl(input.url || ''),
     avatar: normalizeUrl(input.avatar || ''),
     intro: (input.intro || '').trim(),
+    // 选填：留空就是空串（不补 https://），填了才补协议头
+    shot: input.shot ? normalizeUrl(input.shot) : '',
     email: (input.email || '').trim(),
   };
 }
@@ -67,6 +76,12 @@ export function validateApply(v: ApplyValues): ApplyErrors {
   else if (v.intro.length > APPLY_LIMITS.intro)
     e.intro = `介绍请控制在 ${APPLY_LIMITS.intro} 字以内`;
 
+  // 站点照片是选填：留空合法，填了就必须是合法链接
+  if (v.shot) {
+    if (v.shot.length > APPLY_LIMITS.shot) e.shot = '照片链接太长了';
+    else if (!URL_RE.test(v.shot)) e.shot = '照片链接看起来不太对，需要是一个图片直链';
+  }
+
   if (!v.email) e.email = '请填写联系邮箱';
   else if (v.email.length > APPLY_LIMITS.email) e.email = '邮箱太长了';
   else if (!EMAIL_RE.test(v.email)) e.email = '邮箱格式看起来不太对';
@@ -76,5 +91,5 @@ export function validateApply(v: ApplyValues): ApplyErrors {
 
 /** 给前端做「已填/未填」判断用 */
 export function isApplyValuesComplete(v: ApplyValues): boolean {
-  return APPLY_FIELD_KEYS.every((k) => Boolean(v[k]));
+  return APPLY_REQUIRED_KEYS.every((k) => Boolean(v[k]));
 }
