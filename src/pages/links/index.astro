@@ -308,9 +308,12 @@ const TRANSPARENT_PIXEL =
         const box = img.closest<HTMLElement>('.q-links-card__shot');
         const onLoad = () => {
           img.dataset.loaded = '1';
-          /* 太小的图（favicon 之类，几十像素）铺满 240 宽会糊成马赛克。
-             给它加个标记，CSS 里改成「居中摆放」而不是拉伸。 */
-          if (box && img.naturalWidth > 0 && img.naturalWidth < 320) box.classList.add('is-small');
+          /* 太小的图（favicon 之类，几十像素）铺满 240 宽会糊成马赛克，
+             加标记让 CSS 改成居中摆放。
+             ⚠️ 必须用 toggle 而不是 add：没有 shot 时这里先加载的是一张 1×1 透明图
+                （naturalWidth = 1），add 加上去之后，接口回来换了大图也摘不掉 ——
+                线上八张卡全被缩成居中小图就是这么来的。 */
+          if (box) box.classList.toggle('is-small', img.naturalWidth > 0 && img.naturalWidth < 320);
         };
         const onError = () => box?.classList.add('is-empty');
 
