@@ -345,11 +345,11 @@ export default function FriendsBoard() {
         )}
 
         {/* ——— 公开列表 ——— */}
-        <ol className="relative mt-3">
+        <ol className="relative mt-2 divide-y divide-rose/15">
           {loading
             ? Array.from({ length: 3 }).map((_, i) => (
-                <li key={i} className="flex gap-3.5 py-3.5 first:pt-3">
-                  <span className="h-11 w-11 shrink-0 animate-pulse rounded-full bg-rose/15" />
+                <li key={i} className="flex gap-3 rounded-[calc(var(--radius-card)-8px)] px-2.5 py-3">
+                  <span className="h-10 w-10 shrink-0 animate-pulse rounded-full bg-rose/15" />
                   <div className="flex-1 space-y-2 py-1">
                     <span className="block h-3 w-28 animate-pulse rounded bg-rose/15" />
                     <span className="block h-3 w-3/4 animate-pulse rounded bg-rose/10" />
@@ -359,8 +359,9 @@ export default function FriendsBoard() {
             : entries.map((e) => <EntryRow key={e.id} entry={e} now={now} />)}
 
           {!loading && count === 0 && (
-            <li className="py-8 text-center text-sm text-subtle">
-              还没有人留言，第一条就留给你了 ~
+            <li className="py-10 text-center">
+              <p className="font-hand text-xl text-muted">还没有人说话</p>
+              <p className="mt-1.5 text-xs text-subtle">第一条留言就留给你了 ~</p>
             </li>
           )}
         </ol>
@@ -375,16 +376,18 @@ function EntryRow({ entry, now }: { entry: FriendEntry; now: number }) {
   const [broken, setBroken] = useState(false);
   const approved = entry.status === 'approved';
   const host = hostOf(entry.url);
+  const initial = (entry.name || '·').trim().slice(0, 1);
 
   return (
-    <li className="flex gap-3.5 py-3.5 first:pt-3">
-      <span className="mt-0.5 h-11 w-11 shrink-0 overflow-hidden rounded-full bg-rose/20 ring-2 ring-white/80">
+    /* 整行给一层 hover 底色：列表长起来之后，鼠标在哪一条上要看得出来 */
+    <li className="-mx-1 flex gap-3 rounded-[calc(var(--radius-card)-8px)] px-3 py-3.5 transition-colors duration-300 hover:bg-white/45">
+      <span className="mt-px h-10 w-10 shrink-0 overflow-hidden rounded-full bg-gradient-to-br from-rose/35 to-amber/25 ring-2 ring-white/70">
         {entry.avatar && !broken ? (
           <img
             src={entry.avatar}
             alt=""
-            width={44}
-            height={44}
+            width={40}
+            height={40}
             loading="lazy"
             decoding="async"
             // 外站头像同样会被 Referer 防盗链拦掉，和友链墙一个道理
@@ -393,28 +396,31 @@ function EntryRow({ entry, now }: { entry: FriendEntry; now: number }) {
             className="h-full w-full object-cover"
           />
         ) : (
-          <span className="grid h-full w-full place-items-center font-display text-base text-crimson">
-            {(entry.name || '·').slice(0, 1)}
+          <span className="grid h-full w-full place-items-center font-display text-[15px] text-crimson">
+            {initial}
           </span>
         )}
       </span>
 
       <div className="min-w-0 flex-1">
-        {/* 名字 + 状态 + 域名 + 时间挤在一行：徽章跟着名字走（参考站也是这样），
-            时间用 ml-auto 顶到右边，每条的时间就对齐成一列。 */}
-        <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-          <span className="text-sm font-medium text-ink">{entry.name}</span>
+        {/* 名字 / 徽章 / 域名 / 时间一行。
+            必须允许换行：窄屏硬挤会把名字和域名都截成「AIOVT…」「exampl…」，
+            挤不下就折到第二行，比截断好读。 */}
+        <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
+          <span className="max-w-[9rem] truncate text-[13.5px] font-medium leading-5 text-ink">
+            {entry.name}
+          </span>
           <span
-            className={`inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[11px] leading-4 ${
+            className={`inline-flex shrink-0 items-center gap-1 rounded-full px-1.5 py-px text-[10.5px] leading-[18px] ${
               approved
                 ? 'bg-crimson/10 text-crimson'
-                : 'border border-amber/45 bg-amber/12 text-brown'
+                : 'border border-amber/45 bg-amber/10 text-brown'
             }`}
           >
             {approved ? (
-              <MorphIcon icon={CircleCheck} size={10} color="currentColor" />
+              <MorphIcon icon={CircleCheck} size={9} color="currentColor" />
             ) : (
-              <span className="h-1.5 w-1.5 rounded-full bg-amber" aria-hidden="true" />
+              <span className="h-1 w-1 rounded-full bg-amber" aria-hidden="true" />
             )}
             {approved ? '已是友链' : '等我看看'}
           </span>
@@ -422,22 +428,18 @@ function EntryRow({ entry, now }: { entry: FriendEntry; now: number }) {
             href={entry.url}
             target="_blank"
             rel="noreferrer noopener"
-            className="min-w-0 max-w-[9rem] truncate text-xs text-subtle transition-colors hover:text-crimson"
+            className="min-w-0 max-w-[9rem] shrink truncate text-[11px] text-subtle transition-colors hover:text-crimson"
           >
             {host}
           </a>
-          <time
-            dateTime={entry.at}
-            className="shrink-0 pl-1 text-xs tabular-nums text-subtle"
-          >
+          <time dateTime={entry.at} className="shrink-0 text-[11px] tabular-nums text-subtle">
             {now ? timeAgo(entry.at, now) : '\u00A0'}
           </time>
         </div>
 
         {/* 内容包成气泡：参考站就是这么区分的 —— 头像 + 一块浅底文本，
-            比「一条条横线」更像在说话，也更省分隔线。上左圆角收小一点，
-            让气泡看起来是从头像那一侧发出来的。 */}
-        <p className="mt-2 w-fit max-w-full whitespace-pre-wrap rounded-xl rounded-tl-[6px] bg-rose/12 px-3.5 py-2.5 text-sm leading-relaxed text-muted">
+            比「一条条横线」更像在说话。上左圆角收小，气泡像是从头像那侧发出来的 */}
+        <p className="mt-1.5 w-fit max-w-[94%] whitespace-pre-wrap rounded-xl rounded-tl-[5px] bg-rose/12 px-3 py-2 text-[13.5px] leading-relaxed text-muted">
           {entry.intro}
         </p>
       </div>

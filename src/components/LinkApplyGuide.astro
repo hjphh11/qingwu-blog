@@ -14,7 +14,7 @@
  * 这一块**纯静态**，不需要 client 指令；复制靠页尾那段事件委托脚本。
  */
 import MorphIcon from 'morphicons/astro';
-import { Copy, Check, ClipboardList, Info, CircleCheck, Rss } from '../lib/icons';
+import { Copy, Check, ClipboardList, Info, Rss } from '../lib/icons';
 import { SITE } from '../config';
 import { COMMENT_TEMPLATE } from '../lib/friendsBoard';
 
@@ -41,30 +41,22 @@ const NOTES = [
     {/* ——— 左：本站信息 ——— */}
     <div class="glass-card min-w-0 p-5 sm:p-7 lg:col-span-5">
       <div class="flex items-start gap-3.5">
-        <span class="relative shrink-0">
-          <img
-            src="/images/avatar.jpg"
-            alt=""
-            width={56}
-            height={56}
-            loading="lazy"
-            decoding="async"
-            class="h-14 w-14 rounded-2xl object-cover ring-2 ring-white/70"
-          />
-          <span
-            class="absolute -bottom-1 -right-1 grid h-5 w-5 place-items-center rounded-full bg-crimson text-white ring-2 ring-white"
-            aria-hidden="true"
-          >
-            <MorphIcon icon={CircleCheck} size={12} color="#fff" />
-          </span>
-        </span>
+        <img
+          src="/images/avatar.jpg"
+          alt=""
+          width={56}
+          height={56}
+          loading="lazy"
+          decoding="async"
+          class="h-14 w-14 shrink-0 rounded-2xl object-cover ring-2 ring-white/70"
+        />
         <div class="min-w-0 pt-0.5">
           <p class="font-display text-[1.25rem] leading-tight text-ink">{SITE.title}</p>
           <p class="mt-1 text-xs leading-relaxed text-subtle">{SITE.description}</p>
         </div>
       </div>
 
-      <p class="mt-5 text-xs text-subtle">下面每一条都能单独复制，贴到你的友链页就行 ~</p>
+      <p class="mt-5 text-xs text-subtle">每一条都能单独复制；不想一条条点，也可以一次全拿走。</p>
 
       <ul class="mt-2.5 flex flex-col gap-2">
         {
@@ -94,6 +86,23 @@ const NOTES = [
           ))
         }
       </ul>
+
+      {/* 一键全拿：挨个点六次太麻烦，对方多半是直接粘贴到自己的 links 页 */}
+      <p id="ag-all" class="sr-only">{MY_FIELDS.map((f) => `${f.label}：${f.value}`).join('\n')}</p>
+      <button
+        type="button"
+        data-copy-target="ag-all"
+        aria-label="复制全部站点信息"
+        class="btn-ripple mt-3 flex w-full items-center justify-center gap-2 rounded-full border border-rose/30 bg-white/60 px-4 py-2.5 text-[13px] text-ink transition-colors hover:border-rose/55 hover:text-crimson"
+      >
+        <span data-copy-icon>
+          <MorphIcon icon={Copy} size={14} color="currentColor" />
+        </span>
+        <span data-done-icon hidden>
+          <MorphIcon icon={Check} size={14} color="currentColor" />
+        </span>
+        复制全部信息
+      </button>
     </div>
 
     {/* ——— 右：三步 ——— */}
@@ -219,7 +228,16 @@ const NOTES = [
    * 用 document 级事件委托，**不直接绑按钮** ——
    * 页内 <script> 是模块，首屏只跑一次；Astro 换页后 DOM 换新但脚本不重跑，
    * 绑在元素上的监听全落在废弃节点上（踩过）。
+   *
+   * ⚠️ 取文本必须用 `textContent`，不能用 `innerText`：
+   *    「复制全部信息」那份文本放在 `.sr-only` 的 <p> 里（视觉隐藏但仍在 DOM），
+   *    innerText 反映的是**渲染结果** —— 宽 1px + 默认 white-space 会把 `\n` 折成空格，
+   *    复制出来变成一整行（实测 lines=1）。textContent 拿的是文本节点原文，换行都在。
    */
+  function textOf(el: Element): string {
+    return (el.textContent || '').trim();
+  }
+
   async function copyText(text: string): Promise<boolean> {
     try {
       if (navigator.clipboard?.writeText) {
@@ -253,9 +271,8 @@ const NOTES = [
     const src = document.getElementById(id);
     if (!src) return;
 
-    // pre 的 innerText 能保住换行，textContent 在部分浏览器里会把换行吃掉
-    const text = (src instanceof HTMLElement && 'innerText' in src ? src.innerText : src.textContent) || '';
-    void copyText(text.trim()).then((ok) => {
+    // 用 textContent（见 textOf 的注释）：sr-only 那份不能走 innerText
+    void copyText(textOf(src)).then((ok) => {
       if (!ok) return;
       const icon = btn.querySelector<HTMLElement>('[data-copy-icon]');
       const done = btn.querySelector<HTMLElement>('[data-done-icon]');
