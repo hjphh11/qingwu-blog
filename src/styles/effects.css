@@ -391,37 +391,46 @@
      ⚠️ transform 里必须同时带 --shift 和 --tilt：视差和倾斜都在这一条上，
         分开写会互相覆盖（这是本项目 .q-emis 三层分开的根本原因，这里只有一层）。 */
   .q-links-wall {
-    columns: 4;
-    column-gap: 1.1rem;
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 1.1rem;
+    /* 每列自己往下长，不等高 —— 这就是错落的来源 */
+    align-items: start;
   }
   @media (max-width: 1023px) {
     .q-links-wall {
-      columns: 3;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
     }
   }
   @media (max-width: 767px) {
     .q-links-wall {
-      columns: 2;
-      column-gap: 0.875rem;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 0.875rem;
     }
   }
   @media (max-width: 479px) {
     .q-links-wall {
-      columns: 1;
+      grid-template-columns: minmax(0, 1fr);
     }
+  }
+  .q-links-col {
+    display: flex;
+    flex-direction: column;
+    gap: 1.1rem;
+    min-width: 0;
   }
 
   .q-links-card {
     /* 多列布局里必须 avoid，否则卡片会被从中间劈到下一列 */
     break-inside: avoid;
     position: relative;
-    overflow: hidden;
+    /* 不能 hidden：hover 浮层要探出卡片上方。背景层自己有 overflow + 圆角，裁切不受影响 */
+    overflow: visible;
     display: flex;
     flex-direction: column;
     align-items: center;
     gap: 0.6rem;
     padding: 1.6rem 1rem 1.25rem;
-    margin-bottom: 1.1rem;
     text-align: center;
     /* 高度错落：--tall 由页面按下标给（1 / 0.86 / 1.18 / 0.94）。
        竖向拉长是有意的 —— 方卡片看着像表格，竖长条才像「贴在墙上的纸条」。
@@ -434,6 +443,13 @@
       box-shadow var(--dur-state) var(--ease-soft);
     will-change: transform;
   }
+  /* ⚠️ 必须提高优先级：卡片同时挂着 .card-spotlight，而它在文件更后面，
+     同优先级下它那条 overflow: hidden 会把这里的 visible 盖回去 ——
+     hover 浮层就永远探不出卡片，直接看不见。 */
+  .q-links-card.card-spotlight {
+    overflow: visible;
+  }
+
   .q-links-card:nth-child(3n + 1) {
     --tilt: -0.55deg;
   }
@@ -445,6 +461,8 @@
   }
   .q-links-card:hover {
     transform: translate3d(0, calc(var(--shift, 0px) - 4px), 0) rotate(0deg);
+    /* 浮层要盖住相邻卡片，所以 hover 时整张卡提层 */
+    z-index: 10;
   }
 
   /* ── 头像氛围底 ────────────────────────────────────────────
@@ -487,64 +505,80 @@
     opacity: 0.58;
   }
 
-  /* 内容整体抬到氛围底之上（背景层是 z-index: 0） */
-  .q-links-card > :not(.q-links-card__bg) {
+  /* ── 悬停预览 ─────────────────────────────────────────────
+     鼠标放上来时，在卡片**上方**浮出这张站的图（站点名 + 一句话压在图底）。
+     只渲染填了 shot 的卡片 —— 没填的悬停什么都不冒出来。
+
+     三个细节决定它像不像「浮起来的卡」：
+     · 左右各比卡片宽 0.7rem，视觉上才托得住、有层次
+     · `bottom: calc(100% - 3px)` 与卡片**重叠 3px**，不能留缝 ——
+       留缝的话鼠标从卡片往上移会先离开卡片，浮层当场消失，看着像闪一下
+     · hover 时卡片自己 z-index: 10，否则浮层会被后面那张卡压住
+     pointer-events: none：浮层纯展示，不抢点击、也不影响卡片的 hover 判定 */
+  .q-links-card__preview {
+    position: absolute;
+    left: -0.7rem;
+    right: -0.7rem;
+    bottom: calc(100% - 3px);
+    z-index: 20;
+    display: block;
+    border-radius: 14px;
+    overflow: hidden;
+    background: linear-gradient(160deg, #fdf4f5, #fbf2e8);
+    box-shadow: 0 20px 42px -20px rgb(74 55 40 / 0.5);
+    opacity: 0;
+    transform: translateY(6px) scale(0.98);
+    transform-origin: 50% 100%;
+    transition:
+      opacity var(--dur-state) var(--ease-soft),
+      transform var(--dur-state) var(--ease-out-expo);
+    pointer-events: none;
+  }
+  .q-links-card__preview img {
+    display: block;
+    width: 100%;
+    aspect-ratio: 16 / 10;
+    object-fit: cover;
+    object-position: top center;
+  }
+  .q-links-card__preview-text {
+    position: absolute;
+    inset: auto 0 0 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.15rem;
+    padding: 1.6rem 0.9rem 0.75rem;
+    text-align: left;
+    background: linear-gradient(180deg, transparent, rgb(30 20 14 / 0.66));
+  }
+  .q-links-card__preview-text strong {
+    font-family: var(--font-display);
+    font-size: 1rem;
+    line-height: 1.25;
+    color: #fff;
+    letter-spacing: 0.02em;
+  }
+  .q-links-card__preview-text em {
+    font-style: normal;
+    font-size: 0.6875rem;
+    line-height: 1.5;
+    color: rgb(255 255 255 / 0.84);
+  }
+  .q-links-card:hover .q-links-card__preview,
+  .q-links-card:focus-visible .q-links-card__preview {
+    opacity: 1;
+    transform: none;
+  }
+
+  /* 内容整体抬到氛围底之上（背景层是 z-index: 0）。
+     ⚠️ 必须排除 .q-links-card__preview：它是 absolute 的浮层，
+        这条 `:not()` 的优先级比单类高，会把浮层的 absolute 改成 relative ——
+        结果浮层掉进文档流、压在卡片内容顶上，看着像"图挤进了卡里"。 */
+  .q-links-card > :not(.q-links-card__bg):not(.q-links-card__preview) {
     position: relative;
     z-index: 1;
   }
 
-  /* ── 站点预览 ─────────────────────────────────────────────
-     贴卡片顶部、撑满宽度（负 margin 抵掉卡片 padding），16:10。
-     底下垫一层占位：暖色渐变 + 网站名首字，抓不到图时露出来 ——
-     比一个灰色破图框体面，也让人知道「这儿本来有张图」。
-
-     img 的淡入交给 [data-loaded]：mShots 首次抓站要几秒，
-     不淡入的话会先看到一块半透明的图压在占位上。 */
-  .q-links-card__shot {
-    display: block;
-    align-self: stretch;
-    margin: -1.6rem -1rem 0.9rem;
-    aspect-ratio: 16 / 10;
-    overflow: hidden;
-    background:
-      radial-gradient(120% 120% at 15% 0%, rgb(246 165 184 / 0.3), transparent 55%),
-      radial-gradient(110% 110% at 85% 100%, rgb(232 176 75 / 0.24), transparent 60%),
-      linear-gradient(160deg, #fdf4f5, #fbf2e8);
-  }
-  .q-links-card__shot::before {
-    content: attr(data-letter);
-    position: absolute;
-    inset: 0;
-    display: grid;
-    place-items: center;
-    font-family: var(--font-display);
-    font-size: 2.2rem;
-    color: rgb(74 55 40 / 0.26);
-  }
-  .q-links-card__shot img {
-    position: relative;
-    width: 100%;
-    height: 100%;
-    object-fit: cover;
-    object-position: top center;
-    opacity: 1;
-  }
-  .qjs .q-links-card__shot img {
-    opacity: 0;
-    transition: opacity var(--dur-state) var(--ease-soft);
-  }
-  .qjs .q-links-card__shot img[data-loaded='1'] {
-    opacity: 1;
-  }
-  .q-links-card__shot.is-empty img {
-    display: none;
-  }
-  /* 小图（favicon、几十像素的头像）不拉伸，居中摆着，四周留给渐变底 ——
-     铺满 240 宽会糊成马赛克，还不如让它老老实实当一个小图标。 */
-  .q-links-card__shot.is-small img {
-    object-fit: contain;
-    padding: 1.1rem;
-  }
 
   .q-links-card__avatar {
     display: block;

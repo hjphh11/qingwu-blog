@@ -5,6 +5,17 @@ import { ChevronRight, Send } from '../../lib/icons';
 import { friends } from '../../data/links';
 
 /**
+ * 服务端先分成 4 列。
+ *
+ * 为什么不用 CSS multi-column：那套的分列计算会被卡片的 `overflow: visible` 打乱 ——
+ * hover 浮层要探出卡片，必须 visible，结果 8 张卡全挤进了第一列（实测 x 全是 219）。
+ * 拆成「grid 定列宽 + 每列内部 flex 竖排」之后，overflow 怎么改都不影响布局。
+ */
+const WALL_COLS = 4;
+const wallColumns = Array.from({ length: WALL_COLS }, () => [] as Array<{ f: (typeof friends)[number]; i: number }>);
+friends.forEach((f, i) => wallColumns[i % WALL_COLS]!.push({ f, i }));
+
+/**
  * 站点预览图：**只认 links.json 里的 shot** —— 放上去才显示，没放就是占位。
  *
  * 不做自动截图（mShots 403、thum.io 只会截到 Cloudflare 验证页），
@@ -14,8 +25,7 @@ import { friends } from '../../data/links';
  * Worker 那边仍在每天抓 og_image 存 D1（8 次请求/天，几乎无成本），
  * 留着是给以后「申请没填、我手动挑一张」时用；前端不自动读它。
  */
-const TRANSPARENT_PIXEL =
-  'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7';
+
 ---
 
 <Layout title="友链 · 清吾">
@@ -37,7 +47,9 @@ const TRANSPARENT_PIXEL =
     {
       friends.length > 0 ? (
         <div class="q-links-wall" data-links-wall>
-          {friends.map((f, i) => (
+          {wallColumns.map((col) => (
+            <div class="q-links-col">
+          {col.map(({ f, i }) => (
             <a
               href={f.url}
               target="_blank"
@@ -52,20 +64,23 @@ const TRANSPARENT_PIXEL =
               <span class="q-links-card__bg" aria-hidden="true">
                 <img src={f.avatar} alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer" />
               </span>
-              {/* 站点预览：贴在卡片最上面，缺图时露出下面那层占位（首字 + 渐变） */}
-              <span class="q-links-card__shot" data-letter={f.name.slice(0, 1)}>
-                {/* 没有 shot 时先放一张 1×1 透明图：不请求任何外站，
-                    等接口回了 og:image 再由脚本换上真图。 */}
-                <img
-                  src={f.shot || TRANSPARENT_PIXEL}
-                  data-shot
-                  data-own={f.shot ? '1' : undefined}
-                  alt=""
-                  loading="lazy"
-                  decoding="async"
-                  referrerpolicy="no-referrer"
-                />
-              </span>
+              {/* 悬停预览：鼠标放上来才在卡片上方浮出这张站的图，移开就收。
+                  只渲染填了 shot 的 —— 没填的卡片悬停没有任何东西冒出来。 */}
+              {f.shot && (
+                <span class="q-links-card__preview" aria-hidden="true">
+                  <img
+                    src={f.shot}
+                    alt=""
+                    loading="lazy"
+                    decoding="async"
+                    referrerpolicy="no-referrer"
+                  />
+                  <span class="q-links-card__preview-text">
+                    <strong>{f.name}</strong>
+                    <em>{f.intro}</em>
+                  </span>
+                </span>
+              )}
               {/* 友链头像是外站图,最容易出现「白 → 图」的硬切,所以占位最有用。
                   白色描边(.ring)挪到占位容器上:留在 img 上会露出容器渐变
                   的一圈玫瑰色边。 */}
@@ -112,6 +127,8 @@ const TRANSPARENT_PIXEL =
                 </span>
               </span>
             </a>
+          ))}
+            </div>
           ))}
         </div>
       ) : (
@@ -288,57 +305,6 @@ const TRANSPARENT_PIXEL =
     if (document.readyState !== 'loading') initLinkSpeed();
     else document.addEventListener('DOMContentLoaded', initLinkSpeed, { once: true });
 
-    /*
-     * 站点预览：加载完淡入，失败就露出占位层。
-     *
-     * mShots 的坑：它第一次被请求某个站时，会先返回一张「生成中」的图，
-     * 几秒后再请求才是真截图。所以这里**只处理成功/失败，不做重试** ——
-     * 重试会让 8 张卡各多打一次外站请求，代价比「第一次可能看到灰块」大。
-     */
-    let teardownShots = () => {};
-
-    function initShots() {
-      teardownShots();
-      const imgs = Array.from(document.querySelectorAll<HTMLImageElement>('[data-shot]'));
-      if (!imgs.length) return;
-
-      const offs: Array<() => void> = [];
-
-      for (const img of imgs) {
-        const box = img.closest<HTMLElement>('.q-links-card__shot');
-        const onLoad = () => {
-          img.dataset.loaded = '1';
-          /* 太小的图（favicon 之类，几十像素）铺满 240 宽会糊成马赛克，
-             加标记让 CSS 改成居中摆放。
-             ⚠️ 必须用 toggle 而不是 add：没有 shot 时这里先加载的是一张 1×1 透明图
-                （naturalWidth = 1），add 加上去之后，接口回来换了大图也摘不掉 ——
-                线上八张卡全被缩成居中小图就是这么来的。 */
-          if (box) box.classList.toggle('is-small', img.naturalWidth > 0 && img.naturalWidth < 320);
-        };
-        const onError = () => box?.classList.add('is-empty');
-
-        img.addEventListener('load', onLoad);
-        img.addEventListener('error', onError);
-        offs.push(() => {
-          img.removeEventListener('load', onLoad);
-          img.removeEventListener('error', onError);
-        });
-
-        // 命中缓存时 load 不会再派发，得自己判一次
-        if (img.complete) {
-          if (img.naturalWidth > 0) onLoad();
-          else onError();
-        }
-      }
-
-      teardownShots = () => {
-        offs.forEach((fn) => fn());
-      };
-    }
-
-    document.addEventListener('astro:page-load', initShots);
-    if (document.readyState !== 'loading') initShots();
-    else document.addEventListener('DOMContentLoaded', initShots, { once: true });
 
     /*
      * 友链点击统计。读 + 写两条路：
