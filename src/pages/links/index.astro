@@ -3,6 +3,7 @@ import Layout from '../../layouts/Layout.astro';
 import MorphIcon from 'morphicons/astro';
 import { ChevronRight, Send } from '../../lib/icons';
 import FriendsBoard from '../../components/FriendsBoard.tsx';
+import LinkApplyGuide from '../../components/LinkApplyGuide.astro';
 import { friends } from '../../data/links';
 
 /**
@@ -36,8 +37,11 @@ friends.forEach((f, i) => wallColumns[i % WALL_COLS]!.push({ f, i }));
         <h1 class="page-head__title">友链</h1>
         <p class="page-head__sub">在互联网的小角落，遇见彼此 ~</p>
       </div>
+      {/* 按钮落到页内指引区，不再跳去独立表单页 ——
+          规则、可复制的信息、评论表单现在都在这一页，跳走反而断了流程。
+          想要「站点照片 + 邮箱」那套详细字段的，指引和评论区里都留了入口。 */}
       <a
-        href="/links/apply"
+        href="#apply-guide"
         class="btn-ripple inline-flex min-h-11 items-center gap-2 rounded-full bg-crimson px-5 text-sm font-medium text-white shadow-[0_6px_18px_rgba(194,58,85,0.35)] transition-transform duration-300 hover:scale-[1.04] active:scale-95"
       >
         <MorphIcon icon={Send} size={16} color="#fff" />
@@ -144,6 +148,10 @@ friends.forEach((f, i) => wallColumns[i % WALL_COLS]!.push({ f, i }));
         </div>
       )
     }
+
+    {/* 申请指引：本站信息（可逐条复制）+ 三步流程（含留言模板）+ 注意事项。
+        先讲规则再让人开口，别等对方贴完才发现不合规。 */}
+    <LinkApplyGuide />
 
     {/* 友链评论区：申请入口从「跳去表单页」改成「在这儿说一句」。
         数据层见 src/lib/friendsBoard.ts（现在是演示数据）；

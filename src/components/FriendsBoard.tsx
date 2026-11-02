@@ -176,7 +176,7 @@ export default function FriendsBoard() {
         <ol className="relative mt-2">
           {loading
             ? Array.from({ length: 3 }).map((_, i) => (
-                <li key={i} className="flex gap-3.5 border-t border-rose/12 py-5 first:border-t-0">
+                <li key={i} className="flex gap-3.5 py-3.5 first:pt-3">
                   <span className="h-11 w-11 shrink-0 animate-pulse rounded-full bg-rose/15" />
                   <div className="flex-1 space-y-2 py-1">
                     <span className="block h-3 w-28 animate-pulse rounded bg-rose/15" />
@@ -187,7 +187,7 @@ export default function FriendsBoard() {
             : entries.map((e) => <EntryRow key={e.id} entry={e} now={now} />)}
 
           {!loading && count === 0 && (
-            <li className="border-t border-rose/12 py-8 text-center text-sm text-subtle">
+            <li className="py-8 text-center text-sm text-subtle">
               还没有人留言，第一条就留给你了 ~
             </li>
           )}
@@ -412,7 +412,7 @@ function EntryRow({ entry, now }: { entry: FriendEntry; now: number }) {
   const host = hostOf(entry.url);
 
   return (
-    <li className="group flex gap-3.5 border-t border-rose/12 py-5 first:border-t-0 first:pt-4">
+    <li className="flex gap-3.5 py-3.5 first:pt-3">
       <span className="mt-0.5 h-11 w-11 shrink-0 overflow-hidden rounded-full bg-rose/20 ring-2 ring-white/80">
         {entry.avatar && !broken ? (
           <img
@@ -435,36 +435,19 @@ function EntryRow({ entry, now }: { entry: FriendEntry; now: number }) {
       </span>
 
       <div className="min-w-0 flex-1">
-        <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
+        {/* 名字 + 状态 + 域名 + 时间挤在一行：徽章跟着名字走（参考站也是这样），
+            时间用 ml-auto 顶到右边，每条的时间就对齐成一列。 */}
+        <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
           <span className="text-sm font-medium text-ink">{entry.name}</span>
-          <a
-            href={entry.url}
-            target="_blank"
-            rel="noreferrer noopener"
-            className="max-w-full truncate text-xs text-subtle transition-colors hover:text-crimson"
-          >
-            {host}
-          </a>
-          <time
-            dateTime={entry.at}
-            className="ml-auto shrink-0 text-xs tabular-nums text-subtle"
-          >
-            {now ? timeAgo(entry.at, now) : '\u00A0'}
-          </time>
-        </div>
-
-        <p className="mt-1.5 text-sm leading-relaxed text-muted">{entry.intro}</p>
-
-        <div className="mt-2 flex items-center gap-2">
           <span
-            className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] leading-5 ${
+            className={`inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[11px] leading-4 ${
               approved
-                ? 'bg-crimson/8 text-crimson'
+                ? 'bg-crimson/10 text-crimson'
                 : 'border border-amber/45 bg-amber/12 text-brown'
             }`}
           >
             {approved ? (
-              <MorphIcon icon={CircleCheck} size={11} color="currentColor" />
+              <MorphIcon icon={CircleCheck} size={10} color="currentColor" />
             ) : (
               <span className="h-1.5 w-1.5 rounded-full bg-amber" aria-hidden="true" />
             )}
@@ -474,12 +457,24 @@ function EntryRow({ entry, now }: { entry: FriendEntry; now: number }) {
             href={entry.url}
             target="_blank"
             rel="noreferrer noopener"
-            className="ml-auto hidden items-center gap-1 text-xs text-subtle transition-opacity duration-300 hover:text-crimson md:inline-flex md:opacity-0 md:group-hover:opacity-100 md:focus-visible:opacity-100"
+            className="min-w-0 max-w-[9rem] truncate text-xs text-subtle transition-colors hover:text-crimson"
           >
-            去逛逛
-            <MorphIcon icon={Link2} size={11} color="currentColor" />
+            {host}
           </a>
+          <time
+            dateTime={entry.at}
+            className="shrink-0 pl-1 text-xs tabular-nums text-subtle"
+          >
+            {now ? timeAgo(entry.at, now) : '\u00A0'}
+          </time>
         </div>
+
+        {/* 内容包成气泡：参考站就是这么区分的 —— 头像 + 一块浅底文本，
+            比「一条条横线」更像在说话，也更省分隔线。上左圆角收小一点，
+            让气泡看起来是从头像那一侧发出来的。 */}
+        <p className="mt-2 w-fit max-w-full rounded-xl rounded-tl-[6px] bg-rose/12 px-3.5 py-2.5 text-sm leading-relaxed text-muted">
+          {entry.intro}
+        </p>
       </div>
     </li>
   );
