@@ -42,9 +42,12 @@ migrations_dir = "migrations"
 # binding = "R2"
 # bucket_name = "qingwu-private"
 
-# ——— Cron：定时发布用，第 4 步再开 ———
-# [triggers]
-# crons = ["*/5 * * * *"]
+# ——— Cron：友链「最近更新」探测 ———
+# 每天 UTC 03:00（北京时间 11:00）跑一轮，抓各站 RSS/sitemap 的最后日期。
+# 这不是唯一入口：/link-stats 发现上一轮超过 12 小时，也会在后台顺手补一轮，
+# 所以首次部署不用等到第二天。
+[triggers]
+crons = ["0 3 * * *"]
 
 [vars]
 # 允许跨源调用 /hit 的站点（逗号分隔；* 表示不限制）。

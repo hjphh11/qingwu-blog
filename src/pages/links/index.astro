@@ -63,7 +63,12 @@ import { friends } from '../../data/links';
               <p class="q-links-card__intro">{f.intro}</p>
               {/* 域名放在最后一行：卡片是竖长条，只有名字+一句话会空掉半张，
                   补个域名既填了空、也让人一眼看到跳去哪 */}
-              <p class="q-links-card__host">{f.url.replace(/^https?:\/\//, '').replace(/\/$/, '')}</p>
+              <p class="q-links-card__host">
+                <span>{f.url.replace(/^https?:\/\//, '').replace(/\/$/, '')}</span>
+                {/* 最近更新：由 Worker 每天抓对方 RSS/sitemap 得出。
+                    抓不到时这里一直是 hidden，不显示比显示「不明」更干净。 */}
+                <span class="q-links-card__updated" data-updated hidden></span>
+              </p>
               <span class="q-links-card__foot">
                 <span class="q-links-card__go">
                   去看看
@@ -271,6 +276,18 @@ import { friends } from '../../data/links';
      */
     const LINK_API = (import.meta.env.PUBLIC_HIT_WORKER_URL || 'https://api.qingwu.ink').replace(/\/$/, '');
 
+    /** 把 `2026-10-28` 说成人话：今天 / 昨天 / N 天前 / N 个月前 */
+    function relativeUpdate(iso: string): string {
+      const then = Date.parse(`${iso}T00:00:00Z`);
+      if (!Number.isFinite(then)) return '';
+      const days = Math.floor((Date.now() - then) / 86_400_000);
+      if (days <= 0) return '今天更新';
+      if (days === 1) return '昨天更新';
+      if (days < 30) return `${days} 天前更新`;
+      if (days < 365) return `${Math.floor(days / 30)} 个月前更新`;
+      return `${iso} 更新`;
+    }
+
     let teardownStats = () => {};
 
     function initLinkStats() {
@@ -289,12 +306,20 @@ import { friends } from '../../data/links';
 
       fetch(`${LINK_API}/link-stats`, { signal: ac.signal })
         .then((r) => (r.ok ? r.json() : null))
-        .then((data: { ok?: boolean; items?: Record<string, number> } | null) => {
+        .then((data: { ok?: boolean; items?: Record<string, number>; feeds?: Record<string, string> } | null) => {
           if (!alive || !data?.items) return;
           for (const card of cards) {
-            const n = data.items[card.dataset.host || ''];
+            const host = card.dataset.host || '';
+            const n = data.items?.[host];
             const slot = card.querySelector<HTMLElement>('[data-clicks]');
             if (slot && n && n > 0) slot.textContent = String(n);
+
+            const iso = data.feeds?.[host];
+            const up = card.querySelector<HTMLElement>('[data-updated]');
+            if (iso && up) {
+              up.textContent = relativeUpdate(iso);
+              up.hidden = false;
+            }
           }
         })
         .catch(() => {

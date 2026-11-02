@@ -13,6 +13,7 @@
 
 import { getApply, patchApply, postApply } from './apply';
 import { getLinkStats, postLinkClick } from './link';
+import { refreshAllFeeds } from './links-refresh';
 import { getHit, postHit } from './hit';
 import { getStats } from './stats';
 import { json, originAllowed, parseOrigins } from './util';
@@ -71,7 +72,7 @@ export default {
 
     if (path === '/link-stats') {
       if (request.method !== 'GET') return json({ ok: false, reason: 'method_not_allowed' }, 405);
-      return getLinkStats(request, env);
+      return getLinkStats(request, env, ctx);
     }
 
     if (path === '/stats') {
@@ -86,5 +87,17 @@ export default {
     }
 
     return json({ ok: false, reason: 'not_found' }, 404);
+  },
+
+  /**
+   * 定时任务：每天把友链的「最近更新」重探一遍。
+   * 真正的兜底是 /link-stats 里那次机会式刷新 —— cron 只是保证长期没人访问也会更新。
+   */
+  async scheduled(_event: ScheduledController, env: Env, ctx: ExecutionContext): Promise<void> {
+    ctx.waitUntil(
+      refreshAllFeeds(env)
+        .then((s) => console.log(`[cron] 友链更新探测：${s.updated}/${s.total} 命中，${s.failed} 未抓到`))
+        .catch((err) => console.error('[cron] 友链更新探测失败:', err instanceof Error ? err.message : err)),
+    );
   },
 } satisfies ExportedHandler<Env>;

@@ -13,6 +13,7 @@
 //   友链点击是「有多少人点过这个站」，同一个 IP 十分钟内连点三次本来就该算三次
 //   （他可能真的回去看了三趟）。代价是可能被刷，个人站量级不值得为此加一张去重表。
 import type { Env } from './types';
+import { maybeRefreshFeeds } from './links-refresh';
 import { json, originAllowed, parseOrigins } from './util';
 
 /** 上报结果统一回 200，原因只给排障用 */
@@ -84,13 +85,19 @@ export async function postLinkClick(request: Request, env: Env): Promise<Respons
   }
 }
 
-/** GET /link-stats —— 只回总数，不暴露按天明细 */
-export async function getLinkStats(request: Request, env: Env): Promise<Response> {
+/**
+ * GET /link-stats —— 点击总数 + 每个站的「最近更新」。
+ *
+ * 顺便做一件事：如果上次探测已经超过 12 小时，这里挂一个 waitUntil 去刷新。
+ * 好处是**首次部署不必等到第二天 cron** —— 第一个访问友链页的人就把它跑出来了；
+ * 坏处是这个请求会稍慢（waitUntil 不阻塞响应，所以其实不慢）。
+ */
+export async function getLinkStats(request: Request, env: Env, ctx?: ExecutionContext): Promise<Response> {
   const headers = withCors(request, env);
 
   const origin = request.headers.get('origin') || '';
   if (origin && !originAllowed(origin, parseOrigins(env.ALLOWED_ORIGINS))) {
-    return json({ ok: false, items: {} }, 200, headers);
+    return json({ ok: false, items: {}, feeds: {} }, 200, headers);
   }
 
   try {
@@ -102,8 +109,23 @@ export async function getLinkStats(request: Request, env: Env): Promise<Response
     for (const r of rows.results ?? []) {
       items[r.url] = Number(r.clicks) || 0;
     }
-    return json({ ok: true, items }, 200, headers);
+
+    // 最近更新时间：ok=0 的不回日期，前端据此不显示（抓不到 ≠ 很久没更新）
+    const feeds: Record<string, string> = {};
+    try {
+      const frows = await env.DB.prepare(
+        `SELECT url, last_updated FROM link_feeds WHERE ok = 1 AND last_updated IS NOT NULL`,
+      ).all<{ url: string; last_updated: string }>();
+      for (const r of frows.results ?? []) feeds[r.url] = r.last_updated;
+    } catch {
+      // link_feeds 还没建（迁移未应用）—— 只回点击数，前端不显示更新日期
+    }
+
+    // 过期的就在后台补一轮，不拖慢这次响应
+    if (ctx) ctx.waitUntil(maybeRefreshFeeds(env).catch(() => {}));
+
+    return json({ ok: true, items, feeds }, 200, headers);
   } catch {
-    return json({ ok: false, items: {} }, 200, headers);
+    return json({ ok: false, items: {}, feeds: {} }, 200, headers);
   }
 }

@@ -536,11 +536,21 @@
     color: var(--color-muted);
   }
   .q-links-card__host {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 0.4rem;
+    width: 100%;
     margin-top: 0.15rem;
     font-size: 0.6875rem;
     line-height: 1.4;
     letter-spacing: 0.02em;
     color: var(--color-subtle);
+  }
+  /* 最近更新：跟域名同一行、靠右。数据没拿到时是 hidden，不占位也不留空隙。 */
+  .q-links-card__updated {
+    white-space: nowrap;
+    opacity: 0.85;
   }
   /* 底部一行：左边「去看看」，右边速度徽标。margin-top:auto 从 __go 挪到这里，
      否则两个元素各自贴底，会把「去看看」和速度挤到不同高度。 */
