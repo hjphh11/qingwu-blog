@@ -55,6 +55,14 @@
       "url": "https://blog.moesam.com",
       "visible": true,
       "addedAt": "2026-10-31"
+    },
+    {
+      "name": "RAGNote",
+      "avatar": "https://ragnote.top/Avatar.png",
+      "intro": "Life is code. I will debug it.",
+      "url": "https://ragnote.top",
+      "visible": true,
+      "addedAt": "2026-11-02"
     }
   ]
 }
