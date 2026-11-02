@@ -23,49 +23,46 @@ import { friends } from '../../data/links';
 
     {
       friends.length > 0 ? (
-        <div class="reveal grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
-          {
-            friends.map((f) => (
-              <a
-                href={f.url}
-                target="_blank"
-                rel="noreferrer"
-                class="glass-card card-spotlight group flex flex-col items-center gap-4 p-7 text-center card-lift"
-              >
-                {/* 友链头像是外站图,最容易出现「白 → 图」的硬切,所以占位最有用。
-                    白色描边(.ring)挪到占位容器上:留在 img 上会露出容器渐变
-                    的一圈玫瑰色边。 */}
-                <span class="q-media block h-[72px] w-[72px] rounded-full ring-2 ring-white/70">
-                  {/* ⚠️ referrerpolicy="no-referrer" 不能删：友链头像是外站图，
-                      有些站（比如 ragnote.top）用 Cloudflare 开了 Referer 防盗链 ——
-                      带任何站点 Referer 都回 403 + text/plain，Chrome 的 ORB 随即把
-                      图片请求判成不透明响应直接拦掉，页面上就是一张破图。
-                      浏览器请求默认带 Referer，所以必须由我们这边声明「不发」。
-                      实测：不带 Referer 200 / 70KB，带 qingwu.ink 的 Referer 403。 */}
-                  <img
-                    src={f.avatar}
-                    alt={f.name}
-                    width={72}
-                    height={72}
-                    loading="lazy"
-                    decoding="async"
-                    referrerpolicy="no-referrer"
-                    class="h-[72px] w-[72px] rounded-full object-cover transition-transform duration-300 group-hover:scale-[1.04]"
-                  />
-                </span>
-                <div>
-                  <p class="font-display text-lg text-ink transition-colors group-hover:text-accent">
-                    {f.name}
-                  </p>
-                  <p class="mt-1.5 text-sm leading-relaxed text-muted">{f.intro}</p>
-                </div>
-                <span class="mt-auto inline-flex items-center gap-1 pt-1 text-[length:var(--text-label)] text-accent">
-                  去看看
-                  <MorphIcon icon={ChevronRight} size={12} />
-                </span>
-              </a>
-            ))
-          }
+        <div class="q-links-wall" data-links-wall>
+          {friends.map((f, i) => (
+            <a
+              href={f.url}
+              target="_blank"
+              rel="noreferrer"
+              class="q-links-card glass-card card-spotlight group"
+              style={`--i:${i};--tall:${[1, 0.86, 1.18, 0.94][i % 4]}`}
+            >
+              {/* 友链头像是外站图,最容易出现「白 → 图」的硬切,所以占位最有用。
+                  白色描边(.ring)挪到占位容器上:留在 img 上会露出容器渐变
+                  的一圈玫瑰色边。 */}
+              <span class="q-media q-links-card__avatar">
+                {/* ⚠️ referrerpolicy="no-referrer" 不能删：友链头像是外站图，
+                    有些站（比如 ragnote.top）用 Cloudflare 开了 Referer 防盗链 ——
+                    带任何站点 Referer 都回 403 + text/plain，Chrome 的 ORB 随即把
+                    图片请求判成不透明响应直接拦掉，页面上就是一张破图。
+                    浏览器请求默认带 Referer，所以必须由我们这边声明「不发」。
+                    实测：不带 Referer 200 / 70KB，带 qingwu.ink 的 Referer 403。 */}
+                <img
+                  src={f.avatar}
+                  alt={f.name}
+                  width={68}
+                  height={68}
+                  loading="lazy"
+                  decoding="async"
+                  referrerpolicy="no-referrer"
+                />
+              </span>
+              <p class="q-links-card__name">{f.name}</p>
+              <p class="q-links-card__intro">{f.intro}</p>
+              {/* 域名放在最后一行：卡片是竖长条，只有名字+一句话会空掉半张，
+                  补个域名既填了空、也让人一眼看到跳去哪 */}
+              <p class="q-links-card__host">{f.url.replace(/^https?:\/\//, '').replace(/\/$/, '')}</p>
+              <span class="q-links-card__go">
+                去看看
+                <MorphIcon icon={ChevronRight} size={12} />
+              </span>
+            </a>
+          ))}
         </div>
       ) : (
         <div class="glass-card q-empty p-12">
@@ -91,4 +88,68 @@ import { friends } from '../../data/links';
       >页联系我 ~
     </p>
   </div>
+
+  <script>
+    /*
+     * 友链墙的「流动」：滚动时给每张卡写一个 --shift，相邻列方向相反。
+     *
+     * 为什么不在 CSS 里做：`animation-timeline: view()` 能干这件事，但 Safari 还不支持，
+     * 而这条墙的观感全靠「滚动时有点层次」，不支持就等于没做。所以用 rAF 手写。
+     *
+     * 位移只有十几像素 —— 大了就变成「卡片在乱飘」，会盖住旁边的东西；
+     * 这里要的是「往下滑的时候，这面墙有风穿过」，不是每张卡各自漂移。
+     * reduced-motion 下直接不挂监听（--shift 不写，卡片就停在原位）。
+     */
+    let teardownLinksFlow = () => {};
+
+    function initLinksFlow() {
+      teardownLinksFlow();
+      const wall = document.querySelector<HTMLElement>('[data-links-wall]');
+      if (!wall) return;
+      if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+
+      const cards = Array.from(wall.querySelectorAll<HTMLElement>('.q-links-card'));
+      if (cards.length < 2) return;
+
+      const AMP = 8; // 列间差速（相邻列反向）
+      const TRAVEL = 26; // 整面墙穿过视口时走过的总行程
+      let raf = 0;
+
+      const update = () => {
+        raf = 0;
+        /* 用「这面墙在视口里的进度」而不是 scrollY：
+           scrollY 会一直累加，滚到页面底部位移就偏出去了；
+           进度是 0→1 的，卡片进来时略微坠在后面、离开时略微拖上去，
+           来回滚都不会漂走。 */
+        const rect = wall.getBoundingClientRect();
+        const p = (window.innerHeight - rect.top) / (window.innerHeight + rect.height);
+        const base = (Math.min(1, Math.max(0, p)) - 0.5) * TRAVEL;
+        cards.forEach((el, i) => {
+          // 四列轮流 -1.5 / -0.5 / 0.5 / 1.5：相邻列反向，才有「层」的错觉
+          const k = (i % 4) - 1.5;
+          const shift = base + k * p * AMP;
+          el.style.setProperty('--shift', `${shift.toFixed(2)}px`);
+        });
+      };
+
+      const onScroll = () => {
+        if (!raf) raf = requestAnimationFrame(update);
+      };
+
+      window.addEventListener('scroll', onScroll, { passive: true });
+      window.addEventListener('resize', onScroll);
+      update();
+
+      teardownLinksFlow = () => {
+        window.removeEventListener('scroll', onScroll);
+        window.removeEventListener('resize', onScroll);
+        if (raf) cancelAnimationFrame(raf);
+        cards.forEach((el) => el.style.removeProperty('--shift'));
+      };
+    }
+
+    document.addEventListener('astro:page-load', initLinksFlow);
+    if (document.readyState !== 'loading') initLinksFlow();
+    else document.addEventListener('DOMContentLoaded', initLinksFlow, { once: true });
+  </script>
 </Layout>

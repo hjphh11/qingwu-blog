@@ -100,6 +100,12 @@
     animation: none;
   }
 
+  /* 友链卡片入场：减动效下不做错峰淡入（滚动视差在脚本里已提前 return） */
+  .qjs .q-links-card {
+    opacity: 1;
+    animation: none;
+  }
+
   /* 降低动效:所有悬停位移/缩放一律关掉(之前 Tailwind 的 hover:-translate-y-1
      不受这个偏好影响,开着「减少动效」还是会动,是明确的可用性问题) */
   *,

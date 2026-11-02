@@ -381,6 +381,144 @@
     }
   }
 
+  /* ── 友链页：竖卡瀑布流 + 滚动流动 ─────────────────────────
+     卡片竖着排（头像在上、文字在下），用 multi-column 让高度不一的卡
+     自己往下顺延，形成错落；每张再交替倾斜一点点、最小高度各不同，
+     看起来像一墙随手贴上去的纸条，而不是一排对齐的方砖。
+     滚动时脚本给每张卡写 --shift（相邻列方向相反），往下滑时整面墙
+     像有风穿过 —— 位移只有十几像素，是「有层次」，不是「在飘」。
+
+     ⚠️ transform 里必须同时带 --shift 和 --tilt：视差和倾斜都在这一条上，
+        分开写会互相覆盖（这是本项目 .q-emis 三层分开的根本原因，这里只有一层）。 */
+  .q-links-wall {
+    columns: 4;
+    column-gap: 1.1rem;
+  }
+  @media (max-width: 1023px) {
+    .q-links-wall {
+      columns: 3;
+    }
+  }
+  @media (max-width: 767px) {
+    .q-links-wall {
+      columns: 2;
+      column-gap: 0.875rem;
+    }
+  }
+  @media (max-width: 479px) {
+    .q-links-wall {
+      columns: 1;
+    }
+  }
+
+  .q-links-card {
+    /* 多列布局里必须 avoid，否则卡片会被从中间劈到下一列 */
+    break-inside: avoid;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.6rem;
+    padding: 1.6rem 1rem 1.25rem;
+    margin-bottom: 1.1rem;
+    text-align: center;
+    /* 高度错落：--tall 由页面按下标给（1 / 0.86 / 1.18 / 0.94）。
+       竖向拉长是有意的 —— 方卡片看着像表格，竖长条才像「贴在墙上的纸条」。
+       ⚠️ 列数固定 4：8 个友链刚好两排；试过 5 列，多列列平衡会把卡片塞成
+       2/1/2/2/1，中间空出一大块，看着像漏了。 */
+    min-height: calc(18.5rem * var(--tall, 1));
+    transform: translate3d(0, var(--shift, 0px), 0) rotate(var(--tilt, 0deg));
+    transition:
+      transform var(--dur-state) var(--ease-out-expo),
+      box-shadow var(--dur-state) var(--ease-soft);
+    will-change: transform;
+  }
+  .q-links-card:nth-child(3n + 1) {
+    --tilt: -0.55deg;
+  }
+  .q-links-card:nth-child(3n + 2) {
+    --tilt: 0.42deg;
+  }
+  .q-links-card:nth-child(3n + 3) {
+    --tilt: -0.26deg;
+  }
+  .q-links-card:hover {
+    transform: translate3d(0, calc(var(--shift, 0px) - 4px), 0) rotate(0deg);
+  }
+
+  .q-links-card__avatar {
+    display: block;
+    width: 68px;
+    height: 68px;
+    border-radius: 999px;
+    box-shadow: 0 0 0 2px rgb(255 255 255 / 0.72);
+  }
+  .q-links-card__avatar img {
+    width: 100%;
+    height: 100%;
+    border-radius: 999px;
+    object-fit: cover;
+    transition: transform var(--dur-state) var(--ease-out-expo);
+  }
+  .q-links-card:hover .q-links-card__avatar img {
+    transform: scale(1.06);
+  }
+
+  .q-links-card__name {
+    font-family: var(--font-display);
+    font-size: 1.05rem;
+    line-height: 1.3;
+    color: var(--color-ink);
+    transition: color var(--dur-micro) var(--ease-soft);
+  }
+  .q-links-card:hover .q-links-card__name {
+    color: var(--color-accent);
+  }
+  /* ⚠️ 必须写在 .q-links-card 主规则**之后**：同优先级下后写的赢，
+     放在前面会被主规则的 min-height 覆盖（踩过一次，手机上卡片还是一屏两张那么高）。
+     单列时卡片是通栏的，再套 18.5rem 的最小高度就变得又高又空。 */
+  @media (max-width: 479px) {
+    .q-links-card {
+      min-height: 0;
+      padding: 1.35rem 1.1rem 1.15rem;
+    }
+  }
+  .q-links-card__intro {
+    font-size: var(--text-label);
+    line-height: 1.75;
+    color: var(--color-muted);
+  }
+  .q-links-card__host {
+    margin-top: 0.15rem;
+    font-size: 0.6875rem;
+    line-height: 1.4;
+    letter-spacing: 0.02em;
+    color: var(--color-subtle);
+  }
+  .q-links-card__go {
+    margin-top: auto;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.2rem;
+    padding-top: 0.35rem;
+    font-size: var(--text-label);
+    color: var(--color-accent);
+  }
+
+  /* 入场：轻微错峰淡入。--i 由页面按下标给，无 JS 时整块可见。 */
+  .qjs .q-links-card {
+    opacity: 0;
+    animation: q-links-in 0.55s var(--ease-out-expo) forwards;
+    animation-delay: calc(var(--i, 0) * 55ms);
+  }
+  @keyframes q-links-in {
+    from {
+      opacity: 0;
+    }
+    to {
+      opacity: 1;
+    }
+  }
+
   /* ============================================================
      开屏动画 —— 爱弥斯现身 → 打招呼 → FLIP 位移归位到首页立绘原位
      三阶段时间线与验收标准见 docs/开屏与全部加载动画-完整设计文档.html 第 02 节。
