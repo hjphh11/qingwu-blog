@@ -100,3 +100,6 @@ docs/后台迁移-Cloudflare方案.md
 .tmp-mig/
 .tmp-*/
 .astro-old-tmp/
+
+# 局域网自建部署的脚本与截图（见 README「局域网部署」）
+.deploy/
