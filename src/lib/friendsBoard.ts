@@ -3,10 +3,11 @@ import { avatarFromEmail, emailHash as emailHashOf } from './avatar';
 /**
  * 友链评论区 · 数据层
  *
- * 这一版前端形态已完整，数据仍是演示的：
- *   · `FRIENDS_BOARD_DEMO = true` → 读本地 `DEMO_ENTRIES`，提交只在前端插入，不落库
- *   · 接好后端后把它改成 false，并实现下面两个函数真正的请求即可，
- *     组件（`FriendsBoard.tsx`）不用动。
+ * **已经接上线上 Worker**（api.qingwu.ink 的 /friends-board）：
+ *   · 读列表、留言、回复、点赞都走真实接口，数据落 D1
+ *   · `FRIENDS_BOARD_DEMO = false`
+ *   · 想回到纯前端演示（比如接口挂了临时预览样式），把它改回 true 即可，
+ *     组件不用动。
  *
  * 为什么单独抽一层：评论区要的是「公开可读的申请列表」，而现有 Worker 的
  * `GET /apply` 带口令才给数据（里面含访客邮箱，是隐私）。公开读必须走一条
@@ -53,8 +54,13 @@ export interface FriendReply {
   at: string;
 }
 
-/** 演示模式开关：接上后端后改成 false */
-export const FRIENDS_BOARD_DEMO = true;
+/**
+ * 演示模式开关。
+ *
+ * false = 走线上 Worker（当前状态）；true = 用本地 DEMO_ENTRIES、什么都不落库。
+ * 留着这个开关是为了断网/接口故障时还能预览样式，不是给生产用的。
+ */
+export const FRIENDS_BOARD_DEMO = false;
 
 /**
  * 留言模板 —— 指引区和评论框的「插入模板」共用这一份。
