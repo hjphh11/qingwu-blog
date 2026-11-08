@@ -293,7 +293,7 @@ export default function FriendsBoard() {
           <div className="flex items-stretch border-b border-dashed border-rose/25">
             <span
               aria-hidden="true"
-              className="ml-4 mr-1 hidden h-9 w-9 shrink-0 self-center overflow-hidden rounded-full bg-rose/15 ring-1 ring-rose/25 sm:flex"
+              className="ml-4 mr-1 hidden h-9 w-9 shrink-0 items-center justify-center self-center overflow-hidden rounded-full bg-rose/15 ring-1 ring-rose/25 sm:flex"
             >
               {mailSrc ? (
                 <img
