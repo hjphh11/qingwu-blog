@@ -1,7 +1,9 @@
+import { avatarFromEmail, emailHash as emailHashOf } from './avatar';
+
 /**
  * 友链评论区 · 数据层
  *
- * 这一版只做「前端形态」，数据全部是演示用的：
+ * 这一版前端形态已完整，数据仍是演示的：
  *   · `FRIENDS_BOARD_DEMO = true` → 读本地 `DEMO_ENTRIES`，提交只在前端插入，不落库
  *   · 接好后端后把它改成 false，并实现下面两个函数真正的请求即可，
  *     组件（`FriendsBoard.tsx`）不用动。
@@ -37,6 +39,8 @@ export interface FriendEntry {
   likes?: number;
   /** 楼中楼 —— 只做一层，不嵌套 */
   replies?: FriendReply[];
+  /** 邮箱的 MD5 —— 只用于「QQ 头像挂了就换 Cravatar」的兜底，不是邮箱本身 */
+  emailHash?: string;
 }
 
 /** 一条回复 */
@@ -228,7 +232,10 @@ export type SubmitResult =
 /** 提交一条申请 */
 export async function submitFriendEntry(input: SubmitInput): Promise<SubmitResult> {
   const url = normalizeUrl(input.url);
-  const avatar = input.avatar ? normalizeUrl(input.avatar) : '';
+  // ⚠️ 兜底要在这里做，不能留到前端渲染时按哈希拼 URL：
+  //   哈希只认得出「哪个邮箱」，认不出「这是不是 QQ 邮箱」，
+  //   QQ 用户就会看到 Cravatar 的剪影而不是自己的 QQ 头像。
+  const avatar = input.avatar ? normalizeUrl(input.avatar) : avatarFromEmail(input.email || '');
 
   if (FRIENDS_BOARD_DEMO) {
     await new Promise((r) => setTimeout(r, 700));
@@ -239,9 +246,11 @@ export async function submitFriendEntry(input: SubmitInput): Promise<SubmitResul
         name: input.name.trim(),
         url,
         avatar,
+        avatarHash: emailHashOf(input.email || ''),
         intro: input.intro.trim(),
         at: new Date().toISOString(),
         status: 'pending',
+        emailHash: emailHashOf(input.email || ''),
       },
     };
   }
@@ -255,6 +264,7 @@ export async function submitFriendEntry(input: SubmitInput): Promise<SubmitResul
         email: (input.email || '').trim(),
         url,
         avatar,
+        avatarHash: emailHashOf(input.email || ''),
         intro: input.intro.trim(),
       }),
       signal: AbortSignal.timeout(12000),

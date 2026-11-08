@@ -33,6 +33,7 @@ import {
   type FriendReply,
 } from '../lib/friendsBoard';
 import { APPLY_LIMITS } from '../lib/applyValidation';
+import { avatarFromEmail, avatarFromHash, emailHash as emailHashOf } from '../lib/avatar';
 
 /**
  * 友链页底部 · 申请友链的评论区
@@ -67,6 +68,11 @@ export default function FriendsBoard() {
   const [notice, setNotice] = useState<{ kind: 'ok' | 'warn'; text: string } | null>(null);
 
   const [sort, setSort] = useState<SortKey>('new');
+  /**
+   * 邮箱头像的加载阶梯：0 = QQ 头像（QQ 邮箱）/ Cravatar，1 = 强制 Cravatar，2 = 放弃。
+   * 邮箱一改就回到 0 重试 —— QQ 头像接口在部分网络下会 400（本机实测过）。
+   */
+  const [mailStage, setMailStage] = useState(0);
   /** 本机点过赞的条目 id —— 演示阶段存 localStorage，接后端后由接口返回 */
   const [liked, setLiked] = useState<string[]>([]);
   /** 刚提交成功的那条 —— 高亮一会儿，并从任何筛选里都可见 */
@@ -76,6 +82,8 @@ export default function FriendsBoard() {
   useEffect(() => setNow(Date.now()), []);
   // 本机点过哪些赞：只能在客户端读（localStorage 在 SSR 里不存在）
   useEffect(() => setLiked(readLiked()), []);
+  // 换邮箱就回到第 0 级重试头像（上一张可能是 QQ 接口挂了）
+  useEffect(() => setMailStage(0), [values.email]);
 
   useEffect(() => {
     let alive = true;
@@ -97,6 +105,10 @@ export default function FriendsBoard() {
   }, []);
 
   const count = entries.length;
+  /** 填了邮箱就按 Gravatar/QQ 规则算出预览头像 —— 和 Waline 一个路子 */
+  const mailAvatar = useMemo(() => avatarFromEmail(values.email), [values.email]);
+  const mailSrc =
+    mailStage === 0 ? mailAvatar : mailStage === 1 ? avatarFromHash(emailHashOf(values.email)) : '';
   /** 只报第一条错：三个字段挤在一行，每条都堆一行红字会把表单撑散 */
   const firstError = useMemo(() => Object.values(errors).find(Boolean) ?? '', [errors]);
 
@@ -276,8 +288,33 @@ export default function FriendsBoard() {
           noValidate
           className="relative mt-4 rounded-[var(--radius-card)] border border-rose/25 bg-white/55 transition-colors focus-within:border-rose/45"
         >
-          {/* 三字段一行。参考站是「昵称 / 邮箱 / 网址」，我们第一格用站点名 */}
-          <div className="grid divide-y divide-dashed divide-rose/25 border-b border-dashed border-rose/25 sm:grid-cols-3 sm:divide-x sm:divide-y-0">
+          {/* 左边是邮箱头像预览（填了邮箱才会亮），右边三字段一行。
+              移动端藏头像 —— 三格本来就堆叠，再挤个圆更窄 */}
+          <div className="flex items-stretch border-b border-dashed border-rose/25">
+            <span
+              aria-hidden="true"
+              className="ml-3 hidden w-11 shrink-0 items-center justify-center self-center overflow-hidden rounded-full bg-rose/15 ring-2 ring-white/70 sm:flex"
+            >
+              {mailSrc ? (
+                <img
+                  src={mailSrc}
+                  alt=""
+                  width={44}
+                  height={44}
+                  loading="lazy"
+                  decoding="async"
+                  referrerPolicy="no-referrer"
+                  onError={() => setMailStage((s) => s + 1)}
+                  className="h-full w-full object-cover"
+                />
+              ) : (
+                <span className="text-subtle">
+                  <MorphIcon icon={Mail} size={15} color="currentColor" />
+                </span>
+              )}
+            </span>
+
+            <div className="grid min-w-0 flex-1 divide-y divide-dashed divide-rose/25 sm:grid-cols-3 sm:divide-x sm:divide-y-0">
             <label className="flex min-w-0 items-center gap-2 px-4 py-3">
               <span className="text-rose">
                 <MorphIcon icon={Globe} size={14} color="currentColor" />
@@ -334,6 +371,7 @@ export default function FriendsBoard() {
                 className={inputCls(Boolean(errors.url))}
               />
             </label>
+            </div>
           </div>
 
           {/* 正文 */}
@@ -530,6 +568,20 @@ function EntryRow({
   const approved = entry.status === 'approved';
   const host = hostOf(entry.url);
   const initial = (entry.name || '·').trim().slice(0, 1);
+  /**
+   * 头像：提交时就把「没填头像但有邮箱」的地址算好了。
+   * 但 QQ 头像接口会挂（本机实测 400），所以加载失败时先退 Cravatar，
+   * 还不行才回落到名字首字 —— 三档兜底。
+   */
+  const [avatarSrc, setAvatarSrc] = useState(entry.avatar);
+  const failAvatar = () => {
+    const fallback = avatarFromHash(entry.emailHash || '');
+    if (fallback && !avatarSrc.includes('cravatar.cn')) {
+      setAvatarSrc(fallback);
+      return;
+    }
+    setBroken(true);
+  };
   const replies = entry.replies ?? [];
   /** 票数只认 entry.likes：演示模式在 toggleLike 里就改好了，真实模式是服务端返回的 */
   const likes = entry.likes ?? 0;
@@ -559,9 +611,9 @@ function EntryRow({
       }`}
     >
       <span className="mt-px h-10 w-10 shrink-0 overflow-hidden rounded-full bg-gradient-to-br from-rose/35 to-amber/25 ring-2 ring-white/70">
-        {entry.avatar && !broken ? (
+        {avatarSrc && !broken ? (
           <img
-            src={entry.avatar}
+            src={avatarSrc}
             alt=""
             width={40}
             height={40}
@@ -569,7 +621,7 @@ function EntryRow({
             decoding="async"
             // 外站头像同样会被 Referer 防盗链拦掉，和友链墙一个道理
             referrerPolicy="no-referrer"
-            onError={() => setBroken(true)}
+            onError={failAvatar}
             className="h-full w-full object-cover"
           />
         ) : (

@@ -39,6 +39,8 @@ interface CommentRow {
   body: string;
   status: string;
   ts: number;
+  /** 邮箱的 MD5 —— 列表靠它取 Gravatar/QQ 头像，**不是邮箱本身** */
+  email_hash: string | null;
 }
 
 // ——————————————————————————————————————————————————————————
@@ -82,6 +84,8 @@ interface Payload {
   url?: unknown;
   avatar?: unknown;
   intro?: unknown;
+  /** 前端算好的邮箱 MD5（只决定头像长什么样，校验格式后存） */
+  avatarHash?: unknown;
 }
 
 interface Clean {
@@ -122,6 +126,7 @@ function toEntry(row: CommentRow, replies: CommentRow[], likes: number) {
     at: new Date(row.ts).toISOString(),
     // 留言默认即时可见；站长在后台改成 pending 就是「等我看看」
     status: row.status === 'pending' ? ('pending' as const) : ('approved' as const),
+    emailHash: row.email_hash ?? '',
     likes,
     replies: replies.map((r) => ({
       id: `c-${r.id}`,
@@ -140,7 +145,7 @@ export async function getFriendsBoard(request: Request, env: Env): Promise<Respo
   const headers = withCors(request, env);
   try {
     const rows = await env.DB.prepare(
-      `SELECT id, parent_id, author, author_url, avatar, body, status, ts
+      `SELECT id, parent_id, author, author_url, avatar, body, status, ts, email_hash
        FROM comments WHERE post_slug = ? AND status != 'deleted'
        ORDER BY ts DESC LIMIT 300`,
     )
@@ -214,11 +219,25 @@ export async function postFriendsBoard(request: Request, env: Env, ctx: Executio
   }
 
   try {
+    // 只认 32 位 hex；它只决定头像，所以前端传什么都不会影响安全
+    const hashRaw = String(body.avatarHash ?? '').trim().toLowerCase();
+    const hash = /^[a-f0-9]{32}$/.test(hashRaw) ? hashRaw : null;
+
     const res = await env.DB.prepare(
-      `INSERT INTO comments (post_slug, parent_id, author, email, author_url, avatar, body, status, ts, ip_hash)
-       VALUES (?, NULL, ?, ?, ?, ?, ?, 'visible', ?, ?)`,
+      `INSERT INTO comments (post_slug, parent_id, author, email, email_hash, author_url, avatar, body, status, ts, ip_hash)
+       VALUES (?, NULL, ?, ?, ?, ?, ?, ?, 'visible', ?, ?)`,
     )
-      .bind(SLUG, v.v.name, v.v.email || null, v.v.url || null, v.v.avatar || null, v.v.intro, now, key)
+      .bind(
+        SLUG,
+        v.v.name,
+        v.v.email || null,
+        hash,
+        v.v.url || null,
+        v.v.avatar || null,
+        v.v.intro,
+        now,
+        key,
+      )
       .run();
 
     const id = Number(res.meta.last_row_id);
@@ -245,6 +264,7 @@ export async function postFriendsBoard(request: Request, env: Env, ctx: Executio
           intro: v.v.intro,
           at: new Date(now).toISOString(),
           status: 'approved',
+          emailHash: hash ?? '',
           likes: 0,
           replies: [],
         },
