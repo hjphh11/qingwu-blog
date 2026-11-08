@@ -35,6 +35,16 @@ export interface Env {
 
   /** 允许跨源调用 /hit 的站点，逗号分隔；`*` = 不限制 */
   ALLOWED_ORIGINS?: string;
+
+  /**
+   * Resend 发信密钥（`wrangler secret put RESEND_KEY`）。
+   * **没配就不发信**，接口照常成功 —— 邮件是锦上添花，不能卡住留言。
+   */
+  RESEND_KEY?: string;
+  /** 发件人，例如 `清吾 <noreply@qingwu.ink>`；域名需在 Resend 验证过 */
+  MAIL_FROM?: string;
+  /** 有人留言时通知谁（站长邮箱）。没配 = 不通知站长 */
+  MAIL_TO?: string;
   /** /stats 响应里回显的数据来源（纯展示）。默认 cloudflare-d1 / hits */
   STATS_SOURCE_REPO?: string;
   STATS_SOURCE_PATH?: string;

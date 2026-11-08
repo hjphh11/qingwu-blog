@@ -1,0 +1,293 @@
+---
+/**
+ * 友链页 · 申请指引（本站信息 / 三步流程 / 注意事项）
+ *
+ * 结构和参考站一致：
+ *   左卡 = 我这边要提供给对方的信息，每条都能一键复制
+ *   右卡 = 三步流程，第 2 步内嵌一段「填自己的」模板，也能一键复制
+ *   下卡 = 注意事项
+ *
+ * 为什么放在友链墙之后、评论区之前：
+ *   访客刚看完这面墙 → 想知道「怎么加入」→ 先给规则和材料 → 再到下面开口说话。
+ *   顺序反过来（先评论再说规则）会让人贴完才发现不合规。
+ *
+ * 这一块**纯静态**，不需要 client 指令；复制靠页尾那段事件委托脚本。
+ */
+import MorphIcon from 'morphicons/astro';
+import { Copy, Check, ClipboardList, Info, Rss } from '../lib/icons';
+import { SITE } from '../config';
+import { COMMENT_TEMPLATE } from '../lib/friendsBoard';
+
+/** 我这边要提供的信息。顺序 = 对方抄写时的顺序，别乱调 */
+const MY_FIELDS = [
+  { key: 'name', label: '站点名称', value: SITE.title },
+  { key: 'desc', label: '站点描述', value: SITE.description },
+  { key: 'url', label: '站点链接', value: SITE.url },
+  { key: 'avatar', label: '头像链接', value: `${SITE.url}/images/avatar.jpg` },
+  { key: 'shot', label: '主页截图', value: `${SITE.url}/images/home.png` },
+  { key: 'rss', label: 'RSS 地址', value: `${SITE.url}/rss.xml` },
+];
+
+const NOTES = [
+  { title: '互换原则', text: '请先把本站加到你的友链页面，我看到之后就会把你加进来。' },
+  { title: '链接维护', text: '长期无法访问、或者内容变了的站，会被撤下来。' },
+  { title: '内容要求', text: '内容积极向上，不含色情 / 反动 / 暴力等违法违规内容。' },
+  { title: '站点要求', text: '支持 HTTPS，以原创内容为主，能正常访问且还在更新。' },
+];
+---
+
+<section id="apply-guide" class="mt-16 scroll-mt-24" aria-labelledby="apply-guide-title">
+  <div class="grid gap-4 lg:grid-cols-12">
+    {/* ——— 左：本站信息 ——— */}
+    <div class="glass-card min-w-0 p-5 sm:p-7 lg:col-span-5">
+      <div class="flex items-start gap-3.5">
+        <img
+          src="/images/avatar.jpg"
+          alt=""
+          width={56}
+          height={56}
+          loading="lazy"
+          decoding="async"
+          class="h-14 w-14 shrink-0 rounded-2xl object-cover ring-2 ring-white/70"
+        />
+        <div class="min-w-0 pt-0.5">
+          <p class="font-display text-[1.25rem] leading-tight text-ink">{SITE.title}</p>
+          <p class="mt-1 text-xs leading-relaxed text-subtle">{SITE.description}</p>
+        </div>
+      </div>
+
+      <p class="mt-5 text-xs text-subtle">每一条都能单独复制；不想一条条点，也可以一次全拿走。</p>
+
+      <ul class="mt-2.5 flex flex-col gap-2">
+        {
+          MY_FIELDS.map((f) => (
+            <li class="flex items-center gap-3 rounded-[calc(var(--radius-card)-8px)] border border-rose/15 bg-white/45 px-3.5 py-2.5">
+              <div class="min-w-0 flex-1">
+                <p class="text-[11px] leading-none text-subtle">{f.label}</p>
+                <p id={`ag-${f.key}`} class="mt-1.5 [overflow-wrap:anywhere] text-[13px] leading-snug text-ink">
+                  {f.value}
+                </p>
+              </div>
+              <button
+                type="button"
+                data-copy-target={`ag-${f.key}`}
+                aria-label={`复制${f.label}`}
+                title={`复制${f.label}`}
+                class="grid h-8 w-8 shrink-0 place-items-center rounded-lg border border-rose/25 bg-white/70 text-crimson transition-colors hover:border-rose/50 hover:bg-rose/15"
+              >
+                <span data-copy-icon>
+                  <MorphIcon icon={Copy} size={14} color="currentColor" />
+                </span>
+                <span data-done-icon hidden>
+                  <MorphIcon icon={Check} size={14} color="currentColor" />
+                </span>
+              </button>
+            </li>
+          ))
+        }
+      </ul>
+
+      {/* 一键全拿：挨个点六次太麻烦，对方多半是直接粘贴到自己的 links 页 */}
+      <p id="ag-all" class="sr-only">{MY_FIELDS.map((f) => `${f.label}：${f.value}`).join('\n')}</p>
+      <button
+        type="button"
+        data-copy-target="ag-all"
+        aria-label="复制全部站点信息"
+        class="btn-ripple mt-3 flex w-full items-center justify-center gap-2 rounded-full border border-rose/30 bg-white/60 px-4 py-2.5 text-[13px] text-ink transition-colors hover:border-rose/55 hover:text-crimson"
+      >
+        <span data-copy-icon>
+          <MorphIcon icon={Copy} size={14} color="currentColor" />
+        </span>
+        <span data-done-icon hidden>
+          <MorphIcon icon={Check} size={14} color="currentColor" />
+        </span>
+        复制全部信息
+      </button>
+    </div>
+
+    {/* ——— 右：三步 ——— */}
+    <div class="glass-card min-w-0 p-5 sm:p-7 lg:col-span-7">
+      <h2 id="apply-guide-title" class="flex items-center gap-2 font-display text-[1.35rem] text-ink">
+        <span class="text-crimson">
+          <MorphIcon icon={ClipboardList} size={20} color="currentColor" />
+        </span>
+        申请友链
+      </h2>
+
+      <ol class="mt-5">
+        <li class="relative pb-7">
+          <span class="absolute bottom-1 left-[15px] top-9 w-px bg-rose/25" aria-hidden="true"></span>
+          <div class="flex gap-3.5">
+            <span
+              class="relative z-10 grid h-8 w-8 shrink-0 place-items-center rounded-full bg-crimson text-[13px] font-medium text-white"
+              aria-hidden="true">1</span
+            >
+            <div class="min-w-0 flex-1 pt-0.5">
+              <p class="text-sm font-medium text-ink">添加本站友链</p>
+              <p class="mt-1 text-[13px] leading-relaxed text-muted">
+                先在你的友链页面加上本站的信息，左边每一条都能一键复制。
+              </p>
+            </div>
+          </div>
+        </li>
+
+        <li class="relative pb-7">
+          <span class="absolute bottom-1 left-[15px] top-9 w-px bg-rose/25" aria-hidden="true"></span>
+          <div class="flex gap-3.5">
+            <span
+              class="relative z-10 grid h-8 w-8 shrink-0 place-items-center rounded-full bg-crimson text-[13px] font-medium text-white"
+              aria-hidden="true">2</span
+            >
+            <div class="min-w-0 flex-1 pt-0.5">
+              <p class="text-sm font-medium text-ink">在评论区留言</p>
+              <p class="mt-1 text-[13px] leading-relaxed text-muted">
+                直接填下面那张表最省事；想一次给全（主页截图、RSS）的话，把这段复制走改一改再贴上去。
+              </p>
+
+              <div class="relative mt-3 rounded-[calc(var(--radius-card)-8px)] border border-rose/20 bg-white/60 p-3.5 pr-12">
+                <pre
+                  id="ag-template"
+                  class="whitespace-pre-wrap [overflow-wrap:anywhere] font-[var(--font-body)] text-[12.5px] leading-relaxed text-muted">{COMMENT_TEMPLATE}</pre>
+                <button
+                  type="button"
+                  data-copy-target="ag-template"
+                  aria-label="复制留言模板"
+                  title="复制留言模板"
+                  class="absolute right-2.5 top-2.5 grid h-8 w-8 place-items-center rounded-lg border border-rose/25 bg-white/80 text-crimson transition-colors hover:border-rose/50 hover:bg-rose/15"
+                >
+                  <span data-copy-icon>
+                    <MorphIcon icon={Copy} size={14} color="currentColor" />
+                  </span>
+                  <span data-done-icon hidden>
+                    <MorphIcon icon={Check} size={14} color="currentColor" />
+                  </span>
+                </button>
+              </div>
+            </div>
+          </div>
+        </li>
+
+        <li class="relative">
+          <div class="flex gap-3.5">
+            <span
+              class="relative z-10 grid h-8 w-8 shrink-0 place-items-center rounded-full bg-crimson text-[13px] font-medium text-white"
+              aria-hidden="true">3</span
+            >
+            <div class="min-w-0 flex-1 pt-0.5">
+              <p class="text-sm font-medium text-ink">等我看一眼</p>
+              <p class="mt-1 text-[13px] leading-relaxed text-muted">
+                信息没问题就会尽快加进来，加好了在评论区回你一声。
+              </p>
+            </div>
+          </div>
+        </li>
+      </ol>
+
+      <p class="mt-5 border-t border-rose/15 pt-3.5 text-[11px] leading-relaxed text-subtle">
+        站点照片、邮箱这类不公开的信息，走
+        <a href="/links/apply" class="mx-0.5 text-crimson underline-offset-2 hover:underline">
+          完整申请表
+        </a>
+        填更合适。
+      </p>
+    </div>
+  </div>
+
+  {/* ——— 下：注意事项 ——— */}
+  <div class="glass-card mt-4 p-5 sm:p-7">
+    <h2 class="flex items-center gap-2 font-display text-[1.15rem] text-ink">
+      <span class="text-crimson">
+        <MorphIcon icon={Info} size={17} color="currentColor" />
+      </span>
+      注意事项
+    </h2>
+    <ul class="mt-3.5 grid gap-2.5 sm:grid-cols-2">
+      {
+        NOTES.map((n) => (
+          <li class="flex items-baseline gap-2.5 text-[13px] leading-relaxed text-muted">
+            <span class="mt-[7px] h-1.5 w-1.5 shrink-0 rounded-full bg-crimson/60" aria-hidden="true" />
+            <p>
+              <strong class="font-medium text-ink">{n.title}</strong>
+              ：{n.text}
+            </p>
+          </li>
+        ))
+      }
+    </ul>
+    <p class="mt-4 flex items-center gap-1.5 text-[11px] text-subtle">
+      <MorphIcon icon={Rss} size={12} color="currentColor" />
+      加上 RSS 的话，我这边能顺带显示你最近更新的时间。
+    </p>
+  </div>
+</section>
+
+<script>
+  /**
+   * 一键复制。
+   *
+   * 用 document 级事件委托，**不直接绑按钮** ——
+   * 页内 <script> 是模块，首屏只跑一次；Astro 换页后 DOM 换新但脚本不重跑，
+   * 绑在元素上的监听全落在废弃节点上（踩过）。
+   *
+   * ⚠️ 取文本必须用 `textContent`，不能用 `innerText`：
+   *    「复制全部信息」那份文本放在 `.sr-only` 的 <p> 里（视觉隐藏但仍在 DOM），
+   *    innerText 反映的是**渲染结果** —— 宽 1px + 默认 white-space 会把 `\n` 折成空格，
+   *    复制出来变成一整行（实测 lines=1）。textContent 拿的是文本节点原文，换行都在。
+   */
+  function textOf(el: Element): string {
+    return (el.textContent || '').trim();
+  }
+
+  async function copyText(text: string): Promise<boolean> {
+    try {
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(text);
+        return true;
+      }
+    } catch {
+      /* 权限被拒 / 非安全上下文 → 走下面的兜底 */
+    }
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    ta.setAttribute('readonly', '');
+    ta.style.cssText = 'position:fixed;top:0;left:-9999px;opacity:0';
+    document.body.appendChild(ta);
+    ta.select();
+    let ok = false;
+    try {
+      ok = document.execCommand('copy');
+    } catch {
+      ok = false;
+    }
+    ta.remove();
+    return ok;
+  }
+
+  document.addEventListener('click', (ev) => {
+    const target = ev.target as HTMLElement | null;
+    const btn = target?.closest<HTMLElement>('[data-copy-target]');
+    if (!btn) return;
+    const id = btn.dataset.copyTarget || '';
+    const src = document.getElementById(id);
+    if (!src) return;
+
+    // 用 textContent（见 textOf 的注释）：sr-only 那份不能走 innerText
+    void copyText(textOf(src)).then((ok) => {
+      if (!ok) return;
+      const icon = btn.querySelector<HTMLElement>('[data-copy-icon]');
+      const done = btn.querySelector<HTMLElement>('[data-done-icon]');
+      if (!icon || !done) return;
+      icon.hidden = true;
+      done.hidden = false;
+      btn.dataset.copied = '1';
+
+      window.setTimeout(() => {
+        // 期间又点了别的（或本块已换页）就不再折腾
+        if (!btn.isConnected) return;
+        icon.hidden = false;
+        done.hidden = true;
+        delete btn.dataset.copied;
+      }, 1800);
+    });
+  });
+</script>

@@ -23,6 +23,11 @@ interface Props {
 const { title = SITE.title, description = SITE.description, image = SITE.ogImage } = Astro.props;
 const pathname = Astro.url.pathname;
 const url = SITE.url.replace(/\/$/, '') + pathname;
+
+// 访问统计的打点地址。线上默认直连 Cloudflare Worker（写 D1）；
+// 局域网自建版把 PUBLIC_HIT_WORKER_URL 设成 `/api`，就变成同源上报（由本地服务收集）。
+const hitEndpoint =
+  (import.meta.env.PUBLIC_HIT_WORKER_URL || 'https://api.qingwu.ink').replace(/\/$/, '') + '/hit';
 ---
 
 <!doctype html>
@@ -33,6 +38,7 @@ const url = SITE.url.replace(/\/$/, '') + pathname;
     <meta name="generator" content={Astro.generator} />
     <link rel="icon" type="image/png" href="/images/emis/avatar.png" />
     <link rel="apple-touch-icon" href="/images/emis/avatar.png" />
+    <meta name="q-hit-endpoint" content={hitEndpoint} />
     <link rel="alternate" type="application/rss+xml" title={SITE.title} href="/rss.xml" />
 
     <ClientRouter />
@@ -161,11 +167,10 @@ const url = SITE.url.replace(/\/$/, '') + pathname;
         if (window.__qHitWired) return;
         window.__qHitWired = true;
 
-        // 访客上报直接打 Cloudflare Worker（写 D1）。
-        // 为什么不走同源 /api/hit 再转发：那样由 Vercel 的**数据中心 IP** 发出请求，
-        // Cloudflare 的 Managed Challenge 会回 403（实测 "Just a moment..." 挑战页）；
-        // 而访客是**真浏览器 + 住宅 IP**，不会触发挑战。Worker 侧已处理 CORS 预检。
-        var HIT_ENDPOINT = 'https://api.qingwu.ink/hit';
+        // 访客上报地址由 Layout 通过 <meta name="q-hit-endpoint"> 注入：
+        // 线上默认是 Cloudflare Worker（写 D1）的绝对地址；自建/局域网版是 /api/hit。
+        var meta = document.querySelector('meta[name="q-hit-endpoint"]');
+        var HIT_ENDPOINT = (meta && meta.getAttribute('content')) || 'https://api.qingwu.ink/hit';
 
         function sendHit() {
           try {

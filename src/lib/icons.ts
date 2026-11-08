@@ -51,4 +51,13 @@ export {
   Info,
   LoaderCircle,
   Contrast,
+  // 友链申请指引（本站信息一键复制 / RSS）
+  Copy,
+  Check,
+  ClipboardList,
+  Rss,
+  // 评论区排序 / 展开回复
+  ArrowDownWideNarrow,
+  ArrowUpWideNarrow,
+  ChevronUp,
 } from 'lucide';
