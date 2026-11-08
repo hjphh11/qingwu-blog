@@ -98,6 +98,24 @@ export const DEMO_ENTRIES: FriendEntry[] = [
     at: '2026-10-28T23:10:00+08:00',
     status: 'pending',
   },
+  {
+    /* 故意放一条「贴模板」的长留言：6 行、超过折叠阈值，
+       用来验证列表里的「展开全文」按钮，也更接近真实场景 */
+    id: 'demo-5',
+    name: '雾岛来信',
+    url: 'https://wudao.example.com',
+    avatar: '',
+    intro: [
+      '站点名称：雾岛来信',
+      '站点描述：记录读过的书和看过的电影，偶尔写写前端。',
+      '站点链接：https://wudao.example.com',
+      '头像链接：https://wudao.example.com/avatar.png',
+      '主页截图：（还没做）',
+      'RSS 地址：https://wudao.example.com/rss.xml',
+    ].join('\n'),
+    at: '2026-11-04T10:12:00+08:00',
+    status: 'pending',
+  },
 ];
 
 /** 域名归一：去掉协议 / www / 路径，用来展示也用来做站内去重 */

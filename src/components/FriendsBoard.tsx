@@ -10,6 +10,8 @@ import {
   Globe,
   ClipboardList,
   Sparkles,
+  ArrowDownWideNarrow,
+  ArrowUpWideNarrow,
 } from '../lib/icons';
 import {
   COMMENT_TEMPLATE,
@@ -40,7 +42,19 @@ type Status = 'idle' | 'submitting';
 /** 留言比「一句介绍」长得多 —— 贴完整模板也放得下 */
 const CONTENT_MAX = 300;
 
+/** 超过这个长度就折起来（4 行左右），免得一条长留言把整面列表撑开 */
+const CLAMP_OVER = 96;
+
 const EMPTY = { name: '', email: '', url: '', intro: '' };
+
+type SortKey = 'new' | 'old';
+type FilterKey = 'all' | 'approved' | 'pending';
+
+const FILTERS: Array<{ key: FilterKey; label: string }> = [
+  { key: 'all', label: '全部' },
+  { key: 'approved', label: '已是友链' },
+  { key: 'pending', label: '等我看看' },
+];
 
 export default function FriendsBoard() {
   const uid = useId();
@@ -52,6 +66,11 @@ export default function FriendsBoard() {
   const [errors, setErrors] = useState<Partial<Record<keyof typeof EMPTY, string>>>({});
   const [status, setStatus] = useState<Status>('idle');
   const [notice, setNotice] = useState<{ kind: 'ok' | 'warn'; text: string } | null>(null);
+
+  const [sort, setSort] = useState<SortKey>('new');
+  const [filter, setFilter] = useState<FilterKey>('all');
+  /** 刚提交成功的那条 —— 高亮一会儿，并从任何筛选里都可见 */
+  const [freshId, setFreshId] = useState('');
 
   // 相对时间要等客户端算：SSR 与客户端各算一次会水合不匹配（见 timeAgo 注释）
   useEffect(() => setNow(Date.now()), []);
@@ -78,6 +97,22 @@ export default function FriendsBoard() {
   const count = entries.length;
   /** 只报第一条错：三个字段挤在一行，每条都堆一行红字会把表单撑散 */
   const firstError = useMemo(() => Object.values(errors).find(Boolean) ?? '', [errors]);
+
+  /** 每个筛选下有几条 —— 数字直接写在胶囊上，比「点进去发现是空的」好 */
+  const counts = useMemo(
+    () => ({
+      all: entries.length,
+      approved: entries.filter((e) => e.status === 'approved').length,
+      pending: entries.filter((e) => e.status === 'pending').length,
+    }),
+    [entries],
+  );
+
+  const visible = useMemo(() => {
+    // entries 入库时已经是「新的在前」，所以 old 只是就地翻过来
+    const list = filter === 'all' ? entries : entries.filter((e) => e.status === filter);
+    return sort === 'new' ? list : [...list].reverse();
+  }, [entries, filter, sort]);
 
   function setField(key: keyof typeof EMPTY, v: string) {
     setValues((prev) => ({ ...prev, [key]: v }));
@@ -116,6 +151,11 @@ export default function FriendsBoard() {
     }
     setEntries((prev) => [res.entry, ...prev]);
     setValues(EMPTY);
+    // 新发的是 pending：如果正停在「已是友链」筛选下，会看不见自己刚发的 —— 切回全部
+    setFilter('all');
+    setSort('new');
+    setFreshId(res.entry.id);
+    window.setTimeout(() => setFreshId(''), 3600);
     setNotice({
       kind: 'ok',
       // 预览阶段必须说清楚：没有真的发出去
@@ -154,7 +194,13 @@ export default function FriendsBoard() {
               门口说说话
             </h2>
             <p className="ml-auto text-xs text-subtle tabular-nums">
-              {loading ? '正在看看有谁来过…' : count > 0 ? `已经有 ${count} 位朋友留过言` : '还没有人留言'}
+              {loading
+                ? '正在看看有谁来过…'
+                : count > 0
+                  ? now
+                    ? `最近一条 · ${timeAgo(entries[0].at, now)}`
+                    : '\u00A0'
+                  : '还没有人留言'}
             </p>
           </div>
           <p className="mt-2 text-sm leading-relaxed text-muted">
@@ -256,6 +302,13 @@ export default function FriendsBoard() {
               rows={6}
               placeholder="写一句介绍，或者只是说句你好 ~ 也可以点左下角「插入模板」。"
               onChange={(ev) => setField('intro', ev.target.value)}
+              // 写完顺手 Ctrl/⌘ + Enter 就发，不用挪到按钮上
+              onKeyDown={(ev) => {
+                if ((ev.metaKey || ev.ctrlKey) && ev.key === 'Enter') {
+                  ev.preventDefault();
+                  void handleSubmit();
+                }
+              }}
               aria-invalid={errors.intro ? true : undefined}
               className="block w-full resize-none bg-transparent text-sm leading-relaxed text-ink outline-none placeholder:text-subtle/85"
             />
@@ -295,6 +348,7 @@ export default function FriendsBoard() {
             </div>
 
             <div className="ml-auto flex items-center gap-2.5">
+              <span className="hidden text-[11px] text-subtle sm:inline">Ctrl / ⌘ + Enter</span>
               <span className="text-[11px] tabular-nums text-subtle">
                 {values.intro.length} / {CONTENT_MAX}
               </span>
@@ -344,6 +398,52 @@ export default function FriendsBoard() {
           </p>
         )}
 
+        {/* ——— 列表工具条：筛选 + 排序 ———
+            参照 Waline 的「只看某类 / 按正序倒序」。数字写在胶囊上，
+            点之前就知道这个筛选下有几条。 */}
+        {!loading && count > 0 && (
+          <div className="relative mt-4 flex flex-wrap items-center justify-between gap-x-2 gap-y-1.5 border-b border-rose/15 pb-2.5">
+            <div className="flex items-center gap-1">
+              {FILTERS.map((f) => {
+                const active = filter === f.key;
+                const n = counts[f.key];
+                return (
+                  <button
+                    key={f.key}
+                    type="button"
+                    onClick={() => setFilter(f.key)}
+                    aria-pressed={active}
+                    className={`inline-flex min-h-7 items-center gap-1 rounded-full px-2.5 text-xs transition-colors ${
+                      active
+                        ? 'bg-crimson/10 font-medium text-crimson'
+                        : 'text-subtle hover:bg-white/50 hover:text-ink'
+                    }`}
+                  >
+                    {f.label}
+                    <span className="tabular-nums opacity-70">{n}</span>
+                  </button>
+                );
+              })}
+            </div>
+
+            <button
+              type="button"
+              onClick={() => setSort(sort === 'new' ? 'old' : 'new')}
+              aria-label={sort === 'new' ? '当前最新在前，点击改为最早在前' : '当前最早在前，点击改为最新在前'}
+              className="inline-flex min-h-7 shrink-0 items-center gap-1.5 rounded-full px-2 text-xs text-subtle transition-colors hover:text-crimson"
+            >
+              <MorphIcon
+                icon={sort === 'new' ? ArrowDownWideNarrow : ArrowUpWideNarrow}
+                size={13}
+                color="currentColor"
+              />
+              {/* 窄屏用短文案，长的那版会把按钮挤到第二行 */}
+              <span className="sm:hidden">{sort === 'new' ? '最新' : '最早'}</span>
+              <span className="hidden sm:inline">{sort === 'new' ? '最新在前' : '最早在前'}</span>
+            </button>
+          </div>
+        )}
+
         {/* ——— 公开列表 ——— */}
         <ol className="relative mt-2 divide-y divide-rose/15">
           {loading
@@ -356,12 +456,20 @@ export default function FriendsBoard() {
                   </div>
                 </li>
               ))
-            : entries.map((e) => <EntryRow key={e.id} entry={e} now={now} />)}
+            : visible.map((e) => (
+                <EntryRow key={e.id} entry={e} now={now} fresh={e.id === freshId} />
+              ))}
 
           {!loading && count === 0 && (
             <li className="py-10 text-center">
               <p className="font-hand text-xl text-muted">还没有人说话</p>
               <p className="mt-1.5 text-xs text-subtle">第一条留言就留给你了 ~</p>
+            </li>
+          )}
+
+          {!loading && count > 0 && visible.length === 0 && (
+            <li className="py-8 text-center text-xs text-subtle">
+              这个筛选下还没有人，换一个看看？
             </li>
           )}
         </ol>
@@ -372,15 +480,42 @@ export default function FriendsBoard() {
 
 /* —————————————————————————— 单条留言 —————————————————————————— */
 
-function EntryRow({ entry, now }: { entry: FriendEntry; now: number }) {
+function EntryRow({ entry, now, fresh }: { entry: FriendEntry; now: number; fresh?: boolean }) {
   const [broken, setBroken] = useState(false);
+  const [open, setOpen] = useState(false);
   const approved = entry.status === 'approved';
   const host = hostOf(entry.url);
   const initial = (entry.name || '·').trim().slice(0, 1);
+  /** 长留言（或贴了模板那种多行）先折起来，别一条把整面列表撑开 */
+  const lines = entry.intro.split('\n');
+  const clampable = lines.length > 4 || entry.intro.length > CLAMP_OVER;
+
+  /**
+   * 折叠预览用「裁文本」而不是 CSS `line-clamp`。
+   *
+   * 试过 line-clamp-4：气泡是 `whitespace-pre-wrap`，硬换行 + 行高算下来
+   * 第 5 行会露出小半截、也没有省略号（实测截图上就是一条被切掉的「主页截图」）。
+   * 模板类留言本来就是按行写的，按行裁最自然；单行长文再按字数兜一下。
+   */
+  const preview = (() => {
+    if (!clampable) return entry.intro;
+    if (lines.length > 4) {
+      // 省略号接在第 4 行末尾，别单独占一行
+      const head = lines.slice(0, 4);
+      head[3] = `${head[3]} …`;
+      return head.join('\n');
+    }
+    return `${entry.intro.slice(0, CLAMP_OVER)}…`;
+  })();
 
   return (
-    /* 整行给一层 hover 底色：列表长起来之后，鼠标在哪一条上要看得出来 */
-    <li className="-mx-1 flex gap-3 rounded-[calc(var(--radius-card)-8px)] px-3 py-3.5 transition-colors duration-300 hover:bg-white/45">
+    /* 整行给一层 hover 底色：列表长起来之后，鼠标在哪一条上要看得出来。
+       刚发出去的那条用浅绯红底 + 细描边标一会儿，方便一眼找到自己写的 */
+    <li
+      className={`-mx-1 flex gap-3 rounded-[calc(var(--radius-card)-8px)] px-3 py-3.5 transition-colors duration-500 ${
+        fresh ? 'bg-crimson/6 ring-1 ring-crimson/20' : 'hover:bg-white/45'
+      }`}
+    >
       <span className="mt-px h-10 w-10 shrink-0 overflow-hidden rounded-full bg-gradient-to-br from-rose/35 to-amber/25 ring-2 ring-white/70">
         {entry.avatar && !broken ? (
           <img
@@ -440,8 +575,19 @@ function EntryRow({ entry, now }: { entry: FriendEntry; now: number }) {
         {/* 内容包成气泡：参考站就是这么区分的 —— 头像 + 一块浅底文本，
             比「一条条横线」更像在说话。上左圆角收小，气泡像是从头像那侧发出来的 */}
         <p className="mt-1.5 w-fit max-w-[94%] whitespace-pre-wrap rounded-xl rounded-tl-[5px] bg-rose/12 px-3 py-2 text-[13.5px] leading-relaxed text-muted">
-          {entry.intro}
+          {open ? entry.intro : preview}
         </p>
+
+        {clampable && (
+          <button
+            type="button"
+            onClick={() => setOpen(!open)}
+            aria-expanded={open}
+            className="mt-1 inline-flex min-h-6 items-center text-[11px] text-crimson transition-colors hover:underline"
+          >
+            {open ? '收起' : '展开全文'}
+          </button>
+        )}
       </div>
     </li>
   );
