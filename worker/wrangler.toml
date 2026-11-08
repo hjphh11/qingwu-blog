@@ -58,6 +58,10 @@ ALLOWED_ORIGINS = "https://qingwu.ink,https://www.qingwu.ink,http://localhost:43
 # 配了它，后台统计页会显示「数据来源：Cloudflare D1（访客）」，而不是旧的 GitHub 仓库路径。
 STATS_SOURCE_REPO = "cloudflare-d1"
 STATS_SOURCE_PATH = "hits"
+# 发件人。域名 qingwu.ink 已在 Resend 验证（status: verified / sending enabled），
+# 同域名下 noreply@ / hello@ 这类地址不需要真实存在信箱，只是信封上的名字。
+# 改这里之后要重新 `wrangler deploy`；RESEND_KEY / MAIL_TO 是 secret，用 `wrangler secret put` 配。
+MAIL_FROM = "清吾 <noreply@qingwu.ink>"
 
 # ——— 本地开发：secret 放 worker/.dev.vars（已被 .gitignore 忽略）———
 # HIT_IP_SALT="dev-salt"
