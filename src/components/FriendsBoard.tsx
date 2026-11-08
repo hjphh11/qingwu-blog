@@ -23,7 +23,11 @@ import {
   hostOf,
   loadFriendEntries,
   normalizeUrl,
+  deleteEntry,
+  dropToken,
   readLiked,
+  readTokens,
+  saveToken,
   submitFriendEntry,
   submitReply as submitReplyApi,
   toggleLike as toggleLikeApi,
@@ -75,6 +79,8 @@ export default function FriendsBoard() {
   const [mailStage, setMailStage] = useState(0);
   /** 本机点过赞的条目 id —— 演示阶段存 localStorage，接后端后由接口返回 */
   const [liked, setLiked] = useState<string[]>([]);
+  /** 自己发过的留言 → 删除凭证。只有这里有的条目才显示「删除」 */
+  const [owned, setOwned] = useState<Record<string, string>>({});
   /** 刚提交成功的那条 —— 高亮一会儿，并从任何筛选里都可见 */
   const [freshId, setFreshId] = useState('');
 
@@ -82,6 +88,8 @@ export default function FriendsBoard() {
   useEffect(() => setNow(Date.now()), []);
   // 本机点过哪些赞：只能在客户端读（localStorage 在 SSR 里不存在）
   useEffect(() => setLiked(readLiked()), []);
+  // 自己发过哪些留言（凭证）—— 决定哪些条目显示删除按钮
+  useEffect(() => setOwned(readTokens()), []);
   // 换邮箱就回到第 0 级重试头像（上一张可能是 QQ 接口挂了）
   useEffect(() => setMailStage(0), [values.email]);
 
@@ -154,6 +162,9 @@ export default function FriendsBoard() {
       return;
     }
     setEntries((prev) => [res.entry, ...prev]);
+    // 把删除凭证记在本机，之后这条才删得掉
+    saveToken(res.entry.id, res.deleteToken);
+    setOwned((prev) => ({ ...prev, [res.entry.id]: res.deleteToken }));
     setValues(EMPTY);
     setSort('new');
     setFreshId(res.entry.id);
@@ -192,6 +203,25 @@ export default function FriendsBoard() {
     }
     setEntries((prev) => prev.map((e) => (e.id === id ? { ...e, likes: res.likes } : e)));
     setLiked((prev) => (res.liked ? [...prev.filter((x) => x !== id), id] : prev.filter((x) => x !== id)));
+  }
+
+  /** 删掉自己发的那条（服务端软删，成功后从本地列表移除） */
+  async function removeEntry(id: string) {
+    const token = owned[id];
+    if (!token) return;
+    const res = await deleteEntry(id, token);
+    if (!res.ok) {
+      setNotice({ kind: 'warn', text: res.message });
+      return;
+    }
+    dropToken(id);
+    setOwned((prev) => {
+      const next = { ...prev };
+      delete next[id];
+      return next;
+    });
+    setEntries((prev) => prev.filter((e) => e.id !== id));
+    setNotice({ kind: 'ok', text: '这条已经删掉了。' });
   }
 
   /**
@@ -527,6 +557,8 @@ export default function FriendsBoard() {
                   liked={liked.includes(e.id)}
                   onLike={() => toggleLike(e.id)}
                   onReply={(reply) => addReply(e.id, reply)}
+                  canDelete={Boolean(owned[e.id])}
+                  onDelete={() => removeEntry(e.id)}
                 />
               ))}
 
@@ -551,6 +583,8 @@ function EntryRow({
   liked,
   onLike,
   onReply,
+  canDelete,
+  onDelete,
 }: {
   entry: FriendEntry;
   now: number;
@@ -558,6 +592,9 @@ function EntryRow({
   liked: boolean;
   onLike: () => void;
   onReply: (reply: FriendReply) => void;
+  /** 本机有这个条目的删除凭证 —— 说明是我自己发的 */
+  canDelete: boolean;
+  onDelete: () => void | Promise<void>;
 }) {
   const [broken, setBroken] = useState(false);
   /** 回复默认折起来（参考站就是「展开回复」那个按钮），点一下才铺开 */
@@ -565,6 +602,9 @@ function EntryRow({
   const [replyOpen, setReplyOpen] = useState(false);
   const [rName, setRName] = useState('');
   const [rText, setRText] = useState('');
+  /** 删除要按两下：第一下变成「确认删除？」，3.5 秒没再点就复位 */
+  const [confirming, setConfirming] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const approved = entry.status === 'approved';
   const host = hostOf(entry.url);
   const initial = (entry.name || '·').trim().slice(0, 1);
@@ -714,6 +754,32 @@ function EntryRow({
                 color="currentColor"
               />
               {repliesOpen ? '收起回复' : `展开回复 ${replies.length}`}
+            </button>
+          )}
+
+          {/* 自己的留言才有删除。两段确认，避免手滑 —— 评论区没有回收站 */}
+          {canDelete && (
+            <button
+              type="button"
+              disabled={deleting}
+              onClick={async () => {
+                if (!confirming) {
+                  setConfirming(true);
+                  window.setTimeout(() => setConfirming(false), 3500);
+                  return;
+                }
+                setDeleting(true);
+                await onDelete();
+                setDeleting(false);
+                setConfirming(false);
+              }}
+              className={`ml-auto inline-flex min-h-7 shrink-0 items-center rounded-full px-2 text-[11px] transition-colors disabled:opacity-60 ${
+                confirming
+                  ? 'bg-crimson/10 font-medium text-crimson'
+                  : 'text-subtle hover:bg-crimson/10 hover:text-crimson'
+              }`}
+            >
+              {deleting ? '删除中…' : confirming ? '确认删除？' : '删除'}
             </button>
           )}
         </div>

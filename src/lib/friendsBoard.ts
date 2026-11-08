@@ -232,7 +232,7 @@ export interface SubmitInput {
 }
 
 export type SubmitResult =
-  | { ok: true; entry: FriendEntry }
+  | { ok: true; entry: FriendEntry; deleteToken: string }
   | { ok: false; reason: 'duplicate' | 'limited' | 'unavailable' | 'error'; message: string };
 
 /** 提交一条申请 */
@@ -258,6 +258,8 @@ export async function submitFriendEntry(input: SubmitInput): Promise<SubmitResul
         status: 'pending',
         emailHash: emailHashOf(input.email || ''),
       },
+      // 演示模式也给一个，删除逻辑不用分叉
+      deleteToken: emailHashOf(`demo-${Date.now()}`),
     };
   }
 
@@ -279,8 +281,11 @@ export async function submitFriendEntry(input: SubmitInput): Promise<SubmitResul
       error?: string;
       message?: string;
       entry?: FriendEntry;
+      deleteToken?: string;
     };
-    if (res.ok && data.entry) return { ok: true, entry: data.entry };
+    if (res.ok && data.entry) {
+      return { ok: true, entry: data.entry, deleteToken: String(data.deleteToken ?? '') };
+    }
     if (res.status === 409) {
       return { ok: false, reason: 'duplicate', message: data.message || '这条申请已经在列表里了 ~' };
     }
@@ -391,6 +396,75 @@ export async function toggleLike(
       return { ok: true, liked: Boolean(data.liked), likes: data.likes };
     }
     return { ok: false, message: data.message || '点赞没成功，稍后再试' };
+  } catch {
+    return { ok: false, message: '网络好像不太顺，稍后再试一次' };
+  }
+}
+
+/* —————————————————————————— 删除自己的留言 —————————————————————————— */
+
+/**
+ * 删除凭证只存在**提交者的浏览器**里。
+ *
+ * 服务端在创建时返回一次 token，列表接口不返回 —— 所以别人拿不到，
+ * 只有当时提交的那台设备能删。清缓存/换设备就删不了了，这是没有账号体系的代价。
+ */
+const TOKEN_KEY = 'qingwu:friend-tokens';
+
+export function readTokens(): Record<string, string> {
+  try {
+    const raw = JSON.parse(localStorage.getItem(TOKEN_KEY) || '{}') as unknown;
+    if (!raw || typeof raw !== 'object') return {};
+    const out: Record<string, string> = {};
+    for (const [k, v] of Object.entries(raw as Record<string, unknown>)) {
+      if (typeof v === 'string' && /^[a-f0-9]{32}$/i.test(v)) out[k] = v;
+    }
+    return out;
+  } catch {
+    return {};
+  }
+}
+
+export function saveToken(id: string, token: string): void {
+  if (!token) return;
+  try {
+    const all = readTokens();
+    all[id] = token;
+    localStorage.setItem(TOKEN_KEY, JSON.stringify(all));
+  } catch {
+    /* 隐私模式写不进去 —— 只是这次会话内删不了，不打扰访客 */
+  }
+}
+
+export function dropToken(id: string): void {
+  try {
+    const all = readTokens();
+    delete all[id];
+    localStorage.setItem(TOKEN_KEY, JSON.stringify(all));
+  } catch {
+    /* 同上 */
+  }
+}
+
+/** 删掉自己的一条留言（服务端做软删，status 改成 deleted） */
+export async function deleteEntry(
+  id: string,
+  token: string,
+): Promise<{ ok: true } | { ok: false; message: string }> {
+  if (FRIENDS_BOARD_DEMO) {
+    await new Promise((r) => setTimeout(r, 300));
+    return { ok: true };
+  }
+  try {
+    const res = await fetch(`${WORKER_BASE}/friends-board/${numericId(id)}`, {
+      method: 'DELETE',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ token }),
+      signal: AbortSignal.timeout(10000),
+    });
+    if (res.ok) return { ok: true };
+    const data = (await res.json().catch(() => ({}))) as { message?: string };
+    return { ok: false, message: data.message || '没能删掉，稍后再试' };
   } catch {
     return { ok: false, message: '网络好像不太顺，稍后再试一次' };
   }

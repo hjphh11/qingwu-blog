@@ -12,7 +12,7 @@
 // 第 3~5 步的路由（/comments、/likes、Cron）以后再加，别现在就把口子开着。
 
 import { getApply, patchApply, postApply } from './apply';
-import { getFriendsBoard, postFriendLike, postFriendReply, postFriendsBoard } from './friends-board';
+import { deleteFriendComment, getFriendsBoard, postFriendLike, postFriendReply, postFriendsBoard } from './friends-board';
 import { getLinkStats, postLinkClick } from './link';
 import { refreshAllFeeds } from './links-refresh';
 import { getHit, postHit } from './hit';
@@ -21,7 +21,7 @@ import { json, originAllowed, parseOrigins } from './util';
 import type { Env } from './types';
 
 /** 允许的请求方法，用于 CORS 预检 */
-const ALLOW_METHODS = 'GET, POST, PATCH, OPTIONS';
+const ALLOW_METHODS = 'GET, POST, PATCH, DELETE, OPTIONS';
 const ALLOW_HEADERS = 'content-type, authorization';
 
 /** 处理 CORS 预检：/hit 与 /apply 都可能被浏览器直连，都要支持 */
@@ -81,6 +81,10 @@ export default {
       if (request.method === 'GET') return getFriendsBoard(request, env);
       if (request.method === 'POST') return postFriendsBoard(request, env, ctx);
       return json({ ok: false, reason: 'method_not_allowed' }, 405);
+    }
+    const fbDel = path.match(/^\/friends-board\/(\d+)$/);
+    if (fbDel && request.method === 'DELETE') {
+      return deleteFriendComment(request, env, fbDel[1]);
     }
     const fb = path.match(/^\/friends-board\/(\d+)\/(reply|like)$/);
     if (fb) {

@@ -15,7 +15,7 @@
 // ⚠️ 发信一律 `ctx.waitUntil`：邮件失败不能把访客的留言卡在 502 上。
 
 import type { Env } from './types';
-import { json, originAllowed, parseOrigins } from './util';
+import { json, originAllowed, parseOrigins, secretEqual } from './util';
 import { boardMailText, sendMail } from './mail';
 
 /** 友链评论区在 comments 表里的分区名 */
@@ -70,6 +70,19 @@ async function visitorKey(request: Request, env: Env): Promise<string> {
   );
   const d = await crypto.subtle.digest('SHA-256', data);
   return [...new Uint8Array(d)].map((b) => b.toString(16).padStart(2, '0')).join('').slice(0, 16);
+}
+
+/**
+ * 32 位 hex 的删除凭证。
+ *
+ * 为什么要它：评论区没有登录，光有评论 id 谁都能删别人的。
+ * 这个 token 只在创建时回给提交者一次（列表接口不返回），前端存 localStorage，
+ * 删除时带上比对。
+ */
+function newDeleteToken(): string {
+  const b = new Uint8Array(16);
+  crypto.getRandomValues(b);
+  return [...b].map((x) => x.toString(16).padStart(2, '0')).join('');
 }
 
 function normalizeUrl(raw: string): string {
@@ -231,9 +244,11 @@ export async function postFriendsBoard(request: Request, env: Env, ctx: Executio
      * 其余显示「等我看看」。访客刚提交的站还没审过，直接标成「已是友链」是撒谎。
      * 站长审核 = 把它 UPDATE 成 visible（暂时用 D1 控制台/SQL，后台以后再说）。
      */
+    const deleteToken = newDeleteToken();
+
     const res = await env.DB.prepare(
-      `INSERT INTO comments (post_slug, parent_id, author, email, email_hash, author_url, avatar, body, status, ts, ip_hash)
-       VALUES (?, NULL, ?, ?, ?, ?, ?, ?, 'pending', ?, ?)`,
+      `INSERT INTO comments (post_slug, parent_id, author, email, email_hash, author_url, avatar, body, status, ts, ip_hash, delete_token)
+       VALUES (?, NULL, ?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?)`,
     )
       .bind(
         SLUG,
@@ -245,6 +260,7 @@ export async function postFriendsBoard(request: Request, env: Env, ctx: Executio
         v.v.intro,
         now,
         key,
+        deleteToken,
       )
       .run();
 
@@ -276,6 +292,8 @@ export async function postFriendsBoard(request: Request, env: Env, ctx: Executio
           likes: 0,
           replies: [],
         },
+        // ⚠️ 只在这里返回一次，列表接口永远不带它
+        deleteToken,
       },
       200,
       headers,
@@ -414,4 +432,59 @@ export async function postFriendLike(
     console.error('[friends-board] 点赞失败:', err instanceof Error ? err.message : err);
     return json({ ok: false, error: 'storage' }, 502, headers);
   }
+}
+
+// ——————————————————————————————————————————————————————————
+// DELETE /friends-board/:id —— 留言人删自己的留言
+// ——————————————————————————————————————————————————————————
+//
+// 凭据是创建时发的那串 token（存 localStorage）。校验不过一律 403，
+// 不区分「没这条」和「不是你的」以外的情况，免得能拿来探测 id 是否存在。
+//
+// 删除是**软删**（status='deleted'），GET 的 `status != 'deleted'` 会过滤掉；
+// 需要恢复就直接改状态，比硬删安全。
+export async function deleteFriendComment(
+  request: Request,
+  env: Env,
+  idParam: string,
+): Promise<Response> {
+  const headers = withCors(request, env);
+  const id = Number(idParam);
+  if (!Number.isInteger(id) || id <= 0) {
+    return json({ ok: false, error: 'bad_request' }, 400, headers);
+  }
+
+  let body: { token?: unknown };
+  try {
+    body = (await request.json()) as { token?: unknown };
+  } catch {
+    return json({ ok: false, error: 'bad_request', message: '请求格式不对' }, 400, headers);
+  }
+
+  const token = String(body.token ?? '').trim();
+  if (!/^[a-f0-9]{32}$/i.test(token)) {
+    return json({ ok: false, error: 'forbidden', message: '这个删除凭证不对' }, 403, headers);
+  }
+
+  const row = await env.DB.prepare(
+    'SELECT delete_token, status FROM comments WHERE id = ? AND post_slug = ?',
+  )
+    .bind(id, SLUG)
+    .first<{ delete_token: string | null; status: string }>();
+
+  if (!row) {
+    return json({ ok: false, error: 'not_found', message: '这条留言已经不在了' }, 404, headers);
+  }
+  if (!row.delete_token || !(await secretEqual(token, row.delete_token))) {
+    return json(
+      { ok: false, error: 'forbidden', message: '只有留言的人自己能删这条' },
+      403,
+      headers,
+    );
+  }
+  // 已经删过就直接当成功，免得多点两下报错
+  if (row.status === 'deleted') return json({ ok: true }, 200, headers);
+
+  await env.DB.prepare("UPDATE comments SET status = 'deleted' WHERE id = ?").bind(id).run();
+  return json({ ok: true }, 200, headers);
 }
