@@ -14,6 +14,8 @@ import {
   ArrowUpWideNarrow,
   Heart,
   MessageCircle,
+  ChevronDown,
+  ChevronUp,
 } from '../lib/icons';
 import {
   COMMENT_TEMPLATE,
@@ -48,9 +50,6 @@ type Status = 'idle' | 'submitting';
 
 /** 留言比「一句介绍」长得多 —— 贴完整模板也放得下 */
 const CONTENT_MAX = 300;
-
-/** 超过这个长度就折起来（4 行左右），免得一条长留言把整面列表撑开 */
-const CLAMP_OVER = 96;
 
 const EMPTY = { name: '', email: '', url: '', intro: '' };
 
@@ -523,7 +522,8 @@ function EntryRow({
   onReply: (reply: FriendReply) => void;
 }) {
   const [broken, setBroken] = useState(false);
-  const [open, setOpen] = useState(false);
+  /** 回复默认折起来（参考站就是「展开回复」那个按钮），点一下才铺开 */
+  const [repliesOpen, setRepliesOpen] = useState(false);
   const [replyOpen, setReplyOpen] = useState(false);
   const [rName, setRName] = useState('');
   const [rText, setRText] = useState('');
@@ -533,27 +533,6 @@ function EntryRow({
   const replies = entry.replies ?? [];
   /** 票数只认 entry.likes：演示模式在 toggleLike 里就改好了，真实模式是服务端返回的 */
   const likes = entry.likes ?? 0;
-  /** 长留言（或贴了模板那种多行）先折起来，别一条把整面列表撑开 */
-  const lines = entry.intro.split('\n');
-  const clampable = lines.length > 4 || entry.intro.length > CLAMP_OVER;
-
-  /**
-   * 折叠预览用「裁文本」而不是 CSS `line-clamp`。
-   *
-   * 试过 line-clamp-4：气泡是 `whitespace-pre-wrap`，硬换行 + 行高算下来
-   * 第 5 行会露出小半截、也没有省略号（实测截图上就是一条被切掉的「主页截图」）。
-   * 模板类留言本来就是按行写的，按行裁最自然；单行长文再按字数兜一下。
-   */
-  const preview = (() => {
-    if (!clampable) return entry.intro;
-    if (lines.length > 4) {
-      // 省略号接在第 4 行末尾，别单独占一行
-      const head = lines.slice(0, 4);
-      head[3] = `${head[3]} …`;
-      return head.join('\n');
-    }
-    return `${entry.intro.slice(0, CLAMP_OVER)}…`;
-  })();
 
   function submitReply() {
     const text = rText.trim();
@@ -568,6 +547,7 @@ function EntryRow({
     });
     setRText('');
     setReplyOpen(false);
+    setRepliesOpen(true);
   }
 
   return (
@@ -636,20 +616,11 @@ function EntryRow({
 
         {/* 内容包成气泡：参考站就是这么区分的 —— 头像 + 一块浅底文本，
             比「一条条横线」更像在说话。上左圆角收小，气泡像是从头像那侧发出来的 */}
+        {/* 正文完整显示 —— 用户要的是「评论不折，只折回复」：
+            申请模板本来就是一段段写下来的，折起来反而看不全 */}
         <p className="mt-1.5 w-fit max-w-[94%] whitespace-pre-wrap rounded-xl rounded-tl-[5px] bg-rose/12 px-3 py-2 text-[13.5px] leading-relaxed text-muted">
-          {open ? entry.intro : preview}
+          {entry.intro}
         </p>
-
-        {clampable && (
-          <button
-            type="button"
-            onClick={() => setOpen(!open)}
-            aria-expanded={open}
-            className="mt-1 inline-flex min-h-6 items-center text-[11px] text-crimson transition-colors hover:underline"
-          >
-            {open ? '收起' : '展开全文'}
-          </button>
-        )}
 
         {/* ——— 点赞 / 回复 ——— */}
         <div className="mt-1 flex flex-wrap items-center gap-1">
@@ -679,7 +650,19 @@ function EntryRow({
           </button>
 
           {replies.length > 0 && (
-            <span className="pl-1 text-[11px] text-subtle">{replies.length} 条回复</span>
+            <button
+              type="button"
+              onClick={() => setRepliesOpen(!repliesOpen)}
+              aria-expanded={repliesOpen}
+              className="ml-1 inline-flex min-h-7 shrink-0 items-center gap-1 rounded-full border border-rose/25 bg-white/70 px-2.5 text-[11px] text-muted transition-colors hover:border-rose/45 hover:text-crimson"
+            >
+              <MorphIcon
+                icon={repliesOpen ? ChevronUp : ChevronDown}
+                size={12}
+                color="currentColor"
+              />
+              {repliesOpen ? '收起回复' : `展开回复 ${replies.length}`}
+            </button>
           )}
         </div>
 
@@ -733,8 +716,8 @@ function EntryRow({
           </div>
         )}
 
-        {/* 楼中楼：只做一层，缩进 + 左侧竖线，和主楼区分开 */}
-        {replies.length > 0 && (
+        {/* 楼中楼：只做一层，缩进 + 左侧竖线，和主楼区分开。默认折着，点「展开回复」才铺开 */}
+        {replies.length > 0 && repliesOpen && (
           <ul className="mt-2 flex flex-col gap-2.5 border-l border-rose/20 pl-3">
             {replies.map((r) => (
               <li key={r.id} className="flex gap-2">

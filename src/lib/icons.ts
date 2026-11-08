@@ -56,7 +56,8 @@ export {
   Check,
   ClipboardList,
   Rss,
-  // 评论区排序
+  // 评论区排序 / 展开回复
   ArrowDownWideNarrow,
   ArrowUpWideNarrow,
+  ChevronUp,
 } from 'lucide';
