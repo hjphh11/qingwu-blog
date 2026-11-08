@@ -23,6 +23,8 @@ import {
   normalizeUrl,
   readLiked,
   submitFriendEntry,
+  submitReply as submitReplyApi,
+  toggleLike as toggleLikeApi,
   timeAgo,
   writeLiked,
   type FriendEntry,
@@ -154,19 +156,59 @@ export default function FriendsBoard() {
     });
   }
 
-  /** 点赞：本机记一份，`entries` 里的 likes 不动 —— 展示时再加 */
-  function toggleLike(id: string) {
-    setLiked((prev) => {
-      const next = prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id];
+  /**
+   * 点赞 / 取消。
+   *
+   * 演示模式：只改本机状态（localStorage 记住点过哪些，避免刷新后重复点涨）。
+   * 接上后端后走接口，票数以服务端返回为准 —— 所以两种模式下都把结果写回
+   * `entry.likes`，条目里直接用这个数，不再另算。
+   */
+  async function toggleLike(id: string) {
+    const isLiked = liked.includes(id);
+    if (FRIENDS_BOARD_DEMO) {
+      const next = isLiked ? liked.filter((x) => x !== id) : [...liked, id];
+      setLiked(next);
       writeLiked(next);
-      return next;
-    });
+      setEntries((prev) =>
+        prev.map((e) => (e.id === id ? { ...e, likes: Math.max(0, (e.likes ?? 0) + (isLiked ? -1 : 1)) } : e)),
+      );
+      return;
+    }
+    const res = await toggleLikeApi(id);
+    if (!res.ok) {
+      setNotice({ kind: 'warn', text: res.message });
+      return;
+    }
+    setEntries((prev) => prev.map((e) => (e.id === id ? { ...e, likes: res.likes } : e)));
+    setLiked((prev) => (res.liked ? [...prev.filter((x) => x !== id), id] : prev.filter((x) => x !== id)));
   }
 
-  /** 回复直接挂到对应条目下（只一层，不嵌套） */
-  function addReply(id: string, reply: FriendReply) {
+  /**
+   * 回复：挂到对应条目下（只一层，不嵌套）。
+   * 演示模式直接用前端造的那条；真实模式等接口返回再插，
+   * 顺便让后端把邮件发给被回复的人（他留言时填了邮箱才会发）。
+   */
+  async function addReply(id: string, reply: FriendReply) {
+    if (FRIENDS_BOARD_DEMO) {
+      setEntries((prev) =>
+        prev.map((e) => (e.id === id ? { ...e, replies: [...(e.replies ?? []), reply] } : e)),
+      );
+      return;
+    }
+    const res = await submitReplyApi(id, {
+      name: reply.name,
+      intro: reply.intro,
+    });
+    if (!res.ok) {
+      setNotice({ kind: 'warn', text: res.message });
+      return;
+    }
     setEntries((prev) =>
-      prev.map((e) => (e.id === id ? { ...e, replies: [...(e.replies ?? []), reply] } : e)),
+      prev.map((e) =>
+        e.id === id
+          ? { ...e, replies: [...(e.replies ?? []), { ...res.reply, to: reply.to }] }
+          : e,
+      ),
     );
   }
 
@@ -220,7 +262,8 @@ export default function FriendsBoard() {
             </span>
             <span>
               <strong className="font-medium text-ink">预览版</strong>
-              ：下面几条是演示数据，提交只会加在你自己这一页，不会真的发出去。
+              ：下面几条是演示数据，留言、点赞、回复都只加在你自己这一页 ——
+              不会真的存下来，也不会发通知邮件。
             </span>
           </p>
         )}
@@ -488,8 +531,8 @@ function EntryRow({
   const host = hostOf(entry.url);
   const initial = (entry.name || '·').trim().slice(0, 1);
   const replies = entry.replies ?? [];
-  /** 点上赞之后本地 +1 —— 等服务端回来再以它为准，现在是演示 */
-  const likes = (entry.likes ?? 0) + (liked ? 1 : 0);
+  /** 票数只认 entry.likes：演示模式在 toggleLike 里就改好了，真实模式是服务端返回的 */
+  const likes = entry.likes ?? 0;
   /** 长留言（或贴了模板那种多行）先折起来，别一条把整面列表撑开 */
   const lines = entry.intro.split('\n');
   const clampable = lines.length > 4 || entry.intro.length > CLAMP_OVER;
@@ -518,6 +561,8 @@ function EntryRow({
     onReply({
       id: `r-${Date.now()}`,
       name: rName.trim() || '匿名朋友',
+      // 自动 @ 被回复的人 —— 访客不用自己打，邮件通知也靠这个找到收件人
+      to: entry.name,
       intro: text,
       at: new Date().toISOString(),
     });
@@ -641,7 +686,11 @@ function EntryRow({
         {/* 回复框：默认收起，点了「回复」才出现。抬头写明回的是谁 */}
         {replyOpen && (
           <div className="mt-2 rounded-xl border border-rose/25 bg-white/60 p-2.5">
-            <p className="text-[11px] text-subtle">回复 {entry.name}</p>
+            <p className="flex flex-wrap items-center gap-1 text-[11px] text-subtle">
+              回复
+              <span className="font-medium text-crimson">@{entry.name}</span>
+              <span className="text-subtle/80">· 会邮件通知对方</span>
+            </p>
             <input
               value={rName}
               maxLength={APPLY_LIMITS.name}
@@ -700,6 +749,9 @@ function EntryRow({
                     </time>
                   </div>
                   <p className="mt-0.5 whitespace-pre-wrap text-[12.5px] leading-relaxed text-muted">
+                    {r.to && (
+                      <span className="mr-1 font-medium text-crimson">@{r.to}</span>
+                    )}
                     {r.intro}
                   </p>
                 </div>

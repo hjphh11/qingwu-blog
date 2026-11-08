@@ -43,6 +43,8 @@ export interface FriendEntry {
 export interface FriendReply {
   id: string;
   name: string;
+  /** 被回复的人。渲染成「@名字」，提交时由前端自动填，不用访客自己打 */
+  to?: string;
   intro: string;
   at: string;
 }
@@ -86,6 +88,7 @@ export const DEMO_ENTRIES: FriendEntry[] = [
       {
         id: 'demo-1-r1',
         name: '清吾',
+        to: '朝朝听雨',
         intro: '欢迎欢迎，已经把你加进友链墙了 ~ 常来坐。',
         at: '2026-10-31T12:40:00+08:00',
       },
@@ -115,6 +118,7 @@ export const DEMO_ENTRIES: FriendEntry[] = [
       {
         id: 'demo-3-r1',
         name: '清吾',
+        to: 'AIOVTUE-雪',
         intro: '在看啦，这两天回你 ~',
         at: '2026-10-30T09:02:00+08:00',
       },
@@ -299,5 +303,79 @@ export function writeLiked(ids: string[]): void {
     localStorage.setItem(LIKE_KEY, JSON.stringify(ids));
   } catch {
     /* 隐私模式写不进去 —— 只是本机不持久，不用打扰访客 */
+  }
+}
+
+/** 真实接口里 id 形如 `c-12`，取数字部分 */
+function numericId(id: string): string {
+  return String(id).replace(/^c-/, '');
+}
+
+/**
+ * 回复某条留言。
+ *
+ * 后端会把 `to`（被回复的人）记下来，并把邮件发给**那条留言的作者** ——
+ * 前提是他留言时填了邮箱；没填就只落库、不发信，也不会报错。
+ */
+export async function submitReply(
+  parentId: string,
+  input: { name: string; email?: string; intro: string },
+): Promise<{ ok: true; reply: FriendReply } | { ok: false; message: string }> {
+  if (FRIENDS_BOARD_DEMO) {
+    await new Promise((r) => setTimeout(r, 400));
+    return {
+      ok: true,
+      reply: {
+        id: `local-r-${Date.now()}`,
+        name: input.name.trim() || '匿名朋友',
+        intro: input.intro.trim(),
+        at: new Date().toISOString(),
+      },
+    };
+  }
+  try {
+    const res = await fetch(`${WORKER_BASE}/friends-board/${numericId(parentId)}/reply`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        name: input.name.trim(),
+        email: (input.email || '').trim(),
+        intro: input.intro.trim(),
+      }),
+      signal: AbortSignal.timeout(12000),
+    });
+    const data = (await res.json().catch(() => ({}))) as { reply?: FriendReply; message?: string };
+    if (res.ok && data.reply) return { ok: true, reply: data.reply };
+    return { ok: false, message: data.message || '回复没能发出去，稍后再试' };
+  } catch {
+    return { ok: false, message: '网络好像不太顺，稍后再试一次' };
+  }
+}
+
+/** 点赞 / 取消。真实接口按访客去重，返回最新票数 */
+export async function toggleLike(
+  id: string,
+): Promise<{ ok: true; liked: boolean; likes: number } | { ok: false; message: string }> {
+  if (FRIENDS_BOARD_DEMO) {
+    await new Promise((r) => setTimeout(r, 220));
+    const isLiked = readLiked().includes(id);
+    return { ok: true, liked: !isLiked, likes: 0 };
+  }
+  try {
+    const res = await fetch(`${WORKER_BASE}/friends-board/${numericId(id)}/like`, {
+      method: 'POST',
+      signal: AbortSignal.timeout(10000),
+    });
+    const data = (await res.json().catch(() => ({}))) as {
+      liked?: boolean;
+      likes?: number;
+      message?: string;
+    };
+    if (res.ok && typeof data.likes === 'number') {
+      return { ok: true, liked: Boolean(data.liked), likes: data.likes };
+    }
+    return { ok: false, message: data.message || '点赞没成功，稍后再试' };
+  } catch {
+    return { ok: false, message: '网络好像不太顺，稍后再试一次' };
   }
 }

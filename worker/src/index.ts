@@ -12,6 +12,7 @@
 // 第 3~5 步的路由（/comments、/likes、Cron）以后再加，别现在就把口子开着。
 
 import { getApply, patchApply, postApply } from './apply';
+import { getFriendsBoard, postFriendLike, postFriendReply, postFriendsBoard } from './friends-board';
 import { getLinkStats, postLinkClick } from './link';
 import { refreshAllFeeds } from './links-refresh';
 import { getHit, postHit } from './hit';
@@ -73,6 +74,20 @@ export default {
     if (path === '/link-stats') {
       if (request.method !== 'GET') return json({ ok: false, reason: 'method_not_allowed' }, 405);
       return getLinkStats(request, env, ctx);
+    }
+
+    // —— 友链评论区（留言 / 回复 / 点赞）——
+    if (path === '/friends-board') {
+      if (request.method === 'GET') return getFriendsBoard(request, env);
+      if (request.method === 'POST') return postFriendsBoard(request, env, ctx);
+      return json({ ok: false, reason: 'method_not_allowed' }, 405);
+    }
+    const fb = path.match(/^\/friends-board\/(\d+)\/(reply|like)$/);
+    if (fb) {
+      if (request.method !== 'POST') return json({ ok: false, reason: 'method_not_allowed' }, 405);
+      return fb[2] === 'reply'
+        ? postFriendReply(request, env, ctx, fb[1])
+        : postFriendLike(request, env, fb[1]);
     }
 
     if (path === '/stats') {
