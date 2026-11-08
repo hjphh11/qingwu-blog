@@ -12,6 +12,8 @@ import {
   Sparkles,
   ArrowDownWideNarrow,
   ArrowUpWideNarrow,
+  Heart,
+  MessageCircle,
 } from '../lib/icons';
 import {
   COMMENT_TEMPLATE,
@@ -19,9 +21,12 @@ import {
   hostOf,
   loadFriendEntries,
   normalizeUrl,
+  readLiked,
   submitFriendEntry,
   timeAgo,
+  writeLiked,
   type FriendEntry,
+  type FriendReply,
 } from '../lib/friendsBoard';
 import { APPLY_LIMITS } from '../lib/applyValidation';
 
@@ -48,13 +53,6 @@ const CLAMP_OVER = 96;
 const EMPTY = { name: '', email: '', url: '', intro: '' };
 
 type SortKey = 'new' | 'old';
-type FilterKey = 'all' | 'approved' | 'pending';
-
-const FILTERS: Array<{ key: FilterKey; label: string }> = [
-  { key: 'all', label: '全部' },
-  { key: 'approved', label: '已是友链' },
-  { key: 'pending', label: '等我看看' },
-];
 
 export default function FriendsBoard() {
   const uid = useId();
@@ -68,12 +66,15 @@ export default function FriendsBoard() {
   const [notice, setNotice] = useState<{ kind: 'ok' | 'warn'; text: string } | null>(null);
 
   const [sort, setSort] = useState<SortKey>('new');
-  const [filter, setFilter] = useState<FilterKey>('all');
+  /** 本机点过赞的条目 id —— 演示阶段存 localStorage，接后端后由接口返回 */
+  const [liked, setLiked] = useState<string[]>([]);
   /** 刚提交成功的那条 —— 高亮一会儿，并从任何筛选里都可见 */
   const [freshId, setFreshId] = useState('');
 
   // 相对时间要等客户端算：SSR 与客户端各算一次会水合不匹配（见 timeAgo 注释）
   useEffect(() => setNow(Date.now()), []);
+  // 本机点过哪些赞：只能在客户端读（localStorage 在 SSR 里不存在）
+  useEffect(() => setLiked(readLiked()), []);
 
   useEffect(() => {
     let alive = true;
@@ -98,21 +99,11 @@ export default function FriendsBoard() {
   /** 只报第一条错：三个字段挤在一行，每条都堆一行红字会把表单撑散 */
   const firstError = useMemo(() => Object.values(errors).find(Boolean) ?? '', [errors]);
 
-  /** 每个筛选下有几条 —— 数字直接写在胶囊上，比「点进去发现是空的」好 */
-  const counts = useMemo(
-    () => ({
-      all: entries.length,
-      approved: entries.filter((e) => e.status === 'approved').length,
-      pending: entries.filter((e) => e.status === 'pending').length,
-    }),
-    [entries],
-  );
-
-  const visible = useMemo(() => {
+  const sorted = useMemo(
     // entries 入库时已经是「新的在前」，所以 old 只是就地翻过来
-    const list = filter === 'all' ? entries : entries.filter((e) => e.status === filter);
-    return sort === 'new' ? list : [...list].reverse();
-  }, [entries, filter, sort]);
+    () => (sort === 'new' ? entries : [...entries].reverse()),
+    [entries, sort],
+  );
 
   function setField(key: keyof typeof EMPTY, v: string) {
     setValues((prev) => ({ ...prev, [key]: v }));
@@ -151,8 +142,6 @@ export default function FriendsBoard() {
     }
     setEntries((prev) => [res.entry, ...prev]);
     setValues(EMPTY);
-    // 新发的是 pending：如果正停在「已是友链」筛选下，会看不见自己刚发的 —— 切回全部
-    setFilter('all');
     setSort('new');
     setFreshId(res.entry.id);
     window.setTimeout(() => setFreshId(''), 3600);
@@ -163,6 +152,22 @@ export default function FriendsBoard() {
         ? '已经加进下面这一页了 —— 预览模式，这条没有真的发出去。'
         : '收到啦，等我看到就会回你 ~',
     });
+  }
+
+  /** 点赞：本机记一份，`entries` 里的 likes 不动 —— 展示时再加 */
+  function toggleLike(id: string) {
+    setLiked((prev) => {
+      const next = prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id];
+      writeLiked(next);
+      return next;
+    });
+  }
+
+  /** 回复直接挂到对应条目下（只一层，不嵌套） */
+  function addReply(id: string, reply: FriendReply) {
+    setEntries((prev) =>
+      prev.map((e) => (e.id === id ? { ...e, replies: [...(e.replies ?? []), reply] } : e)),
+    );
   }
 
   function fillTemplate() {
@@ -398,34 +403,11 @@ export default function FriendsBoard() {
           </p>
         )}
 
-        {/* ——— 列表工具条：筛选 + 排序 ———
-            参照 Waline 的「只看某类 / 按正序倒序」。数字写在胶囊上，
-            点之前就知道这个筛选下有几条。 */}
+        {/* ——— 列表上方：只留排序 ———
+            筛选那排（全部 / 已是友链 / 等我看看）用户说没必要，去掉了；
+            条数在标题右侧的「最近一条」和每条的状态徽章上已经能看出来。 */}
         {!loading && count > 0 && (
-          <div className="relative mt-4 flex flex-wrap items-center justify-between gap-x-2 gap-y-1.5 border-b border-rose/15 pb-2.5">
-            <div className="flex items-center gap-1">
-              {FILTERS.map((f) => {
-                const active = filter === f.key;
-                const n = counts[f.key];
-                return (
-                  <button
-                    key={f.key}
-                    type="button"
-                    onClick={() => setFilter(f.key)}
-                    aria-pressed={active}
-                    className={`inline-flex min-h-7 items-center gap-1 rounded-full px-2.5 text-xs transition-colors ${
-                      active
-                        ? 'bg-crimson/10 font-medium text-crimson'
-                        : 'text-subtle hover:bg-white/50 hover:text-ink'
-                    }`}
-                  >
-                    {f.label}
-                    <span className="tabular-nums opacity-70">{n}</span>
-                  </button>
-                );
-              })}
-            </div>
-
+          <div className="relative mt-4 flex items-center justify-end border-b border-rose/15 pb-2.5">
             <button
               type="button"
               onClick={() => setSort(sort === 'new' ? 'old' : 'new')}
@@ -456,20 +438,22 @@ export default function FriendsBoard() {
                   </div>
                 </li>
               ))
-            : visible.map((e) => (
-                <EntryRow key={e.id} entry={e} now={now} fresh={e.id === freshId} />
+            : sorted.map((e) => (
+                <EntryRow
+                  key={e.id}
+                  entry={e}
+                  now={now}
+                  fresh={e.id === freshId}
+                  liked={liked.includes(e.id)}
+                  onLike={() => toggleLike(e.id)}
+                  onReply={(reply) => addReply(e.id, reply)}
+                />
               ))}
 
           {!loading && count === 0 && (
             <li className="py-10 text-center">
               <p className="font-hand text-xl text-muted">还没有人说话</p>
               <p className="mt-1.5 text-xs text-subtle">第一条留言就留给你了 ~</p>
-            </li>
-          )}
-
-          {!loading && count > 0 && visible.length === 0 && (
-            <li className="py-8 text-center text-xs text-subtle">
-              这个筛选下还没有人，换一个看看？
             </li>
           )}
         </ol>
@@ -480,12 +464,32 @@ export default function FriendsBoard() {
 
 /* —————————————————————————— 单条留言 —————————————————————————— */
 
-function EntryRow({ entry, now, fresh }: { entry: FriendEntry; now: number; fresh?: boolean }) {
+function EntryRow({
+  entry,
+  now,
+  fresh,
+  liked,
+  onLike,
+  onReply,
+}: {
+  entry: FriendEntry;
+  now: number;
+  fresh?: boolean;
+  liked: boolean;
+  onLike: () => void;
+  onReply: (reply: FriendReply) => void;
+}) {
   const [broken, setBroken] = useState(false);
   const [open, setOpen] = useState(false);
+  const [replyOpen, setReplyOpen] = useState(false);
+  const [rName, setRName] = useState('');
+  const [rText, setRText] = useState('');
   const approved = entry.status === 'approved';
   const host = hostOf(entry.url);
   const initial = (entry.name || '·').trim().slice(0, 1);
+  const replies = entry.replies ?? [];
+  /** 点上赞之后本地 +1 —— 等服务端回来再以它为准，现在是演示 */
+  const likes = (entry.likes ?? 0) + (liked ? 1 : 0);
   /** 长留言（或贴了模板那种多行）先折起来，别一条把整面列表撑开 */
   const lines = entry.intro.split('\n');
   const clampable = lines.length > 4 || entry.intro.length > CLAMP_OVER;
@@ -507,6 +511,19 @@ function EntryRow({ entry, now, fresh }: { entry: FriendEntry; now: number; fres
     }
     return `${entry.intro.slice(0, CLAMP_OVER)}…`;
   })();
+
+  function submitReply() {
+    const text = rText.trim();
+    if (!text) return;
+    onReply({
+      id: `r-${Date.now()}`,
+      name: rName.trim() || '匿名朋友',
+      intro: text,
+      at: new Date().toISOString(),
+    });
+    setRText('');
+    setReplyOpen(false);
+  }
 
   return (
     /* 整行给一层 hover 底色：列表长起来之后，鼠标在哪一条上要看得出来。
@@ -587,6 +604,108 @@ function EntryRow({ entry, now, fresh }: { entry: FriendEntry; now: number; fres
           >
             {open ? '收起' : '展开全文'}
           </button>
+        )}
+
+        {/* ——— 点赞 / 回复 ——— */}
+        <div className="mt-1 flex flex-wrap items-center gap-1">
+          <button
+            type="button"
+            onClick={onLike}
+            aria-pressed={liked}
+            aria-label={liked ? `取消点赞，当前 ${likes} 个赞` : `点赞，当前 ${likes} 个赞`}
+            className={`inline-flex min-h-7 items-center gap-1 rounded-full px-1.5 text-[11px] tabular-nums transition-colors ${
+              liked ? 'bg-crimson/10 text-crimson' : 'text-subtle hover:bg-white/50 hover:text-crimson'
+            }`}
+          >
+            <MorphIcon icon={Heart} size={12} color="currentColor" />
+            {likes || '赞'}
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setReplyOpen(!replyOpen)}
+            aria-expanded={replyOpen}
+            className={`inline-flex min-h-7 items-center gap-1 rounded-full px-1.5 text-[11px] transition-colors ${
+              replyOpen ? 'bg-crimson/10 text-crimson' : 'text-subtle hover:bg-white/50 hover:text-crimson'
+            }`}
+          >
+            <MorphIcon icon={MessageCircle} size={12} color="currentColor" />
+            回复
+          </button>
+
+          {replies.length > 0 && (
+            <span className="pl-1 text-[11px] text-subtle">{replies.length} 条回复</span>
+          )}
+        </div>
+
+        {/* 回复框：默认收起，点了「回复」才出现。抬头写明回的是谁 */}
+        {replyOpen && (
+          <div className="mt-2 rounded-xl border border-rose/25 bg-white/60 p-2.5">
+            <p className="text-[11px] text-subtle">回复 {entry.name}</p>
+            <input
+              value={rName}
+              maxLength={APPLY_LIMITS.name}
+              onChange={(ev) => setRName(ev.target.value)}
+              placeholder="你的名字（可不填）"
+              autoComplete="off"
+              className="mt-1.5 block w-full bg-transparent text-xs text-ink outline-none placeholder:text-subtle/85"
+            />
+            <div className="mt-1.5 flex items-center gap-2 border-t border-rose/15 pt-1.5">
+              <input
+                value={rText}
+                maxLength={200}
+                onChange={(ev) => setRText(ev.target.value)}
+                onKeyDown={(ev) => {
+                  if (ev.key === 'Enter') {
+                    ev.preventDefault();
+                    submitReply();
+                  }
+                }}
+                placeholder="回复这一条…"
+                autoComplete="off"
+                className="min-w-0 flex-1 bg-transparent text-[13px] text-ink outline-none placeholder:text-subtle/85"
+              />
+              <button
+                type="button"
+                onClick={() => setReplyOpen(false)}
+                className="shrink-0 rounded-full px-2 py-1 text-[11px] text-subtle transition-colors hover:text-ink"
+              >
+                取消
+              </button>
+              <button
+                type="button"
+                onClick={submitReply}
+                disabled={!rText.trim()}
+                className="shrink-0 rounded-lg bg-crimson px-3 py-1 text-[11px] font-medium text-white transition-colors disabled:cursor-not-allowed disabled:bg-rose/30 disabled:text-muted"
+              >
+                发送
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* 楼中楼：只做一层，缩进 + 左侧竖线，和主楼区分开 */}
+        {replies.length > 0 && (
+          <ul className="mt-2 flex flex-col gap-2.5 border-l border-rose/20 pl-3">
+            {replies.map((r) => (
+              <li key={r.id} className="flex gap-2">
+                <span className="mt-0.5 grid h-6 w-6 shrink-0 place-items-center rounded-full bg-rose/25 font-display text-[11px] leading-none text-crimson">
+                  {(r.name || '·').trim().slice(0, 1)}
+                </span>
+                <div className="min-w-0">
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    <span className="text-[12px] font-medium text-ink">{r.name}</span>
+                    <time dateTime={r.at} className="text-[10.5px] tabular-nums text-subtle">
+                      {now ? timeAgo(r.at, now) : '\u00A0'}
+                    </time>
+                  </div>
+                  <p className="mt-0.5 whitespace-pre-wrap text-[12.5px] leading-relaxed text-muted">
+                    {r.intro}
+                  </p>
+                </div>
+              </li>
+            ))}
+          </ul>
         )}
       </div>
     </li>

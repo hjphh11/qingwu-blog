@@ -33,6 +33,18 @@ export interface FriendEntry {
   at: string;
   /** approved = 已经是友链；pending = 还在等我审 */
   status: 'approved' | 'pending';
+  /** 点赞数。演示数据里给几组固定值，真实值接后端后由服务端算 */
+  likes?: number;
+  /** 楼中楼 —— 只做一层，不嵌套 */
+  replies?: FriendReply[];
+}
+
+/** 一条回复 */
+export interface FriendReply {
+  id: string;
+  name: string;
+  intro: string;
+  at: string;
 }
 
 /** 演示模式开关：接上后端后改成 false */
@@ -69,6 +81,15 @@ export const DEMO_ENTRIES: FriendEntry[] = [
     intro: '物物而不物于物，念念而不念于念。路过打个招呼，欢迎常来坐坐 ~',
     at: '2026-10-31T09:20:00+08:00',
     status: 'approved',
+    likes: 7,
+    replies: [
+      {
+        id: 'demo-1-r1',
+        name: '清吾',
+        intro: '欢迎欢迎，已经把你加进友链墙了 ~ 常来坐。',
+        at: '2026-10-31T12:40:00+08:00',
+      },
+    ],
   },
   {
     id: 'demo-2',
@@ -79,6 +100,7 @@ export const DEMO_ENTRIES: FriendEntry[] = [
     intro: '综合性网站，主要写前端和折腾记录，已经把你加进友链啦。',
     at: '2026-10-30T21:05:00+08:00',
     status: 'approved',
+    likes: 3,
   },
   {
     id: 'demo-3',
@@ -88,6 +110,15 @@ export const DEMO_ENTRIES: FriendEntry[] = [
     intro: '一个喜欢拍照和写代码的小站，风格偏安静。申请互换友链 ~',
     at: '2026-10-29T14:42:00+08:00',
     status: 'pending',
+    likes: 1,
+    replies: [
+      {
+        id: 'demo-3-r1',
+        name: '清吾',
+        intro: '在看啦，这两天回你 ~',
+        at: '2026-10-30T09:02:00+08:00',
+      },
+    ],
   },
   {
     id: 'demo-4',
@@ -115,6 +146,7 @@ export const DEMO_ENTRIES: FriendEntry[] = [
     ].join('\n'),
     at: '2026-11-04T10:12:00+08:00',
     status: 'pending',
+    likes: 2,
   },
 ];
 
@@ -241,5 +273,31 @@ export async function submitFriendEntry(input: SubmitInput): Promise<SubmitResul
     return { ok: false, reason: 'error', message: data.message || '这条没能送出去，稍后再试一次' };
   } catch {
     return { ok: false, reason: 'error', message: '网络好像不太顺，稍后再试一次' };
+  }
+}
+
+/**
+ * 本机点过赞的条目（演示阶段用）。
+ *
+ * 没有服务端就只能记在浏览器里 —— 否则同一条每刷一次都能再点一次，
+ * 数字会一路涨，那就等于在骗人。接后端后这份本地记录删掉，
+ * 改由接口返回「当前访客是否已赞」。
+ */
+const LIKE_KEY = 'qingwu:friend-likes';
+
+export function readLiked(): string[] {
+  try {
+    const arr = JSON.parse(localStorage.getItem(LIKE_KEY) || '[]') as unknown;
+    return Array.isArray(arr) ? arr.filter((v): v is string => typeof v === 'string') : [];
+  } catch {
+    return [];
+  }
+}
+
+export function writeLiked(ids: string[]): void {
+  try {
+    localStorage.setItem(LIKE_KEY, JSON.stringify(ids));
+  } catch {
+    /* 隐私模式写不进去 —— 只是本机不持久，不用打扰访客 */
   }
 }
