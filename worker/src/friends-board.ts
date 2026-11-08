@@ -124,8 +124,9 @@ function toEntry(row: CommentRow, replies: CommentRow[], likes: number) {
     avatar: row.avatar ?? '',
     intro: row.body,
     at: new Date(row.ts).toISOString(),
-    // 留言默认即时可见；站长在后台改成 pending 就是「等我看看」
-    status: row.status === 'pending' ? ('pending' as const) : ('approved' as const),
+    // `visible` = 已经加进友链墙（站长审过），其余（pending）都算「等我看看」。
+    // 注意：pending 也照样返回给前端 —— 评论区是公开的，只是徽章不一样。
+    status: row.status === 'visible' ? ('approved' as const) : ('pending' as const),
     emailHash: row.email_hash ?? '',
     likes,
     replies: replies.map((r) => ({
@@ -223,9 +224,16 @@ export async function postFriendsBoard(request: Request, env: Env, ctx: Executio
     const hashRaw = String(body.avatarHash ?? '').trim().toLowerCase();
     const hash = /^[a-f0-9]{32}$/.test(hashRaw) ? hashRaw : null;
 
+    /**
+     * 新留言一律 `pending`。
+     *
+     * 为什么不是 visible：前端拿 status 决定徽章 —— visible 显示「已是友链」，
+     * 其余显示「等我看看」。访客刚提交的站还没审过，直接标成「已是友链」是撒谎。
+     * 站长审核 = 把它 UPDATE 成 visible（暂时用 D1 控制台/SQL，后台以后再说）。
+     */
     const res = await env.DB.prepare(
       `INSERT INTO comments (post_slug, parent_id, author, email, email_hash, author_url, avatar, body, status, ts, ip_hash)
-       VALUES (?, NULL, ?, ?, ?, ?, ?, ?, 'visible', ?, ?)`,
+       VALUES (?, NULL, ?, ?, ?, ?, ?, ?, 'pending', ?, ?)`,
     )
       .bind(
         SLUG,
@@ -263,7 +271,7 @@ export async function postFriendsBoard(request: Request, env: Env, ctx: Executio
           avatar: v.v.avatar,
           intro: v.v.intro,
           at: new Date(now).toISOString(),
-          status: 'approved',
+          status: 'pending',
           emailHash: hash ?? '',
           likes: 0,
           replies: [],
