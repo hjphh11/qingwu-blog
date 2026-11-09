@@ -94,6 +94,12 @@ export default function FriendsBoard() {
   const [now, setNow] = useState(0);
 
   const [values, setValues] = useState(EMPTY);
+  /**
+   * 正文框的高度：默认只占 3 行（68px），点进去或已经有内容才展开成 6 行（136px）。
+   * 有内容也算展开态 —— 否则贴了模板后失焦会被裁成 3 行，看到的和发出的不一样。
+   */
+  const [introFocused, setIntroFocused] = useState(false);
+  const introOpen = introFocused || values.intro.trim().length > 0;
   const [errors, setErrors] = useState<Partial<Record<keyof typeof EMPTY, string>>>({});
   const [status, setStatus] = useState<Status>('idle');
   const [notice, setNotice] = useState<{ kind: 'ok' | 'warn'; text: string } | null>(null);
@@ -473,9 +479,12 @@ export default function FriendsBoard() {
               name="intro"
               value={values.intro}
               maxLength={CONTENT_MAX}
-              rows={6}
+              rows={3}
               placeholder="写一句介绍，或者只是说句你好 ~ 也可以点左下角「插入模板」。"
               onChange={(ev) => setField('intro', ev.target.value)}
+              // 点进去就长高（3 行 → 6 行），失焦且空着再收回去
+              onFocus={() => setIntroFocused(true)}
+              onBlur={() => setIntroFocused(false)}
               // 写完顺手 Ctrl/⌘ + Enter 就发，不用挪到按钮上
               onKeyDown={(ev) => {
                 if ((ev.metaKey || ev.ctrlKey) && ev.key === 'Enter') {
@@ -484,7 +493,9 @@ export default function FriendsBoard() {
                 }
               }}
               aria-invalid={errors.intro ? true : undefined}
-              className="block w-full resize-none bg-transparent text-sm leading-relaxed text-ink outline-none placeholder:text-subtle/85"
+              className={`block w-full resize-none overflow-y-auto bg-transparent text-sm leading-relaxed text-ink outline-none transition-[height] duration-300 ease-out placeholder:text-subtle/85 motion-reduce:transition-none ${
+                introOpen ? 'h-[8.5rem]' : 'h-[4.25rem]'
+              }`}
             />
           </div>
 
