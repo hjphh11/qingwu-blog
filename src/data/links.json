@@ -107,6 +107,23 @@
       "visible": true,
       "addedAt": "2026-11-09",
       "shot": "https://muyuimg.cc.cd/file/blog/QDZFevwC.webp"
+    },
+    {
+      "name": "雨雪冰屋",
+      "avatar": "https://iamyukino.cn/favicon.ico",
+      "intro": "一隅雨雪一炉窝，可能会融化持久堆？",
+      "url": "https://iamyukino.cn/",
+      "visible": true,
+      "addedAt": "2026-11-09",
+      "shot": "https://iamyukino.cn/siteshot.jpg"
+    },
+    {
+      "name": "Detached",
+      "avatar": "https://detached.online/icon-512.png",
+      "intro": "总能看见不完美，所以一直追求完美，从修好每一处细节做起",
+      "url": "https://detached.online/",
+      "visible": true,
+      "addedAt": "2026-11-09"
     }
   ]
 }
