@@ -31,6 +31,13 @@
   .prose h3 {
     font-size: 1.25rem;
   }
+  /* 页内锚点落点：导航是 fixed 的，直接跳到 #id 标题会被压在导航底下。
+     `[slug].astro` 的目录平滑滚动用 getComputedStyle 读这个值当偏移 ——
+     偏移量只在这里写一份，别在 JS 里再硬编码一遍。 */
+  .prose h2[id],
+  .prose h3[id] {
+    scroll-margin-top: 6.5rem;
+  }
   .prose p {
     margin: 1.05em 0;
   }

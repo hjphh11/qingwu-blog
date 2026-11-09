@@ -191,10 +191,82 @@ const toc = headings.filter((h) => h.depth === 2 || h.depth === 3);
     const hash = decodeURIComponent(location.hash.slice(1));
     if (hash && links.has(hash)) setActive(hash);
 
+    /* ── 目录点击：滑过去，不是瞬移 ──
+       默认的锚点跳转是「瞬间贴合」，长文里会让人失去位置感。
+       这里自己做一段缓动滚动：
+       · 落点偏移读 `scroll-margin-top`（写在 prose.css），因为导航是 fixed 的，
+         不扣掉的话标题会藏到导航底下；
+       · 用户一动滚轮/手指/键盘就立刻交出控制权（别把人拽住）；
+       · 「减少动效」直接到位。 */
+    const reduced = window.matchMedia('(prefers-reduced-motion: reduce)');
+    const easeInOutCubic = (t: number) => (t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2);
+
+    let stopGlide: (() => void) | null = null;
+
+    const glideTo = (el: HTMLElement) => {
+      stopGlide?.();
+
+      const margin = parseFloat(getComputedStyle(el).scrollMarginTop) || 0;
+      const maxY = document.documentElement.scrollHeight - window.innerHeight;
+      const end = Math.min(Math.max(0, el.getBoundingClientRect().top + window.scrollY - margin), maxY);
+      const start = window.scrollY;
+      const dist = end - start;
+
+      if (Math.abs(dist) < 2 || reduced.matches) {
+        window.scrollTo(0, end);
+        return;
+      }
+
+      /* 时长跟距离走，但有上下限：短距离拖太久像卡住，长距离太快又晕 */
+      const dur = Math.min(720, Math.max(320, Math.abs(dist) * 0.5));
+      const t0 = performance.now();
+      let raf2 = 0;
+
+      const stop = () => {
+        if (raf2) cancelAnimationFrame(raf2);
+        raf2 = 0;
+        window.removeEventListener('wheel', stop);
+        window.removeEventListener('touchstart', stop);
+        window.removeEventListener('keydown', stop);
+        if (stopGlide === stop) stopGlide = null;
+      };
+      window.addEventListener('wheel', stop, { passive: true });
+      window.addEventListener('touchstart', stop, { passive: true });
+      window.addEventListener('keydown', stop);
+      stopGlide = stop;
+
+      const step = (now: number) => {
+        const p = Math.min(1, (now - t0) / dur);
+        window.scrollTo(0, start + dist * easeInOutCubic(p));
+        if (p < 1) raf2 = requestAnimationFrame(step);
+        else stop();
+      };
+      raf2 = requestAnimationFrame(step);
+    };
+
+    const onTocClick = (event: MouseEvent) => {
+      const a = (event.target as HTMLElement | null)?.closest<HTMLAnchorElement>('[data-toc-link]');
+      if (!a) return;
+      /* 带修饰键的点击是「新标签页打开 / 复制链接」，别抢 */
+      if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+
+      const id = a.dataset.tocLink || '';
+      const el = id ? document.getElementById(id) : null;
+      if (!el) return;
+
+      event.preventDefault();
+      // 地址栏仍要带 hash（可分享），但不新增历史记录
+      history.replaceState(null, '', `#${id}`);
+      glideTo(el);
+    };
+    toc.addEventListener('click', onTocClick);
+
     teardown = () => {
       window.removeEventListener('scroll', onScroll);
       window.removeEventListener('resize', onScroll);
       if (raf) cancelAnimationFrame(raf);
+      toc.removeEventListener('click', onTocClick);
+      stopGlide?.();
       back?.removeEventListener('click', onBack);
     };
   }
