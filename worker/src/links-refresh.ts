@@ -45,6 +45,8 @@ const SEED_HOSTS = [
   'homulilly.com',
   'n0v0rland.xyz',
   'muyudada.dpdns.org',
+  'iamyukino.cn',
+  'detached.online',
 ];
 
 /** 从一段 XML 里挑最大的合法日期。只认 YYYY-MM-DD 字面量。 */
