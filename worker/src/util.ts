@@ -115,11 +115,29 @@ export function parseOrigins(raw: string | undefined): string[] {
     .filter(Boolean);
 }
 
+/** 从任意字符串里取出小写 host（含端口）；解析不了返回 null。 */
+function hostOf(raw: string): string | null {
+  try {
+    return new URL(raw).host.toLowerCase() || null;
+  } catch {
+    return null;
+  }
+}
+
 /** 是否为允许的来源。列表为空视为「不限制」（宁可放开 /hit，也不要静默丢数据）。 */
 export function originAllowed(origin: string | null, allowed: string[]): boolean {
   if (allowed.length === 0 || allowed.includes('*')) return true;
   if (!origin) return true; // 同源/服务端转发没有 Origin 头，不该被挡
-  return allowed.includes(origin);
+  if (allowed.includes(origin)) return true;
+
+  // ⚠️ 兜底按 host 比，忽略协议：本地 `wrangler dev` 会把**同源**请求的 Origin
+  // 改写成 `http://<host>`（协议被降级成本地明文），于是浏览器发的
+  // `https://qingwu.ink` 到达 Worker 时变成 `http://qingwu.ink`，
+  // 纯字符串比对会把它判成非法 → 所有打点静默归零。
+  // 放开协议只影响这个来源校验（打点接口不携带凭据），且 http 本身会 301 到 https。
+  const host = hostOf(origin);
+  if (!host) return false;
+  return allowed.some((a) => hostOf(a) === host);
 }
 
 /**
