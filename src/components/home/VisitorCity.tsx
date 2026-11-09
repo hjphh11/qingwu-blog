@@ -140,7 +140,7 @@ export default function VisitorCity() {
           <button
             type="button"
             onClick={() => locate(false)}
-            className="mt-3 min-h-9 rounded-full bg-rose/70 px-4 text-sm text-ink transition-all duration-200 hover:bg-rose hover:shadow-[0_4px_14px_rgba(246,165,184,0.4)] active:scale-95"
+            className="mt-3 min-h-9 rounded-full bg-rose/70 px-4 text-sm text-ink transition-all duration-200 hover:bg-rose hover:shadow-[0_4px_14px_rgba(246,165,184,0.4)] q-press"
           >
             同意定位
           </button>

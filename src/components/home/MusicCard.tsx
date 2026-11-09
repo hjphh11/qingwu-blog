@@ -174,7 +174,7 @@ export default function MusicCard() {
           type="button"
           onClick={() => music.togglePlay()}
           aria-label={v.isPlaying ? '暂停' : '播放'}
-          className="grid h-9 w-9 place-items-center rounded-full bg-crimson text-white transition-transform hover:scale-105 active:scale-95"
+          className="grid h-9 w-9 place-items-center rounded-full bg-crimson text-white transition-transform hover:scale-105 q-press"
         >
           <MorphIcon icon={v.isPlaying ? Pause : Play} size={16} color="currentColor" />
         </button>

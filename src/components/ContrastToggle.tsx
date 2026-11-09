@@ -46,7 +46,7 @@ export default function ContrastToggle() {
       aria-pressed={on}
       aria-label={on ? '关闭高对比阅读' : '开启高对比阅读'}
       title={on ? '关闭高对比阅读' : '开启高对比阅读'}
-      className={`relative z-10 grid h-9 w-9 shrink-0 place-items-center rounded-full transition-colors active:scale-95 ${
+      className={`relative z-10 grid h-9 w-9 shrink-0 place-items-center rounded-full transition-colors q-press ${
         on ? 'bg-rose/30 text-crimson' : 'text-muted hover:bg-rose/15 hover:text-crimson'
       }`}
     >

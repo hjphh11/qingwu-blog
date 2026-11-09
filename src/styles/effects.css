@@ -1148,6 +1148,7 @@
     position: relative;
     overflow: hidden;
   }
+
   .btn-ripple .ripple {
     position: absolute;
     border-radius: 9999px;
@@ -1741,4 +1742,65 @@
       flex-basis: 100%;
     }
   }
+}
+
+
+/* ============================================================
+   按钮按压 —— **故意放在 @layer 之外**
+   ============================================================
+   为什么不能待在 components 层里：按钮上普遍挂着 Tailwind 的
+   `transition-colors` / `transition-transform` 之类 utilities（带 `duration-*`），
+   而 utilities 层的优先级高于 components。放层里的话，那句
+   `transition-duration: .15s` 会把这里的 spring 曲线整条盖掉，
+   实测表现就是：按下 0.96 没问题，但松开时从 0.96 直接线性回到 1，
+   一点回弹都没有。未分层的规则优先于所有 @layer，所以只能写在这里。
+   同类先例：cursor.css（要压过 cursor-*）、motion.css（要压过动画兜底）。
+
+   也因此 transition 的属性列表要写全：原来的 `transition-colors` 被覆盖后，
+   颜色过渡得由这里接手，否则按钮变色会变成硬切。
+   ============================================================ */
+.q-press {
+  position: relative;
+  transition:
+    transform var(--dur-state) var(--ease-press),
+    box-shadow var(--dur-micro) var(--ease-soft),
+    background-color var(--dur-micro) var(--ease-soft),
+    border-color var(--dur-micro) var(--ease-soft),
+    color var(--dur-micro) var(--ease-soft),
+    opacity var(--dur-micro) var(--ease-soft);
+  -webkit-tap-highlight-color: transparent;
+}
+/* 内阴影走伪元素：每个按钮原有外阴影各不相同，直接写 box-shadow 会把外阴影
+   整条覆盖掉，按下瞬间按钮像被抠掉了投影。叠一层就只加不减。
+   涟漪用的是子元素 .ripple，不占 ::after，两者可共存。 */
+.q-press::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  /* 上沿深、下沿浅：光从上方来，凹陷的顶部更暗，读起来才像「按进去」 */
+  box-shadow: inset 0 3px 10px rgba(96, 22, 44, 0.3);
+  opacity: 0;
+  transition: opacity var(--dur-micro) var(--ease-soft);
+}
+.q-press:active {
+  transform: scale(0.96);
+  /* 按下要「快而直」：90ms 且不带过冲，否则按下去的瞬间会自己弹一下 */
+  transition:
+    transform var(--dur-press) cubic-bezier(0.4, 0, 0.2, 1),
+    box-shadow var(--dur-press) ease-out;
+}
+.q-press:active::after {
+  opacity: 1;
+  transition-duration: var(--dur-press);
+}
+/* 禁用态不参与 */
+.q-press:disabled,
+.q-press[aria-disabled='true'] {
+  transform: none;
+}
+.q-press:disabled::after,
+.q-press[aria-disabled='true']::after {
+  opacity: 0;
 }

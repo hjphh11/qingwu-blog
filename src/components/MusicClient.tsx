@@ -79,7 +79,7 @@ export default function MusicClient() {
     : playlist;
 
   const btn =
-    'grid h-11 w-11 place-items-center rounded-full text-ink transition-transform hover:scale-110 active:scale-95';
+    'grid h-11 w-11 place-items-center rounded-full text-ink transition-transform hover:scale-110 q-press';
 
   if (playlist.length === 0) {
     return (
@@ -205,7 +205,7 @@ export default function MusicClient() {
             <button
               type="button"
               onClick={() => music.togglePlay()}
-              className="grid h-14 w-14 place-items-center rounded-full bg-crimson text-white shadow-lg transition-transform hover:scale-110 active:scale-95"
+              className="grid h-14 w-14 place-items-center rounded-full bg-crimson text-white shadow-lg transition-transform hover:scale-110 q-press"
               aria-label={isPlaying ? '暂停' : '播放'}
             >
               <MorphIcon icon={isPlaying ? Pause : Play} size={22} color="#fff" />

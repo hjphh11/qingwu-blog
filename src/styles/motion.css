@@ -146,6 +146,32 @@
     opacity: 0;
   }
 
+  /* 按钮按压:降级时不做缩放和回弹。
+     内阴影**保留** —— 它是「已经按下去了」的状态反馈，不是动画；
+     一起去掉的话，开着减少动效的人按下去完全没反应，反而更糟。 */
+  .q-press,
+  .q-press:active {
+    transform: none !important;
+    transition: none !important;
+  }
+  .q-press:active::after {
+    opacity: 1;
+    transition: none !important;
+  }
+
+  /* 按钮按压:降级时不做缩放和回弹。
+     内阴影**保留** —— 它是「已经按下去了」的状态反馈，不是动画；
+     一起去掉的话，开着减少动效的人按下去完全没反应，反而更糟。 */
+  .q-press,
+  .q-press:active {
+    transform: none !important;
+    transition: none !important;
+  }
+  .q-press:active::after {
+    opacity: 1;
+    transition: none !important;
+  }
+
   /* 暖色氛围光斑:降级时静止(保留静态柔光,不再漂浮) */
   .aurora-blob {
     animation: none !important;

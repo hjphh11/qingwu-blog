@@ -322,7 +322,7 @@ export default function Navbar({ pathname = '/' }: Props) {
                   onFocus={() => item.children && setOpenGroup(item.href)}
                   aria-haspopup={item.children ? 'true' : undefined}
                   aria-expanded={item.children ? openNow : undefined}
-                  className={`relative z-10 flex items-center gap-0.5 rounded-full px-3.5 py-1.5 text-base font-medium transition-colors duration-200 active:scale-95 ${
+                  className={`relative z-10 flex items-center gap-0.5 rounded-full px-3.5 py-1.5 text-base font-medium transition-colors duration-200 q-press ${
                     active ? 'text-crimson' : 'text-muted hover:text-crimson'
                   }`}
                 >
@@ -429,7 +429,7 @@ export default function Navbar({ pathname = '/' }: Props) {
                 key={item.href}
                 href={item.href}
                 onClick={() => setOpen(false)}
-                className={`rounded-xl px-4 py-2.5 text-base font-medium transition active:scale-95 ${
+                className={`rounded-xl px-4 py-2.5 text-base font-medium transition q-press ${
                   isActive(item.href)
                     ? 'bg-rose/25 text-crimson'
                     : 'text-muted hover:bg-rose/15'

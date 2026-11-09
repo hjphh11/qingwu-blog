@@ -77,7 +77,7 @@ export default function MiniPlayer() {
             type="button"
             aria-label={isPlaying ? '暂停' : '播放'}
             onClick={() => music.togglePlay()}
-            className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-crimson text-white transition-transform hover:scale-110 active:scale-95"
+            className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-crimson text-white transition-transform hover:scale-110 q-press"
           >
             <MorphIcon icon={isPlaying ? Pause : Play} size={17} color="#fff" />
           </button>
@@ -85,7 +85,7 @@ export default function MiniPlayer() {
             type="button"
             aria-label="下一首"
             onClick={() => music.nextSong()}
-            className="grid h-9 w-9 shrink-0 place-items-center rounded-full text-muted transition-transform hover:scale-110 active:scale-95"
+            className="grid h-9 w-9 shrink-0 place-items-center rounded-full text-muted transition-transform hover:scale-110 q-press"
           >
             <MorphIcon icon={SkipForward} size={17} color="currentColor" />
           </button>
