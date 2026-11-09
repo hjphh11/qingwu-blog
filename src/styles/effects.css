@@ -291,26 +291,43 @@
     background: linear-gradient(135deg, rgba(246, 165, 184, 0.28), rgba(232, 176, 75, 0.2));
     transition: opacity var(--dur-move) var(--ease-soft);
   }
-  /* 大图（首页立绘）才做扫描骨架。
+  /* 大图（首页立绘）才做「剪影 + 扫光」的骨架。
      ⚠️ 不要直接给 `.q-media::before` 挂动画：这个类还被播放器 44px 小封面、
      音乐页大封面、404 图共用，小图上一直扫会晃眼，而且切歌时每次都要重扫一遍。
      加大类名而不是靠后代选择器，是因为立绘在三层嵌套里，写死结构反而容易脆。 */
   .qjs .q-media--sweep::before {
+    /* 两层背景：上面是爱弥斯剪影（素材就是这个粉色实心 + 透明底），下面是淡渐变底。
+       剪影用 background 直接铺而不是 mask —— mask 会把底色也一起塑成轮廓，
+       就只剩一个纯色剪影，看不出「底下还有一块暖色」。 */
+    background:
+      url('/images/emis/silhouette.webp') center / contain no-repeat,
+      linear-gradient(135deg, rgba(246, 165, 184, 0.24), rgba(232, 176, 75, 0.16));
+  }
+  /* 扫光单独一层：::before 要同时装剪影和底色，动画只能挂在这里才不牵连剪影 */
+  .qjs .q-media--sweep::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    z-index: 2;
+    pointer-events: none;
+    border-radius: inherit;
     background: linear-gradient(
-      105deg,
-      rgba(246, 165, 184, 0.3) 0%,
-      rgba(255, 236, 212, 0.62) 46%,
-      rgba(246, 165, 184, 0.3) 100%
-    );
-    background-size: 220% 100%;
-    /* 关键帧复用 q-skel-sweep（只动 background-position，配色可以各写各的）。
+        105deg,
+        transparent 42%,
+        rgba(255, 255, 255, 0.5) 50%,
+        transparent 58%
+      )
+      0 0 / 220% 100% no-repeat;
+    /* 关键帧复用 q-skel-sweep（只动 background-position）。
        1.9s 比骨架线的 1.25s 慢一档 —— 立绘面积大，扫太快像在闪。 */
     animation: q-skel-sweep 1.9s ease-in-out infinite;
+    transition: opacity var(--dur-move) var(--ease-soft);
   }
   .qjs .q-media.is-loaded img {
     opacity: 1;
   }
-  .qjs .q-media.is-loaded::before {
+  .qjs .q-media.is-loaded::before,
+  .qjs .q-media.is-loaded::after {
     opacity: 0;
     /* 图都出来了还扫就是白烧电 */
     animation: none;

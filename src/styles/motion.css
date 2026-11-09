@@ -34,6 +34,7 @@
 .qhidden .q-marquee,
 .qhidden .q-skel,
 .qhidden .q-media--sweep::before,
+.qhidden .q-media--sweep::after,
 .qhidden .q-petal .hub,
 .qhidden .q-petal .petal,
 .qhidden .q-spin,
@@ -57,10 +58,10 @@
     animation: none !important;
     background: rgba(246, 165, 184, 0.22);
   }
-  /* 图片占位同理:停掉扫描,但保留那层暖色渐变(它同时承担「图还没来」的交代) */
-  .q-media--sweep::before {
+  /* 图片占位同理:停掉扫描(扫光在 ::after 上),剪影和底色留着 ——
+     它们才是「图还没来」的交代,而且剪影本身是静态的,没有动态内容要关 */
+  .q-media--sweep::after {
     animation: none !important;
-    background: linear-gradient(135deg, rgba(246, 165, 184, 0.28), rgba(232, 176, 75, 0.2));
   }
   .q-petal .hub,
   .q-petal .petal,
