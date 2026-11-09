@@ -25,6 +25,13 @@ const PROBE_PATHS = ['/atom.xml', '/rss.xml', '/feed', '/sitemap.xml'];
  *   · 点过的友链，即使这里没列，也会被抓
  *   · 新加友链记得在这里补一行（或者等它被人点一次）
  */
+/**
+ * 种子：links.json 里所有友链的主机名。
+ *
+ * ⚠️ **加友链时要同步加到这里** —— 抓取对象 = 种子 + link_clicks 里被点过的站，
+ *    漏加的话新站要等第一次被点击之后的第二天才会出现「最近更新」。
+ * 注意去掉 `www.`（links.json 里 dreamcenter.top 写的是 www.dreamcenter.top）。
+ */
 const SEED_HOSTS = [
   'rainzt.cn',
   'hty.rest',
@@ -34,6 +41,7 @@ const SEED_HOSTS = [
   'dreamcenter.top',
   'blog.moesam.com',
   'ragnote.top',
+  'seasir.top',
 ];
 
 /** 从一段 XML 里挑最大的合法日期。只认 YYYY-MM-DD 字面量。 */
