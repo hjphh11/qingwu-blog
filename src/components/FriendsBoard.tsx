@@ -57,6 +57,32 @@ type Status = 'idle' | 'submitting';
 /** 留言比「一句介绍」长得多 —— 贴完整模板也放得下 */
 const CONTENT_MAX = 300;
 
+/**
+ * 「本站 AI」的署名。
+ *
+ * 站长会用爱弥斯的身份回话，这类发言要能一眼和真人访客区分开，
+ * 所以名字旁边挂一个 AI 小标。判据取「署名」**或**「爱弥斯头像」——
+ * 只看名字的话，改了昵称就漏标；只看头像的话，头像加载失败也不该丢标。
+ */
+const AI_AUTHOR = '爱弥斯';
+
+function isAiAuthor(name: string, avatar?: string): boolean {
+  return (name || '').trim() === AI_AUTHOR || /images\/emis\/avatar/i.test(avatar || '');
+}
+
+/** 名字旁边那枚 AI 小胶囊，配色跟「已是友链」同一套，只是更小一号 */
+function AiBadge() {
+  return (
+    <span
+      title="由爱弥斯（本站 AI）代笔"
+      className="inline-flex shrink-0 items-center gap-0.5 rounded-full bg-crimson/10 px-1.5 text-[10px] leading-[15px] text-crimson"
+    >
+      <MorphIcon icon={Sparkles} size={9} color="currentColor" />
+      AI
+    </span>
+  );
+}
+
 const EMPTY = { name: '', email: '', url: '', intro: '' };
 
 type SortKey = 'new' | 'old';
@@ -694,6 +720,7 @@ function EntryRow({
           <span className="max-w-[9rem] truncate text-[13.5px] font-medium leading-5 text-ink">
             {entry.name}
           </span>
+          {isAiAuthor(entry.name, entry.avatar) && <AiBadge />}
           <span
             className={`inline-flex shrink-0 items-center gap-1 rounded-full px-1.5 py-px text-[10.5px] leading-[18px] ${
               approved
@@ -923,6 +950,7 @@ function EntryRow({
                 <div className="min-w-0">
                   <div className="flex flex-wrap items-center gap-1.5">
                     <span className="text-[12px] font-medium text-ink">{r.name}</span>
+                    {isAiAuthor(r.name, r.avatar) && <AiBadge />}
                     <time dateTime={r.at} className="text-[10.5px] tabular-nums text-subtle">
                       {now ? timeAgo(r.at, now) : '\u00A0'}
                     </time>
