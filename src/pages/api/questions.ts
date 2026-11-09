@@ -7,7 +7,21 @@ import type { APIRoute } from 'astro';
 //   BANK_REPO   选填,默认 hjphh11/python-exam-quiz-bank
 //   BANK_PATH   选填,默认 questions.json
 //   BANK_REF    选填,默认 master
-export const prerender = false;
+/**
+ * ⚠️ 构建期生成，**不是运行时函数**。
+ *
+ * 原来这里是 `prerender = false`：每打开一次刷题页就跑一次 Serverless，
+ * 带 token 去 GitHub 拉 677KB 题库再转发。虽然加了 CDN 缓存，
+ * 但 Vercel 的 Fluid Active CPU 是按函数实际占用 CPU 计费的（免费版 4 小时/月），
+ * 这类「只为转发一个文件」的函数最不该占那份额度。
+ *
+ * 改成 true 之后：部署时取一次，产物是静态 JSON，访客/CDN 直接拿文件，
+ * 函数调用次数归零。代价是题库更新要重新部署一次 —— 题库本来就不常变，划得来。
+ *
+ * 构建环境（Vercel）需要 BANK_TOKEN；本地没有该变量时这里会返回一段说明，
+ * 本地刷题页会显示为空，属预期行为。
+ */
+export const prerender = true;
 
 // 本地开发读 .env(Vite 注入 import.meta.env);线上读 Vercel 环境变量(process.env)。
 const env = (key: string): string =>
@@ -50,9 +64,9 @@ export const GET: APIRoute = async () => {
   }
 
   const body = await res.text();
+  // 静态文件由 CDN 直接给，这里只需要一个合理的协商缓存
   return json(body, 200, {
-    // 交给 Vercel 边缘缓存,减少对 GitHub API 的调用
-    'cache-control': 'public, max-age=300, s-maxage=3600, stale-while-revalidate=86400',
+    'cache-control': 'public, max-age=300',
     'x-robots-tag': 'noindex, nofollow',
   });
 };
