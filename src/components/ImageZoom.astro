@@ -1,0 +1,232 @@
+---
+/*
+ * 清吾 · 正文图片灯箱
+ *
+ * 只做一件事：点 `.prose` 里的图 → 全屏看原图，Esc / 点空白关，← → 在同篇图里翻。
+ *
+ * 几个刻意的选择：
+ *   · **不用框架组件**。一张遮罩 + 一个 img + 三个按钮，用 React/Motion 上来就是几 KB
+ *     和一次水合，不值。纯 DOM + 事件委托，`astro:page-load` 之后也不用重绑（监听挂在
+ *     document 上，body 换了照样有效）。
+ *   · **图片包在 <a> 里就不接管**。那种图的语义是「点进链接」，抢走点击会让原有的
+ *     跳转失效 —— 这比"少一个放大的机会"严重得多。
+ *   · **太小的图不接管**。图标、表情、徽章点开放大毫无意义，还容易误触（正文里
+ *     这些图往往紧挨着文字）。
+ *   · 动画只有 opacity / transform，见 styles/lightbox.css 末尾的 reduced-motion 分支。
+ */
+---
+
+<div class="q-zoom" data-zoom hidden aria-hidden="true" role="dialog" aria-modal="true" aria-label="查看大图">
+  <div class="q-zoom__bar">
+    <span class="q-zoom__count" data-zoom-count></span>
+    <button type="button" class="q-zoom__btn" data-zoom-close aria-label="关闭预览">
+      <svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true">
+        <path d="M6 6l12 12M18 6L6 18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" />
+      </svg>
+    </button>
+  </div>
+
+  <img class="q-zoom__img" data-zoom-img alt="" decoding="async" />
+
+  <div class="q-zoom__nav" data-side="prev">
+    <button type="button" class="q-zoom__btn" data-zoom-prev aria-label="上一张">
+      <svg width="20" height="20" viewBox="0 0 24 24" aria-hidden="true">
+        <path d="M15 4l-8 8 8 8" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" />
+      </svg>
+    </button>
+  </div>
+
+  <div class="q-zoom__nav" data-side="next">
+    <button type="button" class="q-zoom__btn" data-zoom-next aria-label="下一张">
+      <svg width="20" height="20" viewBox="0 0 24 24" aria-hidden="true">
+        <path d="M9 4l8 8-8 8" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" />
+      </svg>
+    </button>
+  </div>
+</div>
+
+<script is:inline>
+  (function () {
+    if (window.__qZoom) return;
+    window.__qZoom = true;
+
+    /* 小于这个渲染宽度的图不接管（图标 / 表情 / 徽章） */
+    var MIN_SIDE = 120;
+    /* 关掉淡出动画后又把元素藏起来的延时，跟 lightbox.css 的 --dur-micro 对齐 */
+    var CLOSE_MS = 180;
+    /* 触屏滑动的最小位移（px），低于它当点击 */
+    var SWIPE_MIN = 48;
+
+    var imgs = [];
+    var idx = 0;
+    var closeTimer = 0;
+
+    function box() {
+      return document.querySelector('[data-zoom]');
+    }
+
+    /* 同篇的图：优先取同一个 .prose 容器里的，没有就退到父元素 */
+    function collect(el) {
+      var host = el.closest('.prose') || el.parentElement;
+      if (!host) return [];
+      var all = host.querySelectorAll('img');
+      var list = [];
+      for (var i = 0; i < all.length; i++) {
+        var im = all[i];
+        if (im.closest('a')) continue;
+        if (im.closest('[data-zoom]')) continue;
+        if (im.width && im.width < MIN_SIDE) continue;
+        list.push(im);
+      }
+      return list;
+    }
+
+    function render() {
+      var b = box();
+      if (!b) return;
+      var src = imgs[idx];
+      var im = b.querySelector('[data-zoom-img]');
+      var count = b.querySelector('[data-zoom-count]');
+      if (src && im) {
+        var next = src.currentSrc || src.src;
+        /* 同一张就不重新赋值，避免已经在缓存里还要闪一下 */
+        if (im.getAttribute('src') !== next) im.setAttribute('src', next);
+        im.setAttribute('alt', src.alt || '');
+      }
+      if (count) count.textContent = imgs.length > 1 ? idx + 1 + ' / ' + imgs.length : '';
+    }
+
+    function open(list, i) {
+      var b = box();
+      if (!b || !list.length) return;
+      clearTimeout(closeTimer);
+      imgs = list;
+      idx = i;
+      b.setAttribute('data-single', list.length > 1 ? '0' : '1');
+      render();
+      b.hidden = false;
+      b.setAttribute('aria-hidden', 'false');
+      document.documentElement.classList.add('q-zoom-open');
+      requestAnimationFrame(function () {
+        b.classList.add('is-open');
+        var btn = b.querySelector('[data-zoom-close]');
+        if (btn) btn.focus({ preventScroll: true });
+      });
+    }
+
+    function close() {
+      var b = box();
+      if (!b || b.hidden) return;
+      b.classList.remove('is-open');
+      b.setAttribute('aria-hidden', 'true');
+      document.documentElement.classList.remove('q-zoom-open');
+      clearTimeout(closeTimer);
+      closeTimer = window.setTimeout(function () {
+        var cur = box();
+        if (!cur) return;
+        cur.hidden = true;
+        var im = cur.querySelector('[data-zoom-img]');
+        if (im) im.removeAttribute('src');
+      }, CLOSE_MS);
+    }
+
+    function step(delta) {
+      if (imgs.length < 2) return;
+      idx = (idx + delta + imgs.length) % imgs.length;
+      render();
+    }
+
+    document.addEventListener('click', function (e) {
+      var t = e.target;
+      if (!(t instanceof Element)) return;
+      var b = box();
+
+      /* 灯箱开着时，内部交互优先 */
+      if (b && !b.hidden) {
+        if (t.closest('[data-zoom-close]')) return close();
+        if (t.closest('[data-zoom-prev]')) return step(-1);
+        if (t.closest('[data-zoom-next]')) return step(1);
+        /* 点遮罩空白处（不是按钮、不是图）关闭 */
+        if (t === b) return close();
+        return;
+      }
+
+      var im = t.closest('.prose img');
+      if (!(im instanceof HTMLImageElement)) return;
+      if (im.closest('a')) return;
+      if (im.width && im.width < MIN_SIDE) return;
+      var list = collect(im);
+      if (!list.length) return;
+      e.preventDefault();
+      open(list, Math.max(0, list.indexOf(im)));
+    });
+
+    document.addEventListener('keydown', function (e) {
+      var b = box();
+      if (!b || b.hidden) return;
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        close();
+      } else if (e.key === 'ArrowLeft') {
+        e.preventDefault();
+        step(-1);
+      } else if (e.key === 'ArrowRight') {
+        e.preventDefault();
+        step(1);
+      }
+    });
+
+    /* 触屏左右滑：滑动距离够就用它翻页，否则交给上面的 click */
+    var sx = 0;
+    var sy = 0;
+    var tracked = false;
+
+    document.addEventListener(
+      'touchstart',
+      function (e) {
+        var b = box();
+        if (!b || b.hidden || e.touches.length !== 1) {
+          tracked = false;
+          return;
+        }
+        if (!b.contains(e.target)) {
+          tracked = false;
+          return;
+        }
+        tracked = true;
+        sx = e.touches[0].clientX;
+        sy = e.touches[0].clientY;
+      },
+      { passive: true },
+    );
+
+    document.addEventListener(
+      'touchend',
+      function (e) {
+        if (!tracked) return;
+        tracked = false;
+        var b = box();
+        if (!b || b.hidden) return;
+        var t = e.changedTouches[0];
+        var dx = t.clientX - sx;
+        var dy = t.clientY - sy;
+        if (Math.abs(dx) >= SWIPE_MIN && Math.abs(dx) > Math.abs(dy)) step(dx > 0 ? -1 : 1);
+      },
+      { passive: true },
+    );
+
+    /* 换页后（ClientRouter 会整个替换 body）把状态复位，别让遮罩残留锁死滚动 */
+    document.addEventListener('astro:page-load', function () {
+      clearTimeout(closeTimer);
+      imgs = [];
+      idx = 0;
+      document.documentElement.classList.remove('q-zoom-open');
+      var b = box();
+      if (b) {
+        b.classList.remove('is-open');
+        b.hidden = true;
+        b.setAttribute('aria-hidden', 'true');
+      }
+    });
+  })();
+</script>

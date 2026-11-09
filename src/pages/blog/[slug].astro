@@ -51,6 +51,12 @@ const toc = headings.filter((h) => h.depth === 2 || h.depth === 3);
           </time>
           <span aria-hidden="true">·</span>
           <span>阅读约 {readMin} 分钟</span>
+          {/* 真实阅读量：数据来自 D1 的 hits（口径同后台统计）。先 hidden，
+              脚本拿到数字才显示 —— 拿不到或为 0 就当作没有这个东西，绝不留一个空的「阅读 次」。 */}
+          <span data-views-path={`/blog/${post.id}`} hidden>
+            <span aria-hidden="true">·</span>
+            阅读 <span data-views-num></span> 次
+          </span>
         </div>
         <h1 class="q-post-title mt-5 font-display text-[length:var(--text-display)] leading-[1.2] text-ink">
           {post.data.title}
@@ -257,6 +263,10 @@ const toc = headings.filter((h) => h.depth === 2 || h.depth === 3);
       event.preventDefault();
       // 地址栏仍要带 hash（可分享），但不新增历史记录
       history.replaceState(null, '', `#${id}`);
+      // 目录跳转是「向下滚」，导航会按滚动方向收起 —— 但落点上方还留着
+      // prose.css 的 scroll-margin-top（6.5rem，是照导航高度写的）。
+      // 导航这时要是不在了，标题上面就会空出一块。先把它请回来再滚。
+      window.dispatchEvent(new CustomEvent('q:reveal-nav'));
       glideTo(el);
     };
     toc.addEventListener('click', onTocClick);
@@ -277,5 +287,63 @@ const toc = headings.filter((h) => h.depth === 2 || h.depth === 3);
     init();
   }
   document.addEventListener('astro:page-load', init);
+</script>
+
+<script is:inline>
+  /*
+   * 单篇阅读量。数据源：Worker 的 GET /post-views（见 worker/src/views.ts）。
+   *
+   * · 取 base 的方式与打点一致：Layout 注入的 <meta name="q-hit-endpoint"> 去掉 /hit。
+   *   线上是 https://api.qingwu.ink，局域网自建版是 /api —— 两边都不用改一行代码。
+   * · **失败一律静默**。这是一个装饰性的数字，拿不到就不显示，绝不能在页面上留个
+   *   「阅读 次」的空壳，也不该为一个数字往控制台里丢错误。
+   * · 首次进入和客户端路由切页都要跑（astro:page-load），并且靠 data-views-done 幂等。
+   */
+  (function () {
+    var DONE = 'data-views-done';
+
+    function apiBase() {
+      var meta = document.querySelector('meta[name="q-hit-endpoint"]');
+      var ep = (meta && meta.getAttribute('content')) || 'https://api.qingwu.ink/hit';
+      return ep.replace(/\/hit$/, '');
+    }
+
+    function fmt(n) {
+      if (n >= 10000) return (n / 10000).toFixed(1).replace(/\.0$/, '') + ' 万';
+      return String(n);
+    }
+
+    function fill() {
+      var hosts = document.querySelectorAll('[data-views-path]');
+      if (!hosts.length) return;
+      var url = apiBase() + '/post-views';
+
+      Array.prototype.forEach.call(hosts, function (el) {
+        if (el.getAttribute(DONE) === '1') return;
+        var p = el.getAttribute('data-views-path');
+        if (!p) return;
+        el.setAttribute(DONE, '1');
+
+        fetch(url + '?path=' + encodeURIComponent(p), { credentials: 'omit' })
+          .then(function (r) {
+            return r.ok ? r.json() : null;
+          })
+          .then(function (d) {
+            if (!d || d.ok !== true) return;
+            var pv = Number(d.pv);
+            if (!(pv > 0)) return;
+            var num = el.querySelector('[data-views-num]');
+            if (num) num.textContent = fmt(pv);
+            el.hidden = false;
+          })
+          .catch(function () {
+            /* 静默：拿不到就当没有这个数字 */
+          });
+      });
+    }
+
+    fill();
+    document.addEventListener('astro:page-load', fill);
+  })();
 </script>
 

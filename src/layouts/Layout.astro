@@ -13,6 +13,7 @@ import Footer from '../components/Footer.astro';
 import BackgroundDecor from '../components/BackgroundDecor.tsx';
 import MiniPlayer from '../components/MiniPlayer.tsx';
 import Splash from '../components/Splash.tsx';
+import ImageZoom from '../components/ImageZoom.astro';
 
 interface Props {
   title?: string;
@@ -163,6 +164,10 @@ const hitEndpoint =
     <slot />
 
     <Footer />
+
+    {/* 正文图片灯箱：全站可用（文章页 / 关于页 / 项目页的 .prose 都吃）。
+        纯 DOM + document 事件委托，ClientRouter 换 body 之后不需要重新绑定。 */}
+    <ImageZoom />
 
     {/* 访问统计打点（方案 §11 路线 B）：每次进入页面打一个点，失败静默 —— 绝不能影响访客。
         · 本地开发地址默认不打点（免得把本地自己的访问算进线上统计）；

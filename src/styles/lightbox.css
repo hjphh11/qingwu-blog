@@ -1,0 +1,153 @@
+/*
+ * 清吾 · 正文图片灯箱（UI 层，见 components/ImageZoom.astro）
+ *
+ * 为什么单独一个文件而不是塞进 effects.css：
+ *   effects.css 是「氛围与特效」，这块是**可交互的零件**，生命周期跟着文章页走；
+ *   混在一起以后调氛围色会误伤灯箱。层序见 index.css（放在 effects 之后）。
+ *
+ * 纪律：
+ *   · 只在 `.q-zoom` 前缀下写，不加 @layer（要盖过 prose 的 img 规则）
+ *   · 动画只有 opacity / transform，且 prefers-reduced-motion 下全部关掉
+ *   · 颜色一律走 token，别写死 hex（check-tokens 会扫）
+ */
+
+.q-zoom {
+  position: fixed;
+  inset: 0;
+  z-index: 300; /* 高于导航(54)/搜索层(60)/爱弥斯(30)，低于开屏兜底层 */
+  display: grid;
+  place-items: center;
+  padding: clamp(0.75rem, 4vw, 3rem);
+  background: color-mix(in oklab, var(--color-ink) 88%, transparent);
+  backdrop-filter: blur(8px);
+  opacity: 0;
+  transition: opacity var(--dur-micro) ease;
+  overscroll-behavior: contain;
+}
+
+/* [hidden] 必须压过上面的 display:grid */
+.q-zoom[hidden] {
+  display: none;
+}
+
+.q-zoom.is-open {
+  opacity: 1;
+}
+
+/* 打开期间锁住页面滚动；补一条 padding 免得滚动条消失时整页横跳 */
+html.q-zoom-open {
+  overflow: hidden;
+}
+
+.q-zoom__img {
+  grid-area: 1 / 1;
+  max-width: min(94vw, 1600px);
+  max-height: 84vh;
+  width: auto;
+  height: auto;
+  object-fit: contain;
+  border-radius: 12px;
+  background: color-mix(in oklab, var(--color-ink) 30%, transparent);
+  box-shadow: 0 30px 70px -24px color-mix(in oklab, var(--color-ink) 75%, transparent);
+  transform: scale(0.97);
+  transition: transform var(--dur-micro) var(--ease-out-expo);
+}
+
+.q-zoom.is-open .q-zoom__img {
+  transform: scale(1);
+}
+
+/* 顶栏：计数 + 关闭 */
+.q-zoom__bar {
+  position: absolute;
+  top: clamp(0.75rem, 3vw, 1.5rem);
+  right: clamp(0.75rem, 3vw, 1.5rem);
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  z-index: 2;
+}
+
+.q-zoom__count {
+  font-size: 0.8125rem;
+  font-variant-numeric: tabular-nums;
+  color: color-mix(in oklab, var(--color-cream) 78%, transparent);
+  letter-spacing: 0.02em;
+}
+
+/* 左右翻页：靠边的圆钮，触屏时别贴着屏幕边缘 */
+.q-zoom__nav {
+  position: absolute;
+  top: 50%;
+  z-index: 2;
+  transform: translateY(-50%);
+}
+
+.q-zoom__nav[data-side='prev'] {
+  left: clamp(0.5rem, 2.5vw, 1.75rem);
+}
+
+.q-zoom__nav[data-side='next'] {
+  right: clamp(0.5rem, 2.5vw, 1.75rem);
+}
+
+.q-zoom__btn {
+  display: grid;
+  place-items: center;
+  width: 2.5rem;
+  height: 2.5rem;
+  padding: 0;
+  border-radius: 999px;
+  border: 1px solid color-mix(in oklab, var(--color-cream) 24%, transparent);
+  background: color-mix(in oklab, var(--color-ink) 40%, transparent);
+  color: var(--color-cream);
+  cursor: pointer;
+  transition:
+    background-color var(--dur-micro) ease,
+    border-color var(--dur-micro) ease,
+    transform var(--dur-micro) ease;
+}
+
+.q-zoom__btn:hover {
+  background: color-mix(in oklab, var(--color-crimson) 82%, transparent);
+  border-color: color-mix(in oklab, var(--color-cream) 45%, transparent);
+}
+
+.q-zoom__btn:active {
+  transform: scale(0.94);
+}
+
+.q-zoom__btn:focus-visible {
+  outline: 2px solid color-mix(in oklab, var(--color-amber) 90%, transparent);
+  outline-offset: 2px;
+}
+
+/* 只有一张图时不显示左右钮 */
+.q-zoom[data-single='1'] .q-zoom__nav {
+  display: none;
+}
+
+/* 原图在小屏上留白太多，收到 96vw */
+@media (max-width: 640px) {
+  .q-zoom__img {
+    max-height: 78vh;
+    border-radius: 8px;
+  }
+
+  .q-zoom__btn {
+    width: 2.25rem;
+    height: 2.25rem;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .q-zoom,
+  .q-zoom__img,
+  .q-zoom__btn {
+    transition: none;
+  }
+
+  .q-zoom__img {
+    transform: none;
+  }
+}

@@ -74,6 +74,8 @@ export default function Navbar({ pathname = '/' }: Props) {
   const { scrollY } = useScroll();
   const reduce = useReducedMotion();
   const [scrolled, setScrolled] = useState(false);
+  /** 向下滚时把导航收起（读文章时省出顶部空间）；向上滚、点目录、开菜单时一定展开 */
+  const [collapsed, setCollapsed] = useState(false);
   const [open, setOpen] = useState(false);
   /** 当前展开的下拉（存父项 href，同时只开一个） */
   const [openGroup, setOpenGroup] = useState<string | null>(null);
@@ -100,9 +102,62 @@ export default function Navbar({ pathname = '/' }: Props) {
     return { left: er.left - nr.left, width: er.width };
   };
 
+  /**
+   * 滚动方向判定用的两个 ref。
+   *
+   * ⚠️ 不能直接比较「这次 y 和上次 y」：触摸板/平滑滚动每帧只走 1~3px，
+   *    单帧增量永远到不了阈值，导航就永远不收。所以用「方向锁 + 累计位移」：
+   *    连续同向走过 MIN_DELTA 才认账，方向一变先重置基准再等下一段。
+   */
+  const navDir = useRef(0);
+  const navRefY = useRef(0);
+  /** 目录跳转期间（主动向下滚）压制收起，时间窗过后再按真实方向判断 */
+  const navSuppressUntil = useRef(0);
+
   useMotionValueEvent(scrollY, 'change', (latest) => {
     setScrolled(latest > 80);
+
+    // 程序性滚动（目录跳转）：这一路都是"向下"，但不是用户在往下读
+    if (performance.now() < navSuppressUntil.current) {
+      setCollapsed(false);
+      navDir.current = 0;
+      navRefY.current = latest;
+      return;
+    }
+
+    // 菜单 / 下拉开着时绝不收起：手指刚点开，导航自己跑掉是最糟的体验
+    if (open || openGroup) {
+      setCollapsed(false);
+      navDir.current = 0;
+      navRefY.current = latest;
+      return;
+    }
+
+    const d = latest - navRefY.current;
+    const nd = d > 0 ? 1 : d < 0 ? -1 : 0;
+    // 阈值之内的抖动直接忽略，不动状态也不动基准
+    if (nd === 0 || Math.abs(d) < 6) return;
+
+    navRefY.current = latest;
+    if (nd !== navDir.current) {
+      // 刚转向：这次只记方向，别急着收 —— 否则一抖一收，看着像在抽搐
+      navDir.current = nd;
+      return;
+    }
+    // 240px 以内不收：首屏还在 Hero 上，导航本来就该在
+    setCollapsed(nd === 1 && latest > 240);
   });
+
+  /** 目录跳转会一路向下滚，落点上方还要留出导航高度，所以点目录时先把它请回来 */
+  useEffect(() => {
+    const reveal = () => {
+      // 900ms ≈ 目录缓动滚动的上限（max 720ms）+ 一点余量
+      navSuppressUntil.current = performance.now() + 900;
+      setCollapsed(false);
+    };
+    window.addEventListener('q:reveal-nav', reveal);
+    return () => window.removeEventListener('q:reveal-nav', reveal);
+  }, []);
 
   const isHome = pathname === '/';
   // 内页常驻玻璃;首页则滚动后才浮现玻璃
@@ -183,9 +238,10 @@ export default function Navbar({ pathname = '/' }: Props) {
   return (
     <motion.header
       initial={false}
-      animate={{ y: glass ? 0 : -4 }}
+      animate={{ y: collapsed ? -112 : glass ? 0 : -4 }}
       transition={{ duration: dur, ease: 'easeOut' }}
       className="fixed inset-x-0 top-0 z-50 flex justify-center pt-4"
+      data-collapsed={collapsed ? '1' : '0'}
     >
       {/*
         横轴对齐：这里的三条规则必须一起看 ——
