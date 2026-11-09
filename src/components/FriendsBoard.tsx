@@ -376,61 +376,89 @@ export default function FriendsBoard() {
             </span>
 
             <div className="grid min-w-0 flex-1 divide-y divide-dashed divide-rose/25 sm:grid-cols-3 sm:divide-x sm:divide-y-0">
-            <label className="flex min-w-0 items-center gap-2 px-4 py-3">
-              <span className="text-rose">
+            {/* 浮动标签：空且未聚焦时嵌在框内（和原来的占位符一样的位置），
+                聚焦或有内容就缩到 11px 挪到框上方并常驻。
+                靠 `placeholder=" "` + `:placeholder-shown` 判断有没有值 ——
+                所以那**一个空格不能删**，删了整个状态就失效。 */}
+            <label className="flex min-w-0 items-center gap-2 px-4 py-2.5">
+              <span className="shrink-0 self-center text-rose">
                 <MorphIcon icon={Globe} size={14} color="currentColor" />
               </span>
-              <span className="sr-only">站点名称</span>
-              <input
-                id={`${uid}-name`}
-                name="name"
-                value={values.name}
-                maxLength={APPLY_LIMITS.name}
-                placeholder="站点名称"
-                autoComplete="off"
-                onChange={(ev) => setField('name', ev.target.value)}
-                aria-invalid={errors.name ? true : undefined}
-                className={inputCls(Boolean(errors.name))}
-              />
+              <span className="relative min-w-0 flex-1">
+                <input
+                  id={`${uid}-name`}
+                  name="name"
+                  value={values.name}
+                  maxLength={APPLY_LIMITS.name}
+                  placeholder=" "
+                  autoComplete="off"
+                  onChange={(ev) => setField('name', ev.target.value)}
+                  aria-invalid={errors.name ? true : undefined}
+                  className={inputCls()}
+                />
+                <span
+                  className={`pointer-events-none absolute left-0 top-[13px] text-sm transition-all duration-200 ease-out peer-focus:top-0 peer-focus:text-[11px] peer-focus:leading-4 peer-focus:text-crimson peer-[:not(:placeholder-shown)]:top-0 peer-[:not(:placeholder-shown)]:text-[11px] peer-[:not(:placeholder-shown)]:leading-4 ${
+                    errors.name ? 'text-crimson' : 'text-subtle/85'
+                  }`}
+                >
+                  站点名称
+                </span>
+              </span>
             </label>
 
-            <label className="flex min-w-0 items-center gap-2 px-4 py-3">
-              <span className="text-rose">
+            <label className="flex min-w-0 items-center gap-2 px-4 py-2.5">
+              <span className="shrink-0 self-center text-rose">
                 <MorphIcon icon={Mail} size={14} color="currentColor" />
               </span>
-              <span className="sr-only">联系邮箱（不公开）</span>
-              <input
-                id={`${uid}-email`}
-                name="email"
-                type="email"
-                inputMode="email"
-                value={values.email}
-                maxLength={APPLY_LIMITS.email}
-                placeholder="邮箱（不公开）"
-                autoComplete="email"
-                onChange={(ev) => setField('email', ev.target.value)}
-                aria-invalid={errors.email ? true : undefined}
-                className={inputCls(Boolean(errors.email))}
-              />
+              <span className="relative min-w-0 flex-1">
+                <input
+                  id={`${uid}-email`}
+                  name="email"
+                  type="email"
+                  inputMode="email"
+                  value={values.email}
+                  maxLength={APPLY_LIMITS.email}
+                  placeholder=" "
+                  autoComplete="email"
+                  onChange={(ev) => setField('email', ev.target.value)}
+                  aria-invalid={errors.email ? true : undefined}
+                  className={inputCls()}
+                />
+                <span
+                  className={`pointer-events-none absolute left-0 top-[13px] text-sm transition-all duration-200 ease-out peer-focus:top-0 peer-focus:text-[11px] peer-focus:leading-4 peer-focus:text-crimson peer-[:not(:placeholder-shown)]:top-0 peer-[:not(:placeholder-shown)]:text-[11px] peer-[:not(:placeholder-shown)]:leading-4 ${
+                    errors.email ? 'text-crimson' : 'text-subtle/85'
+                  }`}
+                >
+                  邮箱（不公开）
+                </span>
+              </span>
             </label>
 
-            <label className="flex min-w-0 items-center gap-2 px-4 py-3">
-              <span className="text-rose">
+            <label className="flex min-w-0 items-center gap-2 px-4 py-2.5">
+              <span className="shrink-0 self-center text-rose">
                 <MorphIcon icon={Link2} size={14} color="currentColor" />
               </span>
-              <span className="sr-only">站点网址</span>
-              <input
-                id={`${uid}-url`}
-                name="url"
-                value={values.url}
-                maxLength={APPLY_LIMITS.url}
-                placeholder="网址"
-                inputMode="url"
-                autoComplete="url"
-                onChange={(ev) => setField('url', ev.target.value)}
-                aria-invalid={errors.url ? true : undefined}
-                className={inputCls(Boolean(errors.url))}
-              />
+              <span className="relative min-w-0 flex-1">
+                <input
+                  id={`${uid}-url`}
+                  name="url"
+                  value={values.url}
+                  maxLength={APPLY_LIMITS.url}
+                  placeholder=" "
+                  inputMode="url"
+                  autoComplete="url"
+                  onChange={(ev) => setField('url', ev.target.value)}
+                  aria-invalid={errors.url ? true : undefined}
+                  className={inputCls()}
+                />
+                <span
+                  className={`pointer-events-none absolute left-0 top-[13px] text-sm transition-all duration-200 ease-out peer-focus:top-0 peer-focus:text-[11px] peer-focus:leading-4 peer-focus:text-crimson peer-[:not(:placeholder-shown)]:top-0 peer-[:not(:placeholder-shown)]:text-[11px] peer-[:not(:placeholder-shown)]:leading-4 ${
+                    errors.url ? 'text-crimson' : 'text-subtle/85'
+                  }`}
+                >
+                  网址
+                </span>
+              </span>
             </label>
             </div>
           </div>
@@ -861,33 +889,49 @@ function EntryRow({
               </span>
             </div>
 
-            {/* 三个字段，和主留言框对齐：名字 / 邮箱 / 网址 */}
+            {/* 三个字段，和主留言框对齐：名字 / 邮箱 / 网址。
+                同样是浮动标签 —— 回复框更窄，字号比主框再小一档 */}
             <div className="mt-1.5 grid divide-y divide-dashed divide-rose/20 border-y border-dashed border-rose/20 sm:grid-cols-3 sm:divide-x sm:divide-y-0">
-              <input
-                value={rName}
-                maxLength={APPLY_LIMITS.name}
-                onChange={(ev) => setRName(ev.target.value)}
-                placeholder="你的名字（可不填）"
-                autoComplete="off"
-                className="min-w-0 bg-transparent px-0.5 py-1.5 text-xs text-ink outline-none placeholder:text-subtle/85 sm:px-2"
-              />
-              <input
-                value={rEmail}
-                type="email"
-                maxLength={APPLY_LIMITS.email}
-                onChange={(ev) => setREmail(ev.target.value)}
-                placeholder="邮箱（不公开）"
-                autoComplete="off"
-                className="min-w-0 bg-transparent px-0.5 py-1.5 text-xs text-ink outline-none placeholder:text-subtle/85 sm:px-2"
-              />
-              <input
-                value={rUrl}
-                maxLength={APPLY_LIMITS.url}
-                onChange={(ev) => setRUrl(ev.target.value)}
-                placeholder="网址（可不填）"
-                autoComplete="off"
-                className="min-w-0 bg-transparent px-0.5 py-1.5 text-xs text-ink outline-none placeholder:text-subtle/85 sm:px-2"
-              />
+              <label className="relative block min-w-0 px-0.5 py-1 sm:px-2">
+                <input
+                  value={rName}
+                  maxLength={APPLY_LIMITS.name}
+                  onChange={(ev) => setRName(ev.target.value)}
+                  placeholder=" "
+                  autoComplete="off"
+                  className="peer w-full min-w-0 bg-transparent pt-3 pb-0.5 text-xs leading-4 text-ink outline-none placeholder:text-transparent"
+                />
+                <span className="pointer-events-none absolute left-0.5 top-[12px] text-xs text-subtle/85 transition-all duration-200 ease-out peer-focus:top-0 peer-focus:text-[10px] peer-focus:leading-3 peer-focus:text-crimson peer-[:not(:placeholder-shown)]:top-0 peer-[:not(:placeholder-shown)]:text-[10px] peer-[:not(:placeholder-shown)]:leading-3 sm:left-2">
+                  你的名字（可不填）
+                </span>
+              </label>
+              <label className="relative block min-w-0 px-0.5 py-1 sm:px-2">
+                <input
+                  value={rEmail}
+                  type="email"
+                  maxLength={APPLY_LIMITS.email}
+                  onChange={(ev) => setREmail(ev.target.value)}
+                  placeholder=" "
+                  autoComplete="off"
+                  className="peer w-full min-w-0 bg-transparent pt-3 pb-0.5 text-xs leading-4 text-ink outline-none placeholder:text-transparent"
+                />
+                <span className="pointer-events-none absolute left-0.5 top-[12px] text-xs text-subtle/85 transition-all duration-200 ease-out peer-focus:top-0 peer-focus:text-[10px] peer-focus:leading-3 peer-focus:text-crimson peer-[:not(:placeholder-shown)]:top-0 peer-[:not(:placeholder-shown)]:text-[10px] peer-[:not(:placeholder-shown)]:leading-3 sm:left-2">
+                  邮箱（不公开）
+                </span>
+              </label>
+              <label className="relative block min-w-0 px-0.5 py-1 sm:px-2">
+                <input
+                  value={rUrl}
+                  maxLength={APPLY_LIMITS.url}
+                  onChange={(ev) => setRUrl(ev.target.value)}
+                  placeholder=" "
+                  autoComplete="off"
+                  className="peer w-full min-w-0 bg-transparent pt-3 pb-0.5 text-xs leading-4 text-ink outline-none placeholder:text-transparent"
+                />
+                <span className="pointer-events-none absolute left-0.5 top-[12px] text-xs text-subtle/85 transition-all duration-200 ease-out peer-focus:top-0 peer-focus:text-[10px] peer-focus:leading-3 peer-focus:text-crimson peer-[:not(:placeholder-shown)]:top-0 peer-[:not(:placeholder-shown)]:text-[10px] peer-[:not(:placeholder-shown)]:leading-3 sm:left-2">
+                  网址（可不填）
+                </span>
+              </label>
             </div>
 
             <div className="mt-1.5 flex items-center gap-2">
@@ -973,9 +1017,7 @@ function EntryRow({
 
 /* —————————————————————————— 小零件 —————————————————————————— */
 
-function inputCls(bad: boolean) {
-  return [
-    'w-full min-w-0 bg-transparent text-sm text-ink outline-none',
-    bad ? 'placeholder:text-crimson/80' : 'placeholder:text-subtle/85',
-  ].join(' ');
+/** 单行输入框：`peer` 给浮动标签用，`placeholder=" "` 才能靠 :placeholder-shown 判断空值 */
+function inputCls() {
+  return 'peer w-full min-w-0 bg-transparent pt-3.5 pb-0.5 text-sm leading-5 text-ink outline-none placeholder:text-transparent';
 }
