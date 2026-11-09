@@ -12,7 +12,8 @@
  *   6) prose    —— 正文排版
  *   7) effects  —— 氛围与特效（全挂在 .q-* 前缀上）
  *   8) emis     —— 爱弥斯 2.5D 在场（呼吸 / 视线跟随 / 发梢光影）
- *   9) motion   —— 揭示/暂停/降级（**不带 @layer**，必须最后）
+ *   9) cursor   —— 全站光标（像素爱弥斯；**不带 @layer**，要盖过 utilities 的 cursor-*）
+ *  10) motion   —— 揭示/暂停/降级（**不带 @layer**，必须最后）
  *
  * 为什么 motion.css 最后：它里面有 .qhidden 与 prefers-reduced-motion 的
  * `animation-play-state: paused !important` 兜底，必须盖在后面才能生效。
@@ -28,4 +29,5 @@
 @import "./prose.css";
 @import "./effects.css";
 @import "./emis.css";
+@import "./cursor.css";
 @import "./motion.css";

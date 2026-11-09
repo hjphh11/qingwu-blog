@@ -67,6 +67,12 @@ const hitEndpoint =
       crossorigin
     />
 
+    {/* 光标预加载：cursor 的图是"用到了才请求"，不预载的话第一次移到链接上
+        会先闪一帧系统指针。整套 5 张加起来才 5KB，这里只挑最常用的两张
+        （默认箭头 + 可点击），文本那两张等真正进正文时再取也可以。 */}
+    <link rel="preload" as="image" href="/images/cursor/normal.png" />
+    <link rel="preload" as="image" href="/images/cursor/link.png" />
+
     {/* 滚动揭示启用标记:让 .reveal 只在 JS 可用时才隐藏,避免无 JS 时内容缺失 */}
     <script is:inline>
       document.documentElement.classList.add('qjs');

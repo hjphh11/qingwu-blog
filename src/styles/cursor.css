@@ -1,0 +1,73 @@
+/* 光标 —— 沿用本机 Windows 光标主题「[Sunglasses] Aemeath by BLZ」的像素爱弥斯。
+ *
+ * 图由 scripts/extract-cursor.py 从 .ani 的第 0 帧抽出（原图 32×32，
+ * 1:1 上屏不缩放，像素画才不糊）。png 在 public/images/cursor/ 且进仓库 ——
+ * Vercel 上没有那个 Windows 主题目录，也不会跑脚本。
+ *
+ * ⚠️ 这里刻意**不写 @layer**。
+ *    Tailwind 的 cursor-pointer / cursor-grab / cursor-not-allowed 是
+ *    utilities 层的工具类，会把组件里写死的 cursor 全拉回系统指针。
+ *    裸露规则（unlayered）在层叠里优先于任何 layer，才盖得住它们。
+ *    别"为了整齐"把它包进 @layer components —— 那样全站会回到系统光标。
+ *
+ * ⚠️ 顺序即优先级（同为元素选择器时靠先后决定）：
+ *    默认 → 文本 → 可点击 → 拖动 → 禁用。
+ *    文本规则必须排在 a 之前，否则正文段落里的链接会被 p 的 I 型吃掉。
+ *
+ * ⚠️ 每个值末尾都必须有系统关键字兜底（default / text / pointer …）。
+ *    图没到、被拦、或以后被删了，最多是"和以前一样"，不能变成"没有光标"。
+ *
+ * ⚠️ 后面的两个数字是热点（hotspot），单位是图片像素，来自 .cur 里的原值。
+ *    换图必须同步改，否则整站会"点不准"。
+ */
+
+html {
+  cursor: url("/images/cursor/normal.png") 0 0, default;
+}
+
+/* 文本区。
+   头像光标是实心的，压在正文上会挡住 3–4 个字 —— 阅读区必须切回细的 I 型。
+   表单控件同理：输入时要看得到插入点在哪。 */
+p,
+li,
+td,
+th,
+figcaption,
+blockquote,
+dd,
+dt,
+pre,
+code,
+textarea,
+[contenteditable="true"],
+input:not([type="button"]):not([type="submit"]):not([type="reset"]):not([type="checkbox"]):not([type="radio"]):not([type="range"]) {
+  cursor: url("/images/cursor/text.png") 4 9, text;
+}
+
+/* 可点击区。
+   .cursor-pointer 是 Tailwind 工具类，这里重写一份同名的，靠"裸露"取得优先。 */
+a,
+button,
+summary,
+select,
+label[for],
+[role="button"],
+[role="tab"],
+[role="link"],
+[role="menuitem"],
+.cursor-pointer {
+  cursor: url("/images/cursor/link.png") 4 0, pointer;
+}
+
+/* 拖动 / 可移动（MiniPlayer 的抓手、前端翻卡） */
+.cursor-grab,
+[draggable="true"] {
+  cursor: url("/images/cursor/move.png") 15 15, grab;
+}
+
+/* 禁用态放最后，压过上面的 pointer */
+:disabled,
+[aria-disabled="true"],
+.cursor-not-allowed {
+  cursor: url("/images/cursor/disabled.png") 0 0, not-allowed;
+}
