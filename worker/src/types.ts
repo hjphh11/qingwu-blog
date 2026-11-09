@@ -41,6 +41,12 @@ export interface Env {
    * **没配就不发信**，接口照常成功 —— 邮件是锦上添花，不能卡住留言。
    */
   RESEND_KEY?: string;
+  /**
+   * 自建发信中继地址（可选）。配了就把请求打给它，不配走 Resend。
+   * 请求体与 Resend 的 `POST /emails` 同构；`RESEND_KEY` 同时充当它的 Bearer 令牌。
+   * 见 `.deploy/mail-relay/relay.py`。
+   */
+  MAIL_ENDPOINT?: string;
   /** 发件人，例如 `清吾 <noreply@qingwu.ink>`；域名需在 Resend 验证过 */
   MAIL_FROM?: string;
   /** 有人留言时通知谁（站长邮箱）。没配 = 不通知站长 */

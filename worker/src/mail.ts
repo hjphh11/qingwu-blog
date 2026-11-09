@@ -1,8 +1,14 @@
-// 清吾 · 发信（Resend）
+// 清吾 · 发信
 //
 // 为什么用 Resend 而不是 Cloudflare 的 send_email binding：
 //   那个 binding 需要验证域名并走 Workers 的邮件路由，配置面更大；
 //   Resend 就是一个 HTTPS 请求，跟项目里其它 outbound 调用一个套路。
+//
+// 自建中继（可选）：配了 `MAIL_ENDPOINT` 就把同一个请求打给自己的中继服务
+//   （`.deploy/mail-relay/relay.py`，协议与 Resend 的 `/emails` 同构），
+//   没配则原样打 Resend —— 线上行为一字不变。
+//   之所以需要中继：本机出站 25 端口被服务商丢包，直连投递不可行，
+//   只能起一个本机进程把信交给上游 SMTP 的 587 端口代投。
 //
 // ⚠️ 三条纪律：
 //   1. **没配密钥就静默跳过**，返回 false —— 邮件是锦上添花，
@@ -27,8 +33,10 @@ export async function sendMail(env: Env, input: MailInput): Promise<boolean> {
   if (!key || !to) return false;
 
   const from = env.MAIL_FROM || '清吾 <noreply@qingwu.ink>';
+  // 自建中继优先；两者请求体同构，上层无感
+  const endpoint = (env.MAIL_ENDPOINT || RESEND_ENDPOINT).trim();
   try {
-    const res = await fetch(RESEND_ENDPOINT, {
+    const res = await fetch(endpoint, {
       method: 'POST',
       headers: {
         authorization: `Bearer ${key}`,
@@ -44,7 +52,7 @@ export async function sendMail(env: Env, input: MailInput): Promise<boolean> {
     });
     if (!res.ok) {
       // 只记状态码，不记地址
-      console.warn('[mail] resend 非 2xx:', res.status);
+      console.warn('[mail] 发信非 2xx:', res.status);
       return false;
     }
     return true;
