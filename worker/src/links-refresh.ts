@@ -42,6 +42,9 @@ const SEED_HOSTS = [
   'blog.moesam.com',
   'ragnote.top',
   'seasir.top',
+  'homulilly.com',
+  'n0v0rland.xyz',
+  'muyudada.dpdns.org',
 ];
 
 /** 从一段 XML 里挑最大的合法日期。只认 YYYY-MM-DD 字面量。 */
