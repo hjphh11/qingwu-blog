@@ -380,7 +380,7 @@ export default function FriendsBoard() {
                 聚焦或有内容就缩到 11px 挪到框上方并常驻。
                 靠 `placeholder=" "` + `:placeholder-shown` 判断有没有值 ——
                 所以那**一个空格不能删**，删了整个状态就失效。 */}
-            <label className="flex min-w-0 items-center gap-2 px-4 py-2.5">
+            <label className="flex min-w-0 items-center gap-2 px-4 pb-2 pt-4">
               <span className="shrink-0 self-center text-rose">
                 <MorphIcon icon={Globe} size={14} color="currentColor" />
               </span>
@@ -397,7 +397,7 @@ export default function FriendsBoard() {
                   className={inputCls()}
                 />
                 <span
-                  className={`pointer-events-none absolute left-0 top-[13px] text-sm transition-all duration-200 ease-out peer-focus:top-0 peer-focus:text-[11px] peer-focus:leading-4 peer-focus:text-crimson peer-[:not(:placeholder-shown)]:top-0 peer-[:not(:placeholder-shown)]:text-[11px] peer-[:not(:placeholder-shown)]:leading-4 ${
+                  className={`pointer-events-none absolute left-0 top-0 text-sm leading-5 transition-all duration-200 ease-out peer-focus:-top-4 peer-focus:text-[11px] peer-focus:leading-4 peer-focus:text-crimson peer-[:not(:placeholder-shown)]:-top-4 peer-[:not(:placeholder-shown)]:text-[11px] peer-[:not(:placeholder-shown)]:leading-4 ${
                     errors.name ? 'text-crimson' : 'text-subtle/85'
                   }`}
                 >
@@ -406,7 +406,7 @@ export default function FriendsBoard() {
               </span>
             </label>
 
-            <label className="flex min-w-0 items-center gap-2 px-4 py-2.5">
+            <label className="flex min-w-0 items-center gap-2 px-4 pb-2 pt-4">
               <span className="shrink-0 self-center text-rose">
                 <MorphIcon icon={Mail} size={14} color="currentColor" />
               </span>
@@ -425,7 +425,7 @@ export default function FriendsBoard() {
                   className={inputCls()}
                 />
                 <span
-                  className={`pointer-events-none absolute left-0 top-[13px] text-sm transition-all duration-200 ease-out peer-focus:top-0 peer-focus:text-[11px] peer-focus:leading-4 peer-focus:text-crimson peer-[:not(:placeholder-shown)]:top-0 peer-[:not(:placeholder-shown)]:text-[11px] peer-[:not(:placeholder-shown)]:leading-4 ${
+                  className={`pointer-events-none absolute left-0 top-0 text-sm leading-5 transition-all duration-200 ease-out peer-focus:-top-4 peer-focus:text-[11px] peer-focus:leading-4 peer-focus:text-crimson peer-[:not(:placeholder-shown)]:-top-4 peer-[:not(:placeholder-shown)]:text-[11px] peer-[:not(:placeholder-shown)]:leading-4 ${
                     errors.email ? 'text-crimson' : 'text-subtle/85'
                   }`}
                 >
@@ -434,7 +434,7 @@ export default function FriendsBoard() {
               </span>
             </label>
 
-            <label className="flex min-w-0 items-center gap-2 px-4 py-2.5">
+            <label className="flex min-w-0 items-center gap-2 px-4 pb-2 pt-4">
               <span className="shrink-0 self-center text-rose">
                 <MorphIcon icon={Link2} size={14} color="currentColor" />
               </span>
@@ -452,7 +452,7 @@ export default function FriendsBoard() {
                   className={inputCls()}
                 />
                 <span
-                  className={`pointer-events-none absolute left-0 top-[13px] text-sm transition-all duration-200 ease-out peer-focus:top-0 peer-focus:text-[11px] peer-focus:leading-4 peer-focus:text-crimson peer-[:not(:placeholder-shown)]:top-0 peer-[:not(:placeholder-shown)]:text-[11px] peer-[:not(:placeholder-shown)]:leading-4 ${
+                  className={`pointer-events-none absolute left-0 top-0 text-sm leading-5 transition-all duration-200 ease-out peer-focus:-top-4 peer-focus:text-[11px] peer-focus:leading-4 peer-focus:text-crimson peer-[:not(:placeholder-shown)]:-top-4 peer-[:not(:placeholder-shown)]:text-[11px] peer-[:not(:placeholder-shown)]:leading-4 ${
                     errors.url ? 'text-crimson' : 'text-subtle/85'
                   }`}
                 >
@@ -899,7 +899,7 @@ function EntryRow({
                   onChange={(ev) => setRName(ev.target.value)}
                   placeholder=" "
                   autoComplete="off"
-                  className="peer w-full min-w-0 bg-transparent pt-3 pb-0.5 text-xs leading-4 text-ink outline-none placeholder:text-transparent"
+                  className="peer block w-full min-w-0 bg-transparent pt-3 pb-0.5 text-xs leading-4 text-ink outline-none placeholder:text-transparent"
                 />
                 <span className="pointer-events-none absolute left-0.5 top-[12px] text-xs text-subtle/85 transition-all duration-200 ease-out peer-focus:top-0 peer-focus:text-[10px] peer-focus:leading-3 peer-focus:text-crimson peer-[:not(:placeholder-shown)]:top-0 peer-[:not(:placeholder-shown)]:text-[10px] peer-[:not(:placeholder-shown)]:leading-3 sm:left-2">
                   你的名字（可不填）
@@ -913,7 +913,7 @@ function EntryRow({
                   onChange={(ev) => setREmail(ev.target.value)}
                   placeholder=" "
                   autoComplete="off"
-                  className="peer w-full min-w-0 bg-transparent pt-3 pb-0.5 text-xs leading-4 text-ink outline-none placeholder:text-transparent"
+                  className="peer block w-full min-w-0 bg-transparent pt-3 pb-0.5 text-xs leading-4 text-ink outline-none placeholder:text-transparent"
                 />
                 <span className="pointer-events-none absolute left-0.5 top-[12px] text-xs text-subtle/85 transition-all duration-200 ease-out peer-focus:top-0 peer-focus:text-[10px] peer-focus:leading-3 peer-focus:text-crimson peer-[:not(:placeholder-shown)]:top-0 peer-[:not(:placeholder-shown)]:text-[10px] peer-[:not(:placeholder-shown)]:leading-3 sm:left-2">
                   邮箱（不公开）
@@ -926,7 +926,7 @@ function EntryRow({
                   onChange={(ev) => setRUrl(ev.target.value)}
                   placeholder=" "
                   autoComplete="off"
-                  className="peer w-full min-w-0 bg-transparent pt-3 pb-0.5 text-xs leading-4 text-ink outline-none placeholder:text-transparent"
+                  className="peer block w-full min-w-0 bg-transparent pt-3 pb-0.5 text-xs leading-4 text-ink outline-none placeholder:text-transparent"
                 />
                 <span className="pointer-events-none absolute left-0.5 top-[12px] text-xs text-subtle/85 transition-all duration-200 ease-out peer-focus:top-0 peer-focus:text-[10px] peer-focus:leading-3 peer-focus:text-crimson peer-[:not(:placeholder-shown)]:top-0 peer-[:not(:placeholder-shown)]:text-[10px] peer-[:not(:placeholder-shown)]:leading-3 sm:left-2">
                   网址（可不填）
@@ -1019,5 +1019,5 @@ function EntryRow({
 
 /** 单行输入框：`peer` 给浮动标签用，`placeholder=" "` 才能靠 :placeholder-shown 判断空值 */
 function inputCls() {
-  return 'peer w-full min-w-0 bg-transparent pt-3.5 pb-0.5 text-sm leading-5 text-ink outline-none placeholder:text-transparent';
+  return 'peer block w-full min-w-0 bg-transparent py-0 text-sm leading-5 text-ink outline-none placeholder:text-transparent';
 }
