@@ -146,6 +146,7 @@ function toEntry(row: CommentRow, replies: CommentRow[], likes: number) {
       id: `c-${r.id}`,
       name: r.author,
       to: row.author,
+      avatar: r.avatar ?? '',
       intro: r.body,
       at: new Date(r.ts).toISOString(),
     })),
@@ -346,10 +347,19 @@ export async function postFriendReply(
 
   try {
     const res = await env.DB.prepare(
-      `INSERT INTO comments (post_slug, parent_id, author, email, body, status, ts, ip_hash)
-       VALUES (?, ?, ?, ?, ?, 'visible', ?, ?)`,
+      `INSERT INTO comments (post_slug, parent_id, author, email, avatar, body, status, ts, ip_hash)
+       VALUES (?, ?, ?, ?, ?, ?, 'visible', ?, ?)`,
     )
-      .bind(SLUG, parentId, v.v.name, v.v.email || null, v.v.intro, now, key)
+      .bind(
+        SLUG,
+        parentId,
+        v.v.name,
+        v.v.email || null,
+        v.v.avatar || null,
+        v.v.intro,
+        now,
+        key,
+      )
       .run();
 
     // 通知被回复的人：他自己的留言里填过邮箱才发。
@@ -358,7 +368,8 @@ export async function postFriendReply(
       ctx.waitUntil(
         sendMail(env, {
           to: parent.email,
-          subject: `清吾 回复了你在友链评论区的留言`,
+          // 用回复者的名字，别写死「清吾」—— 站长现在会用「爱弥斯」的身份回复
+          subject: `${v.v.name} 回复了你在友链评论区的留言`,
           text: boardMailText({
             kind: 'reply',
             from: v.v.name,
@@ -377,6 +388,8 @@ export async function postFriendReply(
           id: `c-${Number(res.meta.last_row_id)}`,
           name: v.v.name,
           to: parent.author,
+          // 访客回复一般没有头像；站长用爱弥斯身份回复时带上，前端就显示那张脸
+          avatar: v.v.avatar || '',
           intro: v.v.intro,
           at: new Date(now).toISOString(),
         },

@@ -238,6 +238,7 @@ export default function FriendsBoard() {
     }
     const res = await submitReplyApi(id, {
       name: reply.name,
+      avatar: reply.avatar,
       intro: reply.intro,
     });
     if (!res.ok) {
@@ -602,6 +603,8 @@ function EntryRow({
   const [replyOpen, setReplyOpen] = useState(false);
   const [rName, setRName] = useState('');
   const [rText, setRText] = useState('');
+  /** 加载失败的回复头像 —— 回落到名字首字，别留一个空圆 */
+  const [brokenReplyAvatar, setBrokenReplyAvatar] = useState<Record<string, boolean>>({});
   /** 删除要按两下：第一下变成「确认删除？」，3.5 秒没再点就复位 */
   const [confirming, setConfirming] = useState(false);
   const [deleting, setDeleting] = useState(false);
@@ -839,9 +842,24 @@ function EntryRow({
           <ul className="mt-2 flex flex-col gap-2.5 border-l border-rose/20 pl-3">
             {replies.map((r) => (
               <li key={r.id} className="flex gap-2">
-                <span className="mt-0.5 grid h-6 w-6 shrink-0 place-items-center rounded-full bg-rose/25 font-display text-[11px] leading-none text-crimson">
-                  {(r.name || '·').trim().slice(0, 1)}
-                </span>
+                {/* 站长用爱弥斯身份回复时自带头像；访客回复仍是名字首字 */}
+                {r.avatar && !brokenReplyAvatar[r.id] ? (
+                  <img
+                    src={r.avatar}
+                    onError={() => setBrokenReplyAvatar((prev) => ({ ...prev, [r.id]: true }))}
+                    alt=""
+                    width={24}
+                    height={24}
+                    loading="lazy"
+                    decoding="async"
+                    referrerPolicy="no-referrer"
+                    className="mt-0.5 h-6 w-6 shrink-0 rounded-full bg-rose/15 object-cover"
+                  />
+                ) : (
+                  <span className="mt-0.5 grid h-6 w-6 shrink-0 place-items-center rounded-full bg-rose/25 font-display text-[11px] leading-none text-crimson">
+                    {(r.name || '·').trim().slice(0, 1)}
+                  </span>
+                )}
                 <div className="min-w-0">
                   <div className="flex flex-wrap items-center gap-1.5">
                     <span className="text-[12px] font-medium text-ink">{r.name}</span>

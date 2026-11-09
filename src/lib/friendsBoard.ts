@@ -50,6 +50,8 @@ export interface FriendReply {
   name: string;
   /** 被回复的人。渲染成「@名字」，提交时由前端自动填，不用访客自己打 */
   to?: string;
+  /** 回复者头像。站长以「爱弥斯」身份回复时会带，普通访客回复没有 */
+  avatar?: string;
   intro: string;
   at: string;
 }
@@ -340,7 +342,7 @@ function numericId(id: string): string {
  */
 export async function submitReply(
   parentId: string,
-  input: { name: string; email?: string; intro: string },
+  input: { name: string; email?: string; intro: string; avatar?: string },
 ): Promise<{ ok: true; reply: FriendReply } | { ok: false; message: string }> {
   if (FRIENDS_BOARD_DEMO) {
     await new Promise((r) => setTimeout(r, 400));
@@ -349,6 +351,7 @@ export async function submitReply(
       reply: {
         id: `local-r-${Date.now()}`,
         name: input.name.trim() || '匿名朋友',
+        avatar: input.avatar || '',
         intro: input.intro.trim(),
         at: new Date().toISOString(),
       },
@@ -361,6 +364,7 @@ export async function submitReply(
       body: JSON.stringify({
         name: input.name.trim(),
         email: (input.email || '').trim(),
+        avatar: input.avatar || '',
         intro: input.intro.trim(),
       }),
       signal: AbortSignal.timeout(12000),
