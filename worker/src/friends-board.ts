@@ -41,6 +41,8 @@ interface CommentRow {
   ts: number;
   /** 邮箱的 MD5 —— 列表靠它取 Gravatar/QQ 头像，**不是邮箱本身** */
   email_hash: string | null;
+  /** 这条回复有没有 @ 主楼作者（1 = 有，会发邮件）；主楼恒为 1 */
+  notify: number | null;
 }
 
 // ——————————————————————————————————————————————————————————
@@ -99,6 +101,8 @@ interface Payload {
   intro?: unknown;
   /** 前端算好的邮箱 MD5（只决定头像长什么样，校验格式后存） */
   avatarHash?: unknown;
+  /** 回复专用：false = 访客取消了 @，不显示 @某某、也不发通知邮件 */
+  notify?: unknown;
 }
 
 interface Clean {
@@ -145,7 +149,8 @@ function toEntry(row: CommentRow, replies: CommentRow[], likes: number) {
     replies: replies.map((r) => ({
       id: `c-${r.id}`,
       name: r.author,
-      to: row.author,
+      // notify = 0 表示访客主动取消了 @：不给 to，前端就不显示「@某某」
+      to: r.notify === 0 ? '' : row.author,
       avatar: r.avatar ?? '',
       intro: r.body,
       at: new Date(r.ts).toISOString(),
@@ -160,7 +165,7 @@ export async function getFriendsBoard(request: Request, env: Env): Promise<Respo
   const headers = withCors(request, env);
   try {
     const rows = await env.DB.prepare(
-      `SELECT id, parent_id, author, author_url, avatar, body, status, ts, email_hash
+      `SELECT id, parent_id, author, author_url, avatar, body, status, ts, email_hash, notify
        FROM comments WHERE post_slug = ? AND status != 'deleted'
        ORDER BY ts DESC LIMIT 300`,
     )
@@ -346,25 +351,31 @@ export async function postFriendReply(
   }
 
   try {
+    // 默认 @ 对方（发信）；访客手动取消就是 false
+    const notify = body.notify === false ? 0 : 1;
+
     const res = await env.DB.prepare(
-      `INSERT INTO comments (post_slug, parent_id, author, email, avatar, body, status, ts, ip_hash)
-       VALUES (?, ?, ?, ?, ?, ?, 'visible', ?, ?)`,
+      `INSERT INTO comments (post_slug, parent_id, author, email, author_url, avatar, body, status, ts, ip_hash, notify)
+       VALUES (?, ?, ?, ?, ?, ?, ?, 'visible', ?, ?, ?)`,
     )
       .bind(
         SLUG,
         parentId,
         v.v.name,
         v.v.email || null,
+        v.v.url || null,
         v.v.avatar || null,
         v.v.intro,
         now,
         key,
+        notify,
       )
       .run();
 
     // 通知被回复的人：他自己的留言里填过邮箱才发。
     // 站长回复时不抄送自己，避免每回一句都收到一封信。
-    if (parent.email) {
+    // notify = 0 表示访客主动取消了 @，那就不打扰对方。
+    if (notify && parent.email) {
       ctx.waitUntil(
         sendMail(env, {
           to: parent.email,
@@ -387,7 +398,7 @@ export async function postFriendReply(
         reply: {
           id: `c-${Number(res.meta.last_row_id)}`,
           name: v.v.name,
-          to: parent.author,
+          to: notify ? parent.author : '',
           // 访客回复一般没有头像；站长用爱弥斯身份回复时带上，前端就显示那张脸
           avatar: v.v.avatar || '',
           intro: v.v.intro,

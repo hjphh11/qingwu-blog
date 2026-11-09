@@ -16,6 +16,7 @@ import {
   MessageCircle,
   ChevronDown,
   ChevronUp,
+  X,
 } from '../lib/icons';
 import {
   COMMENT_TEMPLATE,
@@ -238,7 +239,10 @@ export default function FriendsBoard() {
     }
     const res = await submitReplyApi(id, {
       name: reply.name,
+      email: reply.email,
+      url: reply.url,
       avatar: reply.avatar,
+      notify: reply.notify,
       intro: reply.intro,
     });
     if (!res.ok) {
@@ -602,7 +606,11 @@ function EntryRow({
   const [repliesOpen, setRepliesOpen] = useState(false);
   const [replyOpen, setReplyOpen] = useState(false);
   const [rName, setRName] = useState('');
+  const [rEmail, setREmail] = useState('');
+  const [rUrl, setRUrl] = useState('');
   const [rText, setRText] = useState('');
+  /** 回复时默认 @ 主楼作者并发信；访客可以点掉这个开关 */
+  const [notify, setNotify] = useState(true);
   /** 加载失败的回复头像 —— 回落到名字首字，别留一个空圆 */
   const [brokenReplyAvatar, setBrokenReplyAvatar] = useState<Record<string, boolean>>({});
   /** 删除要按两下：第一下变成「确认删除？」，3.5 秒没再点就复位 */
@@ -635,8 +643,12 @@ function EntryRow({
     onReply({
       id: `r-${Date.now()}`,
       name: rName.trim() || '匿名朋友',
-      // 自动 @ 被回复的人 —— 访客不用自己打，邮件通知也靠这个找到收件人
-      to: entry.name,
+      email: rEmail.trim(),
+      url: rUrl.trim(),
+      // 自动 @ 被回复的人 —— 访客不用自己打，邮件通知也靠这个找到收件人。
+      // 访客把 @ 点掉了就不给 to，服务端也就不发信。
+      to: notify ? entry.name : '',
+      notify,
       intro: text,
       at: new Date().toISOString(),
     });
@@ -787,23 +799,71 @@ function EntryRow({
           )}
         </div>
 
-        {/* 回复框：默认收起，点了「回复」才出现。抬头写明回的是谁 */}
+        {/* 回复框：默认收起，点了「回复」才出现。
+            抬头那个 @ 是个开关 —— 点掉就不 @ 对方，服务端也就不发通知邮件。 */}
         {replyOpen && (
           <div className="mt-2 rounded-xl border border-rose/25 bg-white/60 p-2.5">
-            <p className="flex flex-wrap items-center gap-1 text-[11px] text-subtle">
-              回复
-              <span className="font-medium text-crimson">@{entry.name}</span>
-              <span className="text-subtle/80">· 会邮件通知对方</span>
-            </p>
-            <input
-              value={rName}
-              maxLength={APPLY_LIMITS.name}
-              onChange={(ev) => setRName(ev.target.value)}
-              placeholder="你的名字（可不填）"
-              autoComplete="off"
-              className="mt-1.5 block w-full bg-transparent text-xs text-ink outline-none placeholder:text-subtle/85"
-            />
-            <div className="mt-1.5 flex items-center gap-2 border-t border-rose/15 pt-1.5">
+            <div className="flex flex-wrap items-center gap-x-1.5 gap-y-1 text-[11px]">
+              <span className="text-subtle">回复</span>
+              <button
+                type="button"
+                onClick={() => setNotify((v) => !v)}
+                aria-pressed={notify}
+                title={
+                  notify ? '点一下取消 @，对方不会收到邮件' : '点一下恢复 @，发送时会邮件通知对方'
+                }
+                className={`inline-flex min-h-5 items-center gap-1 rounded-full border px-1.5 py-0.5 transition-colors ${
+                  notify
+                    ? 'border-crimson/30 bg-crimson/8 text-crimson hover:bg-crimson/15'
+                    : 'border-rose/30 bg-white/70 text-subtle hover:text-ink'
+                }`}
+              >
+                {notify ? (
+                  <>
+                    @{entry.name}
+                    <MorphIcon icon={X} size={9} color="currentColor" />
+                  </>
+                ) : (
+                  <>
+                    不 @ 对方
+                  </>
+                )}
+              </button>
+              <span className="text-subtle/80">
+                {notify ? '· 会邮件通知对方' : '· 不会发邮件打扰他'}
+              </span>
+            </div>
+
+            {/* 三个字段，和主留言框对齐：名字 / 邮箱 / 网址 */}
+            <div className="mt-1.5 grid divide-y divide-dashed divide-rose/20 border-y border-dashed border-rose/20 sm:grid-cols-3 sm:divide-x sm:divide-y-0">
+              <input
+                value={rName}
+                maxLength={APPLY_LIMITS.name}
+                onChange={(ev) => setRName(ev.target.value)}
+                placeholder="你的名字（可不填）"
+                autoComplete="off"
+                className="min-w-0 bg-transparent px-0.5 py-1.5 text-xs text-ink outline-none placeholder:text-subtle/85 sm:px-2"
+              />
+              <input
+                value={rEmail}
+                type="email"
+                maxLength={APPLY_LIMITS.email}
+                onChange={(ev) => setREmail(ev.target.value)}
+                placeholder="邮箱（不公开）"
+                autoComplete="off"
+                className="min-w-0 bg-transparent px-0.5 py-1.5 text-xs text-ink outline-none placeholder:text-subtle/85 sm:px-2"
+              />
+              <input
+                value={rUrl}
+                maxLength={APPLY_LIMITS.url}
+                onChange={(ev) => setRUrl(ev.target.value)}
+                placeholder="网址（可不填）"
+                autoComplete="off"
+                className="min-w-0 bg-transparent px-0.5 py-1.5 text-xs text-ink outline-none placeholder:text-subtle/85 sm:px-2"
+              />
+            </div>
+
+            <div className="mt-1.5 flex items-center gap-2">
               <input
                 value={rText}
                 maxLength={200}
