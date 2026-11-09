@@ -291,11 +291,29 @@
     background: linear-gradient(135deg, rgba(246, 165, 184, 0.28), rgba(232, 176, 75, 0.2));
     transition: opacity var(--dur-move) var(--ease-soft);
   }
+  /* 大图（首页立绘）才做扫描骨架。
+     ⚠️ 不要直接给 `.q-media::before` 挂动画：这个类还被播放器 44px 小封面、
+     音乐页大封面、404 图共用，小图上一直扫会晃眼，而且切歌时每次都要重扫一遍。
+     加大类名而不是靠后代选择器，是因为立绘在三层嵌套里，写死结构反而容易脆。 */
+  .qjs .q-media--sweep::before {
+    background: linear-gradient(
+      105deg,
+      rgba(246, 165, 184, 0.3) 0%,
+      rgba(255, 236, 212, 0.62) 46%,
+      rgba(246, 165, 184, 0.3) 100%
+    );
+    background-size: 220% 100%;
+    /* 关键帧复用 q-skel-sweep（只动 background-position，配色可以各写各的）。
+       1.9s 比骨架线的 1.25s 慢一档 —— 立绘面积大，扫太快像在闪。 */
+    animation: q-skel-sweep 1.9s ease-in-out infinite;
+  }
   .qjs .q-media.is-loaded img {
     opacity: 1;
   }
   .qjs .q-media.is-loaded::before {
     opacity: 0;
+    /* 图都出来了还扫就是白烧电 */
+    animation: none;
   }
 
   /* ── 首页笔顺问候的格子 ─────────────────────────────────────────

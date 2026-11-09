@@ -313,7 +313,7 @@ export default function Hero() {
                     ⚠️ data-media-self:这个容器的 is-loaded 由**组件自己**管(下面的 imgReady),
                     不能让 Layout 的全局脚本在水合前改 class —— 实测会触发 React 的
                     hydration mismatch(`q-media` vs `q-media is-loaded`)。 */}
-                <picture data-media-self className={`q-media${imgReady ? ' is-loaded' : ''}`}>
+                <picture data-media-self className={`q-media q-media--sweep${imgReady ? ' is-loaded' : ''}`}>
                   <source srcSet="/images/emis/full.webp" type="image/webp" />
                   <img
                     ref={emisRef}

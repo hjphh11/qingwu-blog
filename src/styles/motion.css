@@ -33,6 +33,7 @@
 .qhidden .wave-bar,
 .qhidden .q-marquee,
 .qhidden .q-skel,
+.qhidden .q-media--sweep::before,
 .qhidden .q-petal .hub,
 .qhidden .q-petal .petal,
 .qhidden .q-spin,
@@ -55,6 +56,11 @@
   .q-skel {
     animation: none !important;
     background: rgba(246, 165, 184, 0.22);
+  }
+  /* 图片占位同理:停掉扫描,但保留那层暖色渐变(它同时承担「图还没来」的交代) */
+  .q-media--sweep::before {
+    animation: none !important;
+    background: linear-gradient(135deg, rgba(246, 165, 184, 0.28), rgba(232, 176, 75, 0.2));
   }
   .q-petal .hub,
   .q-petal .petal,
