@@ -16,6 +16,7 @@ import { getApply, patchApply, postApply } from './apply';
 import { deleteFriendComment, getFriendsBoard, postFriendLike, postFriendReply, postFriendsBoard } from './friends-board';
 import { getLinkPosts, getLinkStats, postLinkClick } from './link';
 import { refreshAllFeeds } from './links-refresh';
+import { flushOutbox } from './mail';
 import { getHit, postHit } from './hit';
 import { getPostViews } from './views';
 import { getStats } from './stats';
@@ -126,12 +127,20 @@ export default {
   /**
    * 定时任务：每天把友链的「最近更新」重探一遍。
    * 真正的兜底是 /link-stats 里那次机会式刷新 —— cron 只是保证长期没人访问也会更新。
+   *
+   * 顺手补发积压的通知信（发信失败会入 mail_outbox，见 mail.ts）。
+   * 两条互不影响，各自 catch，别让死信队列把友链刷新拖下水。
    */
   async scheduled(_event: ScheduledController, env: Env, ctx: ExecutionContext): Promise<void> {
     ctx.waitUntil(
       refreshAllFeeds(env)
         .then((s) => console.log(`[cron] 友链更新探测：${s.updated}/${s.total} 命中，${s.failed} 未抓到`))
         .catch((err) => console.error('[cron] 友链更新探测失败:', err instanceof Error ? err.message : err)),
+    );
+    ctx.waitUntil(
+      flushOutbox(env, 10).catch((err) =>
+        console.error('[cron] 补发通知信失败:', err instanceof Error ? err.message : err),
+      ),
     );
   },
 } satisfies ExportedHandler<Env>;

@@ -16,7 +16,7 @@
 
 import type { Env } from './types';
 import { json, originAllowed, parseOrigins, secretEqual } from './util';
-import { boardMailText, sendMail } from './mail';
+import { boardMailText, flushOutbox, sendMail } from './mail';
 
 /** 友链评论区在 comments 表里的分区名 */
 const SLUG = 'friends';
@@ -281,6 +281,9 @@ export async function postFriendsBoard(request: Request, env: Env, ctx: Executio
           text: `有人留了言：\n\n${v.v.intro}\n\n站点：${v.v.url || '（没填）'}\n\nhttps://www.qingwu.ink/links/#friends-comments`,
         }),
       );
+      // 机会式补发积压的通知信：cron 每天才一次，有人留言说明站点正热，
+      // 顺手把队列里到期的那几封发掉（只试 2 封，别在访客路径上耗时）
+      ctx.waitUntil(flushOutbox(env, 2).catch(() => {}));
     }
 
     return json(
@@ -390,6 +393,8 @@ export async function postFriendReply(
           }),
         }),
       );
+      // 同上：机会式补发（回复场景下被回复的人更在等这封信）
+      ctx.waitUntil(flushOutbox(env, 2).catch(() => {}));
     }
 
     return json(
