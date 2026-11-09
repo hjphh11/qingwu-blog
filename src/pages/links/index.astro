@@ -249,6 +249,9 @@ friends.forEach((f, i) => wallColumns[i % WALL_COLS]!.push({ f, i }));
 
       const timers = new Set<number>();
 
+      /** 同一次会话里同一个站多久重测一次。太短没意义，太长会一直看到过期数字 */
+      const SPEED_TTL = 30 * 60 * 1000;
+
       const measure = (el: HTMLElement) => {
         if (el.dataset.measured === '1') return;
         el.dataset.measured = '1';
@@ -265,12 +268,34 @@ friends.forEach((f, i) => wallColumns[i % WALL_COLS]!.push({ f, i }));
         const t0 = performance.now();
         let settled = false;
 
-        const settle = (state: string, text: string) => {
+        const settle = (state: string, text: string, remember = true) => {
           if (settled) return;
           settled = true;
           if (dot) dot.dataset.state = state;
           if (msEl) msEl.textContent = text;
+          // 记进 sessionStorage：同一个访客 30 分钟内翻回这一页，不再为同一个站
+          // 再敲一次门。原来每进一次页面就把十几个外站全骚扰一遍，来回翻两次就两遍。
+          if (!remember) return;
+          try {
+            sessionStorage.setItem(`q-speed:${origin}`, JSON.stringify({ state, text, at: Date.now() }));
+          } catch {
+            /* 隐私模式禁了 storage —— 退化成每次都测，功能不受影响 */
+          }
         };
+
+        // 先看这次会话里有没有测过（命中就不发请求，直接上屏）
+        try {
+          const raw = sessionStorage.getItem(`q-speed:${origin}`);
+          if (raw) {
+            const hit = JSON.parse(raw) as { state?: string; text?: string; at?: number };
+            if (hit && typeof hit.at === 'number' && Date.now() - hit.at < SPEED_TTL) {
+              settle(hit.state || 'ok', hit.text || '', false);
+              return;
+            }
+          }
+        } catch {
+          /* 同上 */
+        }
 
         const img = new Image();
         const done = () => {
