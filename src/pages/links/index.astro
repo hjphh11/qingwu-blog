@@ -88,7 +88,12 @@ friends.forEach((f, i) => wallColumns[i % WALL_COLS]!.push({ f, i }));
               )}
               {/* 友链头像是外站图,最容易出现「白 → 图」的硬切,所以占位最有用。
                   白色描边(.ring)挪到占位容器上:留在 img 上会露出容器渐变
-                  的一圈玫瑰色边。 */}
+                  的一圈玫瑰色边。
+
+                  ⚠️ 一律直接 <img src={远程 URL}>，**不要**换 astro 的 <Image>、
+                  也不要下载到 public/ —— 那样会把对方头像烤进构建产物，
+                  对方换了头像我们永远停在旧图。站长的原话：「全部用链接」。
+                  同文件名替换后页面仍显示旧图 = 浏览器缓存，不是这里存了副本。 */}
               <span class="q-media q-links-card__avatar">
                 {/* ⚠️ referrerpolicy="no-referrer" 不能删：友链头像是外站图，
                     有些站（比如 ragnote.top）用 Cloudflare 开了 Referer 防盗链 ——
