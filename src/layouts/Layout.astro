@@ -180,8 +180,11 @@ const hitEndpoint =
 
         // 访客上报地址由 Layout 通过 <meta name="q-hit-endpoint"> 注入：
         // 线上默认是 Cloudflare Worker（写 D1）的绝对地址；自建/局域网版是 /api/hit。
+        // 兜底值只能是**同源**的 `/api/hit`：这个 meta 永远存在，兜底理论上用不到，
+        // 万一哪天模板改坏了，落到 api.qingwu.ink 会让自建版把数据打到线上 Worker，
+        // 而落到同源最多是打不出去 —— 错得更安全。
         var meta = document.querySelector('meta[name="q-hit-endpoint"]');
-        var HIT_ENDPOINT = (meta && meta.getAttribute('content')) || 'https://api.qingwu.ink/hit';
+        var HIT_ENDPOINT = (meta && meta.getAttribute('content')) || '/api/hit';
 
         function sendHit() {
           try {

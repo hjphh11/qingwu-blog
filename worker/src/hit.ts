@@ -58,11 +58,17 @@ function clientIp(request: Request): string {
 }
 
 /**
- * 取国家/地区代码。
- * 线上：`request.cf.country`（Cloudflare 提供）。
- * 本地 dev：`request.cf` 可能不存在 → 退回到转发方给的 `x-vercel-ip-country`（Vercel 站点那边有）。
+ * 取国家/地区代码。三个来源按可信度排：
+ * ① `x-q-country` —— 自建版 nginx 用 GeoIP 库算好塞进来的（见 `.deploy/README-hk.md`）。
+ *    **必须排在 cf 前面**：本地 workerd 的 `cf.country` 恒等于这台机器的**出口地**（香港），
+ *    不是访客所在地，用它的话「国家分布」永远只有一个 HK（2026-11-10 实测）。
+ * ② `request.cf.country` —— 线上 Cloudflare 边缘提供，客户端伪造不了。
+ * ③ 其它转发方（旧 Vercel 站点的 `x-vercel-ip-country`、通用 `x-country`）。
  */
 function countryOfRequest(request: Request, cf: IncomingRequestCfProperties | undefined): string {
+  const fromEdge = countryOf(request.headers.get('x-q-country'));
+  if (fromEdge !== 'XX') return fromEdge;
+
   const fromCf = (cf as { country?: unknown } | undefined)?.country;
   if (fromCf) return countryOf(fromCf);
   return countryOf(request.headers.get('x-vercel-ip-country') || request.headers.get('x-country'));
