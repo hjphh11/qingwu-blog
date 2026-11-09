@@ -4,6 +4,7 @@
 //   POST   /hit          访客上报 → D1
 //   GET    /hit          能力探测（与旧的 /api/hit GET 同形）
 //   GET    /stats        后台统计查询（需 Bearer 口令）
+//   GET    /post-views   单篇阅读量（文章页头部，只认 /blog/ 开头）
 //   GET    /health       健康检查
 //   POST   /apply        友链申请提交（第 2 步）
 //   GET    /apply        无口令 = 能力探测；带口令 = 后台读列表
@@ -13,9 +14,10 @@
 
 import { getApply, patchApply, postApply } from './apply';
 import { deleteFriendComment, getFriendsBoard, postFriendLike, postFriendReply, postFriendsBoard } from './friends-board';
-import { getLinkStats, postLinkClick } from './link';
+import { getLinkPosts, getLinkStats, postLinkClick } from './link';
 import { refreshAllFeeds } from './links-refresh';
 import { getHit, postHit } from './hit';
+import { getPostViews } from './views';
 import { getStats } from './stats';
 import { json, originAllowed, parseOrigins } from './util';
 import type { Env } from './types';
@@ -76,6 +78,12 @@ export default {
       return getLinkStats(request, env, ctx);
     }
 
+    // 友链各站的最新文章（「友文」页）—— 纯读，数据由 /link-stats 的机会式刷新顺手写入
+    if (path === '/link-posts') {
+      if (request.method !== 'GET') return json({ ok: false, reason: 'method_not_allowed' }, 405);
+      return getLinkPosts(request, env);
+    }
+
     // —— 友链评论区（留言 / 回复 / 点赞）——
     if (path === '/friends-board') {
       if (request.method === 'GET') return getFriendsBoard(request, env);
@@ -92,6 +100,13 @@ export default {
       return fb[2] === 'reply'
         ? postFriendReply(request, env, ctx, fb[1])
         : postFriendLike(request, env, fb[1]);
+    }
+
+    // —— 单篇阅读量（文章页头部那个数字）——
+    // 公开只读、只认 /blog/ 开头的路径，缓存 120s；见 views.ts 顶部的说明。
+    if (path === '/post-views') {
+      if (request.method !== 'GET') return json({ ok: false, reason: 'method_not_allowed' }, 405);
+      return getPostViews(request, env);
     }
 
     if (path === '/stats') {

@@ -35,7 +35,16 @@ const NAV_ITEMS: NavItem[] = [
     ],
   },
   { label: '音乐', href: '/music' },
-  { label: '友链', href: '/links' },
+  {
+    // 父项仍然是链接：点「友链」直接进友链墙，要去看朋友们写了什么再从下拉里选。
+    // 与「文章」「关于」同一套写法。
+    label: '友链',
+    href: '/links',
+    children: [
+      { label: '友链墙', href: '/links' },
+      { label: '友文', href: '/links/posts' },
+    ],
+  },
   { label: '项目', href: '/projects' },
   {
     // 父项仍然是链接：点「关于」直接进关于页，更新日志从下拉里选。

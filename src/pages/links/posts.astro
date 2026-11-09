@@ -1,0 +1,201 @@
+---
+import Layout from '../../layouts/Layout.astro';
+import { friends } from '../../data/links';
+
+/**
+ * 友文 —— 把各站 RSS 里的最新文章聚到一页。
+ *
+ * 数据链路：Worker 每天抓 feed 时顺手把文章写进 D1 的 link_posts，
+ * 这一页只做一件事：拉 /link-posts 然后把列表画出来。
+ * 页面本身是静态的，所以构建期不需要任何网络请求。
+ *
+ * 站点名在这里**构建期**建一张 host → 名字 的表：
+ * 后端只存 host（`rainzt.cn`），而人要看到的是「朝朝听雨」。
+ * 放前端做映射是因为名字属于展示层，改个名字不必重新抓一遍数据。
+ */
+const hostOf = (url: string) =>
+  (url || '')
+    .replace(/^https?:\/\//i, '')
+    .replace(/^www\./i, '')
+    .split('/')[0]
+    .toLowerCase();
+
+const hostName = Object.fromEntries(friends.map((f) => [hostOf(f.url), f.name]));
+---
+
+<Layout title="友文 · 清吾" description="友链各站最近写了什么 —— 把朋友们的 RSS 聚在一页。">
+  <div class="page-shell">
+    <header class="page-head flex flex-wrap items-end justify-between gap-5">
+      <div>
+        <h1 class="page-head__title">友文</h1>
+        <p class="page-head__sub">朋友们最近写了什么 —— 各站的 RSS 聚在这里</p>
+      </div>
+      <a
+        href="/links/"
+        class="inline-flex min-h-11 items-center gap-1.5 rounded-full border border-rose/30 bg-white/60 px-4 text-sm text-muted transition-colors hover:border-crimson/40 hover:text-crimson"
+      >
+        回友链墙
+        <span aria-hidden="true">→</span>
+      </a>
+    </header>
+
+    {/* 列表：加载时先摆 6 条骨架，尺寸和真实行一致，换进来不跳 */}
+    <section class="mt-8" data-friend-posts>
+      <ul class="flex flex-col" data-list aria-live="polite" aria-busy="true">
+        {Array.from({ length: 6 }).map(() => (
+          <li class="border-b border-rose/12 py-3.5">
+            <div class="flex items-center gap-3">
+              <span class="q-skel h-3 w-16 shrink-0 rounded-full"></span>
+              <span class="q-skel h-3.5 flex-1 rounded-full"></span>
+              <span class="q-skel h-3 w-12 shrink-0 rounded-full"></span>
+            </div>
+          </li>
+        ))}
+      </ul>
+
+      <p class="mt-6 text-sm text-muted" data-empty hidden>
+        暂时还没抓到文章 —— 后台每天会去各站看看，过一阵再来 ~
+      </p>
+      <p class="mt-4 text-xs text-subtle" data-hint hidden>
+        只收录设了 RSS 的友链；有的站没有 feed，就不会出现在这里。
+      </p>
+    </section>
+  </div>
+</Layout>
+
+{/* 站点名映射：放在脚本**之前** —— 脚本进来就要读它建 map，
+    放后面的话依赖「module 一定 defer」这个隐含前提，不值当 */}
+<div hidden aria-hidden="true">
+  {
+    Object.entries(hostName).map(([host, name]) => (
+      <span data-site={name} data-host={host} />
+    ))
+  }
+</div>
+
+<script>
+  /*
+   * 拉 /link-posts 画列表。
+   *
+   * 为什么在客户端拉而不是构建期生成：数据在 Cloudflare D1 里，每天会被
+   * 后台刷新一次。构建期拉的话，文章会停在「上次部署那一刻」，而部署未必天天有。
+   *
+   * 站点名映射由页面通过 data 属性传进来（见下方 [data-name-map]）——
+   * 避免把整张表内联进脚本，换名字不用动 JS。
+   */
+  type PostItem = { url: string; host: string; title: string; published: string | null };
+
+  const API = (import.meta.env.PUBLIC_HIT_WORKER_URL || 'https://api.qingwu.ink').replace(/\/$/, '');
+
+  /** 2026-11-07 → 今天 / 昨天 / 3 天前 / 2 个月前 */
+  function relativeDay(iso: string): string {
+    const then = Date.parse(`${iso}T00:00:00Z`);
+    if (!Number.isFinite(then)) return '';
+    const days = Math.floor((Date.now() - then) / 86_400_000);
+    if (days <= 0) return '今天';
+    if (days === 1) return '昨天';
+    if (days < 30) return `${days} 天前`;
+    if (days < 365) return `${Math.floor(days / 30)} 个月前`;
+    return `${Math.floor(days / 365)} 年前`;
+  }
+
+  function buildRow(item: PostItem, nameMap: Record<string, string>): HTMLLIElement {
+    const li = document.createElement('li');
+    li.className = 'border-b border-rose/12';
+
+    const a = document.createElement('a');
+    a.href = item.url;
+    a.target = '_blank';
+    a.rel = 'noreferrer noopener';
+    a.className =
+      'group flex items-baseline gap-3 rounded-lg px-2 py-3.5 transition-colors hover:bg-white/55';
+
+    const site = document.createElement('span');
+    site.className = 'w-20 shrink-0 truncate text-[11px] text-crimson sm:w-24';
+    site.textContent = nameMap[item.host] || item.host;
+
+    const title = document.createElement('span');
+    title.className =
+      'min-w-0 flex-1 text-sm leading-relaxed text-ink transition-colors group-hover:text-crimson';
+    // 用 textContent 而不是 innerHTML：标题来自别人的 feed，里面可能有尖括号
+    title.textContent = item.title;
+
+    const time = document.createElement('time');
+    time.className = 'shrink-0 text-[11px] tabular-nums text-subtle';
+    if (item.published) {
+      time.dateTime = item.published;
+      time.textContent = relativeDay(item.published);
+    } else {
+      time.textContent = '';
+    }
+
+    a.append(site, title, time);
+    li.append(a);
+    return li;
+  }
+
+  let teardown = () => {};
+
+  function initFriendPosts() {
+    const section = document.querySelector<HTMLElement>('[data-friend-posts]');
+    const list = section?.querySelector<HTMLElement>('[data-list]');
+    if (!section || !list) return;
+    /* ⚠️ 必须先判断再 teardown，顺序反了就会「一次都不成」：
+       首屏有两个入口会调用本函数（astro:page-load 与 DOMContentLoaded 都可能已经派发），
+       先 teardown 的话，第二次调用会把第一次刚发出的 fetch 用 abort() 掐掉，
+       然后自己又因为标记而 return —— 结果是骨架永远停在那儿。
+       友链页的 initLinkStats 里有同样的坑，写法保持一致。 */
+    if (section.dataset.bound === '1') return;
+    teardown();
+    section.dataset.bound = '1';
+
+    const nameMap: Record<string, string> = {};
+    for (const el of document.querySelectorAll<HTMLElement>('[data-site]')) {
+      const host = el.dataset.host;
+      if (host) nameMap[host] = el.dataset.site || host;
+    }
+
+    let alive = true;
+    const ac = new AbortController();
+
+    fetch(`${API}/link-posts`, { signal: ac.signal })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data: { ok?: boolean; items?: PostItem[] } | null) => {
+        if (!alive) return;
+        const items = data?.items ?? [];
+        list.replaceChildren();
+        list.setAttribute('aria-busy', 'false');
+
+        if (!items.length) {
+          const empty = section.querySelector<HTMLElement>('[data-empty]');
+          if (empty) empty.hidden = false;
+          return;
+        }
+
+        const frag = document.createDocumentFragment();
+        for (const item of items) frag.append(buildRow(item, nameMap));
+        list.append(frag);
+
+        const hint = section.querySelector<HTMLElement>('[data-hint]');
+        if (hint) hint.hidden = false;
+      })
+      .catch(() => {
+        if (!alive) return;
+        list.replaceChildren();
+        const empty = section.querySelector<HTMLElement>('[data-empty]');
+        if (empty) {
+          empty.textContent = '没能连上数据源，刷新一下再试 ~';
+          empty.hidden = false;
+        }
+      });
+
+    teardown = () => {
+      alive = false;
+      ac.abort();
+    };
+  }
+
+  document.addEventListener('astro:page-load', initFriendPosts);
+  if (document.readyState !== 'loading') initFriendPosts();
+  else document.addEventListener('DOMContentLoaded', initFriendPosts, { once: true });
+</script>

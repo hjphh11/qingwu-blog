@@ -134,3 +134,31 @@ export async function getLinkStats(request: Request, env: Env, ctx?: ExecutionCo
     return json({ ok: false, items: {}, feeds: {}, shots: {} }, 200, headers);
   }
 }
+
+/**
+ * GET /link-posts —— 友链各站最新文章的聚合列表（「友文」页）。
+ *
+ * 数据由 links-refresh 那趟抓取顺手写进 link_posts，这里只读。
+ * 排序：有日期的按日期倒序在前，没日期的（feed 没给 pubDate）垫在后面。
+ */
+export async function getLinkPosts(request: Request, env: Env): Promise<Response> {
+  const headers = withCors(request, env);
+
+  const origin = request.headers.get('origin') || '';
+  if (origin && !originAllowed(origin, parseOrigins(env.ALLOWED_ORIGINS))) {
+    return json({ ok: false, items: [] }, 200, headers);
+  }
+
+  try {
+    const rows = await env.DB.prepare(
+      `SELECT url, host, title, published FROM link_posts
+       ORDER BY (published IS NULL), published DESC, fetched_at DESC
+       LIMIT 60`,
+    ).all<{ url: string; host: string; title: string; published: string | null }>();
+
+    return json({ ok: true, items: rows.results ?? [] }, 200, headers);
+  } catch {
+    // 迁移还没应用 / 表还没建 —— 回空列表，前端显示空状态，不报错
+    return json({ ok: false, items: [] }, 200, headers);
+  }
+}

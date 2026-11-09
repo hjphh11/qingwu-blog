@@ -64,6 +64,74 @@ function pickLatestDate(text: string): string | null {
   return latest;
 }
 
+/** 每个站从 feed 里留几篇。「友文」是浏览用的，不是归档，5 篇够看个动向 */
+const ITEMS_PER_SITE = 5;
+
+/** 解 XML 实体。`&amp;` 必须放最后 —— 否则 `&amp;lt;` 会被解成 `<` 再被当成标签 */
+function decodeEntities(raw: string): string {
+  return raw
+    .replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, '$1')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&apos;/g, "'")
+    .replace(/&#(\d+);/g, (_, code: string) => String.fromCharCode(Number(code)))
+    .replace(/&amp;/g, '&');
+}
+
+/** 各种日期写法统一成 YYYY-MM-DD：Atom 是 ISO，RSS 是 RFC822 */
+function toIsoDate(raw: string): string | null {
+  const text = decodeEntities(raw).trim();
+  if (!text) return null;
+  const literal = text.match(/(\d{4}-\d{2}-\d{2})/);
+  if (literal?.[1]) return literal[1];
+  const ts = Date.parse(text);
+  if (Number.isFinite(ts)) return new Date(ts).toISOString().slice(0, 10);
+  return null;
+}
+
+export interface FeedItem {
+  url: string;
+  host: string;
+  title: string;
+  published: string | null;
+}
+
+/**
+ * 从 feed 文本里抠出最新的几条文章。
+ *
+ * 只认 RSS 的 `<item>` 和 Atom 的 `<entry>` 两种块 —— 它们覆盖了绝大多数博客。
+ * 不用 XML 解析器：Workers 里塞一个解析器要么体积大、要么对残缺 feed 直接抛错；
+ * 正则切块对「格式不标准但结构还在」的 feed 反而更皮实，这也是 pickLatestDate 的口径。
+ */
+function parseFeedItems(text: string, host: string, limit = ITEMS_PER_SITE): FeedItem[] {
+  const blocks = [
+    ...text.matchAll(/<item\b[\s\S]*?<\/item>/gi),
+    ...text.matchAll(/<entry\b[\s\S]*?<\/entry>/gi),
+  ].map((m) => m[0]);
+
+  const out: FeedItem[] = [];
+  for (const block of blocks) {
+    if (out.length >= limit) break;
+
+    const titleRaw = block.match(/<title[^>]*>([\s\S]*?)<\/title>/i)?.[1] ?? '';
+    const title = decodeEntities(titleRaw).replace(/\s+/g, ' ').trim();
+    if (!title) continue;
+
+    // RSS 的 <link> 是文本，Atom 的是 <link href="..."/>
+    const textLink = decodeEntities(block.match(/<link[^>]*>([\s\S]*?)<\/link>/i)?.[1] ?? '').trim();
+    const attrLink = block.match(/<link[^>]*href=["']([^"']+)["']/i)?.[1] ?? '';
+    const url = /^https?:/i.test(textLink) ? textLink : attrLink;
+    if (!/^https?:/i.test(url)) continue;
+
+    const dateRaw =
+      block.match(/<(?:pubDate|published|updated|dc:date)[^>]*>([\s\S]*?)<\//i)?.[1] ?? '';
+
+    out.push({ url, host, title: title.slice(0, 200), published: toIsoDate(dateRaw) });
+  }
+  return out;
+}
+
 /**
  * 从首页 HTML 里取 og:image。
  *
@@ -94,6 +162,8 @@ interface ProbeResult {
   date: string | null;
   source: string;
   og: string | null;
+  /** 同一趟顺手解析出来的最新几篇，写进 link_posts 给「友文」页用 */
+  items: FeedItem[];
 }
 
 async function probeHost(host: string): Promise<ProbeResult> {
@@ -109,12 +179,14 @@ async function probeHost(host: string): Promise<ProbeResult> {
       // 只读前 200KB：有的 sitemap 能到几 MB，读全了纯浪费
       const text = (await res.text()).slice(0, 200_000);
       const date = pickLatestDate(text);
-      if (date) return { host, date, source: path, og: null };
+      // 抓到日期就说明这是一份能读的 feed —— 同一次请求里顺手把条目也解析了，
+      // 不额外多发出站请求（免费版每天 50 次出站的上限要省着用）
+      if (date) return { host, date, source: path, og: null, items: parseFeedItems(text, host) };
     } catch {
       // 超时 / DNS 挂 / 证书错 —— 换下一个路径，别中断整轮
     }
   }
-  return { host, date: null, source: '', og: null };
+  return { host, date: null, source: '', og: null, items: [] };
 }
 
 /**
@@ -204,6 +276,33 @@ export async function refreshAllFeeds(env: Env): Promise<RefreshSummary> {
     }
   } catch {
     return { total: hosts.length, updated: 0, failed: hosts.length };
+  }
+
+  /* —— 顺手把解析到的文章写进 link_posts（「友文」页的数据源）——
+     单独一批、单独 catch：这张表挂了不该影响「最近更新」已经写好的结果。 */
+  const postStatements = [];
+  for (const r of probes) {
+    if (r.status !== 'fulfilled') continue;
+    for (const item of r.value.items) {
+      postStatements.push(
+        env.DB.prepare(
+          `INSERT INTO link_posts (url, host, title, published, fetched_at) VALUES (?, ?, ?, ?, ?)
+           ON CONFLICT(url) DO UPDATE SET
+             title = excluded.title,
+             published = excluded.published,
+             fetched_at = excluded.fetched_at`,
+        ).bind(item.url, item.host, item.title, item.published, now),
+      );
+    }
+  }
+  // 一年前的顺手清掉，表别无限长（feed 里翻出来的老文章没有浏览价值）
+  postStatements.push(
+    env.DB.prepare('DELETE FROM link_posts WHERE fetched_at < ?').bind(now - 365 * 86_400_000),
+  );
+  try {
+    await env.DB.batch(postStatements);
+  } catch (err) {
+    console.error('[links-refresh] 文章写入失败:', err instanceof Error ? err.message : err);
   }
 
   return { total: hosts.length, updated, failed };
