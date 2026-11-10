@@ -1203,35 +1203,37 @@ export default function AdminFriends() {
               {data.publishLog.map((p) => (
                 <li key={p.id}>
                   <span className="q-admin-plog__ts">{fmtTime(p.ts)}</span>
+
+                  {/* 三行分开：说明一行、字段改动一行、sha 与条数一行。
+                      原来全塞进一句里用「·」和「；」连，中文一密就成一团。 */}
                   <div className="q-admin-plog__main">
-                    <b>{p.message || '（没有提交说明）'}</b>
-                    {p.changes.length ? (
-                      <>
-                        {' · '}
-                        {p.changes.slice(0, 4).map((c, i) => (
-                          <span key={`${p.id}-${i}`}>
-                            {i > 0 ? '；' : ''}
-                            {c.name} {fieldLabel(c.field)}
-                            {c.field === '+' || c.field === '-' ? '' : `「${c.from}」→「${c.to}」`}
-                          </span>
-                        ))}
-                        {p.changes.length > 4 ? ` 等 ${p.changes.length} 处` : ''}
-                      </>
-                    ) : (
-                      ' · 没有字段明细'
-                    )}
-                    {p.commit ? (
-                      <>
-                        {' '}
-                        <code>{p.commit.slice(0, 7)}</code>
-                      </>
-                    ) : null}
-                    {p.detail ? (
-                      <>
-                        {' '}
-                        <span className="q-admin-stat__mini">{p.detail}</span>
-                      </>
-                    ) : null}
+                    <span className="q-admin-plog__msg">{p.message || '（没有提交说明）'}</span>
+
+                    <span className="q-admin-plog__chgs">
+                      {p.changes.length ? (
+                        <>
+                          {p.changes.slice(0, 4).map((c, i) => (
+                            <span className="q-admin-plog__chg" key={`${p.id}-${i}`}>
+                              <b>{c.name}</b>
+                              {c.field === '+' || c.field === '-' ? (
+                                <>{fieldLabel(c.field)}</>
+                              ) : (
+                                <>
+                                  {fieldLabel(c.field)}「{c.from}」→「{c.to}」
+                                </>
+                              )}
+                            </span>
+                          ))}
+                          {p.changes.length > 4 ? (
+                            <span className="q-admin-plog__chg">等 {p.changes.length} 处</span>
+                          ) : null}
+                        </>
+                      ) : (
+                        <span className="q-admin-plog__chg">没有字段明细</span>
+                      )}
+                      {p.commit ? <code>{p.commit.slice(0, 7)}</code> : null}
+                      {p.detail ? <span className="q-admin-plog__tail">{p.detail}</span> : null}
+                    </span>
                   </div>
                   <span
                     className={`q-admin-tag ${

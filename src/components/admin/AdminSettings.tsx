@@ -25,8 +25,14 @@
  *   · 后端只给「有没有配 + 尾号」，明文永远不进浏览器；
  *   · 输入框留空 = 不改，填了才覆盖；
  *   · 库里存过 key 时会出现「清除」，点它立即回落环境变量。
+ *
+ * —— 第五次（同一晚再晚）：没有保存按钮了 ——
+ * 站长：「就不用点击然后保存就生效吗，全部东西」。
+ * 开关、滑块、分段停手 700ms 落库；输入框离开时落库；密钥失焦或回车即存。
+ * **正在输入时不存**：地址打到一半是 `https:/`，存进去会被后端当非法值丢弃，
+ * 回填时把输入框清空 —— 人的字就没了。见下面 hold 的注释。
  */
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import AdminTop from './AdminTop.tsx';
 
 const API = '/api/admin';
@@ -180,11 +186,36 @@ const toList = (s: string): string[] =>
     .filter(Boolean);
 const toText = (a: string[]): string => a.join(', ');
 
+/**
+ * 把当前界面上的值摊成 PATCH 的扁平键值。
+ *
+ * 抽成纯函数是因为三处都要用：自动保存比较差异、保存成功后回填基线、
+ * 以及「刚读完库时把基线设成服务端的值」。三处各写一遍，迟早有一处漏字段
+ * —— 表现就是「改了某个开关，永远显示未保存」。
+ */
+function buildPayload(ar: AutoReply, wr: WriterGen, ai: AiCfg): Record<string, string> {
+  return {
+    'autoReply.on': ar.on ? 'on' : 'off',
+    'autoReply.perGuest': String(ar.perGuest),
+    'autoReply.scope': ar.scope,
+    'autoReply.allowPaths': ar.allowPaths.join(','),
+    'autoReply.blockPaths': ar.blockPaths.join(','),
+    'autoReply.skipKeywords': ar.skipKeywords.join(','),
+    'writer.temperature': String(wr.temperature),
+    'writer.maxTokens': String(wr.maxTokens),
+    'ai.writer.base': ai.writer.base.trim(),
+    'ai.writer.model': ai.writer.model.trim(),
+    'ai.judge.provider': ai.judge.provider,
+    'ai.judge.base': ai.judge.base.trim(),
+    'ai.judge.model': ai.judge.model.trim(),
+  };
+}
+
 /** 密钥输入框下面那句提示 —— 三种来源三种说法，别都写成「已配置」 */
 function keyHint(k: KeyMeta | undefined): string {
-  if (!k || !k.set) return '还没配 key。填一个就能用，也可以继续用服务器上的环境变量。';
+  if (!k || !k.set) return '还没配 key。填一个、离开输入框就生效；也可以继续用服务器上的环境变量。';
   if (k.from === 'db') return `当前用的是本页保存的 key（尾号 ${k.tail || '••'}）。留空不改；点「清除」回落环境变量。`;
-  return `当前用的是环境变量里的 key${k.tail ? `（尾号 ${k.tail}）` : ''}。在这里填一条会覆盖它。`;
+  return `当前用的是环境变量里的 key${k.tail ? `（尾号 ${k.tail}）` : ''}。在这里填一条、离开输入框即覆盖它。`;
 }
 
 export default function AdminSettings() {
@@ -192,9 +223,6 @@ export default function AdminSettings() {
   const [ar, setAr] = useState<AutoReply | null>(null);
   const [wr, setWr] = useState<WriterGen | null>(null);
   const [ai, setAi] = useState<AiCfg | null>(null);
-  const [savedAr, setSavedAr] = useState<AutoReply | null>(null);
-  const [savedWr, setSavedWr] = useState<WriterGen | null>(null);
-  const [savedAi, setSavedAi] = useState<AiCfg | null>(null);
   const [keyMeta, setKeyMeta] = useState<{ writer: KeyMeta; judge: KeyMeta } | null>(null);
   const [meta, setMeta] = useState<Meta | null>(null);
   const [chan, setChan] = useState<{ writer: ChannelState; judge: ChannelState } | null>(null);
@@ -211,10 +239,41 @@ export default function AdminSettings() {
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [savedAt, setSavedAt] = useState(0);
   const [pinging, setPinging] = useState(false);
   const [ping, setPing] = useState<{ writer?: PingResult; judge?: PingResult }>({});
   const [err, setErr] = useState('');
   const [toast, setToast] = useState('');
+
+  /**
+   * —— 自动保存的三个 ref ——
+   *
+   * hold：有几个「连接参数」输入框正聚焦着（地址 / 模型 / 密钥）。
+   *   大于 0 时挂起保存 —— 地址打到一半是 `https:/`，这时候存进去会被后端
+   *   当成非法地址丢掉，回填时输入框跟着变空，人正打的字就没了。
+   *   **路径与关键词不 hold**：它们边打边存无害，写进去的只是个匹配规则。
+   *
+   * lastSent：上一次提交成功的 payload（字符串）。用它比较能避免「回填 → 触发 →
+   *   再保存」的死循环，也不依赖 localStorage。
+   *
+   * flush：hold 归零时自增一下，逼 effect 重跑 —— 只依赖 payload 的话，
+   *   「只改了地址、改回原值」这种情况不会触发，虽然无害，但状态文字会一直卡在
+   *   「正在生效」。
+   */
+  const hold = useRef(0);
+  const lastSent = useRef('');
+  const [flush, setFlush] = useState(0);
+
+  const payload = useMemo(() => {
+    if (!ar || !wr || !ai) return null;
+    return buildPayload(
+      { ...ar, allowPaths: toList(allowText), blockPaths: toList(blockText), skipKeywords: toList(kwText) },
+      wr,
+      ai,
+    );
+  }, [ar, wr, ai, allowText, blockText, kwText]);
+  const payloadKey = payload ? JSON.stringify(payload) : '';
+  const pending = Boolean(payloadKey) && payloadKey !== lastSent.current;
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -226,9 +285,6 @@ export default function AdminSettings() {
       setAr(d.settings.autoReply);
       setWr(d.settings.writer);
       setAi(d.settings.ai);
-      setSavedAr(d.settings.autoReply);
-      setSavedWr(d.settings.writer);
-      setSavedAi(d.settings.ai);
       setKeyMeta(d.keyMeta);
       setAllowText(toText(d.settings.autoReply.allowPaths));
       setBlockText(toText(d.settings.autoReply.blockPaths));
@@ -236,6 +292,10 @@ export default function AdminSettings() {
       setWrKey('');
       setJdKey('');
       setMeta(d.meta);
+      // 刚读回来的就是「已保存」的基线，否则页面一打开就会自己 PATCH 一次
+      lastSent.current = JSON.stringify(
+        buildPayload(d.settings.autoReply, d.settings.writer, d.settings.ai),
+      );
     } catch (e) {
       setErr(e instanceof Error ? e.message : '读取设置失败');
     } finally {
@@ -264,93 +324,87 @@ export default function AdminSettings() {
     })();
   }, [load]);
 
-  const dirty =
-    !!ar &&
-    !!wr &&
-    !!ai &&
-    !!savedAr &&
-    !!savedWr &&
-    !!savedAi &&
-    (JSON.stringify({
-      ...ar,
-      allowPaths: toList(allowText),
-      blockPaths: toList(blockText),
-      skipKeywords: toList(kwText),
-    }) !== JSON.stringify(savedAr) ||
-      JSON.stringify(wr) !== JSON.stringify(savedWr) ||
-      JSON.stringify(ai) !== JSON.stringify(savedAi) ||
-      wrKey.trim().length > 0 ||
-      jdKey.trim().length > 0);
-
-  async function save() {
-    if (!ar || !wr || !ai) return;
+  /** 提交一次。入参是已经序列化好的 payload，避免闭包里拿到旧 state。 */
+  const commit = useCallback(async (json: string) => {
     setSaving(true);
     setErr('');
-    setToast('');
     try {
-      const nextAr: AutoReply = {
-        ...ar,
-        allowPaths: toList(allowText),
-        blockPaths: toList(blockText),
-        skipKeywords: toList(kwText),
-      };
-      const patch: Record<string, string> = {
-        'autoReply.on': nextAr.on ? 'on' : 'off',
-        'autoReply.perGuest': String(nextAr.perGuest),
-        'autoReply.scope': nextAr.scope,
-        'autoReply.allowPaths': nextAr.allowPaths.join(','),
-        'autoReply.blockPaths': nextAr.blockPaths.join(','),
-        'autoReply.skipKeywords': nextAr.skipKeywords.join(','),
-        'writer.temperature': String(wr.temperature),
-        'writer.maxTokens': String(wr.maxTokens),
-        'ai.writer.base': ai.writer.base.trim(),
-        'ai.writer.model': ai.writer.model.trim(),
-        'ai.judge.provider': ai.judge.provider,
-        'ai.judge.base': ai.judge.base.trim(),
-        'ai.judge.model': ai.judge.model.trim(),
-      };
-      // **空着就不发**：发了空串等于把 key 清掉，而「留空不改」才是人的预期
-      if (wrKey.trim()) patch['ai.writer.key'] = wrKey.trim();
-      if (jdKey.trim()) patch['ai.judge.key'] = jdKey.trim();
-
       const d = await api<{ settings: Settings; keyMeta: { writer: KeyMeta; judge: KeyMeta } }>('/settings', {
         method: 'PATCH',
-        body: JSON.stringify(patch),
+        body: json,
       });
-
-      // 用**服务端解析后的值**回填，而不是本地的：地址填错（少了 https://）会被丢弃，
-      // 只改本地状态的话界面会显示一个其实没存进去的地址。
-      const dropped: string[] = [];
-      if (ai.writer.base.trim() && !d.settings.ai.writer.base) dropped.push('writer 的接口地址');
-      if (ai.judge.base.trim() && !d.settings.ai.judge.base) dropped.push('judge 的接口地址');
-
+      // 用服务端**解析后的值**回填：地址填错会被丢空，界面必须跟着变空，
+      // 否则看起来存进去了，实际仍在走环境变量。
       setAr(d.settings.autoReply);
       setWr(d.settings.writer);
       setAi(d.settings.ai);
-      setSavedAr(d.settings.autoReply);
-      setSavedWr(d.settings.writer);
-      setSavedAi(d.settings.ai);
       setKeyMeta(d.keyMeta);
-      setAllowText(toText(d.settings.autoReply.allowPaths));
-      setBlockText(toText(d.settings.autoReply.blockPaths));
-      setKwText(toText(d.settings.autoReply.skipKeywords));
-      setWrKey('');
-      setJdKey('');
-
-      setToast(
-        dropped.length
-          ? `已保存，但${dropped.join('、')}格式不对（要 http:// 或 https:// 开头），那一条按环境变量走`
-          : '已保存，下一条留言起按新设置跑',
+      setSavedAt(Date.now());
+      // 基线取「回填后重算」的那份，不是刚提交的那份 —— 否则被丢弃的地址会让
+      // 下一轮比较仍然不等，白白再 PATCH 一次
+      lastSent.current = JSON.stringify(
+        buildPayload(d.settings.autoReply, d.settings.writer, d.settings.ai),
       );
-      setTimeout(() => setToast(''), 4000);
     } catch (e) {
       setErr(e instanceof Error ? e.message : '保存失败');
     } finally {
       setSaving(false);
     }
+  }, []);
+
+  // 改完就存：停手 700ms 落库。文本类靠 hold 挡着，失焦后才算数。
+  useEffect(() => {
+    if (!ready || !payloadKey) return;
+    if (hold.current > 0) return;
+    if (payloadKey === lastSent.current) return;
+    const t = window.setTimeout(() => void commit(payloadKey), 700);
+    return () => window.clearTimeout(t);
+  }, [payloadKey, flush, ready, commit]);
+
+  const holdStart = () => {
+    hold.current += 1;
+  };
+  const holdEnd = () => {
+    hold.current = Math.max(0, hold.current - 1);
+    setFlush((n) => n + 1);
+  };
+
+  /** 提交两个密钥框里还没存的值。失焦与「测一下」之前都走它。 */
+  async function flushKeys(): Promise<boolean> {
+    const w = wrKey.trim();
+    const j = jdKey.trim();
+    if (!w && !j) return false;
+    setSaving(true);
+    setErr('');
+    try {
+      const patch: Record<string, string> = {};
+      if (w) patch['ai.writer.key'] = w;
+      if (j) patch['ai.judge.key'] = j;
+      const d = await api<{ keyMeta: { writer: KeyMeta; judge: KeyMeta } }>('/settings', {
+        method: 'PATCH',
+        body: JSON.stringify(patch),
+      });
+      setKeyMeta(d.keyMeta);
+      if (w) setWrKey('');
+      if (j) setJdKey('');
+      setSavedAt(Date.now());
+      setToast(w ? 'writer 的 key 已保存，下一条就用它' : 'judge 的 key 已保存，下次判定就用它');
+      setTimeout(() => setToast(''), 4000);
+      return true;
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : '密钥保存失败');
+      return false;
+    } finally {
+      setSaving(false);
+    }
   }
 
-  /** 清除库里的 key，回落环境变量。单独一次请求，不做「待保存」—— 免得两种语义混在一起 */
+  /** 把还没落库的改动立刻送出去（探活、离开这一页之前用）。 */
+  async function flushPending(): Promise<void> {
+    if (payloadKey && payloadKey !== lastSent.current) await commit(payloadKey);
+  }
+
+  /** 清除库里的 key，回落环境变量。单独一次请求，不进自动保存队列 */
   async function clearKey(ch: 'writer' | 'judge') {
     setErr('');
     try {
@@ -370,6 +424,10 @@ export default function AdminSettings() {
     setPinging(true);
     setErr('');
     try {
+      // 探活打的是**已保存**的配置。先把待存的推上去，否则刚填的 key 还没落库，
+      // 测出来的结果跟界面上看到的不一致（「我明明填了，怎么还不通」）。
+      await flushKeys();
+      await flushPending();
       const d = await api<{ writer: PingResult; judge: PingResult }>('/status/ping', { method: 'POST' });
       setPing({ writer: d.writer, judge: d.judge });
       // 探活也记账，顺手把用量条刷新一下
@@ -399,6 +457,19 @@ export default function AdminSettings() {
   const judgeProvider: 'jev' | 'openai' =
     ai?.judge.provider || meta?.aiEnv.judge.provider || 'openai';
 
+  /**
+   * 连接参数输入框共用：聚焦期间不自动保存，失焦立刻补一次。
+   * 密钥框另加一层 —— 失焦就把值提交掉，不用再点「保存密钥」。
+   */
+  const holdProps = { onFocus: holdStart, onBlur: holdEnd };
+  const keyProps = {
+    onFocus: holdStart,
+    onBlur: () => {
+      holdEnd();
+      void flushKeys();
+    },
+  };
+
   return (
     <>
       <AdminTop active="settings" />
@@ -407,9 +478,15 @@ export default function AdminSettings() {
         <div className="q-admin-head">
           <div>
             <h1>设置</h1>
-            <p>保存即生效，不用重启 Worker。地址、密钥、模型都可以在这里改。</p>
+            <p>改完就生效，不用点保存、也不用重启 Worker。开关与滑块停手即存，输入框离开时存。</p>
           </div>
           <div className="q-admin-stat-actions">
+            <span
+              className={`q-admin-autosave${err ? ' is-err' : saving ? ' is-saving' : pending ? ' is-pending' : ''}`}
+              aria-live="polite"
+            >
+              {err ? '没存上' : saving ? '保存中…' : pending ? '正在生效…' : savedAt ? '已自动保存' : '已载入'}
+            </span>
             <button
               className="q-admin-btn q-admin-btn--ghost q-admin-btn--sm"
               type="button"
@@ -417,14 +494,6 @@ export default function AdminSettings() {
               disabled={loading || saving}
             >
               重新读取
-            </button>
-            <button
-              className="q-admin-btn q-admin-btn--primary q-admin-btn--sm"
-              type="button"
-              onClick={() => void save()}
-              disabled={!dirty || saving}
-            >
-              {saving ? '保存中…' : dirty ? '保存设置' : '无改动'}
             </button>
           </div>
         </div>
@@ -560,6 +629,7 @@ export default function AdminSettings() {
                       onChange={(e) => setAi({ ...ai, writer: { ...ai.writer, base: e.target.value } })}
                       placeholder={meta?.aiEnv.writer.base || 'https://api.deepseek.com'}
                       spellCheck={false}
+                      {...holdProps}
                     />
                     <p className="q-admin-hint" style={{ margin: '6px 0 0' }}>
                       留空用环境变量里的（{meta?.aiEnv.writer.base || 'https://api.deepseek.com'}）。
@@ -575,9 +645,13 @@ export default function AdminSettings() {
                         type="password"
                         value={wrKey}
                         onChange={(e) => setWrKey(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') void flushKeys();
+                        }}
                         placeholder={keyMeta?.writer.set ? `已配置 ····${keyMeta.writer.tail}（留空不改）` : '还没配'}
                         autoComplete="off"
                         spellCheck={false}
+                        {...keyProps}
                       />
                       {keyMeta?.writer.from === 'db' ? (
                         <button
@@ -603,6 +677,7 @@ export default function AdminSettings() {
                       onChange={(e) => setAi({ ...ai, writer: { ...ai.writer, model: e.target.value } })}
                       placeholder={meta?.aiEnv.writer.model || 'deepseek-chat'}
                       spellCheck={false}
+                      {...holdProps}
                     />
                     <p className="q-admin-hint" style={{ margin: '6px 0 0' }}>
                       留空 = 用环境变量里的（{meta?.aiEnv.writer.model || 'deepseek-chat'}）。
@@ -691,6 +766,7 @@ export default function AdminSettings() {
                       onChange={(e) => setAi({ ...ai, judge: { ...ai.judge, base: e.target.value } })}
                       placeholder={meta?.aiEnv.judge.base || 'https://api.typesafe.ai'}
                       spellCheck={false}
+                      {...holdProps}
                     />
                     <p className="q-admin-hint" style={{ margin: '6px 0 0' }}>
                       留空用当前的（{meta?.aiEnv.judge.base || 'https://api.typesafe.ai'}）。
@@ -706,9 +782,13 @@ export default function AdminSettings() {
                         type="password"
                         value={jdKey}
                         onChange={(e) => setJdKey(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') void flushKeys();
+                        }}
                         placeholder={keyMeta?.judge.set ? `已配置 ····${keyMeta.judge.tail}（留空不改）` : '还没配'}
                         autoComplete="off"
                         spellCheck={false}
+                        {...keyProps}
                       />
                       {keyMeta?.judge.from === 'db' ? (
                         <button
@@ -734,11 +814,12 @@ export default function AdminSettings() {
                       onChange={(e) => setAi({ ...ai, judge: { ...ai.judge, model: e.target.value } })}
                       placeholder={meta?.aiEnv.judge.model || 'jev-latest'}
                       spellCheck={false}
+                      {...holdProps}
                     />
                   </div>
 
                   <p className="q-admin-channel__hint">
-                    换判定模型或协议之后，提示词不一定要跟着变，但**要回来点一次「测一下」**：
+                    换判定模型或协议之后，提示词不一定要跟着变，但要回来点一次<b>「测一下」</b>：
                     探活会拿一句正常留言真打一次，判不出「正常」就说明提示词与模型不匹配。
                     拦哪几类、多少分才动手，在
                     <a className="q-admin-head__link" href="/admin/review">评论审核</a>页。
@@ -750,7 +831,7 @@ export default function AdminSettings() {
 
               <p className="q-admin-stat__foot">
                 探活会真发一次请求（writer 约 30 token，judge 输出不计费），各受每日配额约束。
-                测的是**已保存**的配置 —— 改完先保存，再点。
+                点的时候会先把还没落库的改动存掉，测的就是你眼前这份配置。
               </p>
             </section>
           </>
