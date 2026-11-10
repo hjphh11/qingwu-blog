@@ -1,0 +1,14 @@
+---
+/*
+ * /admin/stats —— 统计（图表）
+ *
+ * 数据走 GET /api/admin/stats?days=7|14|30。访问部分与对外 /stats 同口径，
+ * 评论 / 拦截 / AI 用量 / 自动回复来自各自的表。
+ */
+import AdminLayout from '../../layouts/AdminLayout.astro';
+import AdminStats from '../../components/admin/AdminStats.tsx';
+---
+
+<AdminLayout title="统计">
+  <AdminStats client:load />
+</AdminLayout>

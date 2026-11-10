@@ -2432,6 +2432,336 @@ html.q-route-done .q-admin-route i {
   color: var(--color-subtle);
 }
 
+/* ————————————————————————— 统计页 —————————————————————————
+ * 图表全是手画的：折线走 SVG（viewBox 720×200 + 非缩放描边），
+ * 柱子和榜单走 DOM（高度/宽度一次 transition 就够）。
+ * 形状只有三种，为它们引一个图表库不划算 —— 理由写在 AdminStats.tsx 顶部。
+ */
+.q-chart {
+  display: block;
+  width: 100%;
+  height: 200px;
+  margin-top: 6px;
+  overflow: visible;
+}
+.q-chart__grid {
+  stroke: var(--qa-line);
+  stroke-width: 1;
+}
+.q-chart__x {
+  font-size: 10px;
+  fill: var(--color-subtle);
+  font-variant-numeric: tabular-nums;
+}
+
+/* 面积淡入；两条线用 dashoffset 描出来。
+   不用 transform 做入场 —— viewBox 配 preserveAspectRatio="none" 会把它拉变形。 */
+.q-chart__area {
+  fill: rgba(17, 17, 17, 0.055);
+  opacity: 0;
+  transition: opacity var(--dur-move) var(--ease-soft);
+}
+.q-chart__area.is-in {
+  opacity: 1;
+}
+.q-chart__line {
+  fill: none;
+  stroke-width: 1.6;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-dasharray: 1;
+  stroke-dashoffset: 1;
+  transition: stroke-dashoffset var(--dur-cinematic) var(--ease-soft);
+}
+.q-chart__line.is-in {
+  stroke-dashoffset: 0;
+}
+.q-chart__line--pv {
+  stroke: var(--qa-accent);
+  stroke-width: 2;
+}
+.q-chart__line--uv {
+  stroke: #8f8f8f;
+}
+
+.q-chart__legend {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  font-size: 11.5px;
+  font-weight: 400;
+  color: var(--color-muted);
+  font-variant-numeric: tabular-nums;
+}
+.q-chart__legend > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+.q-chart__legend > span::before {
+  content: '';
+  width: 14px;
+  height: 2px;
+  border-radius: 2px;
+  background: var(--qa-accent);
+}
+.q-chart__legend .is-uv::before {
+  background: #b6b6b6;
+}
+.q-chart__legend .is-grey::before {
+  background: #c9c9c9;
+}
+.q-chart__legend .is-danger::before {
+  background: var(--qa-danger);
+}
+/* 「N token」那格没有色块，别给它画一条线 */
+.q-chart__legend .is-token::before {
+  content: none;
+}
+.q-chart__empty {
+  padding: 26px 0;
+  margin: 0;
+  text-align: center;
+  font-size: 12px;
+  color: var(--color-subtle);
+}
+
+/* 并排柱：柱高 = 百分比 × 内容区高度（padding-bottom 那 18px 让给日期标签） */
+.q-bars {
+  margin-top: 6px;
+}
+.q-bars__plot {
+  display: flex;
+  align-items: flex-end;
+  gap: 2px;
+  height: 168px;
+  padding-top: 6px;
+}
+.q-bars__col {
+  position: relative;
+  flex: 1 1 0;
+  min-width: 0;
+  height: 100%;
+  padding-bottom: 18px;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  gap: 1px;
+}
+.q-bars__bar {
+  width: 100%;
+  max-width: 13px;
+  border-radius: 2px 2px 0 0;
+  transition: height var(--dur-move) var(--ease-soft);
+}
+.q-bars__bar.is-ink {
+  background: var(--qa-accent);
+}
+.q-bars__bar.is-grey {
+  background: #c9c9c9;
+}
+.q-bars__bar.is-danger {
+  background: var(--qa-danger);
+  opacity: 0.86;
+}
+.q-bars__col > span {
+  position: absolute;
+  bottom: 0;
+  font-size: 9.5px;
+  line-height: 14px;
+  color: var(--color-subtle);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* 横条榜：名称 / 条 / 数值 / 占比 */
+.q-rank {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin: 4px 0 0;
+  padding: 0;
+  list-style: none;
+}
+.q-rank li {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 12px;
+}
+.q-rank__name {
+  flex: 0 0 auto;
+  max-width: 40%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--color-ink);
+}
+.q-rank__track {
+  flex: 1 1 auto;
+  min-width: 24px;
+  height: 6px;
+  border-radius: 999px;
+  background: rgba(17, 17, 17, 0.06);
+  overflow: hidden;
+}
+.q-rank__track i {
+  display: block;
+  height: 100%;
+  border-radius: 999px;
+  background: var(--qa-accent);
+  transition: width var(--dur-move) var(--ease-soft);
+}
+.q-rank li > b {
+  flex: 0 0 auto;
+  min-width: 44px;
+  text-align: right;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.q-rank li > em {
+  flex: 0 0 auto;
+  min-width: 34px;
+  text-align: right;
+  font-style: normal;
+  font-size: 11px;
+  color: var(--color-subtle);
+  font-variant-numeric: tabular-nums;
+}
+
+/* 拦截记录表格里的正文摘要：两行就够，多了整张表没法扫 */
+.q-admin-blocked__body {
+  margin: 3px 0 0;
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--color-muted);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.q-admin-blocked__why {
+  font-size: 11.5px;
+  line-height: 1.65;
+  color: var(--color-muted);
+}
+.q-admin-blocked__why ul {
+  margin: 0;
+  padding-left: 14px;
+}
+.q-admin-blocked__why li::marker {
+  color: var(--qa-line-strong);
+}
+
+/* 命中类别的横排小卡 */
+.q-verdicts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 16px;
+}
+.q-verdicts span {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 4px 10px;
+  border: 1px solid var(--qa-line);
+  border-radius: 7px;
+  font-size: 11.5px;
+  color: var(--color-muted);
+}
+.q-verdicts b {
+  color: var(--qa-danger);
+  font-variant-numeric: tabular-nums;
+}
+
+/* KPI 的副文案：涨绿跌红？不 —— 这里涨跌都不算「好/坏」，
+   只有「变化」本身要看出来。PV 变多不代表什么，所以不用语义色，用灰；
+   拦截数变多才值得警惕，那个数字本身已经是红的。 */
+.q-kpi-sub.is-up,
+.q-kpi-sub.is-down {
+  color: var(--color-muted);
+}
+.q-kpi-sub.is-flat {
+  color: var(--color-subtle);
+}
+
+/* 页头里指向另一页的那半句话 */
+.q-admin-head__link {
+  color: var(--color-ink);
+  text-decoration: underline;
+  text-decoration-color: rgba(17, 17, 17, 0.28);
+  text-underline-offset: 3px;
+}
+.q-admin-head__link:hover {
+  text-decoration-color: var(--qa-accent);
+}
+
+/* 骨架屏：形状照真图排，切过去不跳 */
+.q-admin-skel {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.q-skel {
+  border-radius: 12px;
+  background: linear-gradient(100deg, #efefef 28%, #fafafa 50%, #efefef 72%);
+  background-size: 320% 100%;
+  animation: q-admin-shimmer 1.5s linear infinite;
+}
+.q-skel--kpi {
+  height: 86px;
+}
+.q-skel--chart {
+  height: 244px;
+}
+.q-skel--half {
+  height: 208px;
+}
+@keyframes q-admin-shimmer {
+  from {
+    background-position: 130% 0;
+  }
+  to {
+    background-position: -30% 0;
+  }
+}
+
+@media (max-width: 860px) {
+  /* 六项导航在 390 上已经要横向滑了，图标再占 20px 就真挤不动 */
+  .q-admin-nav__item svg {
+    display: none;
+  }
+  /* 六项 × 两字/四字：padding 收到 6、字号 12.5，390 刚好放下，不必横滑 */
+  .q-admin-nav__item {
+    padding: 0 6px;
+    font-size: 12.5px;
+  }
+}
+
+@media (max-width: 760px) {
+  .q-chart {
+    height: 164px;
+  }
+  .q-bars__plot {
+    height: 142px;
+  }
+  .q-rank li {
+    gap: 7px;
+    font-size: 11.5px;
+  }
+  .q-rank__name {
+    max-width: 36%;
+  }
+  .q-rank li > em {
+    display: none;
+  }
+  .q-chart__legend {
+    gap: 10px;
+    font-size: 11px;
+  }
+}
+
 @media (max-width: 760px) {
   .q-admin-setting {
     flex-direction: column;
@@ -2464,6 +2794,24 @@ html.q-route-done .q-admin-route i {
   .q-admin-switch::after,
   .q-admin-chip,
   .q-admin-prob__fill {
+    transition: none;
+  }
+  /* 统计页：骨架不闪、柱子不长、折线不描 —— 直接给终值。
+     数据本身一点没少，只是不再动。 */
+  .q-skel {
+    animation: none;
+    background: #f1f1f1;
+  }
+  .q-chart__area {
+    opacity: 1;
+    transition: none;
+  }
+  .q-chart__line {
+    stroke-dashoffset: 0;
+    transition: none;
+  }
+  .q-bars__bar,
+  .q-rank__track i {
     transition: none;
   }
 }

@@ -1,8 +1,13 @@
 /*
- * 后台顶栏 —— 三个模块共用。
+ * 后台顶栏 —— 六个模块共用。
  *
  * 原本导航写死在 AdminInbox 里、其余三项 disabled；加友链页时如果各写一份，
  * 「当前页」状态就会在两处各判一次。抽出来之后 active 只传一个值。
+ *
+ * 导航从四项扩到六项（2026-11-10 晚）：运行与设置拆成「运行状态 / 设置」，
+ * 另开「统计」。六项在 1080 以内会挤 —— 胶囊本身是 overflow-x auto 的，
+ * 窄屏能横向滑；≤860 还把图标藏了，只留文字。
+ * 所以**按键位判断宽度的写法别再加**，让它自己滑。
  *
  * 布局（2026-11-10 晚，按站长要求改）：
  *   品牌（头像 + 清吾）贴页面左缘，导航是居中的那格白胶囊，「退出登录」纯文字靠右。
@@ -35,7 +40,17 @@ const ICONS = {
       <path d="m8.5 11.5 2.5 2.5 4.5-4.5" />
     </>
   ),
-  status: (
+  /* 柱状 + 折线：统计 */
+  chart: (
+    <>
+      <path d="M3 3v18h18" />
+      <path d="M7 15v3M12 10v8M17 6v12" />
+    </>
+  ),
+  /* 心跳线：运行状态。别用齿轮 —— 那是「设置」，两者在一排里要能一眼分开 */
+  pulse: <path d="M22 12h-4l-3 9L9 3l-3 9H2" />,
+  /* 滑杆：设置 */
+  sliders: (
     <>
       <path d="M21 4h-7M10 4H3M21 12h-9M8 12H3M21 20h-5M12 20H3" />
       <path d="M14 2v4M8 10v4M16 18v4" />
@@ -69,7 +84,9 @@ const NAV = [
   { key: 'comments', label: '评论收件箱', href: '/admin/console', icon: 'comments' },
   { key: 'review', label: '评论审核', href: '/admin/review', icon: 'shield' },
   { key: 'friends', label: '友链审核', href: '/admin/friends', icon: 'friends' },
-  { key: 'status', label: '运行与设置', href: '/admin/status', icon: 'status' },
+  { key: 'stats', label: '统计', href: '/admin/stats', icon: 'chart' },
+  { key: 'status', label: '运行状态', href: '/admin/status', icon: 'pulse' },
+  { key: 'settings', label: '设置', href: '/admin/settings', icon: 'sliders' },
 ] as const;
 
 type Active = (typeof NAV)[number]['key'];

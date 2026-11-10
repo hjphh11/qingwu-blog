@@ -12,6 +12,11 @@
  * 收件箱「垃圾」里留着能复核、能放行。给三个选项只会让人以为「压到待审」
  * 和「标垃圾」有很大区别，其实访客那边看到的一样：都不显示。
  *
+ * 底部「拦截记录」是 2026-11-10 晚加的（站长：「在这下面添加一个拦截记录」）。
+ * 它同时补上了试判被砍掉之后的空档：判得准不准，只能靠看真实拦截来判断 —
+ * 一条正常留言被拦了，就去收件箱放行，再回来把阈值往上调。
+ * 记录来自 moderation_log（0020），落库在 friends-board.ts 判到的那一刻。
+ *
  * 口径文案不在这里写，来自 worker settings.ts 的 VERDICT_DESC ——
  * 提示词、Jev 的 criteria、这一页的说明共用同一份，改规则只改那一处。
  */
@@ -35,6 +40,32 @@ interface Meta {
   envHasJudge: boolean;
   envModel: string;
   envBase: string;
+}
+
+/** 拦截记录一行。detailed=false 表示审核上线前的历史数据，只有结论没有依据 */
+interface Blocked {
+  id: number;
+  commentId: number;
+  verdict: string | null;
+  score: number | null;
+  threshold: number | null;
+  reasons: string[];
+  note: string;
+  model: string;
+  ms: number | null;
+  ts: number;
+  author: string;
+  body: string;
+  path: string;
+  status: string;
+  detailed: boolean;
+}
+
+const pad = (n: number) => String(n).padStart(2, '0');
+
+function fmtTime(ts: number): string {
+  const d = new Date(ts);
+  return `${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
 /** worker 没给 meta 时的兜底顺序（旧版本后端不会带 verdicts） */
@@ -88,6 +119,24 @@ export default function AdminReview() {
   const [err, setErr] = useState('');
   const [toast, setToast] = useState('');
 
+  const [blocked, setBlocked] = useState<Blocked[] | null>(null);
+  const [bLoading, setBLoading] = useState(false);
+  const [bErr, setBErr] = useState('');
+
+  /** 拦截记录单独拉：它跟规则是两份数据，规则改坏了不该把这块也带黑 */
+  const loadBlocked = useCallback(async () => {
+    setBLoading(true);
+    setBErr('');
+    try {
+      const d = await api<{ items: Blocked[] }>('/review/blocked?limit=15');
+      setBlocked(d.items);
+    } catch (e) {
+      setBErr(e instanceof Error ? e.message : '读取拦截记录失败');
+    } finally {
+      setBLoading(false);
+    }
+  }, []);
+
   const load = useCallback(async () => {
     setLoading(true);
     setErr('');
@@ -111,9 +160,9 @@ export default function AdminReview() {
       } catch {
         return;
       }
-      await load();
+      await Promise.all([load(), loadBlocked()]);
     })();
-  }, [load]);
+  }, [load, loadBlocked]);
 
   const dirty =
     !!form &&
@@ -285,6 +334,103 @@ export default function AdminReview() {
             </section>
           </>
         ) : null}
+
+        {/* ——— 拦截记录 ———
+            试判被砍掉之后，这里是「判得准不准」唯一的证据。
+            独立于上面的规则表单：规则读不出来时，记录照样要能看。 */}
+        <section className="q-admin-panel q-admin-stat q-admin-stat--flush">
+          <header className="q-admin-stat__head">
+            <div>
+              <h2>拦截记录</h2>
+              <p>
+                判到就落一行 —— 命中哪类、多少分、当时的阈值。调阈值就看这里有没有误伤。
+              </p>
+            </div>
+            <button
+              className="q-admin-btn q-admin-btn--ghost q-admin-btn--sm"
+              type="button"
+              onClick={() => void loadBlocked()}
+              disabled={bLoading}
+            >
+              {bLoading ? '读取中…' : '刷新'}
+            </button>
+          </header>
+
+          {bErr ? <p className="q-admin-error">{bErr}</p> : null}
+
+          {blocked === null && bLoading ? <div className="q-admin-loading">读取拦截记录…</div> : null}
+
+          {blocked !== null && blocked.length === 0 ? (
+            <div className="q-admin-empty">
+              <b>还没有拦截记录</b>
+              留言提交时会判一次，判到就出现在这里。一条都没有也可能是 judge 通道没配 key ——
+              那一步会直接跳过判定，留言照常收下。
+            </div>
+          ) : null}
+
+          {blocked !== null && blocked.length > 0 ? (
+            <table className="q-admin-table">
+              <thead>
+                <tr>
+                  <th style={{ width: '13%' }}>时间</th>
+                  <th>留言</th>
+                  <th style={{ width: '17%' }}>判定</th>
+                  <th style={{ width: '26%' }}>依据</th>
+                </tr>
+              </thead>
+              <tbody>
+                {blocked.map((b) => (
+                  <tr key={`${b.id}-${b.commentId}`}>
+                    <td className="q-admin-who-cell">
+                      <span>{fmtTime(b.ts)}</span>
+                      {b.status !== 'spam' ? <em className="q-admin-stat__mini">已放行</em> : null}
+                    </td>
+                    <td className="q-admin-body-cell">
+                      <p>
+                        <b>{b.author}</b>
+                        {b.path ? <span className="q-admin-stat__mini"> · {b.path}</span> : null}
+                      </p>
+                      <p className="q-admin-blocked__body">{b.body || '（正文已删）'}</p>
+                    </td>
+                    <td>
+                      {b.detailed ? (
+                        <>
+                          <span className="q-admin-tag q-admin-tag--danger">
+                            {meta?.verdictLabel?.[b.verdict ?? ''] ?? b.verdict ?? '已拦'}
+                          </span>
+                          <span className="q-admin-stat__mini">
+                            {b.score} / 阈值 {b.threshold}
+                            {b.ms ? ` · ${b.ms}ms` : ''}
+                          </span>
+                        </>
+                      ) : (
+                        <span className="q-admin-stat__na">历史记录，无判定详情</span>
+                      )}
+                    </td>
+                    <td className="q-admin-blocked__why">
+                      {b.reasons.length ? (
+                        <ul>
+                          {b.reasons.map((r, i) => (
+                            <li key={i}>{r}</li>
+                          ))}
+                        </ul>
+                      ) : b.note ? (
+                        <span>{b.note}</span>
+                      ) : (
+                        <span className="q-admin-stat__na">—</span>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          ) : null}
+
+          <p className="q-admin-stat__foot">
+            误判了就去「评论收件箱 → 垃圾」放行；同一类错得多，回来把阈值往上调。
+            {blocked && blocked.length ? ` 最近 ${blocked.length} 条。` : ''}
+          </p>
+        </section>
       </main>
     </>
   );

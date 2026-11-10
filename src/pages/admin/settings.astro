@@ -1,0 +1,15 @@
+---
+/*
+ * /admin/settings —— 设置（可调参数）
+ *
+ * 从「运行与设置」拆出来的：这里改参数，/admin/status 看数字。
+ * 读写都走 GET / PATCH /api/admin/settings（值落在 admin_settings 表）。
+ * 密钥与 AI_BASE_URL 不在这一页，也不能在网页上改。
+ */
+import AdminLayout from '../../layouts/AdminLayout.astro';
+import AdminSettings from '../../components/admin/AdminSettings.tsx';
+---
+
+<AdminLayout title="设置">
+  <AdminSettings client:load />
+</AdminLayout>

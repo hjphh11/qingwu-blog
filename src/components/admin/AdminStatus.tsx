@@ -1,17 +1,20 @@
 /*
- * 后台 · 运行与设置
+ * 后台 · 运行状态
  *
- * 一个只读的状态总览：两条 AI 通道、小爱的自动回复、内容与友链的待办、
+ * 一个**只读**的状态总览：两条 AI 通道、小爱的自动回复、内容与友链的待办、
  * 发信队列与基础设施开关。数据全部来自 `GET /api/admin/status`，
  * 唯一的写操作是「探活」—— 真打一次两条通道，验证 key 不只是存在、而是能用。
  *
  * 为什么单独一页：这些数字此前散在六张表里，要 ssh 上去 sqlite3 一条条敲。
  * 排查 2026-11-10 那次 judge 401 时，配置界面全绿但它在 401 —— 只有真打一次才看得见。
+ *
+ * 2026-11-10 晚按站长要求拆分：这一页**只管「现在什么状况」**，
+ * 可调项搬到 /admin/settings —— 以前一页里既有数字又有表单，
+ * 看完想改一处要滚很久，两件事混在一起也让人不敢动。
  */
 import { useCallback, useEffect, useState } from 'react';
 import type { ReactNode } from 'react';
 import AdminTop from './AdminTop.tsx';
-import AdminSettingsPanel from './AdminSettingsPanel.tsx';
 
 const API = '/api/admin';
 
@@ -49,6 +52,12 @@ interface Status {
     on: boolean;
     daily: number;
     perGuest: number;
+    scope: 'top' | 'all';
+    allowPaths: string[];
+    blockPaths: string[];
+    skipKeywords: string[];
+    quietFrom: string;
+    quietTo: string;
     today: { replied: number; skipped: number; blocked: number; failed: number };
     days: { day: string; replied: number; skipped: number; blocked: number; failed: number }[];
     log: {
@@ -272,10 +281,14 @@ export default function AdminStatus() {
       <main className="q-admin-main">
         <div className="q-admin-head">
           <div>
-            <h1>运行与设置</h1>
+            <h1>运行状态</h1>
             <p>
               {s ? `今天 ${s.day}` : '只读状态总览'}
               {at ? ` · 数据更新于 ${fmtClock(at)}` : ''}
+              {' · '}
+              <a className="q-admin-head__link" href="/admin/settings">
+                可调项在「设置」
+              </a>
             </p>
           </div>
           <div className="q-admin-stat-actions">
@@ -383,7 +396,7 @@ export default function AdminStatus() {
               <header className="q-admin-stat__head">
                 <div>
                   <h2>小爱自动回复</h2>
-                  <p>访客一留言她就回一句。无人值守，所以有四道闸。</p>
+                  <p>访客一留言她就回一句。无人值守，所以有六道闸。</p>
                 </div>
                 {s.autoReply.on ? <Pill tone="ok">开着</Pill> : <Pill tone="warn">已关闭</Pill>}
               </header>
@@ -391,7 +404,7 @@ export default function AdminStatus() {
               <dl className="q-admin-gates">
                 <div>
                   <dt>总开关</dt>
-                  <dd>{s.autoReply.on ? 'AUTO_REPLY = on' : 'AUTO_REPLY = off，只剩后台手动起草'}</dd>
+                  <dd>{s.autoReply.on ? '开着' : '关着，只剩后台手动起草'}</dd>
                 </div>
                 <div>
                   <dt>今日总量</dt>
@@ -402,6 +415,30 @@ export default function AdminStatus() {
                 <div>
                   <dt>单访客每日</dt>
                   <dd>{s.autoReply.perGuest === 0 ? '不限' : `${s.autoReply.perGuest} 条`}</dd>
+                </div>
+                <div>
+                  <dt>回复范围</dt>
+                  <dd>{s.autoReply.scope === 'top' ? '只回顶层留言' : '楼中楼也回'}</dd>
+                </div>
+                <div>
+                  <dt>路径</dt>
+                  <dd>
+                    {s.autoReply.allowPaths.length === 0
+                      ? '全部页面'
+                      : s.autoReply.allowPaths.join('、')}
+                    {s.autoReply.blockPaths.length ? `（排除 ${s.autoReply.blockPaths.join('、')}）` : ''}
+                  </dd>
+                </div>
+                <div>
+                  <dt>安静时段</dt>
+                  <dd>
+                    {s.autoReply.quietFrom && s.autoReply.quietFrom !== s.autoReply.quietTo
+                      ? `${s.autoReply.quietFrom} – ${s.autoReply.quietTo}`
+                      : '没设'}
+                    {s.autoReply.skipKeywords.length
+                      ? ` · 跳过 ${s.autoReply.skipKeywords.length} 个关键词`
+                      : ''}
+                  </dd>
                 </div>
                 <div>
                   <dt>judge 前置</dt>
@@ -452,7 +489,11 @@ export default function AdminStatus() {
                     <h2>评论</h2>
                     <p>留言板与文章评论共用一张表。</p>
                   </div>
-                  {s.comments.byStatus.pending ? <Pill tone="warn">{s.comments.byStatus.pending} 条待审</Pill> : <Pill tone="ok">没有待审</Pill>}
+                  {s.comments.byStatus.pending ? (
+                    <Pill tone="warn">{s.comments.byStatus.pending} 条未收录</Pill>
+                  ) : (
+                    <Pill tone="ok">都收录了</Pill>
+                  )}
                 </header>
                 <div className="q-admin-kpis q-admin-kpis--4">
                   <Kpi n={s.comments.total} label="全部" />
@@ -462,7 +503,7 @@ export default function AdminStatus() {
                 </div>
                 <dl className="q-admin-gates">
                   <div>
-                    <dt>待审核</dt>
+                    <dt>未收录</dt>
                     <dd>{s.comments.byStatus.pending ?? 0}</dd>
                   </div>
                   <div>
@@ -664,10 +705,6 @@ export default function AdminStatus() {
             </section>
           </>
         ) : null}
-
-        {/* 可调项：落在 admin_settings 表，保存即生效。
-            和上面那块只读总览分开 —— 一个是「现在什么状况」，一个是「改成什么样」。 */}
-        <AdminSettingsPanel />
       </main>
     </>
   );
