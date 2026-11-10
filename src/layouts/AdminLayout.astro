@@ -5,7 +5,16 @@
  * 前台那套带导航、页脚、开屏、爱弥斯伴读、光标与迷你播放器，
  * 后台一样都不该有；而且开屏脚本会读 sessionStorage，在 /admin 上跑毫无意义。
  * 这里只保留「字体 + 色板 + 后台样式」，保证视觉同源、行为互不干扰。
+ *
+ * 但**转场要一样**（2026-11-10 晚站长提的）：三个后台页之间点导航原本是硬刷新，
+ * 整页一白、点阵重画，和前台那种淡入完全两个观感。所以这里补上 ClientRouter，
+ * 只补它一个 —— 前台的打点、开屏判断一条都没搬。
+ *
+ * ⚠️ 后台每个页面都是**静态预渲染**（prerender=false 会被 Vercel adapter 绑死，
+ *    见 /admin 页面顶部注释）。ClientRouter 是纯客户端行为，不影响这件事；
+ *    但页面里将来若加 `<script>`，记得挂 `astro:page-load`，换 body 之后不会自动重跑。
  */
+import ClientRouter from 'astro/components/ClientRouter.astro';
 import '../styles/global.css';
 import '../styles/admin.css';
 import { SITE } from '../config';
@@ -26,10 +35,45 @@ const { title } = Astro.props;
     <meta name="robots" content="noindex,nofollow,noarchive" />
     <link rel="icon" type="image/png" href="/images/emis/avatar.png" />
     <title>{title} · {SITE.title}</title>
+    <ClientRouter />
   </head>
   <body class="q-admin-body">
     <div class="q-admin-glow q-admin-glow--rose" aria-hidden="true"></div>
     <div class="q-admin-glow q-admin-glow--amber" aria-hidden="true"></div>
+
+    {/* 切页进度条 —— 前台也有一条，只是那边是绯红→琥珀；后台统一墨黑。
+        元素每次换 body 都会被替换，所以状态挂在 <html> 的类上，CSS 用它驱动。 */}
+    <div class="q-admin-route" aria-hidden="true">
+      <i></i>
+    </div>
+
     <slot />
+
+    {/* 进度条驱动。状态类挂在 documentElement 上：ClientRouter 换的是 body，
+        html 不动，所以不用在每次切页时重新绑定，也不怕元素被替换。 */}
+    <script is:inline>
+      (function () {
+        if (window.__qAdminRoute) return;
+        window.__qAdminRoute = true;
+        var root = document.documentElement;
+        var timer = 0;
+
+        // 开始跳转：拉出 70%，停在原地等新页面
+        document.addEventListener('astro:before-preparation', function () {
+          clearTimeout(timer);
+          root.classList.remove('q-route-done');
+          root.classList.add('q-route-going');
+        });
+
+        // 新页面就绪（首次进入也会触发）：只有真跳过才收线
+        document.addEventListener('astro:page-load', function () {
+          if (!root.classList.contains('q-route-going')) return;
+          root.classList.add('q-route-done');
+          timer = setTimeout(function () {
+            root.classList.remove('q-route-going', 'q-route-done');
+          }, 280);
+        });
+      })();
+    </script>
   </body>
 </html>

@@ -4,11 +4,13 @@
  * 原本导航写死在 AdminInbox 里、其余三项 disabled；加友链页时如果各写一份，
  * 「当前页」状态就会在两处各判一次。抽出来之后 active 只传一个值。
  *
- * 会话信息（谁登着）也由这里取：后台每个页面进来先打一次 /session 本来就是
- * 登录态校验（401 直接踢回 /admin），顶栏顺带显示用户名，不必再传一遍。
+ * 布局（2026-11-10 晚，按站长要求改）：
+ *   品牌（头像 + 清吾）贴页面左缘，导航是居中的那格白胶囊，「退出登录」纯文字靠右。
+ *   之前品牌和导航同住一格居中胶囊 —— 头像离左缘太远，站长要它到最左边。
+ *   顺带删掉了右边缘「登着谁」那行小字（他说不用）。
  *
- * 布局照朝朝听雨（rainzt.cn）现在这一版：**一整条居中胶囊**装品牌 + 导航，
- * 「退出登录」在右边缘做纯文字。导航项是「图标 + 文字」，选中项淡灰底反显。
+ * 滚动行为照主站 Navbar：固定 + 未滚动时透明 + 向下滚收起。
+ * 只借行为，不搬形态 —— 前台那套玻璃和暖色一个都没带过来。
  * 样式在 admin.css 的「顶栏」段。
  */
 import { useEffect, useState } from 'react';
@@ -65,13 +67,60 @@ const NAV = [
 type Active = (typeof NAV)[number]['key'];
 
 export default function AdminTop({ active }: { active: Active }) {
-  const [who, setWho] = useState('');
+  const [scrolled, setScrolled] = useState(false);
+  const [collapsed, setCollapsed] = useState(false);
 
+  /**
+   * 固定 / 透明 / 收起 —— 算法整段照 Navbar.tsx 搬过来，删掉「菜单或下拉开着」那段
+   * （后台没有会自己滚动的锚点跳转），阈值也照抄：80px 成形、240px 才允许收。
+   *
+   * ⚠️ 别改成「比较这次 y 和上次 y」：触摸板/平滑滚动每帧只走 1~3px，单帧增量
+   *    永远到不了阈值。所以用「方向锁 + 累计位移」：连续同向走过 MIN_DELTA 才认账，
+   *    方向一变先重置基准、这次只记方向 —— 否则来回一抖就收一下，看着像抽搐。
+   */
   useEffect(() => {
-    fetch('/api/admin/session', { credentials: 'same-origin' })
-      .then((r) => (r.ok ? r.json() : null))
-      .then((d: { username?: string } | null) => setWho(d?.username || ''))
-      .catch(() => {});
+    const GLASS_AT = 80; // 滚过这里才给底色
+    const REVEAL_AT = 240; // 240px 以内绝不收：首屏还在标题上
+    const MIN_DELTA = 6;
+
+    let baseY = window.scrollY;
+    let dir = 0;
+    let ticking = false;
+
+    const read = () => {
+      ticking = false;
+      const y = window.scrollY;
+      setScrolled(y > GLASS_AT);
+
+      if (y <= REVEAL_AT) {
+        setCollapsed(false);
+        dir = 0;
+        baseY = y;
+        return;
+      }
+
+      const d = y - baseY;
+      const nd = d > 0 ? 1 : d < 0 ? -1 : 0;
+      // 阈值之内的抖动直接忽略，不动状态也不动基准
+      if (nd === 0 || Math.abs(d) < MIN_DELTA) return;
+
+      baseY = y;
+      if (nd !== dir) {
+        dir = nd;
+        return;
+      }
+      setCollapsed(nd === 1);
+    };
+
+    const onScroll = () => {
+      if (ticking) return;
+      ticking = true;
+      requestAnimationFrame(read);
+    };
+
+    window.addEventListener('scroll', onScroll, { passive: true });
+    read();
+    return () => window.removeEventListener('scroll', onScroll);
   }, []);
 
   async function logout() {
@@ -84,32 +133,33 @@ export default function AdminTop({ active }: { active: Active }) {
   }
 
   return (
-    <header className="q-admin-top">
-      {/* 品牌和导航同住一格胶囊：「清吾」四个字是他那边「小爱」的位置 */}
-      <div className="q-admin-bar">
-        <a className="q-admin-brand-pill" href="/admin/console">
-          <img src="/images/emis/avatar.png" alt="" />
-          <b>清吾</b>
-        </a>
+    <header
+      className="q-admin-top"
+      data-scrolled={scrolled ? '1' : '0'}
+      data-collapsed={collapsed ? '1' : '0'}
+      /* 键盘 Tab 进来时先请回来，否则焦点会落在屏幕外 */
+      onFocusCapture={() => setCollapsed(false)}
+    >
+      <a className="q-admin-brand-pill" href="/admin/console">
+        <img src="/images/emis/avatar.png" alt="" />
+        <b>清吾</b>
+      </a>
 
-        <nav className="q-admin-nav" aria-label="后台模块">
-          {NAV.map((n) => (
-            <a
-              key={n.key}
-              className="q-admin-nav__item"
-              href={n.href}
-              aria-current={active === n.key ? 'page' : undefined}
-            >
-              <Icon name={n.icon} />
-              {n.label}
-            </a>
-          ))}
-        </nav>
-      </div>
+      <nav className="q-admin-nav" aria-label="后台模块">
+        {NAV.map((n) => (
+          <a
+            key={n.key}
+            className="q-admin-nav__item"
+            href={n.href}
+            aria-current={active === n.key ? 'page' : undefined}
+          >
+            <Icon name={n.icon} />
+            {n.label}
+          </a>
+        ))}
+      </nav>
 
-      {/* 右边缘那一行：登着谁 + 退出。绝对定位，中间那颗胶囊才是真居中 */}
       <div className="q-admin-acts">
-        {who ? <span className="q-admin-acts__who">{who}</span> : null}
         <button className="q-admin-act" type="button" onClick={() => void logout()}>
           退出登录
         </button>

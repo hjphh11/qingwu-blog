@@ -34,6 +34,9 @@
   --qa-danger: #c62828;
   --qa-danger-bg: #fdecea;
   --qa-shadow: 0 1px 2px rgba(17, 17, 17, 0.04), 0 16px 40px -24px rgba(17, 17, 17, 0.22);
+  /* 顶栏高度。顶栏改 fixed 之后不再占文档流，正文得自己让出这么多 ——
+     只在这里写一处，窄屏那条媒体查询覆盖它，页面容器统一 calc() 消费。 */
+  --qa-top-h: 72px;
 
   /* 覆盖全局 token，只在这个壳里生效：
      标题不再用 ZCOOL 书法体 —— 他的标题就是思源黑粗体，照抄；
@@ -335,37 +338,89 @@
 }
 
 /* ————————————————————————— 顶栏 —————————————————————————
- * 照抄朝朝听雨（rainzt.cn）现在这一版：**一整条居中的胶囊**装着品牌 + 导航，
- * 「退出登录」在右边缘做**纯文字**，不套胶囊。
- * （三团分开是他更早的形态；2026-11-10 那版我们照的是旧的，这次按实拍改回来。）
+ * 2026-11-10 晚，站长定下三条：
+ *   ① 「头像放在最左边」→ 品牌从居中胶囊里拿出来，贴页面左缘；中间只剩导航胶囊；
+ *   ② 「只要收缩、固定、透明」→ 行为照主站 Navbar，形态不照搬；
+ *   ③ 「登着谁那行小字不用」→ .q-admin-acts__who 整个删掉。
  *
- * 数值取自实拍：胶囊内边距 4 + 项高 40 → 总高 48，圆角 999，描边 #ececec，
- * 白底不透明（不再毛玻璃 —— 他那条胶囊是实心白）。选中项淡灰底 + 描边 + 深字。
- * 两处本地化：字号 16 → 13px（后台正文 12.5px，照抄 16 会喧宾夺主）；
- * 图标用 1.7px 描边（他整站是实心 Material Symbols，混进来会跳）。
+ * 三个行为（对应 Navbar.tsx 的同一套）：
+ *   · 固定：position: fixed，脱离文档流 ⇒ 正文靠 --qa-top-h 自己让出高度；
+ *   · 透明：未滚动时**完全没有底**，点阵从下面透过去；滚过 80px 才淡入毛玻璃与分隔线；
+ *   · 收缩：向下滚过 240px 整条缩上去（translateY(-110%)），一向上滚立刻回来。
+ *     方向判定是「方向锁 + 累计位移」—— 触摸板每帧只走 1~3px，直接比较前后两帧
+ *     的话单帧增量永远到不了阈值，顶栏就永远不收。算法在 AdminTop.tsx 里。
  *
- * sticky：评论列表能滚很长，翻到第十屏还得回头点导航很蠢。
+ * 胶囊数值仍取自朝朝听雨那 18 张实拍：内边距 4 + 项高 40 → 总高 48，圆角 999，
+ * 描边 #ececec，白底实心。字号 13px（后台正文 12.5px），图标 1.7px 描边。
  */
 .q-admin-top {
-  position: sticky;
-  top: 0;
-  z-index: 30;
-  display: flex;
+  position: fixed;
+  inset: 0 0 auto;
+  z-index: 40;
+  display: grid;
+  /* 两侧等宽：导航那格才是真正的页面中心，品牌再长也不会把它顶偏 */
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
   align-items: center;
-  justify-content: center;
   gap: 12px;
   padding: 12px 24px;
-  background: rgba(250, 250, 250, 0.86);
-  backdrop-filter: blur(14px);
-  /* 一条极淡的分隔线：不加的话滚动时那条「毛玻璃带」的下边缘会是一条硬缝 */
-  border-bottom: 1px solid rgba(17, 17, 17, 0.06);
+  background: transparent;
+  border-bottom: 1px solid transparent;
+  transition:
+    background-color 260ms var(--ease-soft),
+    border-color 260ms var(--ease-soft),
+    transform 320ms var(--ease-soft);
+}
+/* 滚起来才成形。backdrop-filter 不能过渡，但底色是 260ms 淡入的，看着是「浮出来」 */
+.q-admin-top[data-scrolled='1'] {
+  background: rgba(250, 250, 250, 0.82);
+  backdrop-filter: blur(16px) saturate(1.1);
+  border-bottom-color: rgba(17, 17, 17, 0.07);
+}
+.q-admin-top[data-collapsed='1'] {
+  transform: translateY(-110%);
 }
 
-/* 胶囊本体：品牌和导航同住一格，不再各占一团 */
-.q-admin-bar {
+/* 品牌：头像 + 清吾，贴在页面左缘（= .q-admin-main 的外边距上） */
+.q-admin-brand-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  justify-self: start;
+  flex: none;
+  height: 44px;
+  /* 左边 2px：头像是圆的，给一点光学余量就够，不再留一圈内边距把它推离左缘 */
+  padding: 0 10px 0 2px;
+  border-radius: 999px;
+  color: var(--color-ink);
+  text-decoration: none;
+  white-space: nowrap;
+  transition: background-color var(--dur-micro);
+}
+.q-admin-brand-pill img {
+  width: 30px;
+  height: 30px;
+  flex: none;
+  border-radius: 50%;
+  object-fit: cover;
+  object-position: 50% 22%;
+}
+.q-admin-brand-pill b {
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--color-ink);
+}
+.q-admin-brand-pill:hover {
+  background: var(--qa-accent-soft);
+}
+
+/* 导航胶囊：品牌搬走之后，它自己承担那圈底板 */
+.q-admin-nav {
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: 2px;
+  justify-self: center;
+  min-width: 0;
   max-width: 100%;
   padding: 4px;
   border: 1px solid var(--qa-line);
@@ -375,69 +430,17 @@
   overflow-x: auto;
   scrollbar-width: none;
 }
-.q-admin-bar::-webkit-scrollbar {
+.q-admin-nav::-webkit-scrollbar {
   display: none;
 }
 
-.q-admin-brand-pill {
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-  flex: none;
-  height: 40px;
-  padding: 0 12px 0 8px;
-  border-radius: 999px;
-  color: var(--color-ink);
-  text-decoration: none;
-  white-space: nowrap;
-  transition: background-color var(--dur-micro);
-}
-.q-admin-brand-pill img {
-  width: 26px;
-  height: 26px;
-  flex: none;
-  border-radius: 50%;
-  object-fit: cover;
-  object-position: 50% 22%;
-}
-.q-admin-brand-pill b {
-  font-size: 13.5px;
-  font-weight: 600;
-  letter-spacing: 0.02em;
-  color: var(--color-ink);
-}
-.q-admin-brand-pill:hover {
-  background: var(--qa-accent-soft);
-}
-
-.q-admin-nav {
-  display: flex;
-  align-items: center;
-  gap: 2px;
-  flex: none;
-  padding: 0;
-}
-
-/* 右边缘：登着谁 + 退出登录。位置脱离文档流，中间那颗胶囊才真居中 */
+/* 右边缘只有「退出登录」一行灰字，没有底也没有边 */
 .q-admin-acts {
-  position: absolute;
-  right: 20px;
-  top: 50%;
-  transform: translateY(-50%);
   display: flex;
   align-items: center;
+  justify-self: end;
   gap: 10px;
 }
-/* 登着谁 —— 他的名字那一格；比 hover 才知道强 */
-.q-admin-acts__who {
-  max-width: 10em;
-  font-size: 11.5px;
-  color: var(--color-subtle);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-/* 「退出登录」在他那儿就是一行灰字，没有底也没有边 */
 .q-admin-act {
   padding: 0;
   border: 0;
@@ -451,6 +454,40 @@
 }
 .q-admin-act:hover {
   color: var(--color-ink);
+}
+
+/* ———— 切页进度条（配 AdminLayout 里的 ClientRouter）————
+ * 前台那条是绯红 → 琥珀；后台全站只有黑白，所以统一墨黑。
+ * 状态类挂在 <html> 上：ClientRouter 换的是 body，html 不动 ——
+ * 元素每次切页都会被替换，把状态挂元素上就永远是初始态。
+ */
+.q-admin-route {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 2px;
+  z-index: 60;
+  pointer-events: none;
+}
+.q-admin-route i {
+  display: block;
+  height: 100%;
+  width: 0;
+  opacity: 0;
+  border-radius: 0 2px 2px 0;
+  background: var(--qa-accent);
+  transition:
+    width 260ms var(--ease-soft),
+    opacity 220ms var(--ease-soft);
+}
+html.q-route-going .q-admin-route i {
+  width: 70%;
+  opacity: 1;
+}
+html.q-route-done .q-admin-route i {
+  width: 100%;
+  opacity: 0;
 }
 
 /* 导航项：图标 + 文字 */
@@ -539,7 +576,8 @@
   z-index: 1;
   width: min(1180px, 100%);
   margin: 0 auto;
-  padding: 26px 24px 60px;
+  /* 顶栏是 fixed，得自己让出 --qa-top-h（+ 原来的 26px 呼吸） */
+  padding: calc(var(--qa-top-h) + 26px) 24px 60px;
 }
 .q-admin-head {
   display: flex;
@@ -1079,10 +1117,15 @@
   .q-admin-form {
     padding: 32px 28px 28px;
   }
+  /* 窄屏两行：品牌与退出在第一行，导航整条落到第二行（否则三个项挤不进一行）。
+     这里必须同步改 --qa-top-h，正文靠它让位。 */
+  .q-admin-body {
+    --qa-top-h: 116px;
+  }
   .q-admin-top {
     grid-template-columns: minmax(0, 1fr) auto;
-    gap: 8px;
-    padding: 8px 14px;
+    row-gap: 6px;
+    padding: 8px 14px 10px;
   }
   .q-admin-brand-pill {
     grid-column: 1;
@@ -1092,7 +1135,6 @@
     grid-column: 2;
     grid-row: 1;
   }
-  /* 三团变两行：品牌与退出在第一行，导航整条落到第二行 —— 他还是居中的那条胶囊 */
   .q-admin-nav {
     grid-column: 1 / -1;
     grid-row: 2;
@@ -1104,11 +1146,8 @@
     min-width: max-content;
     padding: 0 8px;
   }
-  .q-admin-acts__who {
-    display: none;
-  }
   .q-admin-main {
-    padding: 20px 14px 48px;
+    padding: calc(var(--qa-top-h) + 16px) 14px 48px;
   }
   .q-admin-table thead {
     display: none;
@@ -1135,6 +1174,14 @@
   .q-admin-field input,
   .q-admin-code,
   .q-admin-search {
+    transition: none;
+  }
+  /* 顶栏收起/浮现是一段 320ms 的位移，对前庭敏感的人是实打实的眩晕源 ——
+     关掉过渡，状态照样切（data-collapsed 直接生效，没有动画）。 */
+  .q-admin-top {
+    transition: none;
+  }
+  .q-admin-route i {
     transition: none;
   }
 }
@@ -1517,24 +1564,9 @@
 }
 
 @media (max-width: 760px) {
-  /* 窄屏：胶囊不能再绝对定位，「退出登录」会压到导航上。
-     改成并排两格，导航那格可横向滚。 */
+  /* 顶栏在 860 那一档已经切成两行，这里只把边距收紧 */
   .q-admin-top {
-    padding: 10px 12px;
-    justify-content: space-between;
-  }
-  .q-admin-bar {
-    flex: 1 1 auto;
-    min-width: 0;
-  }
-  .q-admin-acts {
-    position: static;
-    transform: none;
-    flex: none;
-  }
-  /* 窄屏只留「退出登录」，用户名让位给导航 */
-  .q-admin-acts__who {
-    display: none;
+    padding: 8px 12px 10px;
   }
   .q-admin-head {
     flex-wrap: wrap;
