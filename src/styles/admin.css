@@ -377,6 +377,7 @@
   background: rgba(74, 55, 40, 0.05);
 }
 .q-admin-tab {
+  display: inline-block;
   padding: 6px 14px;
   border: 0;
   border-radius: 999px;
@@ -384,10 +385,13 @@
   font-family: var(--font-body);
   font-size: 12.5px;
   color: var(--color-subtle);
+  text-decoration: none;
+  white-space: nowrap;
   cursor: pointer;
   transition: background var(--dur-micro), color var(--dur-micro);
 }
-.q-admin-tab[aria-current="page"] {
+.q-admin-tab[aria-current="page"],
+.q-admin-tab[aria-selected="true"] {
   background: var(--qa-card);
   color: var(--color-ink);
   box-shadow: 0 1px 3px rgba(74, 55, 40, 0.12);
@@ -749,5 +753,306 @@
   .q-admin-code,
   .q-admin-search {
     transition: none;
+  }
+}
+
+/* ——————————————————————————————————————————————————————————————
+   友链与回链（/admin/friends，2026-11-10）
+   ——————————————————————————————————————————————————————————————
+   这一块有两套「生效」语义，样式上必须能看出差别：
+
+     申请审核 —— 点一下就是真的（写 D1），按钮用 primary 实心。
+     已收录   —— 只是草稿（写 links.json 要提交 + 构建），
+                 所以改动集中在顶部的 .q-admin-savebar，行内按钮一律 ghost。
+
+   混在一起用实心按钮的话，很容易以为自己已经改完了。
+*/
+
+/* 页面内的 tab：和顶栏那个胶囊组同款，但不参与顶部布局 */
+.q-admin-tabs--page {
+  width: fit-content;
+  margin: 0 0 14px;
+}
+.q-admin-tab .n {
+  margin-left: 5px;
+  font-size: 10.5px;
+  color: rgba(74, 55, 40, 0.45);
+}
+.q-admin-tab[aria-selected="true"] .n {
+  color: var(--color-crimson);
+}
+
+/* 「有未提交的改动」—— 常驻在标题右侧，不给它单独一行占位 */
+.q-admin-savebar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 6px 5px 14px;
+  border: 1px solid var(--qa-line-strong);
+  border-radius: 999px;
+  background: var(--qa-card);
+  box-shadow: 0 10px 28px -18px rgba(194, 58, 85, 0.55);
+  font-size: 12.5px;
+  color: var(--color-muted);
+  white-space: nowrap;
+}
+
+/* —— 卡片网格：申请审核与回链检查共用 —— */
+.q-admin-cards,
+.q-admin-checkgrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(268px, 1fr));
+  gap: 12px;
+  padding: 16px;
+}
+.q-admin-card {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px;
+  border: 1px solid var(--qa-line);
+  border-radius: 12px;
+  background: var(--qa-card);
+}
+.q-admin-card.is-bad {
+  border-color: var(--qa-line-strong);
+}
+.q-admin-card > header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.q-admin-card > header > div {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.q-admin-card > header b {
+  font-size: 13.5px;
+  font-weight: 600;
+}
+.q-admin-card > header a {
+  font-size: 11.5px;
+  color: var(--color-muted);
+  text-decoration: none;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.q-admin-card > header a:hover {
+  color: var(--color-crimson);
+}
+.q-admin-card > p {
+  margin: 0;
+  font-size: 12.5px;
+  line-height: 1.6;
+  color: var(--color-muted);
+}
+.q-admin-card dl {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 18px;
+  margin: 0;
+}
+.q-admin-card dl > div {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.q-admin-card dt {
+  font-size: 10.5px;
+  color: var(--color-subtle);
+}
+.q-admin-card dd {
+  margin: 0;
+  font-size: 11.5px;
+  color: var(--color-ink);
+}
+.q-admin-card dd a {
+  color: var(--color-muted);
+  text-decoration: none;
+}
+.q-admin-card > footer {
+  display: flex;
+  gap: 6px;
+  margin-top: auto;
+  padding-top: 4px;
+}
+.q-admin-shot {
+  font-size: 11.5px;
+  color: var(--color-crimson);
+  text-decoration: none;
+}
+.q-admin-shot:hover {
+  text-decoration: underline;
+}
+
+/* 拒绝理由行：塞在卡片底部，不弹窗 */
+.q-admin-reject {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.q-admin-reject input {
+  flex: 1;
+  min-width: 0;
+}
+
+/* 已处理列表：默认折叠，避免和待审抢视线 */
+.q-admin-handled {
+  border-top: 1px solid var(--qa-line);
+}
+.q-admin-handled > summary {
+  padding: 12px 16px;
+  font-size: 12.5px;
+  color: var(--color-muted);
+  cursor: pointer;
+}
+.q-admin-handled > summary:hover {
+  color: var(--color-ink);
+}
+
+/* —— 已收录列表 —— */
+.q-admin-linklist {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.q-admin-linklist > li {
+  display: grid;
+  grid-template-columns: 14px 34px minmax(0, 1fr) auto auto;
+  gap: 10px;
+  align-items: center;
+  padding: 10px 16px;
+  border-top: 1px solid var(--qa-line);
+  cursor: grab;
+}
+.q-admin-linklist > li:first-child {
+  border-top: 0;
+}
+.q-admin-linklist > li:hover {
+  background: var(--qa-field);
+}
+/* 隐藏中的友链压暗：改的是草稿状态，视觉上要能一眼看出哪几条不展示 */
+.q-admin-linklist > li.is-hidden {
+  opacity: 0.5;
+}
+.q-admin-grip {
+  font-size: 13px;
+  color: var(--color-subtle);
+  user-select: none;
+}
+.q-admin-linkmeta {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+.q-admin-linkmeta b {
+  font-size: 13px;
+  font-weight: 600;
+}
+.q-admin-linkmeta a {
+  font-size: 11.5px;
+  color: var(--color-muted);
+  text-decoration: none;
+}
+.q-admin-linkmeta a:hover {
+  color: var(--color-crimson);
+}
+.q-admin-linkmeta em {
+  font-size: 11.5px;
+  font-style: normal;
+  color: var(--color-subtle);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.q-admin-linkflags {
+  display: flex;
+  gap: 4px;
+}
+
+/* 行内展开编辑：铺满整行 */
+.q-admin-editrow {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 8px;
+  padding: 6px 0 2px;
+}
+.q-admin-editrow label {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  font-size: 11px;
+  color: var(--color-subtle);
+}
+
+/* 手动模式的 JSON 框 */
+.q-admin-manual {
+  padding: 0 16px 16px;
+}
+.q-admin-manual p {
+  margin: 0 0 8px;
+  font-size: 12.5px;
+  color: var(--color-muted);
+}
+.q-admin-manual code {
+  padding: 1px 4px;
+  border-radius: 4px;
+  background: var(--qa-field);
+  font-size: 11.5px;
+}
+
+/* —— 输入框（行内编辑与 JSON 框共用）—— */
+.q-admin-editrow input,
+.q-admin-manual textarea {
+  padding: 6px 10px;
+  border: 1px solid var(--qa-line);
+  border-radius: 8px;
+  background: var(--qa-field);
+  font-family: var(--font-body);
+  font-size: 12px;
+  color: var(--color-ink);
+  transition: border-color var(--dur-micro), background var(--dur-micro);
+}
+.q-admin-editrow input:focus,
+.q-admin-manual textarea:focus {
+  outline: none;
+  border-color: var(--qa-line-strong);
+  background: var(--qa-field-focus);
+}
+.q-admin-manual textarea {
+  width: 100%;
+  margin-bottom: 8px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11.5px;
+  line-height: 1.6;
+  resize: vertical;
+}
+
+@media (max-width: 760px) {
+  .q-admin-head {
+    flex-wrap: wrap;
+  }
+  .q-admin-savebar {
+    width: 100%;
+    justify-content: space-between;
+  }
+  .q-admin-cards,
+  .q-admin-checkgrid {
+    grid-template-columns: 1fr;
+    padding: 12px;
+  }
+  .q-admin-linklist > li {
+    grid-template-columns: 14px 30px minmax(0, 1fr);
+    row-gap: 8px;
+    cursor: default;
+  }
+  .q-admin-linkflags,
+  .q-admin-linklist .q-admin-row-actions {
+    grid-column: 2 / -1;
   }
 }

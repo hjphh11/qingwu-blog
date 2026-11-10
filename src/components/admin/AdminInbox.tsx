@@ -1,4 +1,5 @@
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import AdminTop from './AdminTop';
 
 const API = '/api/admin';
 const DRAFT_KEY = (id: number) => `q:admin:draft:${id}`;
@@ -61,7 +62,6 @@ async function api<T>(path: string, init?: RequestInit): Promise<T> {
 
 export default function AdminInbox() {
   const [ready, setReady] = useState(false);
-  const [who, setWho] = useState('');
   const [items, setItems] = useState<Item[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
@@ -85,8 +85,7 @@ export default function AdminInbox() {
   useEffect(() => {
     (async () => {
       try {
-        const s = await api<{ username: string }>('/session');
-        setWho(s.username || '');
+        await api<{ username: string }>('/session');
         setReady(true);
       } catch {
         /* api() 已经跳转了 */
@@ -199,15 +198,6 @@ export default function AdminInbox() {
     [load, openId],
   );
 
-  const logout = useCallback(async () => {
-    try {
-      await fetch(`${API}/logout`, { method: 'POST', credentials: 'same-origin' });
-    } catch {
-      /* 忽略 */
-    }
-    window.location.replace('/admin/');
-  }, []);
-
   const tabCount = useMemo(
     () => (key: string) => (key === 'all' ? counts.all ?? 0 : counts[key] ?? 0),
     [counts],
@@ -229,31 +219,7 @@ export default function AdminInbox() {
 
   return (
     <>
-      <header className="q-admin-top">
-        <div className="q-admin-who">
-          <img src="/images/emis/avatar.png" alt="" />
-          <b>{who || '管理员'}</b>
-        </div>
-
-        <nav className="q-admin-tabs" aria-label="后台模块">
-          <button className="q-admin-tab" aria-current="page" type="button">
-            评论收件箱
-          </button>
-          <button className="q-admin-tab" type="button" disabled title="待上线">
-            运行与设置
-          </button>
-          <button className="q-admin-tab" type="button" disabled title="待上线">
-            友链审核
-          </button>
-          <button className="q-admin-tab" type="button" disabled title="待上线">
-            回链检查
-          </button>
-        </nav>
-
-        <button className="q-admin-btn q-admin-btn--ghost q-admin-btn--sm" type="button" onClick={logout}>
-          退出登录
-        </button>
-      </header>
+      <AdminTop active="comments" />
 
       <main className="q-admin-main">
         <div className="q-admin-head">

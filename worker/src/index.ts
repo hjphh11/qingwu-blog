@@ -14,6 +14,7 @@
 
 import { getApply, patchApply, postApply } from './apply';
 import { handleAdmin } from './admin/index';
+import { runBacklinkCheck } from './admin/friends';
 import { deleteFriendComment, getFriendsBoard, postFriendLike, postFriendReply, postFriendsBoard } from './friends-board';
 import { getLinkPosts, getLinkStats, postLinkClick } from './link';
 import { refreshAllFeeds } from './links-refresh';
@@ -176,6 +177,12 @@ export default {
       flushOutbox(env, 10).catch((err) =>
         console.error('[cron] 补发通知信失败:', err instanceof Error ? err.message : err),
       ),
+    );
+    // 回链轮检：每天一次，串行抓十几个第三方站点（见 admin/friends.ts 里为什么串行）
+    ctx.waitUntil(
+      runBacklinkCheck(env)
+        .then((s) => console.log(`[cron] 回链检查：${s.ok}/${s.total} 仍挂着回链`))
+        .catch((err) => console.error('[cron] 回链检查失败:', err instanceof Error ? err.message : err)),
     );
   },
 } satisfies ExportedHandler<Env>;

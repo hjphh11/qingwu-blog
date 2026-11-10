@@ -9,6 +9,13 @@ import type { Env } from '../types';
 import { json } from '../util';
 import { getSessionInfo, postLogin, postLogout, postVerify, requireAdmin } from './auth';
 import { getThread, listComments, replyToComment, setCommentStatus } from './comments';
+import {
+  checkBacklinks,
+  commitLinks,
+  getFriendsOverview,
+  patchApplication,
+  setFriendStatus,
+} from './friends';
 
 export async function handleAdmin(request: Request, env: Env, path: string): Promise<Response> {
   const m = request.method;
@@ -40,6 +47,26 @@ export async function handleAdmin(request: Request, env: Env, path: string): Pro
   if (status && m === 'PATCH') {
     const id = Number(status[1]);
     return requireAdmin(request, env, (admin) => setCommentStatus(request, env, admin, id));
+  }
+
+  // —— 友链（P2 审核 / P3 回链）——
+  if (path === '/admin/friends' && m === 'GET') {
+    return requireAdmin(request, env, (admin) => getFriendsOverview(request, env, admin));
+  }
+  if (path === '/admin/friends/links' && m === 'POST') {
+    return requireAdmin(request, env, (admin) => commitLinks(request, env, admin));
+  }
+  if (path === '/admin/friends/backlinks' && m === 'POST') {
+    return requireAdmin(request, env, (admin) => checkBacklinks(request, env, admin));
+  }
+  if (path === '/admin/friends/status' && m === 'POST') {
+    return requireAdmin(request, env, (admin) => setFriendStatus(request, env, admin));
+  }
+
+  const apply = path.match(/^\/admin\/friends\/apply\/(\d+)$/);
+  if (apply && m === 'POST') {
+    const id = Number(apply[1]);
+    return requireAdmin(request, env, (admin) => patchApplication(request, env, admin, id));
   }
 
   return json({ ok: false, reason: 'not_found' }, 404);

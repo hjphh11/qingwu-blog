@@ -66,6 +66,11 @@ export interface Env {
   /** 有人留言时通知谁（站长邮箱）。没配 = 不通知站长 */
   MAIL_TO?: string;
   /** /stats 响应里回显的数据来源（纯展示）。默认 cloudflare-d1 / hits */
+  /** GitHub 细粒度 PAT：只授权 qingwu-blog 仓库的 contents:write，后台提交 links.json 用 */
+  GITHUB_TOKEN?: string;
+  /** 形如 owner/repo，缺省 hjphh11/qingwu-blog */
+  GITHUB_REPO?: string;
+
   STATS_SOURCE_REPO?: string;
   STATS_SOURCE_PATH?: string;
 }

@@ -1,0 +1,14 @@
+---
+/*
+ * /admin/friends —— 友链与回链
+ *
+ * 和 /admin/console 一样是静态页：进来先打 /api/admin/session，401 跳回 /admin。
+ * 页面里没有服务端逻辑，所以不含任何数据；真正的门在接口鉴权。
+ */
+import AdminLayout from '../../layouts/AdminLayout.astro';
+import AdminFriends from '../../components/admin/AdminFriends.tsx';
+---
+
+<AdminLayout title="友链与回链">
+  <AdminFriends client:load />
+</AdminLayout>
