@@ -6,6 +6,7 @@
   "description": "清吾 (qingwu.ink) - 温馨二次元的个人博客",
   "scripts": {
     "dev": "astro dev",
+  "dev:admin": "node scripts/dev-admin.mjs",
     "new:post": "node scripts/new-post.mjs",
     "build": "astro build",
     "preview": "astro preview",

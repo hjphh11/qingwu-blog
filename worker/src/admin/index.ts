@@ -8,7 +8,7 @@
 import type { Env } from '../types';
 import { json } from '../util';
 import { getAiStatus, postAiDraft, postAiJudge, postFriendReply } from './ai';
-import { getSessionInfo, postLogin, postLogout, postVerify, requireAdmin } from './auth';
+import { getDevLogin, getSessionInfo, postLogin, postLogout, postVerify, requireAdmin } from './auth';
 import { getThread, listComments, replyToComment, setCommentStatus } from './comments';
 import { getStatus, postStatusPing } from './status';
 import {
@@ -29,6 +29,9 @@ export async function handleAdmin(request: Request, env: Env, path: string): Pro
   if (path === '/admin/verify' && m === 'POST') return postVerify(request, env);
   if (path === '/admin/logout' && m === 'POST') return postLogout(request, env);
   if (path === '/admin/session' && m === 'GET') return getSessionInfo(request, env);
+
+  // —— 本地预览用的一键登录：没配 ADMIN_DEV_LOGIN 时恒 404 ——
+  if (path === '/admin/dev-login' && m === 'GET') return getDevLogin(request, env);
 
   // —— 以下全部要求会话 ——
   if (path === '/admin/comments' && m === 'GET') {
@@ -56,7 +59,8 @@ export async function handleAdmin(request: Request, env: Env, path: string): Pro
   // —— AI（writer 起草/润色，judge 单条体检）——
   if (path === '/admin/ai/status' && m === 'GET') {
     return requireAdmin(request, env, (admin) => getAiStatus(request, env, admin));
-  }  if (path === '/admin/ai/draft' && m === 'POST') {
+  }
+  if (path === '/admin/ai/draft' && m === 'POST') {
     return requireAdmin(request, env, (admin) => postAiDraft(request, env, admin));
   }
   if (path === '/admin/ai/judge' && m === 'POST') {

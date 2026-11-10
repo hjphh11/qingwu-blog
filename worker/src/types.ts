@@ -33,6 +33,19 @@ export interface Env {
    */
   DEV_SKIP_TURNSTILE?: string;
 
+  /**
+   * **仅本地 `wrangler dev` 使用**：设成任意口令，`GET /admin/dev-login?token=<口令>`
+   * 就能换一个真会话（照常写 `admin_sessions`、照常发 cookie）。
+   *
+   * 为什么要它：后台正常登录是「密码 → 邮件验证码」，本地没有发信中继，
+   * 每改一版样式都要去 D1 里捞验证码。这个口子只省掉那一步，鉴权本身没变。
+   *
+   * **只写在 `worker/.dev.vars`（已 gitignore），线上绝对不要配**。没配时
+   * 这条路由直接 404；即使误配，非本机回环 host 也一律 404。
+   * 想复核这一点：`grep ADMIN_DEV_LOGIN worker/wrangler.toml` 应无结果。
+   */
+  ADMIN_DEV_LOGIN?: string;
+
   /** 允许跨源调用 /hit 的站点，逗号分隔；`*` = 不限制 */
   ALLOWED_ORIGINS?: string;
 

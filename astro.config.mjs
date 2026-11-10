@@ -13,7 +13,29 @@ export default defineConfig({
   adapter: vercel(),
   // 后台不进 sitemap：它本来就叫 noindex，别一边禁止收录一边把地址交出去
   integrations: [react(), mdx(), sitemap({ filter: (page) => !page.includes('/admin') })],
+  // 本地改界面时那根黑色浮动工具条会压住页面内容，截图和肉眼都碍事
+  devToolbar: { enabled: false },
+  // 默认只绑 IPv6 的 [::1]，某些机器上 http://127.0.0.1:4321 连不上；
+  // 显式绑 IPv4 回环，预览地址就固定成 http://127.0.0.1:4321
+  server: { host: '127.0.0.1', port: 4321 },
   vite: {
     plugins: [tailwindcss()],
+    /*
+     * 本地预览后台：`astro dev` 只负责页面，数据在 `worker/` 那份 Worker 里。
+     * 线上是 nginx 把 `/api/` 转给 Worker（**去掉前缀**），这里做同一件事，
+     * 所以前端那套 `fetch('/api/admin/...')` 一行都不用改，同源也不会有 CORS。
+     *
+     * 只转发 `/api/admin`：`src/pages/api/` 下还有三个真的 Astro 端点
+     * （hit / links/apply / questions），一起吞掉它们就跑不通了。
+     * Worker 不在时页面照常打开，只是列表会显示"读不到"。
+     */
+    server: {
+      proxy: {
+        '/api/admin': {
+          target: process.env.QINGWU_WORKER_DEV || 'http://127.0.0.1:8799',
+          rewrite: (p) => p.replace(/^\/api/, ''),
+        },
+      },
+    },
   },
 });

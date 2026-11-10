@@ -363,3 +363,48 @@ export async function postLogout(request: Request, env: Env): Promise<Response> 
   }
   return json({ ok: true }, 200, { 'set-cookie': sessionCookie(request, '', 0) });
 }
+
+/**
+ * 本地预览后台时的**一键登录** —— 只在配了 `ADMIN_DEV_LOGIN` 时存在。
+ *
+ * 正常流程是「密码 → 邮件验证码」。本地没有发信中继，改一版样式就要去 D1 里
+ * 捞一次验证码。这个口子只省掉那一步：换到的仍是**真会话**（照常写
+ * `admin_sessions`、照常发 cookie），后面每个接口过的还是同一条 `getAdmin`。
+ *
+ * 三道锁，缺一不可：
+ *   1. 没配 `ADMIN_DEV_LOGIN` → 404，线上这条路由等于不存在；
+ *   2. 请求 host 不是本机回环 → 404，误配了也只在本机能用；
+ *   3. 口令不对 → 403。
+ * 变量只写在 `worker/.dev.vars`（已 gitignore）。
+ * 复核：`grep ADMIN_DEV_LOGIN worker/wrangler.toml` 应无结果。
+ */
+export async function getDevLogin(request: Request, env: Env): Promise<Response> {
+  const secret = env.ADMIN_DEV_LOGIN;
+  const url = new URL(request.url);
+  const host = url.hostname;
+  const loopback = host === '127.0.0.1' || host === 'localhost' || host === '::1' || host === '[::1]';
+  if (!secret || !loopback) return json({ ok: false, reason: 'not_found' }, 404);
+  if (url.searchParams.get('token') !== secret) return json({ ok: false, reason: 'bad_token' }, 403);
+
+  const user = await env.DB.prepare('SELECT id, username FROM admin_users ORDER BY id LIMIT 1').first<{
+    id: number;
+    username: string;
+  }>();
+  if (!user) {
+    return json({ ok: false, reason: 'no_admin', message: '本地库里还没有管理员，先跑 scripts/create-admin.mjs' }, 409);
+  }
+
+  const now = Date.now();
+  const token = randomToken();
+  await env.DB.prepare(
+    'INSERT INTO admin_sessions (token_hash, user_id, created_at, expires_at, ip_hash, ua) VALUES (?, ?, ?, ?, ?, ?)',
+  )
+    .bind(await sha256(token), user.id, now, now + SESSION_TTL_SEC * 1000, 'dev', 'dev-login')
+    .run();
+
+  // 302 直接落控制台：地图上少一步手点，也不给「登录成功但停在空白页」的机会
+  return new Response(null, {
+    status: 302,
+    headers: { location: '/admin/console', 'set-cookie': sessionCookie(request, token, SESSION_TTL_SEC) },
+  });
+}
