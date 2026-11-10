@@ -126,21 +126,33 @@ async function readLinks(env: Env): Promise<LinksSnapshot> {
   const repo = ghRepo(env);
 
   if (env.GITHUB_TOKEN) {
-    const res = await fetch(`https://api.github.com/repos/${repo}/contents/${LINKS_PATH}?ref=main`, {
-      headers: ghHeaders(env),
-      signal: AbortSignal.timeout(GH_TIMEOUT_MS),
-    });
-    if (!res.ok) {
-      throw new Error(`GitHub 读失败：HTTP ${res.status}`);
+    try {
+      const res = await fetch(`https://api.github.com/repos/${repo}/contents/${LINKS_PATH}?ref=main`, {
+        headers: ghHeaders(env),
+        signal: AbortSignal.timeout(GH_TIMEOUT_MS),
+      });
+      if (!res.ok) {
+        // 401 = token 过期/被撤销，403 = 没授权到这个仓库
+        const why = res.status === 401 ? 'token 已失效' : res.status === 403 ? 'token 没授权到本仓库' : `HTTP ${res.status}`;
+        throw new Error(`Contents API ${why}`);
+      }
+      const data = (await res.json()) as { content?: string; encoding?: string; sha?: string };
+      if (!data.content || (data.encoding && data.encoding !== 'base64')) {
+        // 文件超过 1MB 时 Contents API 不返回内容（encoding 变 none），那样得走 Git Blob API。
+        // links.json 不该到这个体量，真到了说明结构该拆了。
+        throw new Error('links.json 体积异常，Contents API 未返回内容');
+      }
+      const text = new TextDecoder('utf-8').decode(base64ToBytes(data.content));
+      return { friends: parseLinks(text), sha: data.sha ?? null, via: 'api' };
+    } catch (e) {
+      // **有 token 不等于这次一定读得到**：token 会过期、会被撤销、GitHub 会 5xx。
+      // 那种时候如果直接把错误抛出去，整页友链就跟着挂 —— 比没配 token 还糟。
+      // 仓库是公开的，raw 一样能读，只是拿不到 sha ⇒ 提交自动降级成「手动粘贴」
+      // （writeLinks 的 manual 分支本来就在）。少一个直写按钮，好过整页打不开。
+      console.warn(
+        `[admin] Contents API 读失败，回落 raw：${e instanceof Error ? e.message : e}`,
+      );
     }
-    const data = (await res.json()) as { content?: string; encoding?: string; sha?: string };
-    if (!data.content || (data.encoding && data.encoding !== 'base64')) {
-      // 文件超过 1MB 时 Contents API 不返回内容（encoding 变 none），那样得走 Git Blob API。
-      // links.json 不该到这个体量，真到了说明结构该拆了。
-      throw new Error('links.json 体积异常，Contents API 未返回内容');
-    }
-    const text = new TextDecoder('utf-8').decode(base64ToBytes(data.content));
-    return { friends: parseLinks(text), sha: data.sha ?? null, via: 'api' };
   }
 
   const res = await fetch(`https://raw.githubusercontent.com/${repo}/main/${LINKS_PATH}?t=${Date.now()}`, {
@@ -184,6 +196,21 @@ async function writeLinks(
   });
 
   if (res.status === 409 || res.status === 422) return { ok: false, conflict: true };
+
+  // 403 几乎只有一个原因：token 是只读的（fine-grained PAT 的 Contents 给了 Read
+  // 而不是 Read and write），或者 token 根本没被授权到这个仓库。
+  // GitHub 的原文是 "Resource not accessible by personal access token"，对着一脸懵的
+  // 人毫无信息量 —— 2026-11-10 实测过一次，配了 token 却提交不了，就这个坑。别删这段。
+  if (res.status === 403) {
+    return {
+      ok: false,
+      error:
+        'GitHub 拒绝了写请求（403）：这个 token 没有本仓库的 Contents 写权限。' +
+        '去 github.com/settings/personal-access-tokens 编辑它，把 Repository access 选到 ' +
+        `${repo}、Permissions → Contents 改成 Read and write，然后重启 Worker（密钥只在启动时读）。`,
+    };
+  }
+
   if (!res.ok) {
     const t = await res.text().catch(() => '');
     return { ok: false, error: `GitHub 写失败：HTTP ${res.status} ${t.slice(0, 160)}` };
