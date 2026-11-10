@@ -149,8 +149,6 @@ export interface Env {
    * 开着才叫「小爱在场」，关掉她就不自动说话，只剩后台手动起草。
    */
   AUTO_REPLY?: string;
-  /** 每天最多自动回几条，缺省 20。防有人刷屏把额度烧光 */
-  AUTO_REPLY_DAILY?: string;
   /** 同一访客（ip_hash）每天最多被自动回几次，缺省 1。0 = 不限 */
   AUTO_REPLY_PER_GUEST?: string;
 }

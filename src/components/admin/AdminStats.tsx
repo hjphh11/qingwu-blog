@@ -20,7 +20,7 @@
  *    这一层每次加载都会播，是真正看得见的那个「加载动画」。
  * 两层都走 prefers-reduced-motion：关掉之后直接给终值，不做位移。
  */
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import AdminTop from './AdminTop.tsx';
 
 const API = '/api/admin';
@@ -43,6 +43,13 @@ interface Stats {
   /** 哪几块没读出来。非空说明有表查询失败，别把 0 当成「真没数据」 */
   warnings: string[];
   trafficReady: boolean;
+  /** 与区间无关的四个数：全量累计 + 今天 */
+  summary: {
+    allTime: { pv: number; uv: number };
+    today: { day: string; pv: number; uv: number };
+    activeDays: number;
+    peak: { day: string; pv: number; uv: number } | null;
+  };
   totals: {
     pv: number;
     uv: number;
@@ -56,9 +63,13 @@ interface Stats {
   traffic: { day: string; pv: number; uv: number }[];
   pages: Pair[];
   referrers: Pair[];
+  /** 直接 / 搜索 / 外部，三个数相加 = 区间内的 hits 总数 */
+  sources: { direct: number; search: number; external: number };
   countries: Pair[];
   devices: Pair[];
   hours: { h: number; pv: number }[];
+  /** 7×24 热力，扁平 168 项，索引 = w * 24 + h（w: 0=周一） */
+  heat: { w: number; h: number; pv: number }[];
   comments: { day: string; total: number; spam: number }[];
   blocked: { day: string; n: number }[];
   verdicts: { verdict: string; n: number }[];
@@ -91,7 +102,7 @@ function fmtDay(d: string): string {
 
 /** 环比。前一段是 0 时不给百分比 —— 从 0 到 40 不是「+∞%」，是「刚开始有数」 */
 function deltaOf(cur: number, prev: number): { text: string; tone: 'up' | 'down' | 'flat' } {
-  if (!prev) return cur > 0 ? { text: '上一段没有数据', tone: 'flat' } : { text: '持平', tone: 'flat' };
+  if (!prev) return cur > 0 ? { text: '没有可比的上周期', tone: 'flat' } : { text: '持平', tone: 'flat' };
   const p = ((cur - prev) / prev) * 100;
   if (Math.abs(p) < 0.5) return { text: '与上一段持平', tone: 'flat' };
   return { text: `${p > 0 ? '+' : ''}${p.toFixed(1)}% 较上一段`, tone: p > 0 ? 'up' : 'down' };
@@ -348,12 +359,15 @@ function RankList({
   labelOf,
   empty = '这段时间没有数据',
   max: maxN = 8,
+  numbered = false,
 }: {
   items: Pair[];
   total: number;
   labelOf?: (name: string) => string;
   empty?: string;
   max?: number;
+  /** 带 01 / 02 序号 —— 页面榜用，一眼看出「第一名」 */
+  numbered?: boolean;
 }) {
   const grow = useGrown(items.map((i) => i.name).join(','));
   const top = items.slice(0, maxN);
@@ -362,9 +376,10 @@ function RankList({
   if (top.length === 0) return <p className="q-chart__empty">{empty}</p>;
 
   return (
-    <ul className="q-rank">
-      {top.map((i) => (
+    <ul className={`q-rank${numbered ? ' q-rank--numbered' : ''}`}>
+      {top.map((i, idx) => (
         <li key={i.name}>
+          {numbered ? <span className="q-rank__i">{String(idx + 1).padStart(2, '0')}</span> : null}
           <span className="q-rank__name" title={labelOf ? labelOf(i.name) : i.name}>
             {labelOf ? labelOf(i.name) : i.name}
           </span>
@@ -401,6 +416,161 @@ function Kpi({
   );
 }
 
+// ——————————————————————————————————————————————————————————
+// 摘要 / 热力 / 来源构成
+// ——————————————————————————————————————————————————————————
+
+/** 累计与今日。数字与「区间」无关，所以要明写口径，别让人当成近 30 天 */
+function SummaryStrip({ s }: { s: Stats['summary'] }) {
+  const cells = [
+    { label: '累计浏览', n: s.allTime.pv, note: '开站以来' },
+    { label: '累计访客', n: s.allTime.uv, note: '按匿名标识去重' },
+    { label: '今日浏览', n: s.today.pv, note: '北京时间 00:00 起' },
+    { label: '今日访客', n: s.today.uv, note: '今天的去重访客' },
+  ];
+  return (
+    <div className="q-sum">
+      {cells.map((c) => (
+        <div className="q-sum__cell" key={c.label}>
+          <span>{c.label}</span>
+          <Big n={c.n} />
+          <em>{c.note}</em>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/** 会数上去的摘要数字。抽成组件是因为 hook 不能在 map 里调 */
+function Big({ n }: { n: number }) {
+  const v = useCountUp(n);
+  return <b>{fmtNum(v)}</b>;
+}
+
+const WEEK = ['周一', '周二', '周三', '周四', '周五', '周六', '周日'];
+
+/**
+ * 7×24 活跃热力图。
+ *
+ * 比「一天 24 根柱子」多一个维度：周中与周末的作息完全不同，只看小时会把它们叠在一起。
+ * 灰度分五档（0 = 空格子），不上彩色 —— 这个后台的强调色只有墨黑。
+ * 每格都有 title，鼠标停上去看具体数字，不额外做 tooltip 层。
+ */
+function HeatMap({ heat }: { heat: Stats['heat'] }) {
+  const grow = useGrown(heat.map((c) => c.pv).join(','));
+  const grid = new Map(heat.map((c) => [c.w * 24 + c.h, c.pv]));
+  const max = Math.max(1, ...heat.map((c) => c.pv));
+  const lvl = (v: number): number => (v <= 0 ? 0 : Math.max(1, Math.ceil((v / max) * 4)));
+
+  const sumBy = (pick: (c: Stats['heat'][number]) => number) =>
+    heat.reduce((acc, c) => {
+      const k = pick(c);
+      acc[k] = (acc[k] ?? 0) + c.pv;
+      return acc;
+    }, {} as Record<number, number>);
+
+  const byHour = sumBy((c) => c.h);
+  const byWeek = sumBy((c) => c.w);
+  const total = heat.reduce((a, c) => a + c.pv, 0);
+  const topHour = Object.entries(byHour).sort((a, b) => b[1] - a[1])[0];
+  const topWeek = Object.entries(byWeek).sort((a, b) => b[1] - a[1])[0];
+  const night = heat.filter((c) => c.h >= 22 || c.h < 6).reduce((a, c) => a + c.pv, 0);
+
+  return (
+    <>
+      <div className="q-heat" role="img" aria-label="近段时间每天的活跃时段分布">
+        <div className="q-heat__axis">
+          <span aria-hidden="true" />
+          {Array.from({ length: 24 }, (_, h) => (
+            <i key={h}>{h % 4 === 0 ? `${h}` : ''}</i>
+          ))}
+        </div>
+        {WEEK.map((d, w) => (
+          <div className="q-heat__row" key={d}>
+            <span className="q-heat__day">{d}</span>
+            {Array.from({ length: 24 }, (_, h) => {
+              const v = grid.get(w * 24 + h) ?? 0;
+              return (
+                <i
+                  key={h}
+                  className={`q-heat__cell is-${grow ? lvl(v) : 0}`}
+                  title={`${d} ${String(h).padStart(2, '0')}:00 · ${v} PV`}
+                />
+              );
+            })}
+          </div>
+        ))}
+      </div>
+
+      <div className="q-heat__legend">
+        <span>少</span>
+        {[0, 1, 2, 3, 4].map((n) => (
+          <i key={n} className={`q-heat__cell is-${n}`} aria-hidden="true" />
+        ))}
+        <span>多</span>
+      </div>
+
+      <dl className="q-admin-gates q-heat__notes">
+        <div>
+          <dt>最活跃时段</dt>
+          <dd>{topHour ? `${String(topHour[0]).padStart(2, '0')}:00 前后` : '—'}</dd>
+        </div>
+        <div>
+          <dt>最活跃星期</dt>
+          <dd>{topWeek ? WEEK[Number(topWeek[0])] : '—'}</dd>
+        </div>
+        <div>
+          <dt>夜间访问</dt>
+          <dd>{total > 0 ? `${Math.round((night / total) * 100)}%` : '—'}</dd>
+        </div>
+      </dl>
+    </>
+  );
+}
+
+/**
+ * 来源三分：直接 / 搜索 / 外部。
+ *
+ * 以前「来源」榜把 direct 过滤掉了，占比分母却是总 PV —— 于是每个来源都显得很小。
+ * 先给三个大数再列主机名，才是能读懂的顺序。
+ */
+function SourceSplit({ s }: { s: Stats['sources'] }) {
+  const grow = useGrown(`${s.direct}/${s.search}/${s.external}`);
+  const sum = s.direct + s.search + s.external;
+  const rows = [
+    { k: 'direct', label: '直接访问', n: s.direct },
+    { k: 'search', label: '搜索引擎', n: s.search },
+    { k: 'external', label: '外部链接', n: s.external },
+  ];
+  const pct = (n: number) => (sum > 0 ? Math.round((n / sum) * 100) : 0);
+
+  if (sum === 0) return <p className="q-chart__empty">这段时间没有数据</p>;
+
+  return (
+    <div className="q-src">
+      <div className="q-src__bar">
+        {rows.map((r) => (
+          <i
+            key={r.k}
+            className={`is-${r.k}`}
+            style={{ width: grow ? `${(r.n / sum) * 100}%` : 0 }}
+          />
+        ))}
+      </div>
+      <ul className="q-src__list">
+        {rows.map((r) => (
+          <li key={r.k}>
+            <i className={`is-${r.k}`} aria-hidden="true" />
+            <span>{r.label}</span>
+            <b>{fmtNum(r.n)}</b>
+            <em>{pct(r.n)}%</em>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
 /** 骨架屏：形状照真图排，切过去不跳 */
 function Skeleton() {
   return (
@@ -415,7 +585,7 @@ function Skeleton() {
         <div className="q-skel q-skel--half" />
         <div className="q-skel q-skel--half" />
       </div>
-      <div className="q-skel q-skel--chart" style={{ height: 180 }} />
+      <div className="q-skel q-skel--heat" />
     </div>
   );
 }
@@ -467,13 +637,6 @@ export default function AdminStats() {
     void load(d);
   }
 
-  // 汇总几个只在渲染时算的小数
-  const peakTraffic = useMemo(() => {
-    if (!data) return null;
-    const top = [...data.traffic].sort((a, b) => b.pv - a.pv)[0];
-    return top && top.pv > 0 ? top : null;
-  }, [data]);
-
   if (!ready) {
     return (
       <>
@@ -493,6 +656,7 @@ export default function AdminStats() {
             <h1>统计</h1>
             <p>
               {data ? `近 ${data.days} 天（${fmtDay(data.from)} – ${fmtDay(data.to)}）` : '访问、内容与 AI 用量'}
+              {' · 按北京时间切天'}
               {at ? ` · 读取于 ${new Date(at).toLocaleTimeString('zh-CN', { hour12: false })}` : ''}
             </p>
           </div>
@@ -545,24 +709,14 @@ export default function AdminStats() {
                   </section>
                 ) : null}
 
-                <div className="q-admin-kpis q-admin-kpis--4">
-                  <Kpi n={data.totals.pv} label="浏览量 PV" sub={deltaOf(data.totals.pv, data.prev.pv)} />
-                  <Kpi n={data.totals.uv} label="访客 UV" sub={deltaOf(data.totals.uv, data.prev.uv)} />
-                  <Kpi n={data.totals.comments} label="新留言" sub={{ text: `其中 AI 回了 ${fmtNum(data.totals.replies)} 条`, tone: 'flat' }} />
-                  <Kpi
-                    n={data.totals.blocked}
-                    label="被审核拦下"
-                    tone="danger"
-                    sub={{ text: data.totals.aiCalls ? `判定共 ${fmtNum(data.totals.aiCalls)} 次` : '还没有判定记录', tone: 'flat' }}
-                  />
-                </div>
+                <SummaryStrip s={data.summary} />
 
                 {/* ——— 访问趋势 ——— */}
                 <section className="q-admin-panel q-admin-stat">
                   <header className="q-admin-stat__head">
                     <div>
-                      <h2>访问趋势</h2>
-                      <p>按天聚合，天界是北京时间 0 点。</p>
+                      <h2>访问脉冲</h2>
+                      <p>每天的浏览量与访客数 · 天界是北京时间 0 点</p>
                     </div>
                     <div className="q-chart__legend">
                       <span className="is-pv">浏览量</span>
@@ -572,12 +726,33 @@ export default function AdminStats() {
 
                   <TrendChart data={data.traffic} />
 
+                  <div className="q-admin-kpis q-admin-kpis--4">
+                    <Kpi n={data.totals.pv} label="本周期浏览" sub={deltaOf(data.totals.pv, data.prev.pv)} />
+                    <Kpi n={data.totals.uv} label="本周期访客" sub={deltaOf(data.totals.uv, data.prev.uv)} />
+                    <div className="q-admin-kpi">
+                      <b>
+                        {data.summary.activeDays}
+                        <span className="q-admin-kpi__slash">/{data.days}</span>
+                      </b>
+                      <span>活跃天数</span>
+                      <em className="q-kpi-sub is-flat">有访问记录的天数</em>
+                    </div>
+                    <div className="q-admin-kpi">
+                      <b>{data.summary.peak ? fmtNum(data.summary.peak.pv) : '—'}</b>
+                      <span>单日峰值</span>
+                      <em className="q-kpi-sub is-flat">
+                        {data.summary.peak ? fmtDay(data.summary.peak.day) : '还没有数据'}
+                      </em>
+                    </div>
+                  </div>
+
                   <p className="q-admin-stat__foot">
-                    峰值 {peakTraffic ? `${fmtNum(peakTraffic.pv)} PV · ${peakTraffic.day}` : '—'}
-                    {' · '}
                     日均 {data.days > 0 ? fmtNum(data.totals.pv / data.days) : 0} PV
                     {' · '}
-                    鼠标停在图上能看当天的两个数。
+                    鼠标停在图上能看当天的两个数 ·「较上周期」比的是紧邻的前 {data.days} 天。
+                    <br />
+                    访客数按天去重、跨天不去重，所以「本周期访客」是每天 UV 相加，
+                    会比顶部「累计访客」（全站按标识去重）大。
                   </p>
                 </section>
 
@@ -585,22 +760,31 @@ export default function AdminStats() {
                 <div className="q-admin-stat-grid">
                   <section className="q-admin-panel q-admin-stat">
                     <header className="q-admin-stat__head">
-                      <h2>页面</h2>
-                      <p>这段时间被打开最多的 {Math.min(8, data.pages.length || 8)} 个</p>
+                      <h2>大家在看什么</h2>
+                      <p>这段时间被打开最多的 {Math.min(8, data.pages.length || 8)} 个页面</p>
                     </header>
-                    <RankList items={data.pages} total={data.totals.pv} />
+                    <RankList
+                      items={data.pages}
+                      total={data.totals.pv}
+                      numbered
+                      labelOf={(p) => (p === '/' ? '首页' : p)}
+                    />
                   </section>
 
                   <section className="q-admin-panel q-admin-stat">
                     <header className="q-admin-stat__head">
-                      <h2>来源</h2>
-                      <p>访客从哪儿点进来的</p>
+                      <h2>流量来源</h2>
+                      <p>先看构成，再看到底从哪些站点来</p>
                     </header>
+                    <SourceSplit s={data.sources} />
+                    {/* 上面那三条已经把「直接访问」算进去了，这里只列具体主机名，
+                        否则同一件事写两遍，还让人以为是两个不同的来源 */}
                     <RankList
-                      items={data.referrers}
-                      total={data.totals.pv}
-                      max={6}
+                      items={data.referrers.filter((r) => r.name !== '(direct)')}
+                      total={data.sources.direct + data.sources.search + data.sources.external}
+                      max={5}
                       labelOf={(n) => REF_LABEL[n] ?? n}
+                      empty="这段时间没有站外来源"
                     />
                   </section>
                 </div>
@@ -610,7 +794,11 @@ export default function AdminStats() {
                   <header className="q-admin-stat__head">
                     <div>
                       <h2>留言与拦截</h2>
-                      <p>灰柱是当天新留言，红柱是其中被审核直接拦下的。</p>
+                      <p>
+                        黑柱是当天新留言，红柱是其中被审核拦下的。
+                        本周期共 {fmtNum(data.totals.comments)} 条留言，小爱回了 {fmtNum(data.totals.replies)} 条
+                        {data.totals.aiCalls ? `，判定跑了 ${fmtNum(data.totals.aiCalls)} 次` : ''}。
+                      </p>
                     </div>
                     <div className="q-chart__legend">
                       <span className="is-ink">新留言</span>
@@ -641,21 +829,24 @@ export default function AdminStats() {
                   </p>
                 </section>
 
-                {/* ——— 时段 + 设备/国家 ——— */}
-                <div className="q-admin-stat-grid">
-                  <section className="q-admin-panel q-admin-stat">
-                    <header className="q-admin-stat__head">
-                      <h2>时段分布</h2>
-                      <p>0–23 点，北京时间</p>
-                    </header>
-                    <BarChart
-                      data={data.hours.map((h) => ({ label: String(h.h), a: h.pv, b: 0, tip: `${h.h}:00　${h.pv} PV` }))}
-                      aName="浏览"
-                      bName=""
-                      aTone="grey"
-                    />
-                  </section>
+                {/* ——— 活跃时间：7×24 热力 ——— */}
+                <section className="q-admin-panel q-admin-stat">
+                  <header className="q-admin-stat__head">
+                    <div>
+                      <h2>访客活跃时间</h2>
+                      <p>周一到周日 × 0–23 点，按北京时间把访问落进格子</p>
+                    </div>
+                    <span className="q-chart__legend is-token">近 {data.days} 天</span>
+                  </header>
+                  <HeatMap heat={data.heat} />
+                  <p className="q-admin-stat__foot">
+                    比单看「一天 24 根柱子」多一个维度：周末和工作日的作息常常完全不同，
+                    叠在一起就都看不出来了。鼠标停在格子里能看具体数字。
+                  </p>
+                </section>
 
+                {/* ——— 设备 / 地区 ——— */}
+                <div className="q-admin-stat-grid">
                   <section className="q-admin-panel q-admin-stat">
                     <header className="q-admin-stat__head">
                       <h2>设备</h2>
@@ -663,9 +854,7 @@ export default function AdminStats() {
                     </header>
                     <RankList items={data.devices} total={data.totals.pv} labelOf={(n) => DEVICE[n] ?? n} />
                   </section>
-                </div>
 
-                <div className="q-admin-stat-grid">
                   <section className="q-admin-panel q-admin-stat">
                     <header className="q-admin-stat__head">
                       <h2>地区</h2>
@@ -673,16 +862,17 @@ export default function AdminStats() {
                     </header>
                     <RankList items={data.countries} total={data.totals.pv} labelOf={(n) => COUNTRY[n] ?? n} />
                   </section>
+                </div>
 
+                {/* ——— AI 用量 / 自动回复 ——— */}
+                <div className="q-admin-stat-grid">
                   <section className="q-admin-panel q-admin-stat">
                     <header className="q-admin-stat__head">
                       <div>
                         <h2>AI 用量</h2>
                         <p>writer 起草回复，judge 判留言</p>
                       </div>
-                      <span className="q-chart__legend is-token">
-                        {fmtNum(data.totals.tokens)} token
-                      </span>
+                      <span className="q-chart__legend is-token">{fmtNum(data.totals.tokens)} token</span>
                     </header>
                     <BarChart
                       data={data.traffic.map((t) => {
@@ -699,36 +889,38 @@ export default function AdminStats() {
                       bName="judge"
                       bTone="grey"
                     />
+                    <p className="q-admin-stat__foot">
+                      每条留言都要过一次 judge；小爱开口前还会被 judge 先筛一遍，所以 judge 的量总比 writer 高。
+                    </p>
+                  </section>
+
+                  <section className="q-admin-panel q-admin-stat">
+                    <header className="q-admin-stat__head">
+                      <div>
+                        <h2>小爱回过多少</h2>
+                        <p>黑柱是回出去的，灰柱是被闸门挡下的。</p>
+                      </div>
+                      <div className="q-chart__legend">
+                        <span className="is-ink">已回复</span>
+                        <span className="is-grey">挡下</span>
+                      </div>
+                    </header>
+                    <BarChart
+                      data={data.replies.map((r) => ({
+                        label: fmtDay(r.day),
+                        a: r.replied,
+                        b: r.skipped + r.blocked + r.failed,
+                        tip: `${r.day}　回复 ${r.replied}　挡下 ${r.skipped}　判否 ${r.blocked}　失败 ${r.failed}`,
+                      }))}
+                      aName="已回复"
+                      bName="挡下"
+                      bTone="grey"
+                    />
+                    <p className="q-admin-stat__foot">
+                      挡下的原因（单访客额度 / 关键词 / 判定不该回 / 上游失败）在「运行状态」的最近流水里能逐条看。
+                    </p>
                   </section>
                 </div>
-
-                {/* ——— 自动回复 ——— */}
-                <section className="q-admin-panel q-admin-stat">
-                  <header className="q-admin-stat__head">
-                    <div>
-                      <h2>小爱回过多少</h2>
-                      <p>黑柱是回出去的，灰柱是被闸门挡下的。</p>
-                    </div>
-                    <div className="q-chart__legend">
-                      <span className="is-ink">已回复</span>
-                      <span className="is-grey">挡下</span>
-                    </div>
-                  </header>
-                  <BarChart
-                    data={data.replies.map((r) => ({
-                      label: fmtDay(r.day),
-                      a: r.replied,
-                      b: r.skipped + r.blocked + r.failed,
-                      tip: `${r.day}　回复 ${r.replied}　挡下 ${r.skipped}　判否 ${r.blocked}　失败 ${r.failed}`,
-                    }))}
-                    aName="已回复"
-                    bName="挡下"
-                    bTone="grey"
-                  />
-                  <p className="q-admin-stat__foot">
-                    挡下的原因（超总量 / 同访客 / 安静时段 / 关键词 / 判定不该回）在「运行状态」的最近流水里能逐条看。
-                  </p>
-                </section>
               </>
             ) : null}
           </>

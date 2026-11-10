@@ -23,6 +23,13 @@ const DAY_MS = 86_400_000;
 /** 允许的区间。太长的区间在手机上一根柱子不到 2px，没意义。 */
 const ALLOWED_DAYS = [7, 14, 30];
 
+/**
+ * 搜索引擎的主机名。命中归「搜索」，其余外部站点归「外部链接」。
+ * 只认主域（`google.com.hk` 也算 google），不追求覆盖全 —— 漏掉的会落进「外部」，不算错。
+ */
+const SEARCH_HOST =
+  /(^|\.)(google|bing|baidu|sogou|so|duckduckgo|yandex|ecosia|naver|yahoo|brave|startpage|qwant|search)\.[a-z.]+$/i;
+
 /** 北京时间当日 0 点（毫秒）。与 status.ts 同口径。 */
 function dayStartMs(now = Date.now()): number {
   return Math.floor((now + 8 * 3_600_000) / DAY_MS) * DAY_MS - 8 * 3_600_000;
@@ -94,7 +101,7 @@ export async function getStats(request: Request, env: Env, _admin: Admin): Promi
   });
 
   // —— 区间榜单 + 时段（全部只看 hits：明细才拆得出维度）——
-  const [pageRows, refRows, countryRows, deviceRows, hourRows] = await Promise.all([
+  const [pageRows, refRows, countryRows, deviceRows, hourRows, heatRows] = await Promise.all([
     rows<{ k: string; pv: number }>(
       env,
       warnings,
@@ -102,13 +109,15 @@ export async function getStats(request: Request, env: Env, _admin: Admin): Promi
       'SELECT path AS k, COUNT(*) AS pv FROM hits WHERE day >= ? GROUP BY path ORDER BY pv DESC LIMIT 8',
       from,
     ),
-    rows<{ k: string; pv: number }>(
+    // 不排除 (direct)：来源构成要靠它算占比，排掉就等于分母少了一大块。
+    // 空串与 NULL 也一并并到 (direct) —— 老数据里两种都出现过，不合并就会在榜上
+    // 出现两条「直接访问」，而「来源构成」那条又把两边加在一起，两处对不上。
+    rows<{ k: string | null; pv: number }>(
       env,
       warnings,
       '来源榜',
-      `SELECT referrer AS k, COUNT(*) AS pv FROM hits
-        WHERE day >= ? AND referrer IS NOT NULL AND referrer != ''
-        GROUP BY referrer ORDER BY pv DESC LIMIT 6`,
+      `SELECT COALESCE(NULLIF(referrer, ''), '(direct)') AS k, COUNT(*) AS pv
+         FROM hits WHERE day >= ? GROUP BY k ORDER BY pv DESC`,
       from,
     ),
     rows<{ k: string; pv: number }>(
@@ -139,6 +148,17 @@ export async function getStats(request: Request, env: Env, _admin: Admin): Promi
          FROM hits WHERE day >= ? GROUP BY h ORDER BY h`,
       from,
     ),
+    // 7×24 热力：星期 × 小时。strftime('%w') 是 0=周日，下面统一挪成 0=周一。
+    rows<{ dw: number; h: number; pv: number }>(
+      env,
+      warnings,
+      '活跃热力',
+      `SELECT CAST(strftime('%w', ts + 28800, 'unixepoch') AS INTEGER) AS dw,
+              CAST(strftime('%H', ts + 28800, 'unixepoch') AS INTEGER) AS h,
+              COUNT(*) AS pv
+         FROM hits WHERE day >= ? GROUP BY dw, h`,
+      from,
+    ),
   ]);
 
   // 四个榜单形状一致：{ name, pv }。前端不必知道哪个是路径哪个是国家码。
@@ -146,6 +166,29 @@ export async function getStats(request: Request, env: Env, _admin: Admin): Promi
     (r ?? [])
       .filter((x) => x.k !== null && String(x.k).trim() !== '')
       .map((x) => ({ name: String(x.k), pv: Number(x.pv) || 0 }));
+
+  // —— 来源三分 ——
+  // 参照 sitestats 那种做法：先给「直接 / 搜索 / 外部」三个大数，再列具体主机名。
+  // 只看主机名，不碰路径与参数 —— 访客从哪篇文章点进来，不该出现在后台。
+  const sources = { direct: 0, search: 0, external: 0 };
+  for (const r of refRows ?? []) {
+    const host = String(r.k ?? '').trim();
+    const n = Number(r.pv) || 0;
+    if (!host || host === '(direct)') sources.direct += n;
+    else if (SEARCH_HOST.test(host)) sources.search += n;
+    else sources.external += n;
+  }
+
+  // —— 7×24 热力 ——
+  // 扁平数组（长度 168）而不是嵌套对象：前端按 `w * 24 + h` 一次取到，
+  // 也省得在渲染里再写一遍「周一到周日」的映射表。
+  const heat = Array.from({ length: 7 * 24 }, (_, i) => ({ w: Math.floor(i / 24), h: i % 24, pv: 0 }));
+  for (const r of heatRows ?? []) {
+    const h = Number(r.h);
+    if (!Number.isFinite(h) || h < 0 || h > 23) continue;
+    const w = (Number(r.dw) + 6) % 7; // %w 里 0=周日 → 这里 0=周一
+    heat[w * 24 + h]!.pv += Number(r.pv) || 0;
+  }
 
   const hours = Array.from({ length: 24 }, (_, h) => ({
     h,
@@ -251,6 +294,14 @@ export async function getStats(request: Request, env: Env, _admin: Admin): Promi
   const prevPv = sum(prevSeq.map((d) => baseByDay.get(d)?.pv ?? 0));
   const prevUv = sum(prevSeq.map((d) => baseByDay.get(d)?.uv ?? 0));
 
+  // 区间内的活跃天数与单日峰值：两个「体感数字」，比环比更能说明这段时间热不热
+  const activeDays = traffic.filter((t) => t.pv > 0).length;
+  const peakRow = [...traffic].sort((a, b) => b.pv - a.pv)[0];
+  const peak = peakRow && peakRow.pv > 0 ? peakRow : null;
+
+  // buildStats 的空分支没有 today，取之前先探一下（老代码里它是 union 返回）
+  const baseToday = base && 'today' in base ? base.today : null;
+
   return json({
     ok: true,
     now,
@@ -263,14 +314,27 @@ export async function getStats(request: Request, env: Env, _admin: Admin): Promi
     /** 访问部分是不是从对外 /stats 拿到的。false 时 PV 图会全 0，前端据此提示 */
     trafficReady: base !== null,
     totals: { pv, uv, comments: commentTotal, blocked: blockedTotal, replies: sum(replies.map((r) => r.replied)), aiCalls, tokens },
+    /**
+     * 与「区间」无关的四个数：全量累计 + 今天。
+     * 全量来自 buildStats（含迁移前的 daily_stats），所以是站点开张以来的数，
+     * 不是这个区间的数 —— 页面上要标清楚，别让人把「累计」当成「近 30 天」。
+     */
+    summary: {
+      allTime: base?.totals ?? { pv: 0, uv: 0 },
+      today: baseToday ? { day: baseToday.d, pv: baseToday.pv, uv: baseToday.uv } : { day: today, pv: 0, uv: 0 },
+      activeDays,
+      peak,
+    },
     /** 环比只给访问 —— 评论量太小，差 3 条算出来的百分比没有意义 */
     prev: { pv: prevPv, uv: prevUv },
     traffic,
     pages: rank(pageRows),
     referrers: rank(refRows),
+    sources,
     countries: rank(countryRows),
     devices: rank(deviceRows),
     hours,
+    heat,
     comments,
     blocked: blockedSeq,
     verdicts: (verdictRows ?? []).map((r) => ({ verdict: r.verdict, n: Number(r.n) || 0 })),

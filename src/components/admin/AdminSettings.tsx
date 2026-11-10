@@ -4,13 +4,21 @@
  * 2026-11-10 晚从「运行与设置」拆出来的一页，站长原话：「把运行与设置分开页面」。
  * 分开之后职责很清楚：运行状态看数字，这一页只改参数。
  *
- * 这些值以前全在环境变量里：改一个日上限要登服务器改 .dev.vars 再重启 Worker。
+ * 这些值以前全在环境变量里：改一个参数要登服务器改 .dev.vars 再重启 Worker。
  * 现在落在 admin_settings 表，保存即生效 —— Worker 每次处理请求都现读一次。
  *
  * 优先级：**库里有值就以库为准，没有才回落到 env**。所以本页的初值可能来自 env，
  * 只要一保存就会写进库，从此以库为准。
  *
- * 与「评论审核」页的分工：这里管**小爱要不要说话、说多少**；
+ * —— 2026-11-10 深夜第三次收窄 ——
+ * 站长看过截图后说「这个不用限制」「这个也不要」：删掉「每天最多」与「安静时段」。
+ * 小爱回多少条不再按天卡、也不再按时段闭嘴。真正防刷的是 AI 每日配额
+ * （`AI_DAILY_LIMIT`，默认 300 次/通道/天），那条在 ai.ts 的 quotaGate，与本页无关。
+ *
+ * 同时补上「模型设置」：以前只有一格模型名输入，藏在一段说明里，找不着。
+ * 现在两条通道各自摊开 —— 用哪个模型、打到哪个地址、今天用了几次、通不通。
+ *
+ * 与「评论审核」页的分工：这里管**小爱要不要说话、用什么模型说**；
  * 那边管**访客的话要不要拦**。两件事各有开关，别混。
  */
 import { useCallback, useEffect, useState } from 'react';
@@ -20,14 +28,11 @@ const API = '/api/admin';
 
 interface AutoReply {
   on: boolean;
-  daily: number;
   perGuest: number;
   scope: 'top' | 'all';
   allowPaths: string[];
   blockPaths: string[];
   skipKeywords: string[];
-  quietFrom: string;
-  quietTo: string;
 }
 
 interface Writer {
@@ -41,6 +46,25 @@ interface Meta {
   envHasJudge: boolean;
   envModel: string;
   envBase: string;
+}
+
+/** 与 status.ts 的 aiSnapshot 同形。只取要显示的那几个字段。 */
+interface ChannelState {
+  on: boolean;
+  provider: 'writer' | 'jev' | 'openai';
+  model: string;
+  used: number | null;
+  quota: number;
+  missing?: string;
+}
+
+interface PingResult {
+  ok: boolean;
+  ms: number;
+  model?: string;
+  detail: string;
+  verdict?: string;
+  score?: number;
 }
 
 function api<T>(path: string, init?: RequestInit): Promise<T> {
@@ -84,6 +108,34 @@ function Row({ title, desc, children }: { title: string; desc?: string; children
   );
 }
 
+/** 通道状态标签：在线 / 未配 key。用现成的 tag，不另造一套。 */
+function State({ on, label }: { on: boolean; label: string }) {
+  return <span className={`q-admin-tag ${on ? 'q-admin-tag--ok' : 'q-admin-tag--muted'}`}>{label}</span>;
+}
+
+/** 今日用量 / 配额。used 为 null 表示接口没读到（迁移没跑），此时不画条，只写「—」。 */
+function Meter({ used, quota }: { used: number | null; quota: number }) {
+  const n = used ?? 0;
+  const pct = quota > 0 ? Math.min(100, Math.round((n / quota) * 100)) : 0;
+  const tone = pct >= 100 ? 'is-full' : pct >= 80 ? 'is-high' : '';
+  return (
+    <div className="q-admin-meter">
+      <span className={`q-admin-meter__bar ${tone}`}>
+        <i style={{ width: `${used === null ? 0 : pct}%` }} />
+      </span>
+      <span className="q-admin-meter__num">
+        {used === null ? '—' : n} / {quota}
+      </span>
+    </div>
+  );
+}
+
+function Ping({ r }: { r?: PingResult }) {
+  if (!r) return null;
+  if (r.ok) return <p className="q-admin-ping is-ok"><b>通</b>{r.ms} ms · {r.model} · {r.detail}</p>;
+  return <p className="q-admin-ping is-bad"><b>不通</b>{r.detail}</p>;
+}
+
 /** 逗号分隔的列表 ↔ 数组。空串表示「不限」，不要写成「空数组 = 全禁」。 */
 const toList = (s: string): string[] =>
   s
@@ -99,6 +151,7 @@ export default function AdminSettings() {
   const [savedAr, setSavedAr] = useState<AutoReply | null>(null);
   const [savedWr, setSavedWr] = useState<Writer | null>(null);
   const [meta, setMeta] = useState<Meta | null>(null);
+  const [ai, setAi] = useState<{ writer: ChannelState; judge: ChannelState } | null>(null);
 
   // 三个列表字段用单独的文本 state：边打逗号边解析会把「a, 」里的空格吃掉，
   // 手感很差。保存时再一次性转成数组。
@@ -108,6 +161,8 @@ export default function AdminSettings() {
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [pinging, setPinging] = useState(false);
+  const [ping, setPing] = useState<{ writer?: PingResult; judge?: PingResult }>({});
   const [err, setErr] = useState('');
   const [toast, setToast] = useState('');
 
@@ -128,6 +183,15 @@ export default function AdminSettings() {
       setErr(e instanceof Error ? e.message : '读取设置失败');
     } finally {
       setLoading(false);
+    }
+
+    // 通道快照单独一条请求：读不到不影响改设置（它是「补充信息」，不是必需品）。
+    // 之所以不复用 /settings：judge 的协议判定在 ai.ts 里，抄一份到 settings 就会有两份真相。
+    try {
+      const s = await api<{ ai: { writer: ChannelState; judge: ChannelState } }>('/status');
+      setAi(s.ai);
+    } catch {
+      setAi(null);
     }
   }, []);
 
@@ -172,14 +236,11 @@ export default function AdminSettings() {
         method: 'PATCH',
         body: JSON.stringify({
           'autoReply.on': nextAr.on ? 'on' : 'off',
-          'autoReply.daily': String(nextAr.daily),
           'autoReply.perGuest': String(nextAr.perGuest),
           'autoReply.scope': nextAr.scope,
           'autoReply.allowPaths': nextAr.allowPaths.join(','),
           'autoReply.blockPaths': nextAr.blockPaths.join(','),
           'autoReply.skipKeywords': nextAr.skipKeywords.join(','),
-          'autoReply.quietFrom': nextAr.quietFrom,
-          'autoReply.quietTo': nextAr.quietTo,
           'writer.model': wr.model.trim(),
           'writer.temperature': String(wr.temperature),
           'writer.maxTokens': String(wr.maxTokens),
@@ -197,6 +258,26 @@ export default function AdminSettings() {
     }
   }
 
+  async function doPing() {
+    setPinging(true);
+    setErr('');
+    try {
+      const d = await api<{ writer: PingResult; judge: PingResult }>('/status/ping', { method: 'POST' });
+      setPing({ writer: d.writer, judge: d.judge });
+      // 探活也记账，顺手把用量条刷新一下
+      try {
+        const s = await api<{ ai: { writer: ChannelState; judge: ChannelState } }>('/status');
+        setAi(s.ai);
+      } catch {
+        /* 刷新失败不影响探活结果 */
+      }
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : '探活失败');
+    } finally {
+      setPinging(false);
+    }
+  }
+
   if (!ready) {
     return (
       <>
@@ -205,6 +286,8 @@ export default function AdminSettings() {
       </>
     );
   }
+
+  const writerModel = wr?.model.trim() || meta?.envModel || 'deepseek-chat';
 
   return (
     <>
@@ -216,7 +299,7 @@ export default function AdminSettings() {
             <h1>设置</h1>
             <p>
               保存即生效，不用重启 Worker
-              {meta?.envModel ? ` · 环境变量里的模型是 ${meta.envModel}` : ''}
+              {meta?.envBase ? ` · 接口 ${meta.envBase}` : ''}
             </p>
           </div>
           <div className="q-admin-stat-actions">
@@ -246,11 +329,14 @@ export default function AdminSettings() {
         {!ar || !wr ? (
           loading ? null : <p className="q-admin-error">{err || '设置读不到'}</p>
         ) : (
-          <div className="q-admin-stat-grid">
+          <>
+            {/* ——— ① 小爱的作息 ——— */}
             <section className="q-admin-panel q-admin-stat">
               <header className="q-admin-stat__head">
-                <h2>小爱的作息</h2>
-                <p>决定她要不要说话、在哪儿说、说多少</p>
+                <div>
+                  <h2>小爱的作息</h2>
+                  <p>决定她要不要说话、在哪儿说、哪些话不接。</p>
+                </div>
               </header>
 
               <div className="q-admin-settings">
@@ -258,22 +344,7 @@ export default function AdminSettings() {
                   <Switch on={ar.on} label="自动回复" onChange={(v) => setAr({ ...ar, on: v })} />
                 </Row>
 
-                <Row title="每天最多" desc="只算自动回复。手动发的回复不占这个额度。">
-                  <div className="q-admin-range" style={{ minWidth: 160 }}>
-                    <input
-                      type="range"
-                      min={0}
-                      max={100}
-                      step={1}
-                      value={ar.daily}
-                      aria-label="每日自动回复上限"
-                      onChange={(e) => setAr({ ...ar, daily: Number(e.target.value) })}
-                    />
-                    <output>{ar.daily}</output>
-                  </div>
-                </Row>
-
-                <Row title="同一访客每天" desc="同一个人一天最多被自动回几次。1 表示只接一句。">
+                <Row title="同一访客每天" desc="同一个人一天最多被自动回几次。1 表示只接一句，0 表示不限。">
                   <div className="q-admin-range" style={{ minWidth: 160 }}>
                     <input
                       type="range"
@@ -284,7 +355,7 @@ export default function AdminSettings() {
                       aria-label="单访客每日上限"
                       onChange={(e) => setAr({ ...ar, perGuest: Number(e.target.value) })}
                     />
-                    <output>{ar.perGuest}</output>
+                    <output>{ar.perGuest === 0 ? '不限' : ar.perGuest}</output>
                   </div>
                 </Row>
 
@@ -333,90 +404,128 @@ export default function AdminSettings() {
                   </p>
                 </div>
 
-                <div className="q-admin-grid2">
-                  <div className="q-admin-field">
-                    <label htmlFor="ar-qf">安静时段起</label>
-                    <input
-                      id="ar-qf"
-                      type="time"
-                      value={ar.quietFrom}
-                      onChange={(e) => setAr({ ...ar, quietFrom: e.target.value })}
-                    />
-                  </div>
-                  <div className="q-admin-field">
-                    <label htmlFor="ar-qt">安静时段止（可跨午夜）</label>
-                    <input
-                      id="ar-qt"
-                      type="time"
-                      value={ar.quietTo}
-                      onChange={(e) => setAr({ ...ar, quietTo: e.target.value })}
-                    />
-                  </div>
+                <div className="q-admin-notice">
+                  <b>不再按天卡总量：</b>
+                  回多少条由「单访客额度」和 judge 判断决定，没有每日总上限、也没有夜间闭嘴时段。
+                  真被刷时先撑住的是 AI 每日配额（每通道 300 次），额度用满会自动停手。
                 </div>
-                <p className="q-admin-hint" style={{ margin: 0 }}>
-                  例：22:00 → 08:00 表示这段时间她说「明天见」。两端留空或填相同时间表示不设。
-                </p>
               </div>
             </section>
 
+            {/* ——— ② 模型设置 ——— */}
             <section className="q-admin-panel q-admin-stat">
               <header className="q-admin-stat__head">
-                <h2>生成参数</h2>
-                <p>只影响 writer（起草与润色）</p>
+                <div>
+                  <h2>模型设置</h2>
+                  <p>writer 说话，judge 判断。两条通道各自计配额，互不影响。</p>
+                </div>
+                <button
+                  className="q-admin-btn q-admin-btn--ghost q-admin-btn--sm"
+                  type="button"
+                  onClick={() => void doPing()}
+                  disabled={pinging}
+                >
+                  {pinging ? '正在打两条通道…' : '测一下'}
+                </button>
               </header>
 
-              <div className="q-admin-settings">
-                <div className="q-admin-field">
-                  <label htmlFor="wr-model">模型</label>
-                  <input
-                    id="wr-model"
-                    value={wr.model}
-                    onChange={(e) => setWr({ ...wr, model: e.target.value })}
-                    placeholder={meta?.envModel || 'deepseek-chat'}
-                  />
-                  <p className="q-admin-hint" style={{ margin: '6px 0 0' }}>
-                    留空 = 用环境变量里的模型。换成便宜的小模型可以直接填名字，地址不用动。
+              <div className="q-admin-channels">
+                {/* —— writer —— */}
+                <article className="q-admin-channel">
+                  <div className="q-admin-channel__title">
+                    <b>writer · 起草与润色</b>
+                    <State
+                      on={ai ? ai.writer.on : Boolean(meta?.envHasWriter)}
+                      label={ai && !ai.writer.on ? `未配 ${ai.writer.missing ?? 'key'}` : '在线'}
+                    />
+                  </div>
+                  <p className="q-admin-channel__model">
+                    {writerModel}
+                    {wr.model.trim() ? <em>本页指定</em> : <em>跟随环境变量</em>}
                   </p>
-                </div>
+                  <Meter used={ai?.writer.used ?? null} quota={ai?.writer.quota ?? 300} />
 
-                <Row title="温度" desc="越高越发散。0.8 左右像人在说话；调到 0.3 会变得一板一眼。">
-                  <div className="q-admin-range" style={{ minWidth: 180 }}>
+                  <div className="q-admin-field" style={{ marginTop: 12 }}>
+                    <label htmlFor="wr-model">模型名</label>
                     <input
-                      type="range"
-                      min={0}
-                      max={1.5}
-                      step={0.05}
-                      value={wr.temperature}
-                      aria-label="生成温度"
-                      onChange={(e) => setWr({ ...wr, temperature: Number(e.target.value) })}
+                      id="wr-model"
+                      value={wr.model}
+                      onChange={(e) => setWr({ ...wr, model: e.target.value })}
+                      placeholder={meta?.envModel || 'deepseek-chat'}
                     />
-                    <output>{wr.temperature.toFixed(2)}</output>
+                    <p className="q-admin-hint" style={{ margin: '6px 0 0' }}>
+                      留空 = 用环境变量里的模型（{meta?.envModel || 'deepseek-chat'}）。只改名字不改地址，
+                      所以换服务商要先改 AI_BASE_URL。别填推理模型 —— 它们把正文写在另一个字段里，回出来会是空的。
+                    </p>
                   </div>
-                </Row>
 
-                <Row title="最大长度" desc="单位 token。400 大约够两三句中文，回复本来就该短。">
-                  <div className="q-admin-range" style={{ minWidth: 180 }}>
-                    <input
-                      type="range"
-                      min={80}
-                      max={1000}
-                      step={20}
-                      value={wr.maxTokens}
-                      aria-label="最大生成长度"
-                      onChange={(e) => setWr({ ...wr, maxTokens: Number(e.target.value) })}
+                  <Row title="温度" desc="越高越发散。0.8 左右像人在说话；0.3 会一板一眼。">
+                    <div className="q-admin-range" style={{ minWidth: 150 }}>
+                      <input
+                        type="range"
+                        min={0}
+                        max={1.5}
+                        step={0.05}
+                        value={wr.temperature}
+                        aria-label="生成温度"
+                        onChange={(e) => setWr({ ...wr, temperature: Number(e.target.value) })}
+                      />
+                      <output>{wr.temperature.toFixed(2)}</output>
+                    </div>
+                  </Row>
+
+                  <Row title="最大长度" desc="单位 token。400 够两三句中文，回复本来就该短。">
+                    <div className="q-admin-range" style={{ minWidth: 150 }}>
+                      <input
+                        type="range"
+                        min={80}
+                        max={1000}
+                        step={20}
+                        value={wr.maxTokens}
+                        aria-label="最大生成长度"
+                        onChange={(e) => setWr({ ...wr, maxTokens: Number(e.target.value) })}
+                      />
+                      <output>{wr.maxTokens}</output>
+                    </div>
+                  </Row>
+
+                  <Ping r={ping.writer} />
+                </article>
+
+                {/* —— judge —— */}
+                <article className={`q-admin-channel${ai && !ai.judge.on ? ' is-off' : ''}`}>
+                  <div className="q-admin-channel__title">
+                    <b>judge · 判定</b>
+                    <State
+                      on={ai ? ai.judge.on : Boolean(meta?.envHasJudge)}
+                      label={ai && !ai.judge.on ? `未配 ${ai.judge.missing ?? 'key'}` : '在线'}
                     />
-                    <output>{wr.maxTokens}</output>
                   </div>
-                </Row>
+                  <p className="q-admin-channel__model">
+                    {ai?.judge.model || '—'}
+                    <em>{ai?.judge.provider === 'jev' ? '决策协议' : 'OpenAI 兼容'}</em>
+                  </p>
+                  <Meter used={ai?.judge.used ?? null} quota={ai?.judge.quota ?? 300} />
 
-                <div className="q-admin-notice">
-                  <b>两件事改不了：</b>
-                  接口地址（AI_BASE_URL）与 key 仍在环境变量里。key 属于凭据，不该从网页改；
-                  地址换了通常意味着换了服务商，值得重启一次 Worker 确认。
-                </div>
+                  <div className="q-admin-channel__hint">
+                    judge 不写字，只回一个判断，所以它的温度、长度都由代码定死，没有可调项。
+                    <br />
+                    模型与地址在环境变量里（AI_JUDGE_MODEL / AI_JUDGE_BASE_URL）—— 换判定模型要重新调提示词，
+                    随手在网页上改反而会让判定静默失败，所以这一格只读。
+                    <br />
+                    拦哪几类、多少分才动手，在<a className="q-admin-head__link" href="/admin/review">评论审核</a>页。
+                  </div>
+
+                  <Ping r={ping.judge} />
+                </article>
               </div>
+
+              <p className="q-admin-stat__foot">
+                探活会真发一次请求（writer 约 30 token，judge 输出不计费），各受每日配额约束。
+                key 属于凭据，不放在网页上改 —— 它还在 worker/.dev.vars 里。
+              </p>
             </section>
-          </div>
+          </>
         )}
       </main>
     </>

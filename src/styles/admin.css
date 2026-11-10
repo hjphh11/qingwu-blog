@@ -1837,6 +1837,13 @@ html.q-route-done .q-admin-route i {
   line-height: 1.6;
   color: var(--color-ink);
 }
+/* dd 里的补充说明：第二行小字，不跟主值抢注意力 */
+.q-admin-gates__note {
+  display: block;
+  margin-top: 2px;
+  font-size: 11px;
+  color: var(--color-subtle);
+}
 
 /* —— 指标格 —— */
 .q-admin-kpis {
@@ -2567,11 +2574,24 @@ html.q-route-done .q-admin-route i {
 .q-bars__col > span {
   position: absolute;
   bottom: 0;
+  left: 50%;
+  transform: translateX(-50%);
   font-size: 9.5px;
   line-height: 14px;
   color: var(--color-subtle);
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
+}
+/* 首末两格的标签往里收：居中会让它们各有一半落在绘图区外，
+   面板有圆角裁切，于是最后一个「11/10」总被切掉半个字。 */
+.q-bars__col:first-child > span {
+  left: 0;
+  transform: none;
+}
+.q-bars__col:last-child > span {
+  left: auto;
+  right: 0;
+  transform: none;
 }
 
 /* 横条榜：名称 / 条 / 数值 / 占比 */
@@ -2627,6 +2647,187 @@ html.q-route-done .q-admin-route i {
   font-size: 11px;
   color: var(--color-subtle);
   font-variant-numeric: tabular-nums;
+}
+/* 页面榜的 01 / 02 —— 只占 1.6em，别把长路径挤没 */
+.q-rank__i {
+  flex: 0 0 auto;
+  width: 1.6em;
+  font-size: 10.5px;
+  color: var(--color-subtle);
+  font-variant-numeric: tabular-nums;
+}
+.q-rank--numbered .q-rank__name {
+  max-width: 44%;
+}
+
+/* —— 累计与今日（与区间无关的四个数）—— */
+.q-sum {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 10px;
+  margin: 0 0 14px;
+}
+.q-sum__cell {
+  padding: 14px 16px;
+  border: 1px solid var(--qa-line);
+  border-radius: 12px;
+  background: var(--qa-card);
+}
+.q-sum__cell > span {
+  display: block;
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  color: var(--color-subtle);
+}
+.q-sum__cell > b {
+  display: block;
+  margin-top: 4px;
+  font-family: var(--font-display);
+  font-size: 26px;
+  font-weight: 400;
+  line-height: 1.1;
+  color: var(--color-ink);
+  font-variant-numeric: tabular-nums;
+}
+.q-sum__cell > em {
+  display: block;
+  margin-top: 2px;
+  font-style: normal;
+  font-size: 11px;
+  color: var(--color-subtle);
+}
+/* 「12/14」里的分母：主数字里嵌一个 span，得盖掉 .q-admin-kpi span 的 display:block */
+.q-admin-kpi b .q-admin-kpi__slash {
+  display: inline;
+  margin-left: 2px;
+  font-size: 14px;
+  color: var(--color-subtle);
+}
+
+/* —— 7×24 活跃热力 —— */
+.q-heat {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  margin-top: 8px;
+}
+/* flex 子项默认 min-width:auto，而这里的内容是 24 列网格 ——
+   不给 0 的话它在 390 下会按内容宽度撑开、被面板裁掉右边几列。 */
+.q-heat > * {
+  min-width: 0;
+}
+.q-heat__axis,
+.q-heat__row {
+  display: grid;
+  width: 100%;
+  grid-template-columns: 2.6em repeat(24, minmax(0, 1fr));
+  gap: 3px;
+  align-items: center;
+}
+.q-heat__axis i {
+  font-size: 9.5px;
+  font-style: normal;
+  text-align: center;
+  color: var(--color-subtle);
+}
+.q-heat__day {
+  font-size: 10.5px;
+  color: var(--color-subtle);
+  white-space: nowrap;
+}
+.q-heat__cell {
+  display: block;
+  height: 18px;
+  border-radius: 3px;
+  background: rgba(17, 17, 17, 0.05);
+  transition: background-color var(--dur-move) var(--ease-soft);
+}
+.q-heat__cell.is-1 {
+  background: rgba(17, 17, 17, 0.13);
+}
+.q-heat__cell.is-2 {
+  background: rgba(17, 17, 17, 0.26);
+}
+.q-heat__cell.is-3 {
+  background: rgba(17, 17, 17, 0.45);
+}
+.q-heat__cell.is-4 {
+  background: rgba(17, 17, 17, 0.74);
+}
+.q-heat__legend {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 12px;
+  font-size: 10.5px;
+  color: var(--color-subtle);
+}
+.q-heat__legend .q-heat__cell {
+  width: 10px;
+  height: 10px;
+}
+.q-heat__notes {
+  margin-top: 14px;
+}
+
+/* —— 来源三分 —— */
+.q-src {
+  margin-top: 8px;
+}
+.q-src__bar {
+  display: flex;
+  height: 8px;
+  border-radius: 999px;
+  overflow: hidden;
+  background: rgba(17, 17, 17, 0.06);
+}
+.q-src__bar i {
+  display: block;
+  height: 100%;
+  transition: width var(--dur-move) var(--ease-soft);
+}
+.q-src .is-direct {
+  background: rgba(17, 17, 17, 0.82);
+}
+.q-src .is-search {
+  background: rgba(17, 17, 17, 0.44);
+}
+.q-src .is-external {
+  background: rgba(17, 17, 17, 0.2);
+}
+.q-src__list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 14px;
+  margin: 12px 0 16px;
+  padding: 0;
+  list-style: none;
+}
+.q-src__list li {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11.5px;
+  color: var(--color-muted);
+}
+.q-src__list li > i {
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+}
+.q-src__list li > b {
+  color: var(--color-ink);
+  font-variant-numeric: tabular-nums;
+}
+.q-src__list li > em {
+  font-style: normal;
+  color: var(--color-subtle);
+  font-variant-numeric: tabular-nums;
+}
+@media (max-width: 760px) {
+  .q-heat__cell {
+    height: 12px;
+  }
 }
 
 /* 拦截记录表格里的正文摘要：两行就够，多了整张表没法扫 */
@@ -2717,6 +2918,10 @@ html.q-route-done .q-admin-route i {
 }
 .q-skel--half {
   height: 208px;
+}
+/* 热力图那块比半屏矮，骨架也别拉成整屏 */
+.q-skel--heat {
+  height: 200px;
 }
 @keyframes q-admin-shimmer {
   from {

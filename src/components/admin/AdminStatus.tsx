@@ -50,14 +50,11 @@ interface Status {
   ai: { writer: ChannelState; judge: ChannelState };
   autoReply: {
     on: boolean;
-    daily: number;
     perGuest: number;
     scope: 'top' | 'all';
     allowPaths: string[];
     blockPaths: string[];
     skipKeywords: string[];
-    quietFrom: string;
-    quietTo: string;
     today: { replied: number; skipped: number; blocked: number; failed: number };
     days: { day: string; replied: number; skipped: number; blocked: number; failed: number }[];
     log: {
@@ -396,7 +393,7 @@ export default function AdminStatus() {
               <header className="q-admin-stat__head">
                 <div>
                   <h2>小爱自动回复</h2>
-                  <p>访客一留言她就回一句。无人值守，所以有六道闸。</p>
+                  <p>访客一留言她就回一句。无人值守，所以有五道闸。</p>
                 </div>
                 {s.autoReply.on ? <Pill tone="ok">开着</Pill> : <Pill tone="warn">已关闭</Pill>}
               </header>
@@ -407,9 +404,10 @@ export default function AdminStatus() {
                   <dd>{s.autoReply.on ? '开着' : '关着，只剩后台手动起草'}</dd>
                 </div>
                 <div>
-                  <dt>今日总量</dt>
+                  <dt>今日已回</dt>
                   <dd>
-                    {s.autoReply.today.replied} / {s.autoReply.daily}
+                    {s.autoReply.today.replied} 条
+                    <span className="q-admin-gates__note">不限量，只受 AI 每日配额约束</span>
                   </dd>
                 </div>
                 <div>
@@ -430,14 +428,11 @@ export default function AdminStatus() {
                   </dd>
                 </div>
                 <div>
-                  <dt>安静时段</dt>
+                  <dt>跳过关键词</dt>
                   <dd>
-                    {s.autoReply.quietFrom && s.autoReply.quietFrom !== s.autoReply.quietTo
-                      ? `${s.autoReply.quietFrom} – ${s.autoReply.quietTo}`
-                      : '没设'}
                     {s.autoReply.skipKeywords.length
-                      ? ` · 跳过 ${s.autoReply.skipKeywords.length} 个关键词`
-                      : ''}
+                      ? `${s.autoReply.skipKeywords.length} 个：${s.autoReply.skipKeywords.join('、')}`
+                      : '没设'}
                   </dd>
                 </div>
                 <div>

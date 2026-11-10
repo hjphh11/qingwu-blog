@@ -19,8 +19,10 @@
 //
 // 例外是文件末尾的 `autoReplyTo()`：访客留言后小爱自动回话。这是站长明确开启的
 // 无人值守模式，要求她当场说话，所以它确实会写 comments 表。为了不让它失控，
-// 那条路自带六道闸（总开关与安静时段 / 路径 / 跳过关键词 / 回复范围 /
-// 每日总量与单访客 / judge 先判垃圾），并且每一笔都落 `auto_reply_log` 可追溯。
+// 那条路自带五道闸（总开关 / 路径 / 跳过关键词 / 回复范围 / 单访客额度 + judge 先判垃圾），
+// 并且每一笔都落 `auto_reply_log` 可追溯。
+// 2026-11-10 晚收窄成五道：站长要求去掉「每日总量上限」与「安静时段」——
+// 现在按人不按天，花费靠 `AI_DAILY_LIMIT` 的通道配额兜底（那条在 quotaGate，别删）。
 // 改那段代码前先看那段注释。
 //
 // —— 配置（都是可选，没配 = 该通道关闭，前端自动隐藏按钮）——
@@ -40,7 +42,6 @@ import {
   VERDICTS,
   VERDICT_DESC,
   autoReplyPathAllowed,
-  inQuietHours,
   loadSettings,
   skipKeywordOf,
   type Settings,
@@ -737,26 +738,20 @@ export async function aiSnapshot(env: Env): Promise<AiSnapshot> {
  */
 export async function autoReplyConfig(env: Env): Promise<{
   on: boolean;
-  daily: number;
   perGuest: number;
   scope: 'top' | 'all';
   allowPaths: string[];
   blockPaths: string[];
   skipKeywords: string[];
-  quietFrom: string;
-  quietTo: string;
 }> {
   const s = (await loadSettings(env)).autoReply;
   return {
     on: s.on,
-    daily: s.daily,
     perGuest: s.perGuest,
     scope: s.scope,
     allowPaths: s.allowPaths,
     blockPaths: s.blockPaths,
     skipKeywords: s.skipKeywords,
-    quietFrom: s.quietFrom,
-    quietTo: s.quietTo,
   };
 }
 
@@ -1247,9 +1242,6 @@ export async function autoReplyTo(env: Env, commentId: number): Promise<void> {
   const ar = settings.autoReply;
   if (!ar.on) return;
 
-  // 安静时段（支持跨午夜）：这段时间不主动开口，留言照常收着，等人来看
-  if (inQuietHours(settings)) return;
-
   const writer = cfgOf(env, 'writer');
   if (!writer) return; // 没配 key：静默，不留任何痕迹
   // 后台指定了模型就用它 —— 换更便宜的小模型时不必登服务器改环境变量
@@ -1295,7 +1287,10 @@ export async function autoReplyTo(env: Env, commentId: number): Promise<void> {
     /* 读不到就往下走，靠 auto_reply_log 兜 */
   }
 
-  // —— 闸门 ②③ ——
+  // —— 闸门 ②：单访客额度 + 幂等 ——
+  // 2026-11-10 晚起不再有「每日总量」这一档：站长要求不设日上限。
+  // 花费的硬闸仍在 quotaGate（AI_DAILY_LIMIT，默认 300 次/通道/天），
+  // 那是防 key 被刷的底线，和运营口径无关，别一起删。
   // 新表不存在（迁移没跑）时整段跳过，宁可当「没有限额」也不让功能整挂
   let gateOpen = true;
   try {
@@ -1304,18 +1299,7 @@ export async function autoReplyTo(env: Env, commentId: number): Promise<void> {
       .first<{ x: number }>();
     if (seen) return;
 
-    const total = await env.DB.prepare(
-      "SELECT COUNT(*) AS n FROM auto_reply_log WHERE day = ? AND action = 'replied'",
-    )
-      .bind(day)
-      .first<{ n: number }>();
-    const limit = ar.daily;
-    if ((total?.n ?? 0) >= limit) {
-      gateOpen = false;
-      await logAuto(env, { commentId, day, action: 'skipped', note: `daily_limit:${limit}` });
-    }
-
-    if (gateOpen && root.ip_hash) {
+    if (root.ip_hash) {
       const mine = await env.DB.prepare(
         "SELECT COUNT(*) AS n FROM auto_reply_log WHERE day = ? AND guest_hash = ? AND action = 'replied'",
       )

@@ -369,3 +369,83 @@ P0+P1 是最小可用后台（能审评论了，这是当前最大痛点：只�
   明写在警告框里 —— **静默的 0 比报错更难查**。
 - `astro check` 会对 `worker/**` 报一堆隐式 any / `ExecutionContext` 找不到，是已知的
   （worker 有独立 tsconfig）。看错误只数 `^src/` 开头的行，worker 用 `cd worker && npx tsc --noEmit`。
+
+## 十三、第五轮：去掉两个限额、补模型设置、统计照别人家的信息架构（2026-11-10 深夜）
+
+站长看完统计页截图，一句话三条：
+
+> 这个不用限制，这个也不要，然后模型设置呢。然后统计你去看一下别人怎么做的统计什么用什么
+> `https://rainzt.cn/analytics/`
+
+### 1. 「每天最多」与「安静时段」都删了
+
+截图圈的是设置页两个可调项：`autoReply.daily`（每日总上限滑块）与
+`quietFrom/quietTo`（安静时段两个 time 输入）。**不是隐藏，是删掉** ——
+没有入口的开关留着就是一段永远不会生效、却要一直维护的代码。
+
+改动面（一处都不能漏，否则库里躺着一堆没人认的值）：
+
+| 位置 | 改了什么 |
+|---|---|
+| `admin/settings.ts` | `Settings` 去掉三个字段、`DEFAULTS`、`parseSettings`、`flatten`、删 `bjMinutes`/`inQuietHours`/`timeOf` |
+| `admin/ai.ts` | `autoReplyTo` 删安静时段闸与每日总量那一次 `COUNT`；`autoReplyConfig` 不再回这三个键；顶部「六道闸」改五道 |
+| `admin/status.ts` | 只是 spread，自动跟着变 |
+| `AdminStatus.tsx` | 「今日总量 45 / 20」→「今日已回 45 条（不限量）」；「安静时段」那格换成「跳过关键词」 |
+| `migrations/0021_reply_no_limits.sql` | `DELETE FROM admin_settings WHERE key IN (...)` |
+| `wrangler.toml` / `types.ts` | 删 `AUTO_REPLY_DAILY` |
+
+**花费保护没有被一起删掉。** `ai.ts` 的 `quotaGate` 仍按 `AI_DAILY_LIMIT`
+（默认 300 次/通道/天）卡上游调用 —— 那是防 key 被刷的底线，和「每天最多回几条」这种
+运营口径不是一回事。单访客额度（`perGuest`）也保留：它防的是同一个人反复触发。
+
+### 2. 「模型设置呢」→ 设置页第二块重做成两条通道
+
+以前只有一格「模型」输入，藏在「生成参数」里，页面上根本看不出这台站用什么模型。
+现在按通道摊开：`writer`（起草）与 `judge`（判定）各一张卡，写清楚
+
+- 当前生效的模型名 + 它是「本页指定」还是「跟随环境变量」
+- 今日用量 / 配额（进度条，≥80% 转黄、满转红）
+- 协议（judge 会标「决策协议」还是「OpenAI 兼容」）
+- 「测一下」按钮直接打 `POST /admin/status/ping`，两条通道各自出结果
+
+可改的仍然只有 `writer.model` / `temperature` / `maxTokens`。
+**judge 的模型与地址故意只读**：换判定模型必须重新调提示词，随手在网页上改会让判定
+静默失败（fail-open 之后就是「全都不拦」）。同理 key 也不上网页 —— 它还在 `.dev.vars`。
+
+通道快照走单独的 `GET /admin/status`，不塞进 `/settings`：judge 的协议判定在 `ai.ts`
+的 `judgeTargetOf`，抄一份进 `settings.ts` 等于两份真相。读不到就只是少这块信息，不影响改设置。
+
+### 3. 统计页照参照站重排（学信息架构，不学皮肤）
+
+看了 `rainzt.cn/analytics/` 的模块清单，值得抄的是**顺序与维度**：
+
+| 他家 | 我们 | 说明 |
+|---|---|---|
+| 四张摘要卡（累计访客/浏览、今日访客/浏览） | `SummaryStrip` | 与区间无关，标清楚「开站以来」 |
+| 访问脉冲（7/30/90 天 + 环比 + 活跃天数 + 单日峰值） | 访问脉冲面板 | 区间 7/14/30；四个数挪到图下面 |
+| 大家在看什么（带 01/02 序号） | 页面榜加 `.q-rank__i` | 序号比纯横条更容易念「第一名是谁」 |
+| 流量来源（直接/搜索/外部 + 明细） | `SourceSplit` + 主机榜 | 以前把 direct 过滤掉了，占比分母却是总 PV |
+| 访客活跃时间（7×24 热力 + 最活跃时段/星期/夜间占比） | `HeatMap` | **替掉了原来「一天 24 根柱子」**，周中与周末的作息本来就不同 |
+| 设备与浏览器 | 只有设备 | `hits` 没有 browser 列，加字段也补不回历史 |
+| 访客地域 TOP5 | 地区榜 | 已有 |
+| 推送节奏（GitHub commit 热力） | 不做 | 我们没有可公开的推送源，更新日志在 `/changelog` |
+| 最近评论 | 不做 | 收件箱里就是 |
+
+后端 `GET /admin/stats` 因此多了三样：`summary`（allTime / today / activeDays / peak）、
+`heat`（扁平 168 项，索引 `w * 24 + h`，`w` 已从 `%w` 的 0=周日 挪成 0=周一）、
+`sources`（direct / search / external）。
+
+**UV 有两个口径，页面上必须说明**：顶部「累计访客」是 `COUNT(DISTINCT visitor)` 全站去重；
+「本周期访客」是每天 UV 相加，同一人跨天会重复计。所以后者比前者大是正常的 ——
+不写这句，下次一定有人来问「为什么 14 天访客比累计还多」。
+
+### 4. 这一轮的三个小坑
+
+- **flex 子项默认 `min-width: auto`**：热力图是 24 列 grid 装在 flex 列里，390 宽时
+  它按内容宽度撑开、被面板圆角裁掉右边两列。加 `.q-heat > * { min-width: 0 }` 才对。
+  同类问题柱状图也有 —— 那里的成因是首末标签 `left: 50%` 居中后各有一半落在盒子外。
+- **`referrer` 里空串、NULL、`(direct)` 是三种写法**，`GROUP BY` 出来会是多行同义的
+  「直接访问」，而 `sources` 又把它们加在一起，两处数字对不上。查询里统一成
+  `COALESCE(NULLIF(referrer, ''), '(direct)') AS k`。
+- **`hits` 里没有浏览器列**，所以「设备与浏览器」只做了前半。要补就得动 `0001` 之后的
+  schema 与 `/hit` 写入，而且历史数据仍然是空的 —— 这一轮不值得。

@@ -49,7 +49,6 @@ export const VERDICT_DESC: Record<VerdictKey | 'ok', string> = {
 export interface Settings {
   autoReply: {
     on: boolean;
-    daily: number;
     perGuest: number;
     /** top = 只回顶层；all = 楼中楼也回 */
     scope: 'top' | 'all';
@@ -59,9 +58,10 @@ export interface Settings {
     blockPaths: string[];
     /** 正文命中的关键词，命中就跳过（逗号分隔，不区分大小写） */
     skipKeywords: string[];
-    /** 安静时段，支持跨午夜（22:00 → 08:00）。空 = 不设 */
-    quietFrom: string;
-    quietTo: string;
+    // 2026-11-10 晚删掉两项：`daily`（每日总上限）与 `quietFrom/quietTo`（安静时段）。
+    // 站长原话「这个不用限制」「这个也不要」—— 小爱该不该说话由单访客额度与 judge 判，
+    // 不再按天卡总量、也不再按时段闭嘴。花费的硬闸在 ai.ts 的每日配额（AI_DAILY_LIMIT），
+    // 那道闸跟运营口径无关，不能一起删。
   };
   writer: {
     /** 空 = 用 env.AI_MODEL */
@@ -80,14 +80,11 @@ export interface Settings {
 export const DEFAULTS: Settings = {
   autoReply: {
     on: true,
-    daily: 20,
     perGuest: 1,
     scope: 'top',
     allowPaths: [],
     blockPaths: [],
     skipKeywords: [],
-    quietFrom: '',
-    quietTo: '',
   },
   writer: { model: '', temperature: 0.8, maxTokens: 400 },
   judge: { categories: [...VERDICTS], threshold: 60 },
@@ -131,13 +128,6 @@ function listOf(v: string | undefined): string[] {
     .slice(0, 50);
 }
 
-/** `HH:MM`，24 小时制。空串合法（表示不设）。 */
-function timeOf(v: string | undefined): string {
-  const s = str(v);
-  if (!s) return '';
-  return /^([01]\d|2[0-3]):[0-5]\d$/.test(s) ? s : '';
-}
-
 function categoriesOf(v: string | undefined, fallback: VerdictKey[]): VerdictKey[] {
   if (v == null) return fallback;
   const picked = listOf(v).filter((k): k is VerdictKey => (VERDICTS as readonly string[]).includes(k));
@@ -158,10 +148,6 @@ export function parseSettings(rows: Record<string, string>, env: Env): Settings 
     autoReply: {
       // 总开关的特例：库里没写过这一项时，仍然认 env 的老开关（AUTO_REPLY=off）
       on: g('autoReply.on') == null ? autoReplyEnvOn(env) : boolOf(g('autoReply.on'), DEFAULTS.autoReply.on),
-      daily:
-        g('autoReply.daily') == null
-          ? intOf(str(env.AUTO_REPLY_DAILY), DEFAULTS.autoReply.daily, 0, 500)
-          : intOf(g('autoReply.daily'), DEFAULTS.autoReply.daily, 0, 500),
       perGuest:
         g('autoReply.perGuest') == null
           ? intOf(str(env.AUTO_REPLY_PER_GUEST), DEFAULTS.autoReply.perGuest, 0, 50)
@@ -170,8 +156,6 @@ export function parseSettings(rows: Record<string, string>, env: Env): Settings 
       allowPaths: listOf(g('autoReply.allowPaths')),
       blockPaths: listOf(g('autoReply.blockPaths')),
       skipKeywords: listOf(g('autoReply.skipKeywords')),
-      quietFrom: timeOf(g('autoReply.quietFrom')),
-      quietTo: timeOf(g('autoReply.quietTo')),
     },
     writer: {
       model: str(g('writer.model')),
@@ -208,14 +192,11 @@ export async function loadSettings(env: Env): Promise<Settings> {
 export function flatten(s: Settings): Record<string, string> {
   return {
     'autoReply.on': s.autoReply.on ? 'on' : 'off',
-    'autoReply.daily': String(s.autoReply.daily),
     'autoReply.perGuest': String(s.autoReply.perGuest),
     'autoReply.scope': s.autoReply.scope,
     'autoReply.allowPaths': s.autoReply.allowPaths.join(','),
     'autoReply.blockPaths': s.autoReply.blockPaths.join(','),
     'autoReply.skipKeywords': s.autoReply.skipKeywords.join(','),
-    'autoReply.quietFrom': s.autoReply.quietFrom,
-    'autoReply.quietTo': s.autoReply.quietTo,
     'writer.model': s.writer.model,
     'writer.temperature': String(s.writer.temperature),
     'writer.maxTokens': String(s.writer.maxTokens),
@@ -266,34 +247,11 @@ export async function saveSettings(
 }
 
 // ——————————————————————————————————————————————————————————
-// 时间与路径判定（纯函数，给 ai.ts / friends-board.ts 用）
+// 路径与关键词判定（纯函数，给 ai.ts 用）
+//
+// 这里原本还有 `bjMinutes` / `inQuietHours`（安静时段）。2026-11-10 晚随设置项一起删掉 ——
+// 没有入口的开关留着就是一段永远不会生效、却要一直维护的代码。
 // ——————————————————————————————————————————————————————————
-
-/** 北京时间（固定 +8，与 util.dayKey 同一口径）的分钟数。 */
-export function bjMinutes(now = Date.now()): number {
-  const d = new Date(now + 8 * 3_600_000);
-  return d.getUTCHours() * 60 + d.getUTCMinutes();
-}
-
-function toMin(hhmm: string): number {
-  const [h, m] = hhmm.split(':').map((x) => Number.parseInt(x, 10));
-  return h * 60 + m;
-}
-
-/**
- * 是否处在安静时段。支持跨午夜（22:00 → 08:00）。
- *
- * 起止任一为空 = 不设；两个相同 = 不设（否则就成了「全天安静」，填错一次
- * 会让小爱再也不说话，太容易踩）。
- */
-export function inQuietHours(s: Settings, now = Date.now()): boolean {
-  const { quietFrom: a, quietTo: b } = s.autoReply;
-  if (!a || !b || a === b) return false;
-  const t = bjMinutes(now);
-  const from = toMin(a);
-  const to = toMin(b);
-  return from < to ? t >= from && t < to : t >= from || t < to;
-}
 
 /** 路径是否命中一条规则。以 `/` 结尾的按前缀比，其余按整段比，避免 `/friends` 误吃 `/friendship`。 */
 function hitsPath(path: string, rule: string): boolean {
