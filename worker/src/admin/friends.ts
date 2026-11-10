@@ -24,9 +24,17 @@ const UA = 'qingwu-admin/1.0 (+https://www.qingwu.ink)';
 /** 本站域名。回链检查只认它，不带协议头也算（对方写成 qingwu.ink 一样算给了链接）。 */
 const SELF_HOST = 'qingwu.ink';
 
-/** 抓取对方站点时的超时与体积上限 —— 有的站首页几十 MB，不能整个读进来。 */
+/** 抓取对方站点时的超时。有的站首页几十 MB，不能整个读进来。 */
 const CRAWL_TIMEOUT_MS = 8_000;
-const CRAWL_MAX_BYTES = 400_000;
+/**
+ * 单页读取上限。原来是 400KB，结果被 rainzt.cn 打了脸 ——
+ * 那个站首页 983KB（Astro 主题内联了一大堆东西），友链列表在 400KB 之后，
+ * 于是「有回链」被判成「没找到」。
+ *
+ * 所以改成流式读取：边读边找，命中就停（多数页面几百毫秒就结束），
+ * 没命中才一直读到这个上限。2MB 足够覆盖绝大多数博客首页。
+ */
+const CRAWL_MAX_BYTES = 2_000_000;
 /** 首页没找到回链时，最多再看几个「友链页」候选。 */
 const MAX_CANDIDATE_PAGES = 2;
 
@@ -185,10 +193,19 @@ interface CrawlResult {
   ok: boolean;
   status: number;
   text: string;
+  /** 是否在这段内容里找到了目标串（通常是 qingwu.ink） */
+  found: boolean;
   error?: string;
 }
 
-async function crawl(url: string): Promise<CrawlResult> {
+/**
+ * 流式抓取：一边读一边找 needle，找到就先取消读取。
+ *
+ * 不用 `await res.text()` 再 includes 的原因见 CRAWL_MAX_BYTES 的注释 ——
+ * 大页面上的回链往往在末尾，先截断再搜索等于必然漏判。
+ */
+async function crawl(url: string, needle: string): Promise<CrawlResult> {
+  const lowerNeedle = needle.toLowerCase();
   try {
     const res = await fetch(url, {
       redirect: 'follow',
@@ -198,14 +215,37 @@ async function crawl(url: string): Promise<CrawlResult> {
         accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
       },
     });
-    if (!res.ok) return { ok: false, status: res.status, text: '', error: `HTTP ${res.status}` };
-    const buf = await res.arrayBuffer();
-    // 默认解码器遇到坏字节会替换成 U+FFFD 而不是抛错 —— 对方站点编码写错也不该让整次检查失败
-    const text = new TextDecoder('utf-8').decode(buf.slice(0, CRAWL_MAX_BYTES));
-    return { ok: true, status: res.status, text };
+    if (!res.ok) return { ok: false, status: res.status, text: '', found: false, error: `HTTP ${res.status}` };
+
+    const reader = res.body?.getReader();
+    if (!reader) {
+      const text = await res.text();
+      return { ok: true, status: res.status, text, found: text.toLowerCase().includes(lowerNeedle) };
+    }
+
+    const decoder = new TextDecoder('utf-8');
+    let text = '';
+    let bytes = 0;
+    let found = false;
+
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      bytes += value.byteLength;
+      text += decoder.decode(value, { stream: true });
+      if (text.toLowerCase().includes(lowerNeedle)) {
+        found = true;
+        break;
+      }
+      if (bytes >= CRAWL_MAX_BYTES) break;
+    }
+    // 命中或到上限都要主动放开连接，否则 fetch 会一直挂着直到超时
+    await reader.cancel().catch(() => {});
+
+    return { ok: true, status: res.status, text, found };
   } catch (err) {
     const name = err instanceof Error ? err.name : 'fetch_failed';
-    return { ok: false, status: 0, text: '', error: name === 'TimeoutError' ? '超时' : name };
+    return { ok: false, status: 0, text: '', found: false, error: name === 'TimeoutError' ? '超时' : name };
   }
 }
 
@@ -246,22 +286,22 @@ async function checkOne(rawUrl: string, name: string): Promise<OneCheck> {
   const target = base || rawUrl;
   const result: OneCheck = { url: base || rawUrl, name, ok: false, status: 0, matched: null, error: null };
 
-  const first = await crawl(target);
+  const first = await crawl(target, SELF_HOST);
   result.status = first.status;
   if (!first.ok) {
     result.error = first.error ?? '抓取失败';
     return result;
   }
-  if (first.text.toLowerCase().includes(SELF_HOST)) {
+  if (first.found) {
     result.ok = true;
     result.matched = target;
     return result;
   }
 
-  // 首页没找到 → 再看友链页。常见情况：对方把友链单独挂在 /links。
+  // 首页没找到 → 再看友链页。常见情况：对方把友链单独挂在 /links 或 /friends。
   for (const page of pickLinkPages(first.text, target)) {
-    const sub = await crawl(page);
-    if (sub.ok && sub.text.toLowerCase().includes(SELF_HOST)) {
+    const sub = await crawl(page, SELF_HOST);
+    if (sub.ok && sub.found) {
       result.ok = true;
       result.status = sub.status;
       result.matched = page;
