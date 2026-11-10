@@ -103,7 +103,7 @@ function hostOf(url: string): string {
     return url;
   }
 }
-/** 与后端 normUrl 对齐：回链结果按这个 key 索引。 */
+/** 与后端 normUrl 逐字对齐：补协议、去尾斜杠、小写主机名、协议统一成 https。回链结果按这个 key 索引。 */
 function normUrl(raw: string): string {
   const s = String(raw || '').trim();
   if (!s) return '';
@@ -111,7 +111,7 @@ function normUrl(raw: string): string {
     const u = new URL(/^https?:\/\//i.test(s) ? s : `https://${s}`);
     u.hash = '';
     u.search = '';
-    return `${u.protocol}//${u.host.toLowerCase()}${u.pathname.replace(/\/+$/, '')}`;
+    return `https://${u.host.toLowerCase()}${u.pathname.replace(/\/+$/, '')}`;
   } catch {
     return s.replace(/\/+$/, '');
   }

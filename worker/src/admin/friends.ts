@@ -24,8 +24,8 @@ const UA = 'qingwu-admin/1.0 (+https://www.qingwu.ink)';
 /** 本站域名。回链检查只认它，不带协议头也算（对方写成 qingwu.ink 一样算给了链接）。 */
 const SELF_HOST = 'qingwu.ink';
 
-/** 抓取对方站点时的超时。有的站首页几十 MB，不能整个读进来。 */
-const CRAWL_TIMEOUT_MS = 8_000;
+/** 抓取对方站点时的超时。单页 6s —— 配合下面最多 3 个候选页，单站最坏 24s，仍在 nginx 60s 之内。 */
+const CRAWL_TIMEOUT_MS = 6_000;
 /**
  * 单页读取上限。原来是 400KB，结果被 rainzt.cn 打了脸 ——
  * 那个站首页 983KB（Astro 主题内联了一大堆东西），友链列表在 400KB 之后，
@@ -36,7 +36,10 @@ const CRAWL_TIMEOUT_MS = 8_000;
  */
 const CRAWL_MAX_BYTES = 2_000_000;
 /** 首页没找到回链时，最多再看几个「友链页」候选。 */
-const MAX_CANDIDATE_PAGES = 2;
+const MAX_CANDIDATE_PAGES = 3;
+
+/** 首页没挂友链入口时按常见路径猜 —— 顺序即优先级。 */
+const GUESS_PATHS = ['/links/', '/friends/', '/link/'];
 
 interface FriendItem {
   name: string;
@@ -52,7 +55,13 @@ interface FriendItem {
 // 小工具
 // ——————————————————————————————————————————————————————————
 
-/** 归一化友链地址：补协议、去尾斜杠、小写主机名。用于和 backlink_checks 对齐。 */
+/**
+ * 归一化友链地址：补协议、去尾斜杠、小写主机名、**协议统一成 https**。
+ *
+ * 统一协议这一步是被数据逼出来的：links.json 里 rainzt.cn 写的是 `http://`，
+ * 而回链检查实际抓的是 https 版本，两边各自落了一行，后台就出现同一个站两条记录。
+ * 协议对「这个友链是谁」没有区分意义，索性归一化掉；真正抓取时再按 https → http 回落。
+ */
 function normUrl(raw: string): string {
   const s = String(raw || '').trim();
   if (!s) return '';
@@ -61,7 +70,7 @@ function normUrl(raw: string): string {
     const u = new URL(withProto);
     u.hash = '';
     u.search = '';
-    return `${u.protocol}//${u.host.toLowerCase()}${u.pathname.replace(/\/+$/, '')}`;
+    return `https://${u.host.toLowerCase()}${u.pathname.replace(/\/+$/, '')}`;
   } catch {
     return s.replace(/\/+$/, '');
   }
@@ -249,9 +258,28 @@ async function crawl(url: string, needle: string): Promise<CrawlResult> {
   }
 }
 
-/** 从首页里挑出可能的「友链页」链接，同源、最多取若干个。 */
+/**
+ * 从首页里挑出可能的「友链页」候选：先看首页真实存在的链接，再用常见路径补。
+ *
+ * 只用常见路径猜是不够的（很多站友链页叫 /youlian/ 或 /mylinks/），
+ * 只信首页链接也不够（移动端折叠菜单里才有入口、或者根本没入口）——
+ * 所以两者都要，同一主机、去重、最多 MAX_CANDIDATE_PAGES 个。
+ */
 function pickLinkPages(html: string, base: string): string[] {
   const out: string[] = [];
+  let origin = '';
+  try {
+    origin = new URL(base).origin;
+  } catch {
+    return out;
+  }
+  const host = new URL(base).host;
+
+  const push = (abs: string) => {
+    if (out.includes(abs)) return;
+    out.push(abs);
+  };
+
   const re = /href=["']([^"'\s>]+)["']/gi;
   let m: RegExpExecArray | null;
   while ((m = re.exec(html)) !== null) {
@@ -263,13 +291,17 @@ function pickLinkPages(html: string, base: string): string[] {
     } catch {
       continue;
     }
-    if (abs.host !== new URL(base).host) continue;
+    if (abs.host !== host) continue;
     abs.hash = '';
-    const s = abs.toString();
-    if (!out.includes(s)) out.push(s);
-    if (out.length >= MAX_CANDIDATE_PAGES) break;
+    push(abs.toString());
+    if (out.length >= MAX_CANDIDATE_PAGES) return out;
   }
-  return out;
+
+  for (const p of GUESS_PATHS) {
+    if (out.length >= MAX_CANDIDATE_PAGES) break;
+    push(origin + p);
+  }
+  return out.slice(0, MAX_CANDIDATE_PAGES);
 }
 
 interface OneCheck {
@@ -282,11 +314,22 @@ interface OneCheck {
 }
 
 async function checkOne(rawUrl: string, name: string): Promise<OneCheck> {
-  const base = normUrl(rawUrl);
-  const target = base || rawUrl;
-  const result: OneCheck = { url: base || rawUrl, name, ok: false, status: 0, matched: null, error: null };
+  const key = normUrl(rawUrl) || rawUrl;
+  const result: OneCheck = { url: key, name, ok: false, status: 0, matched: null, error: null };
 
-  const first = await crawl(target, SELF_HOST);
+  let base = key;
+  let first = await crawl(base, SELF_HOST);
+
+  // https 不通就退回 http —— 有些站（尤其老一点的独立博客）根本没配证书
+  if (!first.ok && key.startsWith('https://')) {
+    const alt = key.replace(/^https:/, 'http:');
+    const retry = await crawl(alt, SELF_HOST);
+    if (retry.ok) {
+      first = retry;
+      base = alt;
+    }
+  }
+
   result.status = first.status;
   if (!first.ok) {
     result.error = first.error ?? '抓取失败';
@@ -294,12 +337,12 @@ async function checkOne(rawUrl: string, name: string): Promise<OneCheck> {
   }
   if (first.found) {
     result.ok = true;
-    result.matched = target;
+    result.matched = base;
     return result;
   }
 
   // 首页没找到 → 再看友链页。常见情况：对方把友链单独挂在 /links 或 /friends。
-  for (const page of pickLinkPages(first.text, target)) {
+  for (const page of pickLinkPages(first.text, base)) {
     const sub = await crawl(page, SELF_HOST);
     if (sub.ok && sub.found) {
       result.ok = true;
