@@ -3,6 +3,10 @@ import AdminTop from './AdminTop';
 
 const API = '/api/admin';
 const DRAFT_KEY = (id: number) => `q:admin:draft:${id}`;
+/** 回复身份：'ai' = 爱弥斯（默认），'me' = 站长本人 */
+const REPLY_AS_KEY = 'q:admin:reply-as';
+/** 与 worker 的 AI_PERSONA_NAME 对应，只用于界面上显示 */
+const AI_PERSONA = '爱弥斯';
 
 interface Item {
   id: number;
@@ -104,6 +108,24 @@ export default function AdminInbox() {
   const draftRef = useRef(draft);
   draftRef.current = draft;
 
+  /**
+   * 这条回复以谁的身份发。
+   *
+   * `ai` = 爱弥斯（本站 AI 账号），前台会挂一枚 AI 小标；
+   * `me` = 站长本人（admin）。
+   * 默认 ai —— AI 起草的稿子本来就是替爱弥斯写的，直接发身份才对得上。
+   * 存 localStorage，切一次以后都记住。
+   */
+  const [asAi, setAsAi] = useState(true);
+  useEffect(() => {
+    const v = window.localStorage.getItem(REPLY_AS_KEY);
+    if (v === 'me' || v === 'ai') setAsAi(v === 'ai');
+  }, []);
+  const pickIdentity = useCallback((ai2: boolean) => {
+    setAsAi(ai2);
+    window.localStorage.setItem(REPLY_AS_KEY, ai2 ? 'ai' : 'me');
+  }, []);
+
   // —— AI（双通道）——
   // ai 为 null = 还没问出来；能拿到就说明接口活着，按 on 决定显示哪些按钮。
   const [ai, setAi] = useState<AiStatus | null>(null);
@@ -204,13 +226,18 @@ export default function AdminInbox() {
     if (openId == null || sending) return;
     const text = draftRef.current.trim();
     if (!text) return;
+    const id = openId;
     setSending(true);
     setErr('');
     try {
-      await api(`/comments/${openId}/reply`, { method: 'POST', body: JSON.stringify({ body: text }) });
-      window.localStorage.removeItem(DRAFT_KEY(openId));
+      await api(`/comments/${id}/reply`, {
+        method: 'POST',
+        body: JSON.stringify({ body: text, as: asAi ? 'ai' : 'me' }),
+      });
+      window.localStorage.removeItem(DRAFT_KEY(id));
       setDraft('');
-      const d = await api<Thread>(`/comments/${openId}`);
+      setAiSug('');
+      const d = await api<Thread>(`/comments/${id}`);
       setThread(d);
       void load();
     } catch (e) {
@@ -218,7 +245,7 @@ export default function AdminInbox() {
     } finally {
       setSending(false);
     }
-  }, [load, openId, sending]);
+  }, [asAi, load, openId, sending]);
 
   // —— AI 起草 / 润色 ——
   // 关键点：AI 只往草稿框里写，**永远不替我们发布**。
@@ -235,7 +262,12 @@ export default function AdminInbox() {
       try {
         const d = await api<{ text: string }>('/ai/draft', {
           method: 'POST',
-          body: JSON.stringify({ id: openId, mode, text: mode === 'polish' ? base : undefined }),
+          body: JSON.stringify({
+            id: openId,
+            mode,
+            as: asAi ? 'ai' : 'me',
+            text: mode === 'polish' ? base : undefined,
+          }),
         });
         if (draftRef.current.trim() === base.trim()) {
           onDraft(openId, d.text);
@@ -248,7 +280,7 @@ export default function AdminInbox() {
         setAiBusy('');
       }
     },
-    [aiBusy, onDraft, openId],
+    [aiBusy, asAi, onDraft, openId],
   );
 
   // —— AI 体检（judge 通道，只给建议）——
@@ -470,7 +502,11 @@ export default function AdminInbox() {
                                     thread.replies.map((r) => (
                                       <div className="q-admin-bubble q-admin-bubble--mine" key={r.id}>
                                         <b>
-                                          {r.author} · {fmt(r.ts)}
+                                          {r.author}
+                                          {r.author === AI_PERSONA ? (
+                                            <em className="q-admin-ai-tag">AI</em>
+                                          ) : null}
+                                          <span className="q-admin-bubble__ts"> · {fmt(r.ts)}</span>
                                         </b>
                                         {r.body}
                                       </div>
@@ -480,6 +516,36 @@ export default function AdminInbox() {
                                   )}
 
                                   <div className="q-admin-reply">
+                                    {/* 先定身份再定动作：这条到底算爱弥斯说的，还是我说的 */}
+                                    <div className="q-admin-as">
+                                      <span>以</span>
+                                      <div className="q-admin-as__pick" role="group" aria-label="回复身份">
+                                        <button
+                                          type="button"
+                                          className={asAi ? 'is-on' : ''}
+                                          aria-pressed={asAi}
+                                          onClick={() => pickIdentity(true)}
+                                        >
+                                          {AI_PERSONA}
+                                          <em>AI</em>
+                                        </button>
+                                        <button
+                                          type="button"
+                                          className={asAi ? '' : 'is-on'}
+                                          aria-pressed={!asAi}
+                                          onClick={() => pickIdentity(false)}
+                                        >
+                                          我本人
+                                        </button>
+                                      </div>
+                                      <span>的身份回复</span>
+                                      <span className="q-admin-as__hint">
+                                        {asAi
+                                          ? '前台会挂 AI 小标，访客看得出来是代笔'
+                                          : '显示为站长本人，不挂 AI 标'}
+                                      </span>
+                                    </div>
+
                                     {ai && (ai.writer.on || ai.judge.on) ? (
                                       <div className="q-admin-ai">
                                         {ai.writer.on ? (
@@ -546,7 +612,11 @@ export default function AdminInbox() {
                                     {aiErr ? <p className="q-admin-error">{aiErr}</p> : null}
 
                                     <textarea
-                                      placeholder="写回复，或先打在草稿框里（会自动保存在本浏览器）"
+                                      placeholder={
+                                        asAi
+                                          ? '爱弥斯要说什么？AI 起草的稿子会落进这个框，发之前随便改'
+                                          : '写回复，或先打在草稿框里（会自动保存在本浏览器）'
+                                      }
                                       value={draft}
                                       onChange={(e) => onDraft(it.id, e.target.value)}
                                       maxLength={500}
@@ -559,7 +629,11 @@ export default function AdminInbox() {
                                         disabled={sending || !draft.trim()}
                                         onClick={() => void sendReply()}
                                       >
-                                        {sending ? '发送中…' : '发布回复'}
+                                        {sending
+                                          ? '发送中…'
+                                          : asAi
+                                            ? `以${AI_PERSONA}发布`
+                                            : '发布回复'}
                                       </button>
                                       <span className="q-admin-saved">草稿已保存在本浏览器</span>
                                       <span className="count">

@@ -111,6 +111,18 @@ export interface Env {
 
   /** 每通道每日调用上限，缺省 300。防手抖连点与 key 被盗刷 */
   AI_DAILY_LIMIT?: string;
+
+  /**
+   * 后台「以 AI 身份回复」时用的署名与头像。缺省「爱弥斯」+ 站内头像。
+   *
+   * 前台 `FriendsBoard` 判 AI 发言的规则是「署名等于爱弥斯」**或**「头像路径带
+   * images/emis/avatar」—— 改名字要把三处一起改，否则前台不再挂 AI 小标。
+   */
+  AI_PERSONA_NAME?: string;
+  AI_PERSONA_AVATAR?: string;
+
+  /** 站点根地址，AI 回复署名的 author_url 用。缺省 https://www.qingwu.ink */
+  SITE_URL?: string;
 }
 
 /** `/hit` 请求体 —— **必须与旧 `src/pages/api/hit.ts` 一致**（前端只发这两个字段） */

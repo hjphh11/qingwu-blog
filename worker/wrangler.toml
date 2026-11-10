@@ -95,6 +95,14 @@ AI_MODEL = "deepseek-chat"
 # 每通道每日调用上限。防手抖连点，也防 key 泄漏后被刷。
 AI_DAILY_LIMIT = "300"
 
+# ——— 后台「以爱弥斯身份回复」的署名 ———
+# AI 起草的回复默认以这个身份发到评论区（站长也能一键切回自己）。
+# 前台 `FriendsBoard` 判 AI 发言的判据是「署名等于爱弥斯」**或**「头像路径含
+# images/emis/avatar」，所以要改名的话三处一起改，否则前台不再挂 AI 小标。
+AI_PERSONA_NAME = "爱弥斯"
+AI_PERSONA_AVATAR = "https://www.qingwu.ink/images/emis/avatar.png"
+SITE_URL = "https://www.qingwu.ink"
+
 # ——— 本地开发：secret 放 worker/.dev.vars（已被 .gitignore 忽略）———
 # HIT_IP_SALT="dev-salt"
 # ADMIN_STATS_TOKEN="dev-token"

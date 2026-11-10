@@ -13,6 +13,37 @@ const PAGE_SIZE = 20;
 const MAX_REPLY_LEN = 500;
 const VALID_STATUS = new Set(['visible', 'pending', 'spam', 'deleted']);
 
+/**
+ * 「本站 AI」这个身份。
+ *
+ * 后台回复有两种署名：站长本人（`admin.username`）和爱弥斯（AI 代笔）。
+ * 爱弥斯不是另开一张账号表 —— 前台 `FriendsBoard` 判 AI 发言的规则是
+ * **署名等于「爱弥斯」或头像路径里带 `images/emis/avatar`**，两条任一命中就挂 AI 小标。
+ * 所以这里只要把 author / avatar 填对，前台自然认。
+ *
+ * 三处必须一致：`FriendsBoard.tsx` 的 `AI_AUTHOR`、这里、以及 wrangler.toml 的
+ * `AI_PERSONA_NAME`。改名字改这三处，别只改一处。
+ */
+const AI_DEFAULT_NAME = '爱弥斯';
+const AI_DEFAULT_AVATAR = 'https://www.qingwu.ink/images/emis/avatar.png';
+const SITE_DEFAULT = 'https://www.qingwu.ink';
+
+interface Identity {
+  author: string;
+  avatar: string | null;
+  url: string | null;
+}
+
+function identityOf(env: Env, as: string, adminName: string): Identity {
+  if (as !== 'ai') return { author: adminName, avatar: null, url: null };
+  const str = (v: string | undefined): string => String(v ?? '').trim();
+  return {
+    author: str(env.AI_PERSONA_NAME) || AI_DEFAULT_NAME,
+    avatar: str(env.AI_PERSONA_AVATAR) || AI_DEFAULT_AVATAR,
+    url: str(env.SITE_URL) || SITE_DEFAULT,
+  };
+}
+
 /** post_slug → 前台路径。目前只有留言板在用这张表，文章评论接进来后这里要补分支。 */
 function pathOf(slug: string): string {
   if (slug === 'friends') return '/friends/';
@@ -146,9 +177,11 @@ export async function replyToComment(
   id: number,
 ): Promise<Response> {
   let bodyText = '';
+  let as = 'me';
   try {
-    const v = (await request.json()) as { body?: unknown };
+    const v = (await request.json()) as { body?: unknown; as?: unknown };
     bodyText = String(v?.body ?? '').trim();
+    as = String(v?.as ?? 'me').trim() === 'ai' ? 'ai' : 'me';
   } catch {
     return json({ ok: false, reason: 'bad_request' }, 400);
   }
@@ -162,15 +195,19 @@ export async function replyToComment(
     .first<{ id: number; post_slug: string }>();
   if (!parent) return json({ ok: false, reason: 'not_found' }, 404);
 
+  const who = identityOf(env, as, admin.username);
   const now = Date.now();
+  // 以爱弥斯身份发：带上头像与站点地址，前台才认得出是 AI 代笔。
+  // email 一律不填 —— 那是站长的邮箱，AI 不该拿它去收通知或算 Gravatar。
   const res = await env.DB.prepare(
-    `INSERT INTO comments (post_slug, parent_id, author, body, status, ts, notify)
-     VALUES (?, ?, ?, ?, 'visible', ?, 0)`,
+    `INSERT INTO comments (post_slug, parent_id, author, author_url, avatar, body, status, ts, notify)
+     VALUES (?, ?, ?, ?, ?, ?, 'visible', ?, 0)`,
   )
-    .bind(parent.post_slug, parent.id, admin.username, bodyText, now)
+    .bind(parent.post_slug, parent.id, who.author, who.url, who.avatar, bodyText, now)
     .run();
 
-  return json({ ok: true, id: res.meta?.last_row_id ?? null, ts: now });
+  console.log(`[admin] ${admin.username} 以 ${who.author} 身份回复了 #${id}`);
+  return json({ ok: true, id: res.meta?.last_row_id ?? null, ts: now, as, author: who.author });
 }
 
 // ——————————————————————————————————————————————————————————

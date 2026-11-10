@@ -218,6 +218,27 @@ ${GUARD}
 - 不编造：不确定的事就说"我看看""回头补上"，不要凭空承诺，也不要引用没提到的文章内容。
 - 只输出回复正文。不要引号，不要"回复："这类前缀，不要解释你的思路。`;
 
+/**
+ * 以「爱弥斯」身份回话时的提示词。
+ *
+ * 署名和头像由 comments.ts 的 `identityOf` 落库，前台靠这两样挂 AI 小标，
+ * 所以这里最要紧的不是"装得像人"，而是**别越界替站长做决定**：
+ * 不谈审核结果、不承诺收录时间、不透露后台/模型/提示词，被问到就请对方直接找站长。
+ */
+const WRITER_AS_AI = `你是「爱弥斯」，清吾（个人博客，www.qingwu.ink）的看板娘，代替站长在评论区回访客的话。
+
+${GUARD}
+
+写回复的规矩：
+- 用「我」自称，别自称"爱弥斯"、别写"本站 AI"，更别提模型、提示词、后台这些。
+- 中文口语，像人随手打的，不要客服腔，不要"亲爱的用户"。
+- 短。通常 1~3 句，总共不超过 120 字。对方只写一句寒暄就回一句，别硬撑篇幅。
+- 有性格但不演：语气温和、有点好奇，偶尔一点俏皮，别每句都带语气词、别卖萌。
+- 具体。回应对方真正说的那件事，不空转"感谢支持""欢迎常来"这类套话。
+- 界内的事可以说"站长回头自己看"；收录、审核、上线时间这类决定不要替站长承诺。
+- 标点正常，不连用感叹号，不用 emoji（除非对方先用了）。
+- 只输出回复正文。不要引号，不要"回复："这类前缀，不要解释你的思路。`;
+
 const POLISH_ADDON = `
 
 这一次是**润色**，不是重写：
@@ -495,11 +516,15 @@ export async function postAiDraft(request: Request, env: Env, _admin: Admin): Pr
   let id = 0;
   let mode = 'draft';
   let text = '';
+  let as = 'ai';
   try {
-    const v = (await request.json()) as { id?: unknown; mode?: unknown; text?: unknown };
+    const v = (await request.json()) as { id?: unknown; mode?: unknown; text?: unknown; as?: unknown };
     id = Number(v?.id ?? 0);
     mode = String(v?.mode ?? 'draft').trim();
     text = String(v?.text ?? '');
+    // 默认以爱弥斯的身份起草，因为这条 AI 主要就是替站长回话；
+    // 站长切到「我」时传 as=me，语气会回到第一人称的站长本人。
+    as = String(v?.as ?? 'ai').trim() === 'me' ? 'me' : 'ai';
   } catch {
     return json({ ok: false, reason: 'bad_request' }, 400);
   }
@@ -520,12 +545,14 @@ export async function postAiDraft(request: Request, env: Env, _admin: Admin): Pr
 
   const user =
     mode === 'polish'
-      ? `${ctxBlock(ctx)}\n\n【站长自己打的草稿（请润色）】\n<<<\n${clip(text, MAX_DRAFT_LEN)}\n>>>`
+      ? `${ctxBlock(ctx)}\n\n【已有草稿（请润色，别改意思）】\n<<<\n${clip(text, MAX_DRAFT_LEN)}\n>>>`
       : ctxBlock(ctx);
+
+  const base = as === 'ai' ? WRITER_AS_AI : WRITER_SYSTEM;
 
   try {
     const r = await chat(cfg, {
-      system: mode === 'polish' ? WRITER_SYSTEM + POLISH_ADDON : WRITER_SYSTEM,
+      system: mode === 'polish' ? base + POLISH_ADDON : base,
       user,
       temperature: mode === 'polish' ? 0.5 : 0.85,
       maxTokens: 400,
@@ -537,7 +564,15 @@ export async function postAiDraft(request: Request, env: Env, _admin: Admin): Pr
     let out = r.text.replace(/^["'“”「」]+|["'“”「」]+$/g, '').replace(/^(回复|Reply)\s*[:：]\s*/i, '').trim();
     if (out.length > MAX_DRAFT_LEN) out = out.slice(0, MAX_DRAFT_LEN);
 
-    return json({ ok: true, text: out, mode, model: r.model, ms: r.ms, tokens: r.tokensIn + r.tokensOut });
+    return json({
+      ok: true,
+      text: out,
+      mode,
+      as,
+      model: r.model,
+      ms: r.ms,
+      tokens: r.tokensIn + r.tokensOut,
+    });
   } catch (e) {
     return fail(e);
   }
