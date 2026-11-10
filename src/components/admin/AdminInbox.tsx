@@ -23,7 +23,7 @@ interface Thread {
 
 /** judge 通道的单条体检结果 —— 只是建议，不改任何状态 */
 interface JudgeResult {
-  verdict: 'ok' | 'spam' | 'abuse' | 'privacy';
+  verdict: 'ok' | 'illegal' | 'porn' | 'abuse' | 'privacy' | 'spam';
   score: number;
   reasons: string[];
   note: string;
@@ -54,27 +54,37 @@ const TEMPLATES: { label: string; text: string }[] = [
 
 const JUDGE_LABEL: Record<JudgeResult['verdict'], string> = {
   ok: '看着正常',
-  spam: '疑似广告',
-  abuse: '疑似辱骂',
-  privacy: '疑似泄露隐私',
+  illegal: '疑似违法违规',
+  porn: '疑似色情低俗',
+  abuse: '疑似辱骂攻击',
+  privacy: '疑似隐私侵权',
+  spam: '疑似垃圾广告',
 };
 
 const STATUS_LABEL: Record<string, string> = {
   visible: '已通过',
-  pending: '待审核',
+  // ⚠️ pending 不是「待审核」—— 内容审核在提交那一刻已经做完了。
+  // 它表示「这个人留言了，但站还没收录进友链墙」，前台徽章显示「等我看看」。
+  pending: '未收录',
   spam: '垃圾',
   deleted: '已删除',
 };
 const STATUS_CLASS: Record<string, string> = {
   visible: 'q-admin-tag q-admin-tag--ok',
-  pending: 'q-admin-tag q-admin-tag--warn',
+  pending: 'q-admin-tag q-admin-tag--muted',
   spam: 'q-admin-tag q-admin-tag--danger',
   deleted: 'q-admin-tag q-admin-tag--muted',
 };
 
+/**
+ * 筛选项里**没有「待审核」**。
+ *
+ * 留言一律先过一遍 AI 审核，命中的直接落「垃圾」；没命中的当场生效，
+ * 不存在「堆在这里等人点通过」这回事 —— 人工审核是友链申请那边的事（/admin/friends）。
+ * 这里只剩两种状态有意义：上墙了没有、是不是垃圾。
+ */
 const TABS = [
   { key: 'all', label: '全部' },
-  { key: 'pending', label: '待审核' },
   { key: 'visible', label: '已通过' },
   { key: 'spam', label: '垃圾' },
 ];
@@ -363,7 +373,7 @@ export default function AdminInbox() {
           <div>
             <h1>评论收件箱</h1>
             <p>
-              {total} 条 · 默认按时间倒序 · 回复会立刻出现在前台对应页面
+              {total} 条 · 每条提交时都已过一遍审核 · 判成垃圾的不上前台，在这里可以放行
             </p>
           </div>
           {/* 右侧这一行照他：页序 + 刷新，全是灰字，不占按钮的视觉重量 */}
@@ -420,9 +430,9 @@ export default function AdminInbox() {
                 <tr>
                   <th style={{ width: '17%' }}>访客 / 时间</th>
                   <th>留言内容 / 页面</th>
-                  <th style={{ width: '9%' }}>审核</th>
+                  <th style={{ width: '10%' }}>状态</th>
                   <th style={{ width: '9%' }}>回复</th>
-                  <th style={{ width: '18%' }}>操作</th>
+                  <th style={{ width: '22%' }}>操作</th>
                 </tr>
               </thead>
               <tbody>
@@ -463,32 +473,47 @@ export default function AdminInbox() {
                             >
                               {open ? '收起' : '回复 / 查看'}
                             </button>
-                            {it.status !== 'visible' ? (
-                              <button
-                                className="q-admin-btn q-admin-btn--ghost q-admin-btn--sm"
-                                type="button"
-                                onClick={() => void setStatus(it.id, 'visible')}
-                              >
-                                通过
-                              </button>
-                            ) : (
+                            {/*
+                              被拦下的那条只给一个「放行」：它既没上墙也不是「已通过」，
+                              点「通过」会顺手把「已是友链」的徽章也贴上去，那是撒谎。
+                              放行 = 回到 pending（前台能看到，徽章仍是「等我看看」）。
+                            */}
+                            {it.status === 'spam' ? (
                               <button
                                 className="q-admin-btn q-admin-btn--ghost q-admin-btn--sm"
                                 type="button"
                                 onClick={() => void setStatus(it.id, 'pending')}
                               >
-                                转待审
+                                放行
                               </button>
+                            ) : (
+                              <>
+                                {it.status !== 'visible' ? (
+                                  <button
+                                    className="q-admin-btn q-admin-btn--ghost q-admin-btn--sm"
+                                    type="button"
+                                    onClick={() => void setStatus(it.id, 'visible')}
+                                  >
+                                    通过
+                                  </button>
+                                ) : (
+                                  <button
+                                    className="q-admin-btn q-admin-btn--ghost q-admin-btn--sm"
+                                    type="button"
+                                    onClick={() => void setStatus(it.id, 'pending')}
+                                  >
+                                    撤回
+                                  </button>
+                                )}
+                                <button
+                                  className="q-admin-btn q-admin-btn--ghost q-admin-btn--sm"
+                                  type="button"
+                                  onClick={() => void setStatus(it.id, 'spam')}
+                                >
+                                  标垃圾
+                                </button>
+                              </>
                             )}
-                            {it.status !== 'spam' ? (
-                              <button
-                                className="q-admin-btn q-admin-btn--ghost q-admin-btn--sm"
-                                type="button"
-                                onClick={() => void setStatus(it.id, 'spam')}
-                              >
-                                标垃圾
-                              </button>
-                            ) : null}
                           </div>
                         </td>
                       </tr>

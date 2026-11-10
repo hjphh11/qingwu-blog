@@ -405,14 +405,16 @@ export default function AdminStatus() {
                 </div>
                 <div>
                   <dt>judge 前置</dt>
-                  <dd>{s.ai.judge.on ? '先判垃圾，判成 spam/abuse/privacy 不回' : 'judge 没开，跳过这道闸'}</dd>
+                  <dd>
+                    {s.ai.judge.on ? '先判一次，命中拦截类别就不回' : 'judge 没配 key，跳过这道闸'}
+                  </dd>
                 </div>
               </dl>
 
               <div className="q-admin-kpis q-admin-kpis--4">
                 <Kpi n={s.autoReply.today.replied} label="今天已回" tone="ok" />
                 <Kpi n={s.autoReply.today.skipped} label="被闸门挡下" hint="超总量 / 同访客 / 已有回复" />
-                <Kpi n={s.autoReply.today.blocked} label="判为不该回" hint="垃圾、辱骂、隐私" />
+                <Kpi n={s.autoReply.today.blocked} label="判为不该回" hint="命中拦截类别" />
                 <Kpi n={s.autoReply.today.failed} label="失败" hint="上游报错，留言仍在" tone={s.autoReply.today.failed > 0 ? 'danger' : undefined} />
               </div>
 

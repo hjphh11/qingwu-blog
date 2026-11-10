@@ -2096,35 +2096,6 @@ html.q-route-done .q-admin-route i {
   cursor: not-allowed;
 }
 
-/* 多选 chip：审核类别用它。选中 = 墨黑描边 + 极浅底，不是实心黑块 */
-.q-admin-chips {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-}
-.q-admin-chip {
-  height: 30px;
-  padding: 0 11px;
-  border: 1px solid var(--qa-line);
-  border-radius: 7px;
-  background: var(--qa-card);
-  font-family: var(--font-body);
-  font-size: 12px;
-  color: var(--color-muted);
-  cursor: pointer;
-  transition: border-color var(--dur-micro), color var(--dur-micro), background-color var(--dur-micro);
-}
-.q-admin-chip:hover {
-  border-color: rgba(17, 17, 17, 0.3);
-  color: var(--color-ink);
-}
-.q-admin-chip[aria-pressed='true'] {
-  border-color: var(--qa-accent);
-  background: var(--qa-accent);
-  color: #fff;
-  font-weight: 600;
-}
-
 /* 滑块 + 数值 */
 .q-admin-range {
   display: flex;
@@ -2231,52 +2202,20 @@ html.q-route-done .q-admin-route i {
   color: var(--color-ink);
 }
 
-/* 试判结果 */
-.q-admin-verdict {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  flex-wrap: wrap;
-}
-.q-admin-verdict__score {
-  font-family: var(--font-display);
-  font-size: 30px;
-  font-weight: 600;
-  line-height: 1;
-  letter-spacing: -0.02em;
-}
-.q-admin-probs {
-  display: flex;
-  flex-direction: column;
-  gap: 7px;
-  margin-top: 14px;
-}
-.q-admin-prob {
-  display: grid;
-  grid-template-columns: 72px minmax(0, 1fr) 46px;
-  align-items: center;
-  gap: 10px;
-  font-size: 11.5px;
+/* 说明段落：审核口径那种「一段一段讲清楚」的地方用它，别拿 <p class="hint"> 拼 */
+.q-admin-prose p {
+  margin: 0 0 10px;
+  max-width: 52em;
+  font-size: 12.5px;
+  line-height: 1.85;
   color: var(--color-muted);
 }
-.q-admin-prob__bar {
-  height: 6px;
-  border-radius: 999px;
-  background: rgba(17, 17, 17, 0.08);
-  overflow: hidden;
+.q-admin-prose p:last-child {
+  margin-bottom: 0;
 }
-.q-admin-prob__fill {
-  height: 100%;
-  border-radius: 999px;
-  background: var(--qa-accent);
-  transition: width var(--dur-state);
-}
-.q-admin-prob--hit .q-admin-prob__fill {
-  background: var(--qa-danger);
-}
-.q-admin-prob output {
-  font-variant-numeric: tabular-nums;
-  text-align: right;
+.q-admin-prose b {
+  font-weight: 600;
+  color: var(--color-ink);
 }
 
 /* 待提交改动 */
