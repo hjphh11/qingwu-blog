@@ -10,8 +10,10 @@ import { json } from '../util';
 import { getAiStatus, postAiDraft, postAiJudge, postFriendReply } from './ai';
 import { getDevLogin, getSessionInfo, postLogin, postLogout, postVerify, requireAdmin } from './auth';
 import { getThread, listComments, replyToComment, setCommentStatus } from './comments';
+import { getBlockedLog } from './moderation';
 import { getPublishLog } from './publish';
 import { getSettings, patchSettings } from './settings';
+import { getStats } from './stats';
 import { getStatus, postStatusPing } from './status';
 import {
   checkBacklinks,
@@ -73,12 +75,20 @@ export async function handleAdmin(request: Request, env: Env, path: string): Pro
     return requireAdmin(request, env, (admin) => postFriendReply(request, env, admin));
   }
 
-  // —— 运行与设置（状态总览 + 通道探活）——
+  // —— 运行状态（总览 + 通道探活）与统计（图表）——
   if (path === '/admin/status' && m === 'GET') {
     return requireAdmin(request, env, (admin) => getStatus(request, env, admin));
   }
   if (path === '/admin/status/ping' && m === 'POST') {
     return requireAdmin(request, env, (admin) => postStatusPing(request, env, admin));
+  }
+  if (path === '/admin/stats' && m === 'GET') {
+    return requireAdmin(request, env, (admin) => getStats(request, env, admin));
+  }
+
+  // —— 拦截记录（审核页底部那块）——
+  if (path === '/admin/review/blocked' && m === 'GET') {
+    return requireAdmin(request, env, (admin) => getBlockedLog(request, env, admin));
   }
 
   // —— 可调设置（自动回复策略 / writer 参数 / 审核规则）——

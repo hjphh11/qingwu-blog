@@ -18,6 +18,8 @@ import type { Env } from './types';
 import { json, originAllowed, parseOrigins, secretEqual } from './util';
 import { boardMailText, flushOutbox, sendMail } from './mail';
 import { autoReplyTo, moderateComment } from './admin/ai';
+import type { ModerationResult } from './admin/ai';
+import { recordModeration } from './admin/moderation';
 
 /** 友链评论区在 comments 表里的分区名 */
 const SLUG = 'friends';
@@ -260,8 +262,10 @@ export async function postFriendsBoard(request: Request, env: Env, ctx: Executio
      *     何况告诉对方反而方便他改一版再试。
      */
     let status = 'pending';
+    /** 判定结果留到 INSERT 之后 —— 记录表要 comment_id，此刻还没有 */
+    let mod: ModerationResult | null = null;
     try {
-      const mod = await moderateComment(env, {
+      mod = await moderateComment(env, {
         id: 0,
         author: v.v.name,
         body: v.v.intro,
@@ -304,6 +308,27 @@ export async function postFriendsBoard(request: Request, env: Env, ctx: Executio
       .run();
 
     const id = Number(res.meta.last_row_id);
+
+    /**
+     * 拦了就要留下依据 —— 命中才写，一条留言最多一行。
+     *
+     * 走 waitUntil：这只是「记一笔证据」，不该让访客多等。
+     * recordModeration 内部全 try/catch，记不下也不影响这条留言已经落库的事实。
+     */
+    if (mod?.hit) {
+      ctx.waitUntil(
+        recordModeration(env, {
+          commentId: id,
+          verdict: mod.verdict,
+          score: mod.score,
+          threshold: mod.threshold,
+          reasons: mod.reasons,
+          note: mod.note,
+          model: mod.model,
+          ms: mod.ms,
+        }),
+      );
+    }
 
     /**
      * 小爱回一句。
