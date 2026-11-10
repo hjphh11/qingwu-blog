@@ -183,6 +183,31 @@ export default function FriendsBoard() {
     return Object.keys(e).length === 0;
   }
 
+  /**
+   * 提交后把小爱的回复接进来。
+   *
+   * 她在服务端的 `waitUntil` 里回话（judge 判一次 + 起草一次，通常 2~4 秒），
+   * 前端拿不到"她说完了"的信号，只能隔一会儿拉一次列表看。
+   * 三次、每次 2 秒，总共 6 秒够用；拉不到就停 —— 这是锦上添花，
+   * 不该因为它失败给访客弹个红字。
+   *
+   * 一旦看到她回了（或者这条已经不在了）就提前收手，别做无谓的轮询。
+   */
+  function pollReply(id: string, round = 0) {
+    if (round >= 3) return;
+    window.setTimeout(async () => {
+      try {
+        const list = await loadFriendEntries();
+        const own = list.find((e) => e.id === id);
+        setEntries([...list].sort((a, b) => Date.parse(b.at) - Date.parse(a.at)));
+        if (!own || (own.replies?.length ?? 0) > 0) return;
+      } catch {
+        /* 网络抖一下就等下一轮 */
+      }
+      pollReply(id, round + 1);
+    }, 2000);
+  }
+
   async function handleSubmit() {
     setNotice(null);
     if (!validate()) return;
@@ -207,8 +232,9 @@ export default function FriendsBoard() {
       // 预览阶段必须说清楚：没有真的发出去
       text: FRIENDS_BOARD_DEMO
         ? '已经加进下面这一页了 —— 预览模式，这条没有真的发出去。'
-        : '收到啦，等我看到就会回你 ~',
+        : '收到啦，小爱看完就会回你 ~',
     });
+    if (!FRIENDS_BOARD_DEMO) pollReply(res.entry.id);
   }
 
   /**

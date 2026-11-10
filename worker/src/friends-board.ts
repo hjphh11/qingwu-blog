@@ -17,6 +17,7 @@
 import type { Env } from './types';
 import { json, originAllowed, parseOrigins, secretEqual } from './util';
 import { boardMailText, flushOutbox, sendMail } from './mail';
+import { autoReplyTo } from './admin/ai';
 
 /** 友链评论区在 comments 表里的分区名 */
 const SLUG = 'friends';
@@ -271,6 +272,15 @@ export async function postFriendsBoard(request: Request, env: Env, ctx: Executio
       .run();
 
     const id = Number(res.meta.last_row_id);
+
+    /**
+     * 小爱回一句。
+     *
+     * **必须走 waitUntil**：它要做 judge 判定 + 起草两次模型调用（1~3 秒），
+     * await 在请求路径上会让访客盯着"提交中"发呆。
+     * 失败也只是少一条回复 —— autoReplyTo 内部全 try/catch，不抛错。
+     */
+    ctx.waitUntil(autoReplyTo(env, id));
 
     // 通知站长（配了 RESEND_KEY + MAIL_TO 才发）
     if (env.MAIL_TO) {

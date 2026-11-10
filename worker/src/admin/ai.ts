@@ -13,9 +13,14 @@
 // 一律 OpenAI 兼容（POST {base}/chat/completions）。DeepSeek、通义、智谱、Kimi
 // 都是这套，所以换模型只改环境变量，不改一行代码。
 //
-// —— 铁律 ——
-// **AI 只产出草稿，永远不直接发布。** 本文件里没有任何写 comments 表的代码，
-// 出去的文字只能进入前端的编辑框，等站长自己点「发布回复」。
+// —— 铁律（有一个例外）——
+// **默认情况下 AI 只产出草稿，不直接发布。** 手动起草那条路上，出去的文字只能进入
+// 前端的编辑框，等站长自己点「发布回复」。
+//
+// 例外是文件末尾的 `autoReplyTo()`：访客留言后小爱自动回话。这是站长明确开启的
+// 无人值守模式，要求她当场说话，所以它确实会写 comments 表。为了不让它失控，
+// 那条路自带四道闸（总开关 / 每日总量 / 单访客每日 / judge 先判垃圾），
+// 并且每一笔都落 `auto_reply_log` 可追溯。改那段代码前先看那段注释。
 //
 // —— 配置（都是可选，没配 = 该通道关闭，前端自动隐藏按钮）——
 //   AI_API_KEY / AI_BASE_URL / AI_MODEL                     → writer
@@ -28,6 +33,7 @@
 import type { Env } from '../types';
 import { dayKey, json } from '../util';
 import type { Admin } from './auth';
+import { identityOf } from './comments';
 import { runProbe } from './friends';
 
 type Channel = 'writer' | 'judge';
@@ -410,6 +416,61 @@ function slugToPath(slug: string): string {
 }
 
 // ——————————————————————————————————————————————————————————
+// 判定内核（judge 通道）
+//
+// 「后台单条体检」和「自动回复前先筛垃圾」共用这一份，口径才不会漂。
+// 抛错由调用方处理：手动那条把错误回给前端；自动那条**直接放弃回复**
+// —— 没人盯着的时候，宁可不说话，也不要说错话。
+// ——————————————————————————————————————————————————————————
+interface JudgeOut extends Verdict {
+  model: string;
+  ms: number;
+  tokensIn: number;
+  tokensOut: number;
+}
+
+async function runJudge(env: Env, ctx: CommentCtx): Promise<JudgeOut> {
+  const target = judgeTargetOf(env);
+  if (!target) throw new AiError('ai_unconfigured', '还没配 judge 通道的 key', 503);
+
+  if (target.kind === 'jev') {
+    // Jev 走决策协议：只回 label + confidence，不生成文字，也不计输出费
+    const v = await callJev(target, ctx);
+    return { ...v, model: target.model, tokensIn: 0, tokensOut: 0 };
+  }
+
+  const user = `【页面】${ctx.path}\n【访客昵称】${ctx.author}\n【待审留言】\n<<<\n${clip(ctx.body)}\n>>>`;
+  const r = await chat(target.cfg, {
+    system: JUDGE_SYSTEM,
+    user,
+    temperature: 0,
+    maxTokens: 300,
+    jsonMode: true,
+  });
+
+  let raw: { verdict?: string; score?: number; reasons?: string[]; note?: string } = {};
+  try {
+    // 上游偶尔会裹 ```json，先剥掉再解析
+    const text = r.text.replace(/^```(?:json)?\s*/i, '').replace(/```$/i, '').trim();
+    raw = JSON.parse(text) as typeof raw;
+  } catch {
+    throw new AiError('ai_bad_json', `判断模型没按 JSON 回：${r.text.slice(0, 120)}`, 502);
+  }
+
+  const v = String(raw.verdict ?? '').trim().toLowerCase();
+  return {
+    verdict: (VALID_VERDICT.has(v) ? v : 'ok') as Verdict['verdict'],
+    score: Math.max(0, Math.min(100, Math.round(Number(raw.score ?? 0)) || 0)),
+    reasons: (Array.isArray(raw.reasons) ? raw.reasons : []).slice(0, 3).map((s) => String(s).slice(0, 40)),
+    note: String(raw.note ?? '').slice(0, 120),
+    model: r.model,
+    ms: r.ms,
+    tokensIn: r.tokensIn,
+    tokensOut: r.tokensOut,
+  };
+}
+
+// ——————————————————————————————————————————————————————————
 // 统一的前置检查（配置 / 配额）
 // ——————————————————————————————————————————————————————————
 /** 配额闸门。**配置检查由调用方自己做** —— writer 和 judge 的「配好了没」判据不一样。 */
@@ -588,55 +649,19 @@ export async function postAiJudge(request: Request, env: Env, _admin: Admin): Pr
   const ctx = await loadCtx(env, id);
   if (!ctx) return json({ ok: false, reason: 'not_found' }, 404);
 
-  const user = `【页面】${ctx.path}\n【访客昵称】${ctx.author}\n【待审留言】\n<<<\n${clip(ctx.body)}\n>>>`;
-
   try {
-    // Jev 走决策协议：只回 label + confidence，不生成文字（也不计输出费）
-    if (target.kind === 'jev') {
-      const v = await callJev(target, ctx);
-      await recordUsage(env, 'judge', 0, 0);
-      return json({ ok: true, ...v, model: target.model, tokens: 0 });
-    }
-
-    const r = await chat(target.cfg, {
-      system: JUDGE_SYSTEM,
-      user,
-      temperature: 0,
-      maxTokens: 300,
-      jsonMode: true,
-    });
-
-    await recordUsage(env, 'judge', r.tokensIn, r.tokensOut);
-
-    let verdict: {
-      verdict?: string;
-      score?: number;
-      reasons?: string[];
-      note?: string;
-    } = {};
-    try {
-      // 上游偶尔会裹 ```json，先剥掉再解析
-      const raw = r.text.replace(/^```(?:json)?\s*/i, '').replace(/```$/i, '').trim();
-      verdict = JSON.parse(raw) as typeof verdict;
-    } catch {
-      throw new AiError('ai_bad_json', `判断模型没按 JSON 回：${r.text.slice(0, 120)}`, 502);
-    }
-
-    const allowed = new Set(['ok', 'spam', 'abuse', 'privacy']);
-    const v = String(verdict.verdict ?? '').trim().toLowerCase();
-    const score = Math.max(0, Math.min(100, Math.round(Number(verdict.score ?? 0)) || 0));
+    const v = await runJudge(env, ctx);
+    await recordUsage(env, 'judge', v.tokensIn, v.tokensOut);
 
     return json({
       ok: true,
-      verdict: allowed.has(v) ? v : 'ok',
-      score,
-      reasons: (Array.isArray(verdict.reasons) ? verdict.reasons : [])
-        .slice(0, 3)
-        .map((s) => String(s).slice(0, 40)),
-      note: String(verdict.note ?? '').slice(0, 120),
-      model: r.model,
-      ms: r.ms,
-      tokens: r.tokensIn + r.tokensOut,
+      verdict: v.verdict,
+      score: v.score,
+      reasons: v.reasons,
+      note: v.note,
+      model: v.model,
+      ms: v.ms,
+      tokens: v.tokensIn + v.tokensOut,
     });
   } catch (e) {
     return fail(e);
@@ -819,4 +844,304 @@ export async function postFriendReply(request: Request, env: Env, _admin: Admin)
   } catch (e) {
     return fail(e);
   }
+}
+
+// ——————————————————————————————————————————————————————————
+// 访客留言 → 小爱自动回复
+//
+// 挂在 `POST /friends-board` 的 waitUntil 上：访客不等这一下，提交照常立刻
+// 返回，回复在响应发出去之后才生成并落库。
+//
+// 无人值守，所以除了提示词还有四道闸 —— 少一道就可能变成「一个人刷屏、
+// 小爱陪着刷、一天烧掉一个月额度」：
+//   ① 总开关      AUTO_REPLY=off 立刻退出
+//   ② 每日总量    AUTO_REPLY_DAILY（默认 20）
+//   ③ 单访客每天  AUTO_REPLY_PER_GUEST（默认 1）—— 同一个人一天只自动回一次
+//   ④ judge 先判  spam / abuse / privacy 一律不回
+//
+// 另外三条硬规矩：
+//   · **只回顶层留言**。访客之间在楼里聊，AI 凑上去插嘴很怪。
+//   · **幂等**。auto_reply_log.comment_id 唯一，再加「已有小爱回复就跳过」，
+//     重试或用户狂点提交都不会回两遍。
+//   · **失败即静默**。判断/生成/写入任何一环挂了，都只是少一条回复，
+//     绝不把错误抛回访客的提交请求。
+// ——————————————————————————————————————————————————————————
+const AUTO_REPLY_DAILY_DEFAULT = 20;
+const AUTO_REPLY_PER_GUEST_DEFAULT = 1;
+
+/** 模型主动弃权的约定：只吐这四个字符就当作「这次不说话」。 */
+const AUTO_SKIP = 'SKIP';
+
+function autoReplyOn(env: Env): boolean {
+  const v = String(env.AUTO_REPLY ?? 'on').trim().toLowerCase();
+  return !(v === 'off' || v === '0' || v === 'false' || v === 'no');
+}
+
+function autoReplyDaily(env: Env): number {
+  const n = Number.parseInt(String(env.AUTO_REPLY_DAILY ?? ''), 10);
+  return Number.isFinite(n) && n >= 0 ? n : AUTO_REPLY_DAILY_DEFAULT;
+}
+
+function autoReplyPerGuest(env: Env): number {
+  const n = Number.parseInt(String(env.AUTO_REPLY_PER_GUEST ?? ''), 10);
+  return Number.isFinite(n) && n >= 0 ? n : AUTO_REPLY_PER_GUEST_DEFAULT;
+}
+
+/** 自动回复的提示词 = 爱弥斯那套 + 两件事：没人过目、可以弃权。 */
+const AUTO_ADDON = `
+
+这一次是**自动**回的，站长不在旁边过目，你说完就直接挂到评论区去了。
+所以再收一道：
+- 拿不准的绕开，别猜；没有的东西别编。
+- 如果这条留言实在没什么可回的（纯广告、纯链接、你根本读不懂在说什么），
+  只输出 ${AUTO_SKIP} 四个字符。系统会当作「这次不说话」，没有人会看到这四个字。`;
+
+type AutoAction = 'replied' | 'skipped' | 'blocked' | 'failed';
+
+interface AutoLog {
+  commentId: number;
+  day: string;
+  action: AutoAction;
+  guestHash?: string | null;
+  verdict?: string | null;
+  note?: string | null;
+  model?: string | null;
+  tokens?: number | null;
+  ms?: number | null;
+}
+
+async function logAuto(env: Env, rec: AutoLog): Promise<void> {
+  try {
+    await env.DB.prepare(
+      `INSERT INTO auto_reply_log
+         (comment_id, guest_hash, day, action, verdict, note, model, tokens, ms, ts)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+       ON CONFLICT(comment_id) DO UPDATE SET
+         action = excluded.action,
+         verdict = excluded.verdict,
+         note = excluded.note,
+         model = excluded.model,
+         tokens = excluded.tokens,
+         ms = excluded.ms`,
+    )
+      .bind(
+        rec.commentId,
+        rec.guestHash ?? null,
+        rec.day,
+        rec.action,
+        rec.verdict ?? null,
+        rec.note ?? null,
+        rec.model ?? null,
+        rec.tokens ?? null,
+        rec.ms ?? null,
+        Date.now(),
+      )
+      .run();
+  } catch (e) {
+    // 迁移没跑也得能用：记账失败只丢流水，不影响回复本身
+    console.warn('[ai] auto_reply_log 写入失败：', e instanceof Error ? e.message : e);
+  }
+}
+
+type RootRow = { id: number; post_slug: string; author: string; ip_hash: string | null };
+
+/**
+ * 访客留言后让小爱回一句。
+ *
+ * **永远不要 await 在请求路径上** —— 调用方一律 `ctx.waitUntil(autoReplyTo(...))`。
+ * 这个函数不抛错，也不返回有意义的值，结果全落在 comments 与 auto_reply_log 里。
+ */
+export async function autoReplyTo(env: Env, commentId: number): Promise<void> {
+  if (!autoReplyOn(env)) return;
+
+  const writer = cfgOf(env, 'writer');
+  if (!writer) return; // 没配 key：静默，不留任何痕迹
+
+  const me = identityOf(env);
+  const day = dayKey(Date.now());
+
+  let root: RootRow | null = null;
+  try {
+    root = await env.DB.prepare(
+      `SELECT id, post_slug, author, ip_hash FROM comments
+        WHERE id = ? AND parent_id IS NULL AND status != 'deleted'`,
+    )
+      .bind(commentId)
+      .first<RootRow>();
+  } catch (e) {
+    console.warn('[ai] 自动回复读留言失败：', e instanceof Error ? e.message : e);
+    return;
+  }
+  if (!root) return;
+
+  // 小爱自己说的话不触发（万一哪天她也从留言板发言）
+  if (String(root.author ?? '').trim() === me.author) return;
+
+  // 已经有小爱的回复 → 手回过的也算，不重复。这条幂等不依赖新表。
+  try {
+    const has = await env.DB.prepare(
+      'SELECT 1 AS x FROM comments WHERE parent_id = ? AND author = ? LIMIT 1',
+    )
+      .bind(commentId, me.author)
+      .first<{ x: number }>();
+    if (has) return;
+  } catch {
+    /* 读不到就往下走，靠 auto_reply_log 兜 */
+  }
+
+  // —— 闸门 ②③ ——
+  // 新表不存在（迁移没跑）时整段跳过，宁可当「没有限额」也不让功能整挂
+  let gateOpen = true;
+  try {
+    const seen = await env.DB.prepare('SELECT 1 AS x FROM auto_reply_log WHERE comment_id = ?')
+      .bind(commentId)
+      .first<{ x: number }>();
+    if (seen) return;
+
+    const total = await env.DB.prepare(
+      "SELECT COUNT(*) AS n FROM auto_reply_log WHERE day = ? AND action = 'replied'",
+    )
+      .bind(day)
+      .first<{ n: number }>();
+    const limit = autoReplyDaily(env);
+    if ((total?.n ?? 0) >= limit) {
+      gateOpen = false;
+      await logAuto(env, { commentId, day, action: 'skipped', note: `daily_limit:${limit}` });
+    }
+
+    if (gateOpen && root.ip_hash) {
+      const mine = await env.DB.prepare(
+        "SELECT COUNT(*) AS n FROM auto_reply_log WHERE day = ? AND guest_hash = ? AND action = 'replied'",
+      )
+        .bind(day, root.ip_hash)
+        .first<{ n: number }>();
+      const per = autoReplyPerGuest(env);
+      if ((mine?.n ?? 0) >= per) {
+        gateOpen = false;
+        await logAuto(env, {
+          commentId,
+          day,
+          action: 'skipped',
+          guestHash: root.ip_hash,
+          note: `per_guest:${per}`,
+        });
+      }
+    }
+  } catch (e) {
+    console.warn('[ai] auto_reply_log 不可用，跳过限流闸门：', e instanceof Error ? e.message : e);
+  }
+  if (!gateOpen) return;
+
+  const ctx = await loadCtx(env, commentId);
+  if (!ctx) return;
+
+  // —— 闸门 ④：先判垃圾 ——
+  // 判断不出来就不回。误判一条广告的成本，远低于在小爱嘴里复述一条垃圾。
+  if (judgeTargetOf(env)) {
+    try {
+      const v = await runJudge(env, ctx);
+      await recordUsage(env, 'judge', v.tokensIn, v.tokensOut);
+      if (v.verdict !== 'ok') {
+        await logAuto(env, {
+          commentId,
+          day,
+          action: 'blocked',
+          guestHash: root.ip_hash,
+          verdict: v.verdict,
+          note: v.note,
+          model: v.model,
+        });
+        return;
+      }
+    } catch (e) {
+      await logAuto(env, {
+        commentId,
+        day,
+        action: 'failed',
+        guestHash: root.ip_hash,
+        note: `judge_error: ${e instanceof Error ? e.message.slice(0, 80) : 'unknown'}`,
+      });
+      return;
+    }
+  }
+
+  // —— 起草 ——
+  const started = Date.now();
+  let text = '';
+  let model = '';
+  let tokens = 0;
+  try {
+    const r = await chat(writer, {
+      system: WRITER_SYSTEM + AUTO_ADDON,
+      user: ctxBlock(ctx),
+      // 比后台手起草再放开一点：没人看着，太保守就会句句都是「欢迎欢迎」
+      temperature: 0.85,
+      maxTokens: 320,
+    });
+    await recordUsage(env, 'writer', r.tokensIn, r.tokensOut);
+    model = r.model;
+    tokens = r.tokensIn + r.tokensOut;
+
+    text = r.text
+      .replace(/^["'“”「」]+|["'“”「」]+$/g, '')
+      .replace(/^(回复|Reply)\s*[:：]\s*/i, '')
+      .trim();
+  } catch (e) {
+    await logAuto(env, {
+      commentId,
+      day,
+      action: 'failed',
+      guestHash: root.ip_hash,
+      note: `writer_error: ${e instanceof Error ? e.message.slice(0, 80) : 'unknown'}`,
+    });
+    return;
+  }
+
+  // 模型弃权 / 空 / 超长 —— 都不发
+  if (!text || text.toUpperCase() === AUTO_SKIP || text.length > MAX_DRAFT_LEN) {
+    await logAuto(env, {
+      commentId,
+      day,
+      action: 'skipped',
+      guestHash: root.ip_hash,
+      note: !text ? 'empty' : text.toUpperCase() === AUTO_SKIP ? 'model_skip' : 'too_long',
+      model,
+      tokens,
+    });
+    return;
+  }
+
+  const now = Date.now();
+  try {
+    // notify = 0：访客刚提交就在页面上，不必再补一封邮件打扰他
+    await env.DB.prepare(
+      `INSERT INTO comments (post_slug, parent_id, author, author_url, avatar, body, status, ts, notify)
+       VALUES (?, ?, ?, ?, ?, ?, 'visible', ?, 0)`,
+    )
+      .bind(root.post_slug, commentId, me.author, me.url, me.avatar, text, now)
+      .run();
+  } catch (e) {
+    await logAuto(env, {
+      commentId,
+      day,
+      action: 'failed',
+      guestHash: root.ip_hash,
+      note: `insert_error: ${e instanceof Error ? e.message.slice(0, 80) : 'unknown'}`,
+    });
+    return;
+  }
+
+  await logAuto(env, {
+    commentId,
+    day,
+    action: 'replied',
+    guestHash: root.ip_hash,
+    verdict: 'ok',
+    note: text.slice(0, 80),
+    model,
+    tokens,
+    ms: Date.now() - started,
+  });
+
+  console.log(`[ai] 自动回复 #${commentId} → ${text.slice(0, 40)}`);
 }

@@ -27,13 +27,20 @@ const AI_DEFAULT_NAME = '爱弥斯';
 const AI_DEFAULT_AVATAR = 'https://www.qingwu.ink/images/emis/avatar.png';
 const SITE_DEFAULT = 'https://www.qingwu.ink';
 
-interface Identity {
+export interface Identity {
   author: string;
   avatar: string;
   url: string;
 }
 
-function identityOf(env: Env): Identity {
+/**
+ * 「小爱」的署名与头像。
+ *
+ * 后台手动回复（replyToComment）和访客留言后的自动回复（ai.ts 的 autoReplyTo）
+ * **必须用同一份**，否则两边写进 comments 的 author 不一样，前台只认其中一种，
+ * 另一种就不挂 AI 小标了。
+ */
+export function identityOf(env: Env): Identity {
   const str = (v: string | undefined): string => String(v ?? '').trim();
   return {
     author: str(env.AI_PERSONA_NAME) || AI_DEFAULT_NAME,

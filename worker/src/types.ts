@@ -123,6 +123,18 @@ export interface Env {
 
   /** 站点根地址，AI 回复署名的 author_url 用。缺省 https://www.qingwu.ink */
   SITE_URL?: string;
+
+  // ——— 访客留言后小爱自动回复（见 admin/ai.ts 的 autoReplyTo）———
+  /**
+   * 总开关。`off` / `0` / `false` / `no` 任意一个即关闭，其余（含不填）都算开。
+   *
+   * 开着才叫「小爱在场」，关掉她就不自动说话，只剩后台手动起草。
+   */
+  AUTO_REPLY?: string;
+  /** 每天最多自动回几条，缺省 20。防有人刷屏把额度烧光 */
+  AUTO_REPLY_DAILY?: string;
+  /** 同一访客（ip_hash）每天最多被自动回几次，缺省 1。0 = 不限 */
+  AUTO_REPLY_PER_GUEST?: string;
 }
 
 /** `/hit` 请求体 —— **必须与旧 `src/pages/api/hit.ts` 一致**（前端只发这两个字段） */

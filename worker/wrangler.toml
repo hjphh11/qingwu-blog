@@ -107,6 +107,21 @@ AI_PERSONA_NAME = "爱弥斯"
 AI_PERSONA_AVATAR = "https://www.qingwu.ink/images/emis/avatar.png"
 SITE_URL = "https://www.qingwu.ink"
 
+# ——— 访客留言后小爱自动回复 ———
+# 开着才叫「小爱在场」：有人留言，她看完就直接回一句，站长不用动手。
+# 关掉（改成 "off"）就退回纯手动：只剩后台的「AI 起草」按钮。
+#
+# 她是无人值守的，所以除提示词外还有三道闸（见 admin/ai.ts 的 autoReplyTo）：
+#   AUTO_REPLY_DAILY       每天最多自动回几条，默认 20。防有人刷屏烧额度
+#   AUTO_REPLY_PER_GUEST   同一访客每天最多被自动回几次，默认 1。防一个人
+#                          连发几条、小爱逐条陪聊刷出一屏
+#   另有一道：先过 judge，判成 spam / abuse / privacy 的一律不回
+#
+# 想临时关掉：把 off 两个字写进 AUTO_REPLY，重启 Worker 即可，不用改代码。
+AUTO_REPLY = "on"
+AUTO_REPLY_DAILY = "20"
+AUTO_REPLY_PER_GUEST = "1"
+
 # ——— 本地开发：secret 放 worker/.dev.vars（已被 .gitignore 忽略）———
 # HIT_IP_SALT="dev-salt"
 # ADMIN_STATS_TOKEN="dev-token"
