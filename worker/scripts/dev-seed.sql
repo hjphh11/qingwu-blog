@@ -12,6 +12,7 @@
 
 DELETE FROM comments WHERE post_slug = 'friends';
 DELETE FROM auto_reply_log;
+DELETE FROM moderation_log;
 DELETE FROM applications;
 DELETE FROM friend_status;
 DELETE FROM backlink_checks;
@@ -56,6 +57,37 @@ VALUES
    '正文用的是思源宋体子集，标题那套是马善政 —— 都是按需切好的，整站加起来不到 1MB。',
    'visible', (strftime('%s','now') - 38*60)*1000, NULL, 0);
 
+-- ———————————————————————— 被审核拦下的留言 ————————————————————————
+-- 三条覆盖三种类别，其中一条已经被人工放行 —— 审核页的「拦截记录」要能同时
+-- 显示「还拦着」和「已放行」两种样子，否则状态那一栏的对错看不出来。
+INSERT INTO comments (id, post_slug, parent_id, author, email, email_hash, author_url, avatar, body, status, ts, ip_hash, notify)
+VALUES
+  (8, 'friends', NULL, '代运营小李', NULL, NULL, NULL, NULL,
+   '专业代运营，涨粉引流一条龙，加微信 cw8899，月费只要 199，无效退款。',
+   'spam', (strftime('%s','now') - 26*3600)*1000, 'seed-e', 0),
+  (9, 'friends', NULL, '匿名', NULL, NULL, NULL, NULL,
+   '楼主就是个不懂装懂的货，写这种东西也好意思发出来，建议赶紧删号。',
+   'spam', (strftime('%s','now') - 2*86400)*1000, 'seed-f', 0),
+  (10, 'friends', NULL, '爆料君', NULL, NULL, NULL, NULL,
+   '顺便问一下，你们那边那个谁的电话是不是 138xxxx，我听说是住在 xx 路。（测试用：判为隐私泄露，之后手动放行）',
+   'pending', (strftime('%s','now') - 4*86400)*1000, 'seed-g', 0);
+
+-- 判定依据。score / threshold 是当时的原值，改阈值之后这些记录不该跟着变。
+INSERT INTO moderation_log (comment_id, verdict, score, threshold, reasons, note, model, ms, day, ts)
+VALUES
+  (8, 'spam', 94, 70,
+   '["加微信引流","明码标价代运营","与本站内容无关"]',
+   '典型的推广留言，含联系方式和报价', 'jev-1', 186,
+   date('now','-1 days'), (strftime('%s','now') - 26*3600)*1000),
+  (9, 'abuse', 88, 70,
+   '["人身攻击","侮辱性称呼","攻击作者"]',
+   '针对作者本人的辱骂，不是对内容的批评', 'jev-1', 203,
+   date('now','-2 days'), (strftime('%s','now') - 2*86400)*1000),
+  (10, 'privacy', 81, 70,
+   '["疑似手机号","疑似住址"]',
+   '正文里出现可定位到个人的信息', 'jev-1', 174,
+   date('now','-4 days'), (strftime('%s','now') - 4*86400)*1000);
+
 -- ——————————————————————————— 自动回复流水 ———————————————————————————
 -- 近 7 天各来一点：回过 / 被每日上限挡下 / judge 判成垃圾 / 生成失败。
 INSERT INTO auto_reply_log (comment_id, guest_hash, day, action, verdict, note, model, tokens, ms, ts)
@@ -70,6 +102,21 @@ VALUES
    (strftime('%s','now') - 2*86400 - 7200)*1000),
   (9003, 'seed-z', date('now','-4 days'), 'failed', 'ok', 'upstream 429', 'deepseek-chat', NULL, 3000,
    (strftime('%s','now') - 4*86400)*1000);
+
+-- 再按天铺一层：统计页「小爱回过多少」那张图需要连续十几天的形状。
+-- comment_id 用 9100+ 的假号 —— 列表里作者显示「（留言已删）」，正好也是要看的样子。
+INSERT INTO auto_reply_log (comment_id, guest_hash, day, action, verdict, note, model, tokens, ms, ts)
+SELECT 9100 + k, 'seed-loop', date('now','-'||k||' days'), 'replied', 'ok', NULL, 'deepseek-chat',
+       380 + (k * 23) % 260, 1500 + (k * 90) % 1200, (strftime('%s','now') - k*86400 + 3600)*1000
+FROM (WITH RECURSIVE k0(k) AS (SELECT 0 UNION ALL SELECT k + 1 FROM k0 WHERE k < 13) SELECT k FROM k0)
+WHERE k % 2 = 0;
+
+INSERT INTO auto_reply_log (comment_id, guest_hash, day, action, verdict, note, model, tokens, ms, ts)
+SELECT 9200 + k, 'seed-loop2', date('now','-'||k||' days'), 'skipped', 'ok',
+       CASE k % 3 WHEN 0 THEN 'quiet_hours' WHEN 1 THEN 'per_guest:1' ELSE 'keyword:抽奖' END,
+       NULL, NULL, NULL, (strftime('%s','now') - k*86400 + 5400)*1000
+FROM (WITH RECURSIVE k0(k) AS (SELECT 0 UNION ALL SELECT k + 1 FROM k0 WHERE k < 13) SELECT k FROM k0)
+WHERE k % 3 = 0;
 
 -- ———————————————————————————— 友链申请 ————————————————————————————
 INSERT INTO applications (name, url, avatar, intro, email, status, reason, created_at, handled_at)
@@ -116,25 +163,37 @@ VALUES
 
 -- ——————————————————————————— AI 用量 ———————————————————————————
 -- 通道卡上的用量条：writer 12/300、judge 34/300，今天还没用完。
+-- 顺带把近 14 天铺开 —— 统计页的 AI 那张图只有两根柱子的话，看不出柱形对不对。
 INSERT INTO ai_usage (day, channel, n, tokens_in, tokens_out)
-VALUES
-  (date('now'), 'writer', 12, 8420, 3160),
-  (date('now'), 'judge', 34, 5210, 0),
-  (date('now','-1 days'), 'writer', 6, 3900, 1420),
-  (date('now','-1 days'), 'judge', 21, 3180, 0);
+SELECT day, 'writer', n, n * 640, n * 250 FROM (
+  SELECT date('now','-'||k||' days') AS day, 4 + (k * 7) % 16 AS n
+  FROM (WITH RECURSIVE k0(k) AS (SELECT 0 UNION ALL SELECT k + 1 FROM k0 WHERE k < 13) SELECT k FROM k0)
+);
+
+INSERT INTO ai_usage (day, channel, n, tokens_in, tokens_out)
+SELECT day, 'judge', n, n * 150, 0 FROM (
+  SELECT date('now','-'||k||' days') AS day, 12 + (k * 11) % 30 AS n
+  FROM (WITH RECURSIVE k0(k) AS (SELECT 0 UNION ALL SELECT k + 1 FROM k0 WHERE k < 13) SELECT k FROM k0)
+);
 
 -- ——————————————————————————— 访问打点 ———————————————————————————
--- 今天 320 PV / 96 UV，外加前两天的尾巴，让「今日 PV / UV」和最后一条打点都不为 0。
+-- 近 14 天，每天 60~320 PV。只给今天一天的话，统计页的趋势图是一根柱子 ——
+-- 折线、面积、x 轴抽稀这些全都没得验。每天 visitor 取模 88，所以 UV 也在 88 上下。
 INSERT INTO hits (ts, day, path, referrer, country, device, visitor)
-SELECT (strftime('%s','now') - 3600 - (n * 97)),
-       date('now'),
-       CASE n % 4 WHEN 0 THEN '/' WHEN 1 THEN '/blog/' WHEN 2 THEN '/links/' ELSE '/about/' END,
-       CASE n % 3 WHEN 0 THEN 'google.com' WHEN 1 THEN NULL ELSE '(direct)' END,
-       CASE n % 5 WHEN 0 THEN 'CN' WHEN 1 THEN 'JP' WHEN 2 THEN 'US' WHEN 3 THEN 'HK' ELSE 'DE' END,
-       CASE n % 2 WHEN 0 THEN 'desktop' ELSE 'mobile' END,
-       'v' || (n % 96)
-  FROM (WITH RECURSIVE seq(n) AS (SELECT 0 UNION ALL SELECT n + 1 FROM seq WHERE n < 319)
-        SELECT n FROM seq);
+SELECT
+  CAST(strftime('%s', d.day || ' 00:00:00') AS INTEGER) + (s.n * 157) % 86400,
+  d.day,
+  CASE s.n % 5 WHEN 0 THEN '/' WHEN 1 THEN '/blog/' WHEN 2 THEN '/blog/astro-d1' WHEN 3 THEN '/links/' ELSE '/about/' END,
+  CASE s.n % 4 WHEN 0 THEN 'google.com' WHEN 1 THEN 'rainzt.cn' WHEN 2 THEN '(direct)' ELSE NULL END,
+  CASE s.n % 9 WHEN 0 THEN 'US' WHEN 1 THEN 'JP' WHEN 2 THEN 'HK' WHEN 3 THEN 'SG' WHEN 4 THEN 'DE' ELSE 'CN' END,
+  CASE s.n % 7 WHEN 0 THEN 'mobile' WHEN 1 THEN 'tablet' ELSE 'desktop' END,
+  'v' || (s.n % 88)
+FROM (
+  SELECT date('now','-'||k||' days') AS day, 60 + (k * 37) % 260 AS pv
+  FROM (WITH RECURSIVE k0(k) AS (SELECT 0 UNION ALL SELECT k + 1 FROM k0 WHERE k < 13) SELECT k FROM k0)
+) d
+JOIN (WITH RECURSIVE seq(n) AS (SELECT 0 UNION ALL SELECT n + 1 FROM seq WHERE n < 400) SELECT n FROM seq) s
+  ON s.n < d.pv;
 
 -- ——————————————————————————— 发信积压 ———————————————————————————
 -- 一封在退避重试、一封已经放弃（tries 到顶）。后台那一格因此不是 0。
