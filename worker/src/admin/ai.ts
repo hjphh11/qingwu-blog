@@ -289,13 +289,20 @@ interface Verdict {
 async function callJev(
   t: { base: string; key: string; model: string },
   ctx: CommentCtx,
-): Promise<Verdict & { ms: number }> {
+): Promise<Verdict & { ms: number; model: string; tokensIn: number; tokensOut: number }> {
   const started = Date.now();
   const ctl = new AbortController();
   const timer = setTimeout(() => ctl.abort(), TIMEOUT_MS);
 
   try {
-    const res = await fetch(`${t.base}/api/v1/decisions`, {
+    /**
+     * ⚠️ 端点必须是 `api.typesafe.ai/v1/systemone`（TypeSafe 官方）。
+     *
+     * 别用 `jevmodel.io/api/v1/decisions` —— 那是个仿站，它的文档写着「key 必须
+     * `sk-` 开头」，于是从 console.typesafe.ai 拿到的 `apikey_…` 永远被判 401，
+     * 看起来像 key 坏了，其实是打错了门。2026-11-10 在这上面白折腾过一轮。
+     */
+    const res = await fetch(`${t.base}/v1/systemone`, {
       method: 'POST',
       headers: {
         'content-type': 'application/json',
@@ -328,7 +335,16 @@ async function callJev(
     }
 
     const data = (await res.json()) as {
-      answers?: { verdict?: { choice?: string; confidence?: number; reason?: string } };
+      model?: string;
+      answers?: {
+        verdict?: {
+          type?: string;
+          choice?: string;
+          confidence?: number;
+          probabilities?: Record<string, number>;
+        };
+      };
+      usage?: { input_tokens?: number; output_tokens?: number };
     };
     const a = data.answers?.verdict;
     if (!a) throw new AiError('ai_empty', 'Jev 没返回 answers.verdict', 502);
@@ -341,12 +357,29 @@ async function callJev(
     // 判「正常」时越确信风险越低；判违规时越确信风险越高。
     const score = Math.round((verdict === 'ok' ? 1 - conf : conf) * 100);
 
+    // 官方响应带 probabilities（四类各自的概率），比单看 confidence 更有信息量，
+    // 后台「AI 体检」那一行直接显示出来，一眼能看出「是不是勉强判成 ok」。
+    const probs = a.probabilities ?? {};
+    const note =
+      verdict === 'ok'
+        ? `正常 · 把握 ${(conf * 100).toFixed(0)}%`
+        : `${JUDGE_CHOICES[verdict]} · 把握 ${(conf * 100).toFixed(0)}%`;
+
     return {
       verdict,
       score,
-      reasons: [],
-      note: String(a.reason ?? '').slice(0, 120) || `Jev 判断为「${JUDGE_CHOICES[verdict]}」`,
+      reasons: Object.entries(probs)
+        .filter(([k]) => k !== verdict && (probs[k] ?? 0) >= 0.15)
+        .sort((x, y) => (probs[y[0]] ?? 0) - (probs[x[0]] ?? 0))
+        .slice(0, 2)
+        .map(([k, p]) => `${k} ${(p * 100).toFixed(0)}%`),
+      note: note.slice(0, 120),
+      // 响应里的 model 是版本化 ID（如 jev-1.14.0），比别名 jev-latest 准
+      model: String(data.model ?? '').trim() || t.model,
       ms: Date.now() - started,
+      tokensIn: Number(data.usage?.input_tokens ?? 0) || 0,
+      // 输出不计费，但记下来能算「一条留言实际花了多少 token」
+      tokensOut: Number(data.usage?.output_tokens ?? 0) || 0,
     };
   } catch (e) {
     if (e instanceof AiError) throw e;
@@ -435,8 +468,7 @@ async function runJudge(env: Env, ctx: CommentCtx): Promise<JudgeOut> {
 
   if (target.kind === 'jev') {
     // Jev 走决策协议：只回 label + confidence，不生成文字，也不计输出费
-    const v = await callJev(target, ctx);
-    return { ...v, model: target.model, tokensIn: 0, tokensOut: 0 };
+    return callJev(target, ctx);
   }
 
   const user = `【页面】${ctx.path}\n【访客昵称】${ctx.author}\n【待审留言】\n<<<\n${clip(ctx.body)}\n>>>`;
@@ -519,7 +551,9 @@ function judgeTargetOf(env: Env): JudgeTarget | null {
   if (provider === 'jev' && jevKey) {
     return {
       kind: 'jev',
-      base: (str(env.AI_JUDGE_BASE_URL) || 'https://jevmodel.io').replace(/\/+$/, ''),
+      // ⚠️ 官方是 api.typesafe.ai。jevmodel.io 是仿站（它要求 sk- 前缀的 key），
+      //    打过去只会得到 401 Invalid API key，别再用。
+      base: (str(env.AI_JUDGE_BASE_URL) || 'https://api.typesafe.ai').replace(/\/+$/, ''),
       key: jevKey,
       model: str(env.AI_JUDGE_MODEL) || 'jev-latest',
     };
