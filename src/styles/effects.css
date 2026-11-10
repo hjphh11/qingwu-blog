@@ -633,12 +633,41 @@
     transform: scale(1.06);
   }
 
+  /* 推荐位：只加一圈琥珀描边，不换底色、不加发光。
+     卡片本身已经有头像铺出来的模糊底，再叠一层光会糊成一片。
+     用 box-shadow 而不是 border：glass-card 的描边是它自己的伪元素/边框，
+     改 border 会跟它的圆角裁切打架。 */
+  .q-links-card.is-recommended {
+    /* 1px 太细，压在卡片的模糊底上几乎看不见；1.5px + 内描一圈才有「框住」的感觉。
+       外圈半透、内圈更实，叠起来像一道细金边而不是发光 —— 不做 glow。 */
+    box-shadow:
+      inset 0 0 0 1px rgb(232 176 75 / 0.5),
+      0 0 0 1.5px rgb(232 176 75 / 0.68),
+      0 18px 42px -26px rgb(232 176 75 / 0.6);
+  }
+
   .q-links-card__name {
     font-family: var(--font-display);
     font-size: 1.05rem;
     line-height: 1.3;
     color: var(--color-ink);
     transition: color var(--dur-micro) var(--ease-soft);
+  }
+  /* 名字后面的「推荐」小标。字小、边细、颜色压深一档 ——
+     浅金压在奶油底上对比度不够，会显得脏。 */
+  .q-links-card__rec {
+    display: inline-block;
+    margin-left: 0.45em;
+    padding: 1px 6px;
+    border: 1px solid rgb(232 176 75 / 0.55);
+    border-radius: 5px;
+    background: rgb(232 176 75 / 0.16);
+    font-family: var(--font-body);
+    font-size: 0.62rem;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    color: #8a6420;
+    vertical-align: middle;
   }
   .q-links-card:hover .q-links-card__name {
     color: var(--color-accent);
