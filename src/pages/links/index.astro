@@ -82,13 +82,7 @@ shown.forEach((f, i) => wallColumns[i % WALL_COLS]!.push({ f, i }));
               href={f.url}
               target="_blank"
               rel="noreferrer"
-              class:list={[
-                'q-links-card',
-                'glass-card',
-                'card-spotlight',
-                'group',
-                { 'is-recommended': f.recommend },
-              ]}
+              class="q-links-card glass-card card-spotlight group"
               style={`--i:${i};--tall:${[1, 0.86, 1.18, 0.94][i % 4]}`}
               data-host={hostOfUrl(f.url)}
               data-url={f.url}
@@ -140,11 +134,7 @@ shown.forEach((f, i) => wallColumns[i % WALL_COLS]!.push({ f, i }));
                   referrerpolicy="no-referrer"
                 />
               </span>
-              <p class="q-links-card__name">
-                {f.name}
-                {/* 推荐小标：与名字同一行，读屏会把它读成「名字 推荐」，顺序自然 */}
-                {f.recommend ? <span class="q-links-card__rec">推荐</span> : null}
-              </p>
+              <p class="q-links-card__name">{f.name}</p>
               {/* 展示状态徽章 —— 默认 hidden，等 /link-status 回来才决定填不填。
                   放在名字**下面**而不是头像角上：竖长条的视觉重心在中上部，
                   角标会被头像挤掉；读屏顺序上也该紧跟名字。

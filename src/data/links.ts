@@ -11,16 +11,10 @@ export interface Friend {
   intro: string;
   url: string;
   /**
-   * 是否显示。后台那个「展示中 / 隐藏中」开关写的就是它；
-   * 前台 `links/index.astro` 会真的过滤掉 `visible === false` 的条目。
+   * 后台用：是否显示（方案第 34 条）—— **只影响后台列表，前台照旧全渲染**。
    * 默认视作 true。
    */
   visible?: boolean;
-  /**
-   * 推荐位：前台那张卡描金边并挂「推荐」小标。
-   * 与 visible 正交 —— 推荐但隐藏是合法的（先备着，等对方把回链补上再展示）。
-   */
-  recommend?: boolean;
   /** 后台用：添加时间（后台自动记录，如 2026-09-12）。前台不展示 */
   addedAt?: string;
   /**
@@ -38,7 +32,6 @@ const schema = z.object({
       intro: z.string(),
       url: urlLike,
       visible: z.boolean().default(true),
-      recommend: z.boolean().default(false),
       addedAt: z.string().optional(),
       // 选填：不写这个键就是 undefined；写了就必须是合法链接（不允许空字符串）
       shot: urlLike.optional(),

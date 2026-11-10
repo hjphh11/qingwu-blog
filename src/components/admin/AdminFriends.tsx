@@ -36,8 +36,6 @@ interface Friend {
   intro: string;
   url: string;
   visible?: boolean;
-  /** 推荐位：前台卡片描金 + 小徽章。与 visible 是两件事 —— 推荐不等于展示。 */
-  recommend?: boolean;
   addedAt?: string;
   shot?: string;
 }
@@ -121,7 +119,6 @@ const FIELD_LABEL: Record<string, string> = {
   intro: '描述',
   shot: '主页图',
   visible: '展示',
-  recommend: '推荐',
   addedAt: '收录日期',
   order: '顺序',
   '+': '新增',
@@ -133,7 +130,6 @@ const fieldLabel = (f: string): string => FIELD_LABEL[f] ?? f;
 /** 值的可读化：布尔说「展示中 / 已隐藏」，空串说「（空）」。 */
 function showVal(field: string, v: unknown): string {
   if (field === 'visible') return v === false ? '已隐藏' : '展示中';
-  if (field === 'recommend') return v === true ? '推荐中' : '未推荐';
   const s = String(v ?? '').trim();
   return s || '（空）';
 }
@@ -156,7 +152,7 @@ function diffLinks(orig: Friend[], next: Friend[]): Change[] {
       out.push({ url: f.url, name: f.name, field: '+', from: '', to: `${f.name} · ${f.url}` });
       continue;
     }
-    for (const k of ['name', 'url', 'avatar', 'intro', 'shot', 'addedAt', 'visible', 'recommend'] as const) {
+    for (const k of ['name', 'url', 'avatar', 'intro', 'shot', 'addedAt', 'visible'] as const) {
       const a = k === 'visible' ? (o.visible !== false) : String(o[k] ?? '');
       const b = k === 'visible' ? (f.visible !== false) : String(f[k] ?? '');
       if (a !== b) {
@@ -695,7 +691,7 @@ export default function AdminFriends() {
           ) : null}
 
           {/* 待提交改动：逐条列「字段：旧 → 新」，可单条撤销。
-              不做「点一下提交一次」—— 一次改几条推荐状态再统一提交，仓库里只留一条记录。 */}
+              不做「点一下提交一次」—— 一次改几条再统一提交，仓库里只留一条记录。 */}
           {showDiff ? (
             <div
               className="q-admin-modal"
@@ -1080,17 +1076,6 @@ export default function AdminFriends() {
                           title="只影响草稿，提交后才生效"
                         >
                           {f.visible === false ? '隐藏中' : '展示中'}
-                        </button>
-                        {/* 推荐：前台那张卡会描金并挂小标。和「展示中」互不替代 ——
-                            推荐但还是可以隐藏，两者各管一件事。
-                            星号用字符而不是图标：这一列已经是文字的密度，塞图标会更乱。 */}
-                        <button
-                          className="q-admin-btn q-admin-btn--ghost q-admin-btn--sm"
-                          type="button"
-                          onClick={() => setField(i, 'recommend', f.recommend !== true)}
-                          title="前台卡片会描金并挂「推荐」小标 · 只影响草稿"
-                        >
-                          {f.recommend ? '★ 已推荐' : '☆ 推荐'}
                         </button>
                         {/* 展示状态是**即时生效**的（写 D1），和上面那个「展示中」不是一回事：
                             那个改的是 links.json 草稿、要提交+构建；这个点完前台就到。

@@ -49,8 +49,6 @@ interface FriendItem {
   intro: string;
   url: string;
   visible?: boolean;
-  /** 推荐位：前台描金 + 小徽章。此前只能手改 json，现在后台能点了 */
-  recommend?: boolean;
   addedAt?: string;
   shot?: string;
 }
@@ -694,9 +692,6 @@ export async function commitLinks(request: Request, env: Env, admin: Admin): Pro
       intro: String(f.intro ?? '').trim(),
       url: String(f.url ?? '').trim(),
       visible: f.visible !== false,
-      // 只写 true，不写 false：没推荐过的条目保持不带这个键，
-      // 免得把 15 条全刷成 recommend:false（json 里一片噪音）
-      recommend: f.recommend === true ? true : undefined,
       addedAt: f.addedAt ? String(f.addedAt) : undefined,
       shot: f.shot ? String(f.shot) : undefined,
     };
