@@ -739,6 +739,74 @@
     opacity: 0.6;
   }
 
+  /* ── 展示状态徽章 ─────────────────────────────────────────
+     只有两个「异常」状态才出现（normal 什么都不显示），所以这里是
+     `[data-link-state=...]` 而不是一堆并列的三态类名。
+
+     配色不是随手挑的：琥珀 = 还在缓冲期、多数会回来；绯红 = 违规整改，
+     是真出事了。两者必须一眼能分。
+     ⚠️ 文字色**故意不用 `var(--color-crimson)`**：那颗 crimson 是为白底调的，
+        叠在这层 12% 的粉底上只有 4.35，差一点点不到 AA。这里压深到 #a52e47 才够 5.7。
+        旁边 `.q-links-card__dot` 用的 #c98a22 是纯色相 —— 那颗圆点只做指示、不承载文字，
+        标准不一样，别直接抄过来当文字色。 */
+  .q-links-card__state {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    padding: 0.08rem 0.5rem;
+    border-radius: var(--radius-pill);
+    font-size: 0.6875rem;
+    line-height: 1.75;
+    letter-spacing: 0.02em;
+    white-space: nowrap;
+  }
+  /* 小圆点用 currentColor：跟着下面那两条的 color 走，不用各写一次 */
+  .q-links-card__state::before {
+    content: '';
+    width: 0.3rem;
+    height: 0.3rem;
+    border-radius: 50%;
+    background: currentColor;
+    flex-shrink: 0;
+  }
+  .q-links-card__state[data-link-state='unstable'] {
+    background: rgb(201 138 34 / 0.14);
+    color: #7d5511;
+  }
+  .q-links-card__state[data-link-state='violation'] {
+    background: rgb(194 58 85 / 0.12);
+    color: #a52e47;
+  }
+
+  /* 到期下架：先淡出再 display:none，别让那张卡凭空消失。
+     ⚠️ `animation: none` 不能省 —— `.qjs .q-links-card` 的入场动画带 forwards，
+        动画层里的 `opacity: 1` 会盖过这里的普通声明，只写 opacity: 0 是无效的。 */
+  .q-links-card.is-dropping {
+    animation: none;
+    opacity: 0;
+    scale: 0.94;
+    pointer-events: none;
+    transition:
+      opacity var(--dur-state) var(--ease-soft),
+      scale var(--dur-state) var(--ease-out-expo);
+  }
+  /* ⚠️ 必须显式声明：`[hidden] { display: none }` 在 UA 样式表里，
+     被上面 `.q-links-card { display: flex }` 按作者优先级盖掉 ——
+     于是 `card.hidden = true` 写完毫无反应。这一条少一行，整个下架功能就是假的。 */
+  .q-links-card[hidden] {
+    display: none;
+  }
+
+  /* 全部下架时的兜底文案（脚本只在可见卡为 0 时摘掉 hidden） */
+  .q-links-allgone {
+    max-width: 32em;
+    margin: 3rem auto 0;
+    text-align: center;
+    font-size: var(--text-label);
+    line-height: 1.9;
+    color: var(--color-muted);
+  }
+
   /* 入场：交错淡入 + 微弱弹性上滑。--i 由页面按下标给，无 JS 时整块可见。
      ⚠️ 位移用 **`translate` 属性**而不是 `transform`：
      卡片自身的 `transform` 承担着列的错落(--shift)与倾斜(--tilt)，动画里写

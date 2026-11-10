@@ -162,3 +162,68 @@ export async function getLinkPosts(request: Request, env: Env): Promise<Response
     return json({ ok: false, items: [] }, 200, headers);
   }
 }
+
+/**
+ * GET /link-status —— 友链的**展示状态**（给访客看的那一份）。
+ *
+ * 为什么要有这个接口：`friend_status` 里的三态从一开始就设计成「状态归 D1、内容归仓库」，
+ * 后台早就能写，注释里也写了「前台读 /link-status 按 until 判断」，但接口一直没建 ——
+ * 结果就是站长在后台设了「失联缓冲」，前台那张卡照旧满血展示，状态等于不存在。
+ *
+ * 返回两张表，语义刻意分开：
+ *   items  —— 还活着、需要打标记的（unstable / violation）。值是 `{ state, note, until, left }`，
+ *             `left` 是剩余天数，服务端算好，免得前端各写一份取整规则。
+ *   hidden —— **已经到期、该从墙上摘掉**的 host。
+ *
+ * 为什么 hidden 用「黑名单」而不是「白名单」：
+ *   墙上那张卡是构建期渲染的，库里可能压根没有它的记录（刚加的友链还没巡检过）。
+ *   白名单会把「没记录」误判成「下架」，黑名单只动明确过期的那些，缺省一律照常显示。
+ *
+ * 为什么不用 state='normal' 的行来「恢复显示」：
+ *   不需要 —— normal 的行既不进 items 也不进 hidden，前端本来就默认显示，
+ *   站长把状态改回 normal，这张卡自己就回到默认态了。
+ */
+export async function getLinkStatus(request: Request, env: Env): Promise<Response> {
+  const headers = withCors(request, env);
+
+  const origin = request.headers.get('origin') || '';
+  if (origin && !originAllowed(origin, parseOrigins(env.ALLOWED_ORIGINS))) {
+    return json({ ok: false, items: {}, hidden: [] }, 200, headers);
+  }
+
+  try {
+    const rows = await env.DB.prepare(
+      `SELECT url, state, note, until FROM friend_status WHERE state != 'normal'`,
+    ).all<{ url: string; state: string; note: string | null; until: number | null }>();
+
+    const now = Date.now();
+    const items: Record<string, { state: string; note: string | null; until: number; left: number }> = {};
+    const hidden: string[] = [];
+
+    for (const r of rows.results ?? []) {
+      let host: string;
+      try {
+        host = toHostKey(r.url);
+      } catch {
+        // 库里有脏数据也不该让整页塌掉，跳过这一条
+        continue;
+      }
+      if (!r.until) continue; // 没有到期时间的非 normal 记录没有意义，不参与
+      if (r.until <= now) {
+        hidden.push(host);
+        continue;
+      }
+      items[host] = {
+        state: r.state,
+        note: r.note ?? null,
+        until: r.until,
+        left: Math.max(1, Math.ceil((r.until - now) / 86_400_000)),
+      };
+    }
+
+    return json({ ok: true, items, hidden }, 200, headers);
+  } catch {
+    // 表还没建 / 迁移没应用 —— 回空，前台按「全部正常」处理，不报错
+    return json({ ok: false, items: {}, hidden: [] }, 200, headers);
+  }
+}

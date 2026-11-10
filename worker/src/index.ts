@@ -5,6 +5,7 @@
 //   GET    /hit          能力探测（与旧的 /api/hit GET 同形）
 //   GET    /stats        后台统计查询（需 Bearer 口令）
 //   GET    /post-views   单篇阅读量（文章页头部，只认 /blog/ 开头）
+//   GET    /link-status  友链展示状态（失联缓冲 / 违规整改 / 到期下架）
 //   GET    /health       健康检查
 //   POST   /apply        友链申请提交（第 2 步）
 //   GET    /apply        无口令 = 能力探测；带口令 = 后台读列表
@@ -16,7 +17,7 @@ import { getApply, patchApply, postApply } from './apply';
 import { handleAdmin } from './admin/index';
 import { runBacklinkCheck } from './admin/friends';
 import { deleteFriendComment, getFriendsBoard, postFriendLike, postFriendReply, postFriendsBoard } from './friends-board';
-import { getLinkPosts, getLinkStats, postLinkClick } from './link';
+import { getLinkPosts, getLinkStats, getLinkStatus, postLinkClick } from './link';
 import { refreshAllFeeds } from './links-refresh';
 import { flushOutbox } from './mail';
 import { getHit, postHit } from './hit';
@@ -113,6 +114,12 @@ export default {
     if (path === '/link-posts') {
       if (request.method !== 'GET') return json({ ok: false, reason: 'method_not_allowed' }, 405);
       return getLinkPosts(request, env);
+    }
+
+    // 友链的展示状态（失联缓冲 / 违规整改 / 已到期下架）—— 见 link.ts 的 getLinkStatus
+    if (path === '/link-status') {
+      if (request.method !== 'GET') return json({ ok: false, reason: 'method_not_allowed' }, 405);
+      return getLinkStatus(request, env);
     }
 
     // —— 友链评论区（留言 / 回复 / 点赞）——

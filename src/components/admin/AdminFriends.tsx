@@ -55,6 +55,13 @@ interface FriendFlag {
   updated_at: number;
 }
 
+/** 展示状态的中文名。天数是后端定的（失联 30 / 整改 7），这里只负责怎么读。 */
+const STATUS_LABEL: Record<string, string> = {
+  normal: '正常',
+  unstable: '短暂失联',
+  violation: '违规整改',
+};
+
 /** AI 起草的回信草稿 —— 只是草稿，站长点「发送邮件」才真的出去 */
 interface Letter {
   id: number;
@@ -192,6 +199,11 @@ export default function AdminFriends() {
   const [checking, setChecking] = useState(false);
   const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
 
+  // —— 展示状态（短暂失联 / 违规整改）——
+  // 菜单的键用 normUrl(URL) 而不是下标：列表能拖拽改序，用下标会错行。
+  const [statusMenu, setStatusMenu] = useState<string | null>(null);
+  const [statusBusy, setStatusBusy] = useState(false);
+
   const original = useMemo(() => JSON.stringify(data?.links ?? []), [data]);
   const dirty = useMemo(() => JSON.stringify(draft) !== original, [draft, original]);
 
@@ -254,6 +266,57 @@ export default function AdminFriends() {
         setNotice(`申请 #${id} 已改为「${APP_LABEL[status] ?? status}」`);
       } catch (e) {
         setErr(e instanceof Error ? e.message : '操作失败');
+      }
+    },
+    [],
+  );
+
+  /**
+   * 设「展示状态」：正常 / 短暂失联 / 违规整改。
+   *
+   * 这个状态**不进 links.json**，写 D1 的 `friend_status`（见 0014_friends.sql）：
+   * 内容归仓库，随时间变的观察值归库。前台友链墙靠 `GET /link-status` 读它，
+   * 到 `until` 那一刻自动把那张卡从墙上摘掉。
+   *
+   * 天数（30 / 7）由后端定，这里不传 —— 传了就变成两处各写一份规则。
+   * `note` 带回去只是别覆盖站长之前写的那句说明（接口空着会当清空处理）。
+   */
+  const setFlag = useCallback(
+    async (url: string, state: 'normal' | 'unstable' | 'violation', keepNote?: string | null) => {
+      setErr('');
+      setStatusBusy(true);
+      try {
+        const r = await api<{ ok: boolean; state: string; until: number | null }>('/friends/status', {
+          method: 'POST',
+          body: JSON.stringify({ url, state, note: keepNote ?? undefined }),
+        });
+        const key = normUrl(url);
+        setData((prev) =>
+          prev
+            ? {
+                ...prev,
+                statuses: {
+                  ...prev.statuses,
+                  [key]: {
+                    state: r.state,
+                    note: state === 'normal' ? null : (keepNote ?? null),
+                    until: r.until,
+                    updated_at: Date.now(),
+                  },
+                },
+              }
+            : prev,
+        );
+        setStatusMenu(null);
+        setNotice(
+          state === 'normal'
+            ? '已恢复为「正常」，前台照常展示'
+            : `已标记「${STATUS_LABEL[state]}」，到期后前台自动下架`,
+        );
+      } catch (e) {
+        setErr(e instanceof Error ? e.message : '设置失败');
+      } finally {
+        setStatusBusy(false);
       }
     },
     [],
@@ -726,11 +789,12 @@ export default function AdminFriends() {
               <ul className="q-admin-linklist">
                 {links.map((f, i) => {
                   const c = checkOf(f.url);
-                  const flag = data?.statuses?.[normUrl(f.url)];
+                  const urlKey = normUrl(f.url);
+                  const flag = data?.statuses?.[urlKey];
                   const expired = flag?.until ? flag.until < Date.now() : false;
                   return (
                     <li
-                      key={`${normUrl(f.url)}-${i}`}
+                      key={`${urlKey}-${i}`}
                       className={f.visible === false ? 'is-hidden' : undefined}
                       draggable
                       onDragStart={() => {
@@ -783,6 +847,17 @@ export default function AdminFriends() {
                         >
                           {f.visible === false ? '隐藏中' : '展示中'}
                         </button>
+                        {/* 展示状态是**即时生效**的（写 D1），和上面那个「展示中」不是一回事：
+                            那个改的是 links.json 草稿、要提交+构建；这个点完前台就到。
+                            两个按钮排在一起容易被当成同一件事，所以 title 里把差别写明。 */}
+                        <button
+                          className="q-admin-btn q-admin-btn--ghost q-admin-btn--sm"
+                          type="button"
+                          onClick={() => setStatusMenu(statusMenu === urlKey ? null : urlKey)}
+                          title="失联缓冲 / 违规整改 —— 立即生效，前台会挂标记，到期自动下架"
+                        >
+                          {statusMenu === urlKey ? '收起' : '状态'}
+                        </button>
                         <button
                           className="q-admin-btn q-admin-btn--ghost q-admin-btn--sm"
                           type="button"
@@ -798,6 +873,37 @@ export default function AdminFriends() {
                           移除
                         </button>
                       </div>
+
+                      {statusMenu === urlKey ? (
+                        <div className="q-admin-statusrow">
+                          <span>展示状态</span>
+                          <button
+                            type="button"
+                            disabled={statusBusy}
+                            onClick={() => void setFlag(f.url, 'normal', flag?.note)}
+                          >
+                            正常
+                          </button>
+                          <button
+                            type="button"
+                            disabled={statusBusy}
+                            onClick={() => void setFlag(f.url, 'unstable', flag?.note)}
+                          >
+                            短暂失联 · 30 天缓冲
+                          </button>
+                          <button
+                            type="button"
+                            disabled={statusBusy}
+                            onClick={() => void setFlag(f.url, 'violation', flag?.note)}
+                          >
+                            违规整改 · 7 天
+                          </button>
+                          <em>
+                            立即生效 · 前台挂标记 · 到期自动从友链墙下架
+                            {flag?.state && flag.state !== 'normal' ? ` · 当前「${STATUS_LABEL[flag.state] ?? flag.state}」` : ''}
+                          </em>
+                        </div>
+                      ) : null}
 
                       {editIdx === i ? (
                         <div className="q-admin-editrow">

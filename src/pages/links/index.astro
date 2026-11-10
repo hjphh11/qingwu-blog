@@ -14,8 +14,31 @@ import { friends } from '../../data/links';
  * 拆成「grid 定列宽 + 每列内部 flex 竖排」之后，overflow 怎么改都不影响布局。
  */
 const WALL_COLS = 4;
-const wallColumns = Array.from({ length: WALL_COLS }, () => [] as Array<{ f: (typeof friends)[number]; i: number }>);
-friends.forEach((f, i) => wallColumns[i % WALL_COLS]!.push({ f, i }));
+
+/**
+ * 只画 `visible !== false` 的。
+ *
+ * `visible` 是后台那个「展示中 / 隐藏中」开关。在此之前它**只影响后台列表**，
+ * 前台一律全渲染（links.ts 里那句注释就是这么写的）—— 站长点了「隐藏中」，
+ * 访客照样看得见，等于开关是假的。既然后台给了这个按钮，前台就得认它。
+ */
+const shown = friends.filter((f) => f.visible !== false);
+
+/**
+ * 卡片的主机名：去协议、去 www、去路径、**转小写**。
+ *
+ * 后端 `/link-status`、`/link-stats` 一律用 `host` 的小写形式做 key（见 worker 的 toHostKey），
+ * 这里原来没 toLowerCase，碰到 `HTTPS://Foo.COM` 这种写法就永远对不上。
+ */
+const hostOfUrl = (url: string) =>
+  (url || '')
+    .replace(/^https?:\/\//i, '')
+    .replace(/^www\./i, '')
+    .split('/')[0]!
+    .toLowerCase();
+
+const wallColumns = Array.from({ length: WALL_COLS }, () => [] as Array<{ f: (typeof shown)[number]; i: number }>);
+shown.forEach((f, i) => wallColumns[i % WALL_COLS]!.push({ f, i }));
 
 /**
  * 站点预览图：**只认 links.json 里的 shot** —— 放上去才显示，没放就是占位。
@@ -50,7 +73,7 @@ friends.forEach((f, i) => wallColumns[i % WALL_COLS]!.push({ f, i }));
     </header>
 
     {
-      friends.length > 0 ? (
+      shown.length > 0 ? (
         <div class="q-links-wall" data-links-wall>
           {wallColumns.map((col) => (
             <div class="q-links-col">
@@ -61,7 +84,7 @@ friends.forEach((f, i) => wallColumns[i % WALL_COLS]!.push({ f, i }));
               rel="noreferrer"
               class="q-links-card glass-card card-spotlight group"
               style={`--i:${i};--tall:${[1, 0.86, 1.18, 0.94][i % 4]}`}
-              data-host={f.url.replace(/^https?:\/\//, '').replace(/^www\./i, '').split('/')[0]}
+              data-host={hostOfUrl(f.url)}
               data-url={f.url}
             >
               {/* 氛围底：拿这家的头像铺满卡片、狠狠模糊，当作这张卡的底色。
@@ -112,6 +135,12 @@ friends.forEach((f, i) => wallColumns[i % WALL_COLS]!.push({ f, i }));
                 />
               </span>
               <p class="q-links-card__name">{f.name}</p>
+              {/* 展示状态徽章 —— 默认 hidden，等 /link-status 回来才决定填不填。
+                  放在名字**下面**而不是头像角上：竖长条的视觉重心在中上部，
+                  角标会被头像挤掉；读屏顺序上也该紧跟名字。
+                  结构先留在这，是为了让脚本只做「填字 + 摘 hidden」，
+                  不用在运行时 createElement —— 少一次布局跳动。 */}
+              <span class="q-links-card__state" data-link-state hidden></span>
               <p class="q-links-card__intro">{f.intro}</p>
               {/* 域名放在最后一行：卡片是竖长条，只有名字+一句话会空掉半张，
                   补个域名既填了空、也让人一眼看到跳去哪 */}
@@ -153,6 +182,13 @@ friends.forEach((f, i) => wallColumns[i % WALL_COLS]!.push({ f, i }));
         </div>
       )
     }
+
+    {/* 运行时兜底：构建期有卡，但 /link-status 把每一张都判成「已到期下架」时，
+        墙上会一张不剩 —— 空着比给一句解释更像页面坏了。
+        默认 hidden，只有脚本数出可见卡为 0 才摘掉。 */}
+    <p class="q-links-allgone" data-links-allgone hidden>
+      友链们最近都在收拾屋子，暂时没有能拜访的 —— 过几天再来逛逛 ~
+    </p>
 
     {/* 申请指引：本站信息（可逐条复制）+ 三步流程（含留言模板）+ 注意事项。
         先讲规则再让人开口，别等对方贴完才发现不合规。 */}
@@ -449,5 +485,101 @@ friends.forEach((f, i) => wallColumns[i % WALL_COLS]!.push({ f, i }));
     document.addEventListener('astro:page-load', initLinkStats);
     if (document.readyState !== 'loading') initLinkStats();
     else document.addEventListener('DOMContentLoaded', initLinkStats, { once: true });
+
+
+    /*
+     * 友链展示状态：短暂失联（30 天缓冲）/ 违规整改（7 天）/ 到期从墙上摘掉。
+     *
+     * 数据源 GET /link-status（worker/src/link.ts 的 getLinkStatus），回两张表：
+     *   items  —— 还活着、要打标记的，带剩余天数（服务端算好，前端不重复取整）
+     *   hidden —— 已经到期、该下架的 host
+     *
+     * 为什么状态是运行时拉的、而不是构建期写进 HTML：
+     *   「这个站失联还剩几天」是随时间变的观察值。写进仓库的话，一天一条 commit，
+     *   而且数字会停在上次部署那一刻。0014 那套设计本来就是「内容归仓库、状态归 D1」。
+     *
+     * 失败一律静默：这面墙本来就能正常看，少个徽章不该给访客任何提示。
+     */
+    let teardownLinkStatus = () => {};
+
+    function initLinkStatus() {
+      const cards = Array.from(document.querySelectorAll<HTMLElement>('.q-links-card[data-host]'));
+      if (!cards.length) return;
+      /* 幂等，且**先判断再 teardown** —— 反过来写会把第一次刚发出的 fetch 用 abort() 掐掉，
+         然后自己又因为标记而 return，结果一次都没成（initLinkStats 里有同样的坑）。 */
+      if (cards[0]!.dataset.statusBound === '1') return;
+      teardownLinkStatus();
+      cards[0]!.dataset.statusBound = '1';
+
+      let alive = true;
+      const ac = new AbortController();
+      const timers = new Set<number>();
+
+      const LABEL: Record<string, string> = { unstable: '短暂失联', violation: '违规整改' };
+
+      /** 数一遍还剩几张可见的卡；一张不剩就把兜底文案放出来 */
+      const checkAllGone = () => {
+        const gone = document.querySelector<HTMLElement>('[data-links-allgone]');
+        if (!gone) return;
+        gone.hidden = cards.some((c) => !c.hidden);
+      };
+
+      fetch(`${LINK_API}/link-status`, { signal: ac.signal })
+        .then((r) => (r.ok ? r.json() : null))
+        .then(
+          (
+            data: {
+              ok?: boolean;
+              items?: Record<string, { state: string; note: string | null; left: number }>;
+              hidden?: string[];
+            } | null,
+          ) => {
+            if (!alive || !data) return;
+
+            // ① 打标记：还活着的，说清楚是什么状态、还剩几天
+            for (const card of cards) {
+              const s = data.items?.[card.dataset.host || ''];
+              if (!s) continue;
+              const badge = card.querySelector<HTMLElement>('[data-link-state]');
+              if (!badge) continue;
+              const label = LABEL[s.state] || s.state;
+              badge.textContent = `${label} · 剩 ${s.left} 天`;
+              badge.dataset.linkState = s.state;
+              // 站长写的说明优先；没写就自己拼一句，别让 title 空着
+              badge.title = s.note || `${label}，${s.left} 天后自动从友链墙下架`;
+              badge.hidden = false;
+            }
+
+            // ② 到期下架：先淡出（略长于 --dur-state 340ms）再 display:none，别让那张卡凭空消失
+            const doomed = data.hidden ?? [];
+            for (const card of cards) {
+              if (!doomed.includes(card.dataset.host || '') || card.hidden) continue;
+              card.classList.add('is-dropping');
+              timers.add(
+                window.setTimeout(() => {
+                  card.hidden = true;
+                  checkAllGone();
+                }, 360),
+              );
+            }
+
+            if (doomed.length === 0) checkAllGone();
+          },
+        )
+        .catch(() => {
+          /* 没上线 / 被拦 / 断网：墙照常看得见，只是没有徽章 */
+        });
+
+      teardownLinkStatus = () => {
+        alive = false;
+        ac.abort();
+        timers.forEach((t) => clearTimeout(t));
+        timers.clear();
+      };
+    }
+
+    document.addEventListener('astro:page-load', initLinkStatus);
+    if (document.readyState !== 'loading') initLinkStatus();
+    else document.addEventListener('DOMContentLoaded', initLinkStatus, { once: true });
   </script>
 </Layout>
