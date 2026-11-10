@@ -1,0 +1,11 @@
+[Unit]
+Description=每 2 分钟检查 Qingwu 仓库是否有新提交
+
+[Timer]
+OnBootSec=3min
+OnUnitActiveSec=2min
+AccuracySec=15s
+Unit=qingwu-deploy.service
+
+[Install]
+WantedBy=timers.target

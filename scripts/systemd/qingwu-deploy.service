@@ -1,0 +1,13 @@
+[Unit]
+Description=Qingwu 拉取仓库更新并构建
+Documentation=https://github.com/hjphh11/qingwu-blog
+# 网络没起来时 fetch 必失败，等 network-online 更稳
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/data/qingwu/scripts/auto-deploy.sh
+# 构建通常 40s 左右，给到 10 分钟余量（首次装依赖会久很多）
+TimeoutStartSec=600
+Nice=10
