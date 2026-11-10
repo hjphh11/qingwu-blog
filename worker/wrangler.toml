@@ -85,8 +85,12 @@ MAIL_FROM = "清吾 <noreply@qingwu.ink>"
 # 配了 jev 但没给 AI_JUDGE_KEY 时会自动回落 openai —— 不会把判断功能整挂。
 # writer 完全不受 judge 怎么配的影响，这也是「一个判断模型 + 一个评论模型」的落地方式。
 #
-# 默认就指向 Jev：等 AI_JUDGE_KEY 一配好，judge 立刻改走决策模型，writer 完全不受影响。
-AI_JUDGE_PROVIDER = "jev"
+# ⚠️ 2026-11-10：手上这把 Jev key 被服务端直接判 "Invalid API key"（它要求 `sk-` 前缀，
+# 而拿到的是 `apikey_…`），所以暂时**不打开** jev —— 打开了但 key 无效，会让「AI 体检」
+# 当场报 502，比回落更糟。judge 此刻走 DeepSeek 的 JSON 模式，功能完整、只是慢一点。
+#
+# 拿到有效 key 后：取消下一行注释 + `AI_JUDGE_KEY` 配进 .dev.vars，judge 立刻改走决策模型。
+# AI_JUDGE_PROVIDER = "jev"
 # 下面两项不用写 —— 代码里已有同样的默认值，写在这儿只是留个可改的位置。
 # AI_JUDGE_BASE_URL = "https://jevmodel.io"
 # AI_JUDGE_MODEL = "jev-latest"

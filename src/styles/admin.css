@@ -641,55 +641,7 @@
   vertical-align: 1px;
 }
 
-/* —— 回复身份切换（爱弥斯 / 我本人）—— */
-.q-admin-as {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 6px;
-  margin-bottom: 9px;
-  font-size: 11.5px;
-  color: rgba(74, 55, 40, 0.55);
-}
-.q-admin-as__pick {
-  display: inline-flex;
-  gap: 2px;
-  padding: 2px;
-  background: rgba(74, 55, 40, 0.06);
-  border-radius: 999px;
-}
-.q-admin-as__pick button {
-  padding: 3px 11px;
-  font-family: var(--font-body);
-  font-size: 11.5px;
-  line-height: 1.5;
-  color: rgba(74, 55, 40, 0.6);
-  background: transparent;
-  border: 0;
-  border-radius: 999px;
-  cursor: pointer;
-  transition: background var(--dur-micro), color var(--dur-micro);
-}
-.q-admin-as__pick button:hover {
-  color: var(--color-ink);
-}
-.q-admin-as__pick button.is-on {
-  color: var(--color-crimson);
-  background: var(--qa-card);
-  box-shadow: 0 1px 2px rgba(74, 55, 40, 0.08);
-}
-.q-admin-as__pick button em {
-  margin-left: 4px;
-  font-style: normal;
-  font-size: 9px;
-  font-weight: 700;
-  opacity: 0.7;
-}
-.q-admin-as__hint {
-  margin-left: auto;
-  font-size: 10.5px;
-  color: rgba(74, 55, 40, 0.38);
-}
+/* —— 回复区 —— */
 
 .q-admin-reply {
   margin-top: 12px;
