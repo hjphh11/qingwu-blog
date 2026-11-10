@@ -111,7 +111,7 @@ function matchedLabel(url: string): string {
   try {
     const u = new URL(url);
     const p = u.pathname.replace(/\/+$/, '');
-    return p === '' ? '/' : p;
+    return p === '' ? '首页' : p;
   } catch {
     return url;
   }

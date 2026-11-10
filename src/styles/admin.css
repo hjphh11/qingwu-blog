@@ -879,6 +879,21 @@
   margin-top: auto;
   padding-top: 4px;
 }
+/*
+ * .q-admin-btn--primary 带着 width:100%（那是给登录表单整行按钮用的），
+ * 放进卡片的横排按钮组里会把邻居挤成竖排 ——「拒绝」两个字被压成上下两行。
+ * 这里把它缩回内容宽度，主按钮再吃掉剩余空间。
+ */
+.q-admin-card > footer .q-admin-btn,
+.q-admin-reject .q-admin-btn,
+.q-admin-savebar .q-admin-btn {
+  width: auto;
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+.q-admin-card > footer .q-admin-btn--primary {
+  flex: 1 1 auto;
+}
 .q-admin-shot {
   font-size: 11.5px;
   color: var(--color-crimson);
