@@ -24,6 +24,9 @@
   --qa-warn-bg: rgba(232, 176, 75, 0.16);
   --qa-warn-fg: #8a6420;
   --qa-danger-bg: rgba(194, 58, 85, 0.1);
+  /* 文字版的绯红：--color-crimson 是为**白底**调的（5.21:1），压在 11% 粉底上只剩 4.43，
+     13px 的导航项按 AA 不够。这个深一档的值在粉底上是 5.79。 */
+  --qa-crimson-ink: #a52e47;
   --qa-shadow: 0 1px 2px rgba(74, 55, 40, 0.04), 0 18px 48px -20px rgba(74, 55, 40, 0.28);
 
   margin: 0;
@@ -335,39 +338,183 @@
   text-decoration: none;
 }
 
-/* ————————————————————————— 控制台 ————————————————————————— */
+/* ————————————————————————— 顶栏 —————————————————————————
+ * 结构抄朝朝听雨（rainzt.cn）的 firefly-navbar：**三团独立的胶囊**浮在同一条带上
+ * ——品牌在左、导航居中、动作在右，不再是一整条带底色的横条。
+ *
+ * 数值照抄他的 .nav-brand / .nav-links / .nav-link（高度 48/50、内边距 .24rem、
+ * 项高 40、项内边距 0 .72rem、gap .32rem、圆角 999），只做三处本地化：
+ *   1) 主色 primary → --color-crimson（他是蓝，本站是绯红）；
+ *   2) 字号 1rem → 13px：后台正文 12.5px，照抄 16px 会让导航比表格还大；
+ *   3) 图标用描边而非实心：他整站是 Material Symbols 实心，后台其余部分都是细线，
+ *      混用会跳。形状（项内 gap、圆角、高度）仍按他的比例走。
+ *
+ * 顶栏改成 sticky：评论列表能滚很长，翻到第十屏还得回头点导航很蠢。
+ * 底色留在带上做毛玻璃，胶囊自己再带一层 blur —— 他两层都是这么叠的。
+ */
 .q-admin-top {
-  position: relative;
-  z-index: 2;
-  display: flex;
+  position: sticky;
+  top: 0;
+  z-index: 30;
+  display: grid;
+  /* 两侧各一格等宽：导航团才是真正的页面居中。他那边是 auto/1fr/auto，
+   * 因为他的品牌和右侧按钮宽度接近；我们右侧只有一个圆钮，照抄会偏右。 */
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
   align-items: center;
-  gap: 18px;
-  padding: 12px 24px;
-  background: rgba(253, 246, 240, 0.86);
-  backdrop-filter: blur(12px);
-  border-bottom: 1px solid var(--qa-line);
+  gap: 12px;
+  padding: 10px 24px;
+  background: rgba(253, 246, 240, 0.78);
+  backdrop-filter: blur(16px) saturate(1.1);
+  /* 一条极淡的分隔线：不加的话滚动时那条「毛玻璃带」的下边缘会是一条硬缝 */
+  border-bottom: 1px solid rgba(194, 58, 85, 0.1);
 }
-.q-admin-who {
-  display: flex;
+
+/* 胶囊的三件套：底板 / 描边 / 投影。三团共用，改一处三处一起动 */
+.q-admin-brand-pill,
+.q-admin-nav,
+.q-admin-acts {
+  border: 1px solid rgba(194, 58, 85, 0.16);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.72);
+  backdrop-filter: blur(24px) saturate(1.25);
+  box-shadow: 0 4px 14px rgba(74, 55, 40, 0.05);
+}
+
+.q-admin-brand-pill {
+  display: inline-flex;
   align-items: center;
-  gap: 9px;
+  gap: 8px;
+  justify-self: start;
+  height: 44px;
+  padding: 0 16px;
+  color: var(--color-ink);
+  text-decoration: none;
+  white-space: nowrap;
+  transition:
+    background-color var(--dur-micro),
+    border-color var(--dur-micro),
+    transform var(--dur-micro);
+}
+.q-admin-brand-pill img {
+  width: 26px;
+  height: 26px;
   flex: none;
-}
-.q-admin-who img {
-  width: 28px;
-  height: 28px;
-  border-radius: 50%;
+  border-radius: 8px;
   object-fit: cover;
   object-position: 50% 22%;
-  border: 1px solid var(--qa-line);
+  box-shadow: 0 0 0 1px rgba(194, 58, 85, 0.14);
 }
-.q-admin-who b {
+.q-admin-brand-pill b {
   font-family: var(--font-display);
   font-size: 15px;
   font-weight: 400;
-  letter-spacing: 0.02em;
+  letter-spacing: 0.03em;
+  color: var(--color-crimson);
+}
+.q-admin-brand-pill:hover {
+  background: rgba(194, 58, 85, 0.07);
+  border-color: rgba(194, 58, 85, 0.24);
+  transform: translateY(-1px);
 }
 
+.q-admin-nav {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  justify-self: center;
+  max-width: 100%;
+  padding: 4px;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.q-admin-nav::-webkit-scrollbar {
+  display: none;
+}
+
+.q-admin-acts {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  justify-self: end;
+  padding: 4px;
+}
+/* 登着谁 —— 他的右侧是纯圆钮，名字没地方放；这里留一行小字，比 hover 才知道强 */
+.q-admin-acts__who {
+  max-width: 12em;
+  padding: 0 8px 0 10px;
+  font-size: 11.5px;
+  color: var(--color-subtle);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.q-admin-act--icon {
+  width: 36px;
+  padding: 0;
+  color: var(--color-subtle);
+}
+/* 单独一颗圆钮，图标比带字的小胶囊里那颗大一号 —— 否则圆圈里显得空 */
+.q-admin-act.q-admin-act--icon svg {
+  width: 17px;
+  height: 17px;
+  opacity: 1;
+}
+
+/* 导航项与「退出登录」共用一套：他那边 .nav-link 就是一个 <a> / <button> 通吃 */
+.q-admin-nav__item,
+.q-admin-act {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  height: 36px;
+  padding: 0 12px;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  background: none;
+  font-family: var(--font-body);
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--color-muted);
+  text-decoration: none;
+  white-space: nowrap;
+  cursor: pointer;
+  transition:
+    color var(--dur-micro),
+    background-color var(--dur-micro),
+    border-color var(--dur-micro);
+}
+.q-admin-nav__item svg,
+.q-admin-act svg {
+  width: 15px;
+  height: 15px;
+  flex: none;
+  opacity: 0.82;
+  transition: opacity var(--dur-micro);
+}
+.q-admin-nav__item:hover:not([aria-current="page"]),
+.q-admin-act:hover {
+  color: var(--qa-crimson-ink);
+  background: rgba(194, 58, 85, 0.07);
+  border-color: rgba(194, 58, 85, 0.2);
+}
+.q-admin-nav__item:hover:not([aria-current="page"]) svg,
+.q-admin-act:hover svg {
+  opacity: 1;
+}
+.q-admin-nav__item[aria-current="page"] {
+  color: var(--qa-crimson-ink);
+  background: rgba(194, 58, 85, 0.11);
+  font-weight: 600;
+}
+.q-admin-nav__item[aria-current="page"] svg {
+  opacity: 1;
+}
+
+/* ———— 页内 tab（申请审核 / 已收录 / 回链检查）————
+ * 这两套差点撞车：顶部导航和页内 tablist 原本都叫 .q-admin-tab。
+ * 顶部改成 .q-admin-nav__item 之后，这一套恢复成原样，只服务页面内部。
+ */
 .q-admin-tabs {
   display: flex;
   gap: 2px;
@@ -390,16 +537,12 @@
   cursor: pointer;
   transition: background var(--dur-micro), color var(--dur-micro);
 }
-.q-admin-tab[aria-current="page"],
-.q-admin-tab[aria-selected="true"] {
+.q-admin-tab[aria-selected="true"],
+.q-admin-tab[aria-current="page"] {
   background: var(--qa-card);
   color: var(--color-ink);
   box-shadow: 0 1px 3px rgba(74, 55, 40, 0.12);
   cursor: default;
-}
-.q-admin-tab:disabled {
-  opacity: 0.45;
-  cursor: not-allowed;
 }
 
 .q-admin-main {
@@ -909,15 +1052,32 @@
     padding: 32px 28px 28px;
   }
   .q-admin-top {
-    flex-wrap: wrap;
-    gap: 10px;
-    padding: 10px 16px;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 8px;
+    padding: 8px 14px;
   }
-  .q-admin-tabs {
-    order: 3;
+  .q-admin-brand-pill {
+    grid-column: 1;
+    grid-row: 1;
+  }
+  .q-admin-acts {
+    grid-column: 2;
+    grid-row: 1;
+  }
+  /* 三团变两行：品牌与退出在第一行，导航整条落到第二行 —— 他还是居中的那条胶囊 */
+  .q-admin-nav {
+    grid-column: 1 / -1;
+    grid-row: 2;
+    justify-self: stretch;
     width: 100%;
-    margin: 0;
-    overflow-x: auto;
+  }
+  .q-admin-nav__item {
+    flex: 1 1 0;
+    min-width: max-content;
+    padding: 0 8px;
+  }
+  .q-admin-acts__who {
+    display: none;
   }
   .q-admin-main {
     padding: 20px 14px 48px;
@@ -963,7 +1123,8 @@
    混在一起用实心按钮的话，很容易以为自己已经改完了。
 */
 
-/* 页面内的 tab：和顶栏那个胶囊组同款，但不参与顶部布局 */
+/* 页面内的 tab：独立一层胶囊组。顶栏那三团是白底毛玻璃，这里刻意留灰底，
+   让「我现在在哪一页」和「我在这一页的哪一格」两件事长得不一样。 */
 .q-admin-tabs--page {
   width: fit-content;
   margin: 0 0 14px;

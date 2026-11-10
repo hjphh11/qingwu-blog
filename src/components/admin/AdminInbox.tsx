@@ -304,12 +304,7 @@ export default function AdminInbox() {
   if (!ready) {
     return (
       <>
-        <div className="q-admin-top">
-          <div className="q-admin-who">
-            <img src="/images/emis/avatar.png" alt="" />
-            <b>清吾</b>
-          </div>
-        </div>
+        <AdminTop active="comments" />
         <div className="q-admin-loading">正在确认身份…</div>
       </>
     );
