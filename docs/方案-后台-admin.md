@@ -449,3 +449,81 @@ P0+P1 是最小可用后台（能审评论了，这是当前最大痛点：只�
   `COALESCE(NULLIF(referrer, ''), '(direct)') AS k`。
 - **`hits` 里没有浏览器列**，所以「设备与浏览器」只做了前半。要补就得动 `0001` 之后的
   schema 与 `/hit` 写入，而且历史数据仍然是空的 —— 这一轮不值得。
+
+## 十四、第六轮：三处列表分页 + 模型接口可改（2026-11-10 深夜）
+
+站长给了四张截图、两句话：
+
+> 「这个限制一下一页显示多少条信息。」（最近自动回复 / 拦截记录 / 评论收件箱）
+> 「可以修改模型的 api，保存生效。」（设置页 · 模型设置）
+
+### 1. 三处列表统一分页
+
+以前三处各不相同：收件箱后端固定 20 条/页且前端只有上一页/下一页；拦截记录是
+`LIMIT 20` 一次性给完；自动回复流水写死 `LIMIT 20` 塞在 `/admin/status` 里。
+共同点是**都没有「每页几条」**，也没有「共几条」。
+
+现在统一成 `src/components/admin/Pager.tsx` + `worker` 的 `PAGE_SIZES = [10, 20, 50]`：
+
+| 位置 | 接口 | 参数 |
+|---|---|---|
+| 评论收件箱 | `GET /admin/comments` | `page` `pageSize` |
+| 拦截记录 | `GET /admin/review/blocked` | `page` `pageSize`（老前端的 `limit` 仍兼容） |
+| 自动回复流水 | `GET /admin/auto-reply/log`（**新增**） | `page` `pageSize` |
+
+自动回复流水从 `/admin/status` 里抽出来了：那个接口一次要说十五件事，
+为了翻页让整页重跑一遍不值。状态接口现在只回 `autoReply.logTotal`。
+
+**拦截记录的分页必须用 SQL 分页，不能在内存里切。** 它由两段合并而成
+（`moderation_log` 有详情的 + `comments` 里历史 spam），如果两段各取 N 条再合并排序，
+第 2 页会把第 1 页的尾巴再吐一遍。现在是一段 `UNION ALL` 当作虚拟表，
+`COUNT(*)` 与 `ORDER BY ts DESC LIMIT ? OFFSET ?` 都打在这张虚拟表上；
+`moderation_log` 不存在（迁移没跑）时退化成只查 `comments` 的单段查询。
+
+三个小坑：
+
+- **`<select>` 的 value 必须是 option 里的值**。拦截记录起初默认 15，而选项是
+  10/20/50 —— 界面显示「10 条」，state 却是 15，第一次翻页就会对不上。默认值统一进白名单。
+- 收件箱顶部原来还写着「1 / 3 页」，底部有了翻页条之后两处重复，删掉顶部的。
+- 改每页条数时要**回到第 1 页**：原来停在第 3 页，换成 50 条之后那个位置已经不存在。
+
+### 2. 模型接口搬上表单
+
+`admin_settings` 新增七个键，**逐项回落**（不是整段回落）：
+
+```
+ai.writer.base / ai.writer.key / ai.writer.model
+ai.judge.provider / ai.judge.base / ai.judge.key / ai.judge.model
+```
+
+`cfgOf(env, settings, ch)` 与 `judgeTargetOf(env, settings)` 现在都先读库：
+`库 > env > 代码默认`。因为 `loadSettings` 每次请求现读、不缓存，**保存即生效**，
+不用重启 Worker。旧的 `writer.model` 由 `0022_ai_endpoint.sql` 搬成 `ai.writer.model`
+并删掉旧键 —— 同一个值有两个 key，迟早出现「改了 A 读的是 B」。
+
+**judge 从只读放开了。** 上一轮把它做成只读的理由是「换判定模型要重调提示词」，
+现在这个提醒写在卡片里，但不再挡着人改：站长要的是能改。改完回来点一次「测一下」，
+探活会拿一句正常留言真打一次，判不出「正常」就说明提示词与模型不匹配。
+
+**密钥的三条规矩**（改之前先读 `settings.ts` 的 `publicView`）：
+
+1. **明文永不出后端**。`GET` 与 `PATCH` 都走 `publicView()`：`key` 字段恒为空串，
+   另给 `keyMeta`（`set` / `tail` / `from: db|env|none`）。只脱敏一处的话，
+   保存那一下的响应就会把明文原路吐回浏览器。
+2. 输入框**留空 = 不改**，填了才覆盖。空串在 `saveSettings` 里是「写入空值」，
+   也就是「清除、回落 env」—— 这两种语义必须由前端区分，不能靠后端猜。
+3. 只有 `keyMeta.from === 'db'` 时才显示「清除」。环境变量来的 key 在这里删不掉，
+   给个按钮只会让人以为删掉了。
+
+地址填错的处置：`urlOf()` 只收 `http(s)://` 开头，不合法就**丢空回落 env**，
+而不是存一个必然 404 的地址。前端保存后拿服务端返回值回填，若提交了非空地址而
+返回为空，会明确提示「这一条按环境变量走」。
+
+### 3. 部署提醒
+
+`0022_ai_endpoint.sql` 需手动 apply（timer 只做 pull+build+重启）：
+
+```bash
+git pull && npm run build
+# 停服务 → npx wrangler d1 migrations apply qingwu --local → 起服务
+```

@@ -101,120 +101,147 @@ function reasonsOf(raw: unknown): string[] {
 }
 
 /**
- * 最近的拦截记录。
- *
- * 两段查询合并：
+ * 两段查询合并成一份「虚拟表」：
  *   ① moderation_log 里有判定详情的；
  *   ② comments 里 status='spam' 但日志表没对应行的（功能上线前的历史）。
- * 按时间倒序取前 limit 条。
+ *
+ * 用 UNION ALL 而不是查两次再在内存里拼排序 —— 后者分页会错：
+ * 两段各取 N 条，合并后再切第 2 页，第 1 页的尾部会重复出现。
+ * 列数、列序必须与下方 `.all<...>()` 的泛型一致。
  */
-export async function listBlocked(env: Env, limit = 20): Promise<BlockedItem[]> {
-  const n = Math.max(1, Math.min(200, limit));
-  const out: BlockedItem[] = [];
+const UNION_SQL = `
+  SELECT m.id AS id, m.comment_id AS comment_id, m.verdict AS verdict,
+         m.score AS score, m.threshold AS threshold, m.reasons AS reasons,
+         m.note AS note, m.model AS model, m.ms AS ms, m.ts AS ts,
+         c.author AS author, c.body AS body, c.post_slug AS post_slug,
+         c.status AS cstatus, 1 AS detailed
+    FROM moderation_log m
+    LEFT JOIN comments c ON c.id = m.comment_id
+  UNION ALL
+  SELECT 0, c.id, NULL, NULL, NULL, NULL, NULL, NULL, NULL, c.ts,
+         c.author, c.body, c.post_slug, c.status, 0
+    FROM comments c
+   WHERE c.status = 'spam'
+     AND NOT EXISTS (SELECT 1 FROM moderation_log m WHERE m.comment_id = c.id)
+`;
 
+/** 迁移没跑时的退路：只有 comments，没有判定详情 */
+const SPAM_ONLY_SQL = `
+  SELECT c.id, c.author, c.body, c.post_slug, c.status, c.ts
+    FROM comments c
+   WHERE c.status = 'spam'
+`;
+
+export interface BlockedPage {
+  items: BlockedItem[];
+  total: number;
+  page: number;
+  pages: number;
+  pageSize: number;
+}
+
+type RawBlocked = {
+  id: number;
+  comment_id: number;
+  verdict: string | null;
+  score: number | null;
+  threshold: number | null;
+  reasons: string | null;
+  note: string | null;
+  model: string | null;
+  ms: number | null;
+  ts: number;
+  author: string | null;
+  body: string | null;
+  post_slug: string | null;
+  cstatus: string | null;
+  detailed: number;
+};
+
+function toItem(x: RawBlocked): BlockedItem {
+  const detailed = Number(x.detailed) === 1;
+  return {
+    id: Number(x.id) || 0,
+    commentId: x.comment_id,
+    verdict: x.verdict,
+    score: x.score,
+    threshold: x.threshold,
+    reasons: detailed ? reasonsOf(x.reasons) : [],
+    note: x.note ?? '',
+    model: x.model ?? '',
+    ms: x.ms,
+    ts: x.ts,
+    author: x.author ?? '（留言已删）',
+    body: String(x.body ?? '').slice(0, 120),
+    path: x.post_slug ? pathOfSlug(x.post_slug) : '',
+    status: x.cstatus ?? 'spam',
+    detailed,
+  };
+}
+
+/**
+ * 拦截记录，分页。
+ *
+ * 站长要求「限制一下一页显示多少条信息」—— 原来是一次给 20 条到最后，
+ * 几十条之后这一页要滚很久，也没法知道总共拦过多少。
+ */
+export async function listBlocked(env: Env, page = 1, pageSize = 10): Promise<BlockedPage> {
+  const size = Math.max(1, Math.min(100, Math.trunc(pageSize) || 10));
+  const p0 = Math.max(1, Math.trunc(page) || 1);
+
+  // —— 主路：两张表都在 ——
   try {
-    const r = await env.DB.prepare(
-      `SELECT m.id, m.comment_id, m.verdict, m.score, m.threshold, m.reasons, m.note,
-              m.model, m.ms, m.ts,
-              c.author, c.body, c.post_slug, c.status AS cstatus
-         FROM moderation_log m
-         LEFT JOIN comments c ON c.id = m.comment_id
-        ORDER BY m.ts DESC LIMIT ?`,
-    )
-      .bind(n)
-      .all<{
-        id: number;
-        comment_id: number;
-        verdict: string;
-        score: number;
-        threshold: number;
-        reasons: string | null;
-        note: string | null;
-        model: string | null;
-        ms: number | null;
-        ts: number;
-        author: string | null;
-        body: string | null;
-        post_slug: string | null;
-        cstatus: string | null;
-      }>();
+    const countRow = await env.DB.prepare(`SELECT COUNT(*) AS n FROM (${UNION_SQL})`)
+      .first<{ n: number }>();
+    const total = Number(countRow?.n ?? 0);
+    const pages = Math.max(1, Math.ceil(total / size));
+    const p = Math.min(p0, pages);
 
-    for (const x of r.results ?? []) {
-      out.push({
-        id: x.id,
-        commentId: x.comment_id,
-        verdict: x.verdict,
-        score: x.score,
-        threshold: x.threshold,
-        reasons: reasonsOf(x.reasons),
-        note: x.note ?? '',
-        model: x.model ?? '',
-        ms: x.ms,
-        ts: x.ts,
-        author: x.author ?? '（留言已删）',
-        body: String(x.body ?? '').slice(0, 120),
-        path: x.post_slug ? pathOfSlug(x.post_slug) : '',
-        status: x.cstatus ?? 'spam',
-        detailed: true,
-      });
-    }
+    const r = await env.DB.prepare(`SELECT * FROM (${UNION_SQL}) ORDER BY ts DESC LIMIT ? OFFSET ?`)
+      .bind(size, (p - 1) * size)
+      .all<RawBlocked>();
+
+    return { items: (r.results ?? []).map(toItem), total, page: p, pages, pageSize: size };
   } catch {
-    /* 表还没迁移：走下面的补齐查询，页面不至于整块空 */
+    /* moderation_log 还不存在 —— 走下面那条只查 comments 的路 */
   }
 
-  try {
-    const r2 = await env.DB.prepare(
-      `SELECT c.id, c.author, c.body, c.post_slug, c.status, c.ts
-         FROM comments c
-        WHERE c.status = 'spam'
-          AND NOT EXISTS (SELECT 1 FROM moderation_log m WHERE m.comment_id = c.id)
-        ORDER BY c.ts DESC LIMIT ?`,
-    )
-      .bind(n)
-      .all<{
-        id: number;
-        author: string;
-        body: string;
-        post_slug: string;
-        status: string;
-        ts: number;
-      }>();
+  // —— 退路：只有历史垃圾留言，没有判定详情 ——
+  const countRow = await env.DB.prepare(`SELECT COUNT(*) AS n FROM (${SPAM_ONLY_SQL})`)
+    .first<{ n: number }>();
+  const total = Number(countRow?.n ?? 0);
+  const pages = Math.max(1, Math.ceil(total / size));
+  const p = Math.min(p0, pages);
 
-    for (const x of r2.results ?? []) {
-      out.push({
-        id: 0,
-        commentId: x.id,
-        verdict: null,
-        score: null,
-        threshold: null,
-        reasons: [],
-        note: '',
-        model: '',
-        ms: null,
-        ts: x.ts,
-        author: x.author,
-        body: String(x.body ?? '').slice(0, 120),
-        path: pathOfSlug(x.post_slug),
-        status: x.status,
-        detailed: false,
-      });
-    }
-  } catch {
-    /* comments 表都读不到就没救了，返回已有的 */
-  }
+  const r = await env.DB.prepare(`SELECT * FROM (${SPAM_ONLY_SQL}) ORDER BY ts DESC LIMIT ? OFFSET ?`)
+    .bind(size, (p - 1) * size)
+    .all<RawBlocked>();
 
-  return out.sort((a, b) => b.ts - a.ts).slice(0, n);
+  return {
+    items: (r.results ?? []).map((x) =>
+      toItem({ ...x, id: 0, verdict: null, score: null, threshold: null, reasons: null, note: null, model: null, ms: null, detailed: 0 }),
+    ),
+    total,
+    page: p,
+    pages,
+    pageSize: size,
+  };
 }
 
 // ——————————————————————————————————————————————————————————
-// GET /admin/review/blocked?limit=20
+// GET /admin/review/blocked?page=1&pageSize=15
 // ——————————————————————————————————————————————————————————
 export async function getBlockedLog(request: Request, env: Env, _admin: Admin): Promise<Response> {
-  const raw = Number(new URL(request.url).searchParams.get('limit') ?? 20);
-  const limit = Number.isFinite(raw) ? raw : 20;
+  const url = new URL(request.url);
+  const rawPage = Number.parseInt(url.searchParams.get('page') ?? '1', 10);
+  // 兼容老前端的 `limit=`（它当时就是「最多几条」，等价于每页条数）
+  const rawSize = Number.parseInt(
+    url.searchParams.get('pageSize') ?? url.searchParams.get('limit') ?? '10',
+    10,
+  );
   try {
-    const items = await listBlocked(env, limit);
-    return json({ ok: true, items, count: items.length });
+    const d = await listBlocked(env, Number.isFinite(rawPage) ? rawPage : 1, Number.isFinite(rawSize) ? rawSize : 10);
+    return json({ ok: true, ...d });
   } catch (e) {
     return json(
       { ok: false, reason: 'failed', message: e instanceof Error ? e.message : '读取拦截记录失败' },

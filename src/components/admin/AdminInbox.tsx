@@ -1,5 +1,6 @@
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import AdminTop from './AdminTop';
+import Pager from './Pager.tsx';
 
 const API = '/api/admin';
 const DRAFT_KEY = (id: number) => `q:admin:draft:${id}`;
@@ -116,6 +117,8 @@ export default function AdminInbox() {
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
   const [pages, setPages] = useState(1);
+  // 每页条数：由 Pager 选择，后端白名单校验（10 / 20 / 50）
+  const [pageSize, setPageSize] = useState(20);
   const [counts, setCounts] = useState<Record<string, number>>({});
   const [tab, setTab] = useState('all');
   const [q, setQ] = useState('');
@@ -169,7 +172,7 @@ export default function AdminInbox() {
         page: number;
         pages: number;
         counts: Record<string, number>;
-      }>(`/comments?status=${encodeURIComponent(tab)}&q=${encodeURIComponent(q)}&page=${page}`);
+      }>(`/comments?status=${encodeURIComponent(tab)}&q=${encodeURIComponent(q)}&page=${page}&pageSize=${pageSize}`);
       setItems(d.items ?? []);
       setTotal(d.total ?? 0);
       setPages(d.pages ?? 1);
@@ -179,7 +182,7 @@ export default function AdminInbox() {
     } finally {
       setLoading(false);
     }
-  }, [page, q, tab]);
+  }, [page, q, tab, pageSize]);
 
   useEffect(() => {
     if (ready) void load();
@@ -376,11 +379,9 @@ export default function AdminInbox() {
               {total} 条 · 每条提交时都已过一遍审核 · 判成垃圾的不上前台，在这里可以放行
             </p>
           </div>
-          {/* 右侧这一行照他：页序 + 刷新，全是灰字，不占按钮的视觉重量 */}
+          {/* 右侧只留刷新：页序与每页条数已经搬到表格下方的翻页条，
+              两处都写会出现「上面 1/3、下面 2/3」这种看了要愣一下画面 */}
           <div className="q-admin-head__meta">
-            <span>
-              {page} / {pages} 页
-            </span>
             <button type="button" onClick={() => void load()} disabled={loading}>
               {loading ? '刷新中…' : '刷新评论'}
             </button>
@@ -706,28 +707,20 @@ export default function AdminInbox() {
             </table>
           )}
 
-          {pages > 1 ? (
-            <div className="q-admin-pager">
-              <button
-                className="q-admin-btn q-admin-btn--ghost q-admin-btn--sm"
-                type="button"
-                disabled={page <= 1 || loading}
-                onClick={() => setPage((p) => Math.max(1, p - 1))}
-              >
-                上一页
-              </button>
-              <span>
-                {page} / {pages}
-              </span>
-              <button
-                className="q-admin-btn q-admin-btn--ghost q-admin-btn--sm"
-                type="button"
-                disabled={page >= pages || loading}
-                onClick={() => setPage((p) => Math.min(pages, p + 1))}
-              >
-                下一页
-              </button>
-            </div>
+          {total > 0 ? (
+            <Pager
+              total={total}
+              page={page}
+              pages={pages}
+              pageSize={pageSize}
+              loading={loading}
+              onPage={setPage}
+              onSize={(n) => {
+                // 改页长要回第一页：原来停在第 3 页，换成 50 条后那个位置已经不存在了
+                setPageSize(n);
+                setPage(1);
+              }}
+            />
           ) : null}
         </section>
       </main>

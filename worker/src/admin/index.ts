@@ -14,7 +14,7 @@ import { getBlockedLog } from './moderation';
 import { getPublishLog } from './publish';
 import { getSettings, patchSettings } from './settings';
 import { getStats } from './stats';
-import { getStatus, postStatusPing } from './status';
+import { getStatus, postStatusPing, getAutoReplyLog } from './status';
 import {
   checkBacklinks,
   commitLinks,
@@ -81,6 +81,10 @@ export async function handleAdmin(request: Request, env: Env, path: string): Pro
   }
   if (path === '/admin/status/ping' && m === 'POST') {
     return requireAdmin(request, env, (admin) => postStatusPing(request, env, admin));
+  }
+  // 自动回复流水（可翻页）。单独一条，翻页不必重跑整页状态
+  if (path === '/admin/auto-reply/log' && m === 'GET') {
+    return requireAdmin(request, env, (admin) => getAutoReplyLog(request, env, admin));
   }
   if (path === '/admin/stats' && m === 'GET') {
     return requireAdmin(request, env, (admin) => getStats(request, env, admin));

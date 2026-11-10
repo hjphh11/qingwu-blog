@@ -1079,16 +1079,53 @@ html.q-route-done .q-admin-route i {
   color: var(--color-ink);
 }
 
+/* 三处列表共用的翻页条：左边「共几条」、中间翻页、右边每页条数。
+   2026-11-10 深夜从「居中两个按钮」改成三段 —— 有了每页条数之后，
+   居中的写法会让「共 N 条」没地方放。 */
 .q-admin-pager {
   display: flex;
   align-items: center;
-  justify-content: center;
-  gap: 12px;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 10px 16px;
   padding: 12px;
   border-top: 1px solid var(--qa-line);
   font-size: 12px;
   color: var(--color-subtle);
   font-variant-numeric: tabular-nums;
+}
+
+.q-admin-pager__nav {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.q-admin-pager__at {
+  min-width: 3.4em;
+  text-align: center;
+}
+
+.q-admin-pager__size {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.q-admin-pager__size select {
+  height: 28px;
+  padding: 0 6px;
+  font-family: var(--font-body);
+  font-size: 12px;
+  color: var(--color-ink);
+  background: var(--qa-field);
+  border: 1px solid transparent;
+  border-radius: 7px;
+  outline: none;
+  cursor: pointer;
+}
+.q-admin-pager__size select:focus {
+  border-color: var(--qa-line-strong);
 }
 
 .q-admin-loading {
@@ -1713,16 +1750,33 @@ html.q-route-done .q-admin-route i {
 }
 
 /* —— 通道卡 —— */
+/* 两张通道卡并排。240px 时字段（地址、key、模型）会被压得很窄，
+   2026-11-10 深夜改成 300 —— 1080 壳内两列各约 500px，正好。 */
 .q-admin-channels {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
-  gap: 10px;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 12px;
 }
 .q-admin-channel {
-  padding: 12px 14px;
+  padding: 14px 16px;
   border: 1px solid var(--qa-line);
   border-radius: 10px;
   background: var(--qa-field);
+}
+
+/* 密钥一行：输入框 + 「清除」。清除只在「库里存过 key」时出现，
+   环境变量来的 key 删不掉（也不该让人以为能删）。 */
+.q-admin-keyrow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.q-admin-keyrow input {
+  flex: 1;
+  min-width: 0;
+}
+.q-admin-keyrow .q-admin-btn {
+  flex: 0 0 auto;
 }
 .q-admin-channel.is-off {
   border-style: dashed;

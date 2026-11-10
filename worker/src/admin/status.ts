@@ -23,6 +23,8 @@ import type { Env } from '../types';
 import { dayKey, json } from '../util';
 import { aiSnapshot, autoReplyConfig, pingChannels } from './ai';
 import type { Admin } from './auth';
+// 每页条数的白名单跟收件箱共用一份，免得两页给用户不同的选项
+import { PAGE_SIZES } from './comments';
 
 const DAY_MS = 86_400_000;
 /** 北京时间当日 0 点（毫秒）。与 util.dayKey 同一口径（固定 +8，无夏令时）。 */
@@ -75,7 +77,7 @@ export async function getStatus(_request: Request, env: Env, _admin: Admin): Pro
     friendStates,
     replyToday,
     replyWeek,
-    replyLog,
+    autoLogCount,
     usageWeek,
     mailRows,
     hitToday,
@@ -136,27 +138,9 @@ export async function getStatus(_request: Request, env: Env, _admin: Admin): Pro
       from7,
     ),
 
-    rows<{
-      id: number;
-      comment_id: number;
-      action: string;
-      verdict: string | null;
-      note: string | null;
-      model: string | null;
-      tokens: number | null;
-      ms: number | null;
-      ts: number;
-      author: string | null;
-      body: string | null;
-    }>(
-      env,
-      warnings,
-      `SELECT l.id, l.comment_id, l.action, l.verdict, l.note, l.model, l.tokens, l.ms, l.ts,
-              c.author, c.body
-         FROM auto_reply_log l
-         LEFT JOIN comments c ON c.id = l.comment_id
-        ORDER BY l.ts DESC LIMIT 20`,
-    ),
+    // 流水只取总数。**列表本身走 GET /admin/auto-reply/log**（要翻页、要能改每页条数），
+    // 塞在这个「一次说完所有状态」的接口里会让翻页牵动整页十五个查询。
+    rows<{ n: number }>(env, warnings, 'SELECT COUNT(*) AS n FROM auto_reply_log'),
 
     rows<{ day: string; channel: string; n: number; tokens_in: number; tokens_out: number }>(
       env,
@@ -232,19 +216,8 @@ export async function getStatus(_request: Request, env: Env, _admin: Admin): Pro
         failed: rt.failed ?? 0,
       },
       days: replyDays,
-      log: replyLog.map((r) => ({
-        id: r.id,
-        commentId: r.comment_id,
-        action: r.action,
-        verdict: r.verdict,
-        note: r.note,
-        model: r.model,
-        tokens: r.tokens,
-        ms: r.ms,
-        ts: r.ts,
-        author: r.author ?? '',
-        body: String(r.body ?? '').slice(0, 80),
-      })),
+      /** 流水总条数。列表在 GET /admin/auto-reply/log，那一页可翻 */
+      logTotal: autoLogCount[0]?.n ?? 0,
     },
     usage: usageWeek.map((u) => ({
       day: u.day,
@@ -315,4 +288,82 @@ export async function postStatusPing(request: Request, env: Env, _admin: Admin):
   const started = Date.now();
   const r = await pingChannels(env);
   return json({ ok: true, ms: Date.now() - started, ...r });
+}
+
+// ——————————————————————————————————————————————————————————
+// GET /admin/auto-reply/log?page=1&pageSize=10
+//
+// 从 getStatus 里抽出来的一小块：站长要「限制一下一页显示多少条」，
+// 而「一次说完所有状态」的接口不该为翻页重跑十五个查询。
+// ——————————————————————————————————————————————————————————
+export async function getAutoReplyLog(request: Request, env: Env, _admin: Admin): Promise<Response> {
+  const url = new URL(request.url);
+  const page = Math.max(1, Number.parseInt(url.searchParams.get('page') || '1', 10) || 1);
+  const rawSize = Number.parseInt(url.searchParams.get('pageSize') || '', 10);
+  const pageSize = (PAGE_SIZES as readonly number[]).includes(rawSize) ? rawSize : 10;
+
+  let total = 0;
+  let rows: {
+    id: number;
+    comment_id: number;
+    action: string;
+    verdict: string | null;
+    note: string | null;
+    model: string | null;
+    tokens: number | null;
+    ms: number | null;
+    ts: number;
+    author: string | null;
+    body: string | null;
+  }[] = [];
+
+  try {
+    const c = await env.DB.prepare('SELECT COUNT(*) AS n FROM auto_reply_log').first<{ n: number }>();
+    total = Number(c?.n ?? 0);
+    const pages0 = Math.max(1, Math.ceil(total / pageSize));
+    const p = Math.min(page, pages0);
+
+    const r = await env.DB.prepare(
+      `SELECT l.id, l.comment_id, l.action, l.verdict, l.note, l.model, l.tokens, l.ms, l.ts,
+              c.author, c.body
+         FROM auto_reply_log l
+         LEFT JOIN comments c ON c.id = l.comment_id
+        ORDER BY l.ts DESC LIMIT ? OFFSET ?`,
+    )
+      .bind(pageSize, (p - 1) * pageSize)
+      .all<(typeof rows)[number]>();
+    rows = r.results ?? [];
+
+    return json({
+      ok: true,
+      total,
+      page: p,
+      pages: pages0,
+      pageSize,
+      items: rows.map((x) => ({
+        id: x.id,
+        commentId: x.comment_id,
+        action: x.action,
+        verdict: x.verdict,
+        note: x.note,
+        model: x.model,
+        tokens: x.tokens,
+        ms: x.ms,
+        ts: x.ts,
+        author: x.author ?? '',
+        body: String(x.body ?? '').slice(0, 80),
+      })),
+    });
+  } catch (e) {
+    // 表还不存在（迁移没跑）：当成「没有记录」，而不是 500
+    return json({
+      ok: true,
+      total: 0,
+      page: 1,
+      pages: 1,
+      pageSize,
+      items: [],
+      warning: e instanceof Error ? e.message.slice(0, 100) : 'auto_reply_log 不可读',
+    });
+  }
 }

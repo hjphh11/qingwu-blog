@@ -15,8 +15,24 @@
 import { useCallback, useEffect, useState } from 'react';
 import type { ReactNode } from 'react';
 import AdminTop from './AdminTop.tsx';
+import Pager from './Pager.tsx';
 
 const API = '/api/admin';
+
+/** 自动回复流水一行（GET /admin/auto-reply/log） */
+interface LogRow {
+  id: number;
+  commentId: number;
+  action: string;
+  verdict: string | null;
+  note: string | null;
+  model: string | null;
+  tokens: number | null;
+  ms: number | null;
+  ts: number;
+  author: string;
+  body: string;
+}
 
 // ——————————————————————————————————————————————————————————
 // 接口形状
@@ -57,19 +73,8 @@ interface Status {
     skipKeywords: string[];
     today: { replied: number; skipped: number; blocked: number; failed: number };
     days: { day: string; replied: number; skipped: number; blocked: number; failed: number }[];
-    log: {
-      id: number;
-      commentId: number;
-      action: string;
-      verdict: string | null;
-      note: string | null;
-      model: string | null;
-      tokens: number | null;
-      ms: number | null;
-      ts: number;
-      author: string;
-      body: string;
-    }[];
+    /** 流水总条数。列表走 GET /admin/auto-reply/log（要翻页），不在这一坨里 */
+    logTotal: number;
   };
   usage: { day: string; channel: string; n: number; tokensIn: number; tokensOut: number }[];
   comments: { total: number; byStatus: Record<string, number>; today: number; noReply: number };
@@ -216,6 +221,31 @@ export default function AdminStatus() {
   const [ping, setPing] = useState<{ writer: PingResult; judge: PingResult } | null>(null);
   const [pingErr, setPingErr] = useState('');
 
+  // —— 自动回复流水（可翻页，单独一条请求）——
+  const [log, setLog] = useState<LogRow[] | null>(null);
+  const [logPage, setLogPage] = useState(1);
+  const [logPages, setLogPages] = useState(1);
+  const [logSize, setLogSize] = useState(10);
+  const [logLoading, setLogLoading] = useState(false);
+  const [logErr, setLogErr] = useState('');
+
+  const loadLog = useCallback(async (page = logPage, size = logSize) => {
+    setLogLoading(true);
+    setLogErr('');
+    try {
+      const d = await api<{ items: LogRow[]; page: number; pages: number }>(
+        `/auto-reply/log?page=${page}&pageSize=${size}`,
+      );
+      setLog(d.items ?? []);
+      setLogPage(d.page ?? page);
+      setLogPages(d.pages ?? 1);
+    } catch (e) {
+      setLogErr(e instanceof Error ? e.message : '读取流水失败');
+    } finally {
+      setLogLoading(false);
+    }
+  }, [logPage, logSize]);
+
   const load = useCallback(async () => {
     setLoading(true);
     setErr('');
@@ -244,6 +274,11 @@ export default function AdminStatus() {
   useEffect(() => {
     if (ready) void load();
   }, [ready, load]);
+
+  // 流水随页码/页长变化重拉；与上面那份「整页状态」互不牵连
+  useEffect(() => {
+    if (ready) void loadLog();
+  }, [ready, loadLog]);
 
   const doPing = useCallback(async () => {
     setPinging(true);
@@ -648,10 +683,14 @@ export default function AdminStatus() {
                   <h2>最近自动回复</h2>
                   <p>每一笔都落 auto_reply_log：回过谁、挡了谁、为什么。</p>
                 </div>
-                <Pill tone="muted">最近 {s.autoReply.log.length} 条</Pill>
+                <Pill tone="muted">共 {s.autoReply.logTotal} 条</Pill>
               </header>
 
-              {s.autoReply.log.length === 0 ? (
+              {logErr ? <p className="q-admin-error">{logErr}</p> : null}
+
+              {log === null && logLoading ? <div className="q-admin-loading">读取流水…</div> : null}
+
+              {log !== null && log.length === 0 ? (
                 <div className="q-admin-empty">
                   <b>还没有记录</b>
                   访客留言后小爱回过话，这里就会出现。
@@ -668,7 +707,7 @@ export default function AdminStatus() {
                     </tr>
                   </thead>
                   <tbody>
-                    {s.autoReply.log.map((r) => {
+                    {log?.map((r) => {
                       const a = ACTION_LABEL[r.action] ?? { text: r.action, tone: 'muted' as const };
                       return (
                         <tr key={r.id}>
@@ -697,6 +736,21 @@ export default function AdminStatus() {
                   </tbody>
                 </table>
               )}
+
+              {log && log.length > 0 ? (
+                <Pager
+                  total={s.autoReply.logTotal}
+                  page={logPage}
+                  pages={logPages}
+                  pageSize={logSize}
+                  loading={logLoading}
+                  onPage={setLogPage}
+                  onSize={(n) => {
+                    setLogSize(n);
+                    setLogPage(1);
+                  }}
+                />
+              ) : null}
             </section>
           </>
         ) : null}

@@ -10,6 +10,11 @@ import { json } from '../util';
 import type { Admin } from './auth';
 
 const PAGE_SIZE = 20;
+/**
+ * 允许前端选的每页条数。**只认这三个值**，别的不传或乱传一律回落到 20 ——
+ * 让人从 devtools 里塞 `pageSize=100000` 把整张表捞走没意义。
+ */
+export const PAGE_SIZES = [10, 20, 50] as const;
 const MAX_REPLY_LEN = 500;
 const VALID_STATUS = new Set(['visible', 'pending', 'spam', 'deleted']);
 
@@ -93,6 +98,9 @@ export async function listComments(request: Request, env: Env, _admin: Admin): P
   const status = (url.searchParams.get('status') || 'all').trim();
   const q = (url.searchParams.get('q') || '').trim().slice(0, 60);
   const page = Math.max(1, Number.parseInt(url.searchParams.get('page') || '1', 10) || 1);
+  // 每页条数可调（站长：「限制一下一页显示多少条信息」），只收白名单里的值
+  const askedSize = Number.parseInt(url.searchParams.get('pageSize') || '', 10);
+  const pageSize = (PAGE_SIZES as readonly number[]).includes(askedSize) ? askedSize : PAGE_SIZE;
 
   // 只列顶层留言，回复数用子查询带出来 —— 收件箱要的是「一条待处理」，不是整个楼层
   const where: string[] = ['c.parent_id IS NULL'];
@@ -114,7 +122,7 @@ export async function listComments(request: Request, env: Env, _admin: Admin): P
     .bind(...args)
     .first<{ n: number }>();
   const total = totalRow?.n ?? 0;
-  const pages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+  const pages = Math.max(1, Math.ceil(total / pageSize));
   const safePage = Math.min(page, pages);
 
   const rows = await env.DB.prepare(
@@ -125,7 +133,7 @@ export async function listComments(request: Request, env: Env, _admin: Admin): P
       ORDER BY c.ts DESC
       LIMIT ? OFFSET ?`,
   )
-    .bind(...args, PAGE_SIZE, (safePage - 1) * PAGE_SIZE)
+    .bind(...args, pageSize, (safePage - 1) * pageSize)
     .all<CommentRow>();
 
   // 各状态计数，给顶部 tab 上的角标用
@@ -144,7 +152,7 @@ export async function listComments(request: Request, env: Env, _admin: Admin): P
     total,
     page: safePage,
     pages,
-    pageSize: PAGE_SIZE,
+    pageSize,
     counts: byStatus,
     items: (rows.results ?? []).map(toItem),
   });

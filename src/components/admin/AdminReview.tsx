@@ -22,6 +22,7 @@
  */
 import { useCallback, useEffect, useState } from 'react';
 import AdminTop from './AdminTop.tsx';
+import Pager from './Pager.tsx';
 
 const API = '/api/admin';
 
@@ -122,20 +123,35 @@ export default function AdminReview() {
   const [blocked, setBlocked] = useState<Blocked[] | null>(null);
   const [bLoading, setBLoading] = useState(false);
   const [bErr, setBErr] = useState('');
+  // 拦截记录分页（站长：「限制一下一页显示多少条信息」）
+  const [bPage, setBPage] = useState(1);
+  const [bPages, setBPages] = useState(1);
+  const [bTotal, setBTotal] = useState(0);
+  // 默认必须是 PAGE_SIZES 里的值，否则 <select> 的 value 匹配不到任何 option，
+  // 会显示成第一项而 state 还是 15 —— 看着是 10 条、实际请求 15 条
+  const [bSize, setBSize] = useState(10);
 
   /** 拦截记录单独拉：它跟规则是两份数据，规则改坏了不该把这块也带黑 */
-  const loadBlocked = useCallback(async () => {
-    setBLoading(true);
-    setBErr('');
-    try {
-      const d = await api<{ items: Blocked[] }>('/review/blocked?limit=15');
-      setBlocked(d.items);
-    } catch (e) {
-      setBErr(e instanceof Error ? e.message : '读取拦截记录失败');
-    } finally {
-      setBLoading(false);
-    }
-  }, []);
+  const loadBlocked = useCallback(
+    async (page = bPage, size = bSize) => {
+      setBLoading(true);
+      setBErr('');
+      try {
+        const d = await api<{ items: Blocked[]; total: number; page: number; pages: number }>(
+          `/review/blocked?page=${page}&pageSize=${size}`,
+        );
+        setBlocked(d.items ?? []);
+        setBTotal(d.total ?? 0);
+        setBPage(d.page ?? page);
+        setBPages(d.pages ?? 1);
+      } catch (e) {
+        setBErr(e instanceof Error ? e.message : '读取拦截记录失败');
+      } finally {
+        setBLoading(false);
+      }
+    },
+    [bPage, bSize],
+  );
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -160,9 +176,14 @@ export default function AdminReview() {
       } catch {
         return;
       }
-      await Promise.all([load(), loadBlocked()]);
+      await load();
     })();
-  }, [load, loadBlocked]);
+  }, [load]);
+
+  // 拦截记录单独一条 effect：翻页只重跑它，不重复读规则
+  useEffect(() => {
+    if (ready) void loadBlocked();
+  }, [ready, loadBlocked]);
 
   const dirty =
     !!form &&
@@ -426,9 +447,23 @@ export default function AdminReview() {
             </table>
           ) : null}
 
+          {blocked !== null && blocked.length > 0 ? (
+            <Pager
+              total={bTotal}
+              page={bPage}
+              pages={bPages}
+              pageSize={bSize}
+              loading={bLoading}
+              onPage={(p) => setBPage(p)}
+              onSize={(n) => {
+                setBSize(n);
+                setBPage(1);
+              }}
+            />
+          ) : null}
+
           <p className="q-admin-stat__foot">
             误判了就去「评论收件箱 → 垃圾」放行；同一类错得多，回来把阈值往上调。
-            {blocked && blocked.length ? ` 最近 ${blocked.length} 条。` : ''}
           </p>
         </section>
       </main>

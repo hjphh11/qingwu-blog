@@ -67,20 +67,34 @@ interface ChannelCfg {
   model: string;
 }
 
-function cfgOf(env: Env, ch: Channel): ChannelCfg | null {
+/**
+ * 一条通道的地址 / key / 模型。
+ *
+ * 优先级 **库 > env > 代码默认**，逐项回落（不是整段回落）：
+ * 后台只改了模型名，地址与 key 照旧吃环境变量 —— 站长不用把 key 再抄一遍。
+ *
+ * 2026-11-10 深夜之前这里只读 env。站长要「可以修改模型的 api，保存生效」，
+ * 于是接上 `admin_settings`；`loadSettings` 每次请求现读、不缓存，所以改完立刻生效。
+ */
+function cfgOf(env: Env, s: Settings, ch: Channel): ChannelCfg | null {
   const str = (v: string | undefined): string => String(v ?? '').trim();
+  const db = ch === 'judge' ? s.ai.judge : s.ai.writer;
 
-  const key = str(ch === 'judge' ? env.AI_JUDGE_KEY : env.AI_API_KEY) || str(env.AI_API_KEY);
+  const key =
+    str(db.key) || str(ch === 'judge' ? env.AI_JUDGE_KEY : env.AI_API_KEY) || str(env.AI_API_KEY);
   if (!key) return null;
 
   // ⚠️ **base 只认 AI_BASE_URL**，不读 AI_JUDGE_BASE_URL ——
-  // 后者是 Jev 专用地址（jevmodel.io），只属于决策协议那条路。
+  // 后者是 Jev 专用地址（api.typesafe.ai），只属于决策协议那条路。
   // 如果这里也读它：配置了 provider=jev 但暂时没有 Jev key 时，judge 会回落到
-  // OpenAI 兼容分支，却仍然打到 jevmodel.io/chat/completions → 必然 404。
-  const base = str(env.AI_BASE_URL) || DEFAULT_BASE;
+  // OpenAI 兼容分支，却仍然打到 api.typesafe.ai/chat/completions → 必然 404。
+  const base = str(db.base) || str(env.AI_BASE_URL) || DEFAULT_BASE;
   // model 可以单独指定（换更便宜的小模型），但地址不变，所以不会跑错家
   const model =
-    (ch === 'judge' ? str(env.AI_JUDGE_MODEL) : str(env.AI_MODEL)) || str(env.AI_MODEL) || DEFAULT_MODEL;
+    str(db.model) ||
+    (ch === 'judge' ? str(env.AI_JUDGE_MODEL) : str(env.AI_MODEL)) ||
+    str(env.AI_MODEL) ||
+    DEFAULT_MODEL;
 
   return { base: base.replace(/\/+$/, ''), key, model };
 }
@@ -500,8 +514,13 @@ interface JudgeOut extends Verdict {
   probs?: Record<string, number>;
 }
 
-async function runJudge(env: Env, ctx: CommentCtx, cats: VerdictKey[] = [...VERDICTS]): Promise<JudgeOut> {
-  const target = judgeTargetOf(env);
+async function runJudge(
+  env: Env,
+  s: Settings,
+  ctx: CommentCtx,
+  cats: VerdictKey[] = [...VERDICTS],
+): Promise<JudgeOut> {
+  const target = judgeTargetOf(env, s);
   if (!target) throw new AiError('ai_unconfigured', '还没配 judge 通道的 key', 503);
 
   if (target.kind === 'jev') {
@@ -590,9 +609,9 @@ export async function moderateComment(
 
   const cats = s.judge.categories;
   if (cats.length === 0) return null;
-  if (!judgeTargetOf(env)) return null;
+  if (!judgeTargetOf(env, s)) return null;
 
-  const v = await runJudge(env, ctx, cats);
+  const v = await runJudge(env, s, ctx, cats);
   await recordUsage(env, 'judge', v.tokensIn, v.tokensOut);
 
   const hit = v.verdict !== 'ok' && v.score >= s.judge.threshold;
@@ -651,22 +670,24 @@ type JudgeTarget =
   | { kind: 'jev'; base: string; key: string; model: string }
   | { kind: 'openai'; cfg: ChannelCfg };
 
-function judgeTargetOf(env: Env): JudgeTarget | null {
+function judgeTargetOf(env: Env, s: Settings): JudgeTarget | null {
   const str = (v: string | undefined): string => String(v ?? '').trim();
-  const provider = str(env.AI_JUDGE_PROVIDER).toLowerCase();
-  const jevKey = str(env.AI_JUDGE_KEY);
+  const db = s.ai.judge;
+  // 库里没写过 provider 时才看 env —— 写了就以库为准，哪怕写的是 openai（把 Jev 关掉）
+  const provider = (str(db.provider) || str(env.AI_JUDGE_PROVIDER)).toLowerCase();
+  const jevKey = str(db.key) || str(env.AI_JUDGE_KEY);
 
   if (provider === 'jev' && jevKey) {
     return {
       kind: 'jev',
       // ⚠️ 官方是 api.typesafe.ai。jevmodel.io 是仿站（它要求 sk- 前缀的 key），
       //    打过去只会得到 401 Invalid API key，别再用。
-      base: (str(env.AI_JUDGE_BASE_URL) || 'https://api.typesafe.ai').replace(/\/+$/, ''),
+      base: (str(db.base) || str(env.AI_JUDGE_BASE_URL) || 'https://api.typesafe.ai').replace(/\/+$/, ''),
       key: jevKey,
-      model: str(env.AI_JUDGE_MODEL) || 'jev-latest',
+      model: str(db.model) || str(env.AI_JUDGE_MODEL) || 'jev-latest',
     };
   }
-  const cfg = cfgOf(env, 'judge');
+  const cfg = cfgOf(env, s, 'judge');
   return cfg ? { kind: 'openai', cfg } : null;
 }
 
@@ -705,14 +726,15 @@ export interface AiSnapshot {
  */
 export async function aiSnapshot(env: Env): Promise<AiSnapshot> {
   const quota = quotaOf(env);
+  const s = await loadSettings(env);
   const [wUsed, jUsed] = await Promise.all([usedToday(env, 'writer'), usedToday(env, 'judge')]);
 
-  const w = cfgOf(env, 'writer');
+  const w = cfgOf(env, s, 'writer');
   const writer: AiChannelState = w
     ? { on: true, provider: 'writer', model: w.model, used: wUsed, quota }
     : { on: false, provider: 'writer', model: '', used: wUsed, quota, missing: 'AI_API_KEY' };
 
-  const j = judgeTargetOf(env);
+  const j = judgeTargetOf(env, s);
   let judge: AiChannelState;
   if (!j) {
     judge = {
@@ -775,8 +797,11 @@ export interface PingResult {
  * 成本：writer 约 30 token，judge 输出不计费。各受每日配额约束，用满就跳过。
  */
 export async function pingChannels(env: Env): Promise<{ writer: PingResult; judge: PingResult }> {
+  // 探活也要读库：站长改完 key 点「测一下」，测的必须是**刚才保存的那份**配置。
+  const s = await loadSettings(env);
+
   const writer = await (async (): Promise<PingResult> => {
-    const cfg = cfgOf(env, 'writer');
+    const cfg = cfgOf(env, s, 'writer');
     if (!cfg) return { ok: false, ms: 0, detail: '没配 AI_API_KEY，这条通道没开' };
     const gate = await quotaGate(env, 'writer');
     if (gate) return { ok: false, ms: 0, detail: '今日额度已用满，先不占额' };
@@ -806,7 +831,7 @@ export async function pingChannels(env: Env): Promise<{ writer: PingResult; judg
   })();
 
   const judge = await (async (): Promise<PingResult> => {
-    const target = judgeTargetOf(env);
+    const target = judgeTargetOf(env, s);
     if (!target) return { ok: false, ms: 0, detail: '没配 judge 的 key，这条通道没开' };
     const gate = await quotaGate(env, 'judge');
     if (gate) return { ok: false, ms: 0, detail: '今日额度已用满，先不占额' };
@@ -820,7 +845,7 @@ export async function pingChannels(env: Env): Promise<{ writer: PingResult; judg
       replies: [],
     };
     try {
-      const v = await runJudge(env, probe);
+      const v = await runJudge(env, s, probe);
       await recordUsage(env, 'judge', v.tokensIn, v.tokensOut);
       return {
         ok: true,
@@ -872,13 +897,13 @@ export async function postAiDraft(request: Request, env: Env, _admin: Admin): Pr
     return json({ ok: false, reason: 'empty', message: '先把想说的话打几个字，再让 AI 润色' }, 400);
   }
 
-  const cfg = cfgOf(env, 'writer');
+  const ws = await loadSettings(env);
+  const wgen = ws.writer;
+  const cfg = cfgOf(env, ws, 'writer');
   if (!cfg) return unconfigured('writer');
   const gate = await quotaGate(env, 'writer');
   if (gate) return gate;
 
-  const ws = (await loadSettings(env)).writer;
-  if (ws.model) cfg.model = ws.model;
 
   const ctx = await loadCtx(env, id);
   if (!ctx) return json({ ok: false, reason: 'not_found' }, 404);
@@ -893,8 +918,8 @@ export async function postAiDraft(request: Request, env: Env, _admin: Admin): Pr
       system: mode === 'polish' ? WRITER_SYSTEM + POLISH_ADDON : WRITER_SYSTEM,
       user,
       // 润色要贴着原文，温度低一档；温度与上限都可在后台调
-      temperature: mode === 'polish' ? Math.min(ws.temperature, 0.5) : ws.temperature,
-      maxTokens: ws.maxTokens,
+      temperature: mode === 'polish' ? Math.min(wgen.temperature, 0.5) : wgen.temperature,
+      maxTokens: wgen.maxTokens,
     });
 
     await recordUsage(env, 'writer', r.tokensIn, r.tokensOut);
@@ -933,7 +958,8 @@ export async function postAiJudge(request: Request, env: Env, _admin: Admin): Pr
   }
   if (!Number.isInteger(id) || id <= 0) return json({ ok: false, reason: 'bad_id' }, 400);
 
-  const target = judgeTargetOf(env);
+  const s = await loadSettings(env);
+  const target = judgeTargetOf(env, s);
   if (!target) return unconfigured('judge');
   const gate = await quotaGate(env, 'judge');
   if (gate) return gate;
@@ -942,8 +968,7 @@ export async function postAiJudge(request: Request, env: Env, _admin: Admin): Pr
   if (!ctx) return json({ ok: false, reason: 'not_found' }, 404);
 
   try {
-    const s = await loadSettings(env);
-    const v = await runJudge(env, ctx, s.judge.categories);
+    const v = await runJudge(env, s, ctx, s.judge.categories);
     await recordUsage(env, 'judge', v.tokensIn, v.tokensOut);
 
     return json({
@@ -1034,7 +1059,8 @@ export async function postFriendReply(request: Request, env: Env, _admin: Admin)
   }
   if (!Number.isInteger(id) || id <= 0) return json({ ok: false, reason: 'bad_id' }, 400);
 
-  const cfg = cfgOf(env, 'writer');
+  const frs = await loadSettings(env);
+  const cfg = cfgOf(env, frs, 'writer');
   if (!cfg) return unconfigured('writer');
   const gate = await quotaGate(env, 'writer');
   if (gate) return gate;
@@ -1242,10 +1268,8 @@ export async function autoReplyTo(env: Env, commentId: number): Promise<void> {
   const ar = settings.autoReply;
   if (!ar.on) return;
 
-  const writer = cfgOf(env, 'writer');
+  const writer = cfgOf(env, settings, 'writer');
   if (!writer) return; // 没配 key：静默，不留任何痕迹
-  // 后台指定了模型就用它 —— 换更便宜的小模型时不必登服务器改环境变量
-  if (settings.writer.model) writer.model = settings.writer.model;
 
   const me = identityOf(env);
   const day = dayKey(Date.now());
@@ -1342,7 +1366,7 @@ export async function autoReplyTo(env: Env, commentId: number): Promise<void> {
   // —— 闸门 ④：先判垃圾 ——
   // 判断不出来就不回。误判一条广告的成本，远低于在小爱嘴里复述一条垃圾。
   // 与提交时的审核用同一份规则（类别 + 阈值），改规则时两处一起变。
-  if (judgeTargetOf(env)) {
+  if (judgeTargetOf(env, settings)) {
     try {
       const v = await moderateComment(env, ctx, { settings });
       if (v && v.hit) {
