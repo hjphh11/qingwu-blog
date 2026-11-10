@@ -14,18 +14,37 @@ import type { Env } from '../types';
 import { json } from '../util';
 import type { Admin } from './auth';
 
-/** judge 能识别、也能被单独关掉的四类判定。`ok` 不是类别，是「没命中」。 */
-export const VERDICTS = ['spam', 'abuse', 'privacy'] as const;
+/**
+ * judge 能识别、也能被单独关掉的五类判定。`ok` 不是类别，是「没命中」。
+ *
+ * 口径按法律用语排的，不是按「看着烦」排的：
+ * 违法信息与不良信息的划分参照《网络信息内容生态治理规定》，
+ * 垃圾广告不属于违法内容，单独留一类 —— 它是最常见的一类，不该和违法混在一起判。
+ */
+export const VERDICTS = ['illegal', 'porn', 'abuse', 'privacy', 'spam'] as const;
 export type VerdictKey = (typeof VERDICTS)[number];
 
 export const VERDICT_LABEL: Record<VerdictKey | 'ok', string> = {
   ok: '正常',
+  illegal: '违法违规',
+  porn: '色情低俗',
+  abuse: '侮辱攻击',
+  privacy: '隐私侵权',
   spam: '垃圾广告',
-  abuse: '辱骂攻击',
-  privacy: '隐私泄露',
 };
 
-export type ModerationAction = 'hold' | 'reject';
+/**
+ * 每一类的判定口径。**系统提示词、Jev 的 criteria、后台页面上的说明共用这一份。**
+ * 三处各写一遍，改规则时必然有一处忘改，线上判定和页面描述就会对不上。
+ */
+export const VERDICT_DESC: Record<VerdictKey | 'ok', string> = {
+  ok: '正常交流、提问、合理批评、调侃。批评不等于辱骂',
+  illegal: '涉政有害、暴恐、赌博、毒品、诈骗传销、教唆违法犯罪',
+  porn: '色情、软色情、低俗引流、涉未成年人的不当内容',
+  abuse: '侮辱谩骂、人身攻击、地域或性别歧视、威胁恐吓、诽谤',
+  privacy: '他人真实姓名、住址、电话、证件号、私聊记录等人肉与隐私泄露',
+  spam: '广告、引流、纯链接、SEO 灌水、与本站无关的推广',
+};
 
 export interface Settings {
   autoReply: {
@@ -51,25 +70,12 @@ export interface Settings {
     maxTokens: number;
   };
   judge: {
-    /** 评论提交时是否先过一遍审核。默认关 —— 打开就给每次提交加 200ms~1s */
-    on: boolean;
-    /** 启用哪几类拦截。关掉的类别即使 judge 判出来也不拦 */
+    /** 启用哪几类拦截。关掉的类别不进提示词 —— 模型压根没机会选它。 */
     categories: VerdictKey[];
     /** 判定为「应拦截」的把握达到这个分数才动手（0~100） */
     threshold: number;
-    /**
-     * 命中后怎么处置：
-     * · hold   = 存成待审（前台不显示，站长在收件箱能看见并放行）
-     * · reject = 直接标成垃圾（前台不显示，收件箱「垃圾」页仍留证）
-     * 两种都落库 —— 直接丢掉就没法复核误判了。
-     */
-    action: ModerationAction;
-    /** 命中时给访客看的提示。空 = 用默认文案 */
-    notice: string;
   };
 }
-
-const DEFAULT_NOTICE = '这条留言没通过自动审核，先压下来了。如果它其实没问题，我会手动放出来。';
 
 export const DEFAULTS: Settings = {
   autoReply: {
@@ -84,10 +90,8 @@ export const DEFAULTS: Settings = {
     quietTo: '',
   },
   writer: { model: '', temperature: 0.8, maxTokens: 400 },
-  judge: { on: false, categories: ['spam', 'abuse', 'privacy'], threshold: 60, action: 'hold', notice: DEFAULT_NOTICE },
+  judge: { categories: [...VERDICTS], threshold: 60 },
 };
-
-export const DEFAULT_JUDGE_NOTICE = DEFAULT_NOTICE;
 
 // ——————————————————————————————————————————————————————————
 // 解析
@@ -175,11 +179,8 @@ export function parseSettings(rows: Record<string, string>, env: Env): Settings 
       maxTokens: intOf(g('writer.maxTokens'), DEFAULTS.writer.maxTokens, 80, 2000),
     },
     judge: {
-      on: boolOf(g('judge.on'), DEFAULTS.judge.on),
       categories: categoriesOf(g('judge.categories'), DEFAULTS.judge.categories),
       threshold: intOf(g('judge.threshold'), DEFAULTS.judge.threshold, 0, 100),
-      action: str(g('judge.action')) === 'reject' ? 'reject' : 'hold',
-      notice: str(g('judge.notice')).slice(0, 200) || DEFAULT_NOTICE,
     },
   };
 }
@@ -218,11 +219,8 @@ export function flatten(s: Settings): Record<string, string> {
     'writer.model': s.writer.model,
     'writer.temperature': String(s.writer.temperature),
     'writer.maxTokens': String(s.writer.maxTokens),
-    'judge.on': s.judge.on ? 'on' : 'off',
     'judge.categories': s.judge.categories.join(','),
     'judge.threshold': String(s.judge.threshold),
-    'judge.action': s.judge.action,
-    'judge.notice': s.judge.notice,
   };
 }
 
@@ -335,7 +333,7 @@ export async function getSettings(_request: Request, env: Env, _admin: Admin): P
     meta: {
       verdicts: VERDICTS,
       verdictLabel: VERDICT_LABEL,
-      defaultNotice: DEFAULT_JUDGE_NOTICE,
+      verdictDesc: VERDICT_DESC,
       // 环境变量里是否已经配好两条 AI 通道 —— 设置页据此提示「这条改不了 key」
       envHasWriter: Boolean(String(env.AI_API_KEY ?? '').trim()),
       envHasJudge: Boolean(String(env.AI_JUDGE_KEY ?? '').trim() || String(env.AI_API_KEY ?? '').trim()),

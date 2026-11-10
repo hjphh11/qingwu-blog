@@ -19,8 +19,9 @@
 //
 // 例外是文件末尾的 `autoReplyTo()`：访客留言后小爱自动回话。这是站长明确开启的
 // 无人值守模式，要求她当场说话，所以它确实会写 comments 表。为了不让它失控，
-// 那条路自带四道闸（总开关 / 每日总量 / 单访客每日 / judge 先判垃圾），
-// 并且每一笔都落 `auto_reply_log` 可追溯。改那段代码前先看那段注释。
+// 那条路自带六道闸（总开关与安静时段 / 路径 / 跳过关键词 / 回复范围 /
+// 每日总量与单访客 / judge 先判垃圾），并且每一笔都落 `auto_reply_log` 可追溯。
+// 改那段代码前先看那段注释。
 //
 // —— 配置（都是可选，没配 = 该通道关闭，前端自动隐藏按钮）——
 //   AI_API_KEY / AI_BASE_URL / AI_MODEL                     → writer
@@ -36,8 +37,8 @@ import type { Admin } from './auth';
 import { identityOf, pathOf } from './comments';
 import { runProbe } from './friends';
 import {
-  DEFAULT_JUDGE_NOTICE,
   VERDICTS,
+  VERDICT_DESC,
   autoReplyPathAllowed,
   inQuietHours,
   loadSettings,
@@ -255,34 +256,29 @@ const POLISH_ADDON = `
 长度与原文相当，最多略短。只输出润色后的正文。`;
 
 /**
- * 四类判定各自的口径。**提示词和 Jev 的 criteria 共用这一份** ——
- * 两处各写一遍，调规则时必然有一边忘改，前端测试页与线上判定就会不一致。
- */
-const CATEGORY_DESC: Record<'ok' | VerdictKey, string> = {
-  ok: '正常交流、提问、合理批评、调侃。批评不等于辱骂',
-  spam: '广告、引流、纯链接、SEO 灌水、与本站无关的推广',
-  abuse: '辱骂、人身攻击、歧视、威胁',
-  privacy: '公开他人真实姓名、住址、电话、证件号、私聊记录',
-};
-
-/**
  * judge 的系统提示词。**按启用类别动态生成** ——
- * 后台关掉「隐私泄露」之后，模型不该再往这个筐里归类；
+ * 后台关掉「隐私侵权」之后，模型不该再往这个筐里归类；
  * 只出现在提示词里的类别，等于这条规则没有真正关掉。
+ *
+ * 口径本身不在这里写，在 settings.ts 的 `VERDICT_DESC`：提示词、Jev 的 criteria、
+ * 后台页面上的说明三处共用同一份文案，改规则只改那一处。
  */
 function judgeSystemOf(cats: VerdictKey[]): string {
   const on = VERDICTS.filter((k) => cats.includes(k));
-  return `你是博客评论的审核判断器。只做判断，不写作。
+  return `你是博客留言的审核判断器。只做判断，不写作。
 
 ${GUARD}
+
+判定口径参照《网络信息内容生态治理规定》对违法信息与不良信息的划分：
+违法的一律拦，不良的按下面这张表判。正常交流、提问、合理批评、调侃都算 ok。
 
 输出一个 JSON 对象（不要 markdown 代码块，不要任何额外文字）：
 {"verdict":"ok|${on.join('|')}","score":0-100,"reasons":["…"],"note":"一句中文说明"}
 
 口径：
 - score = 判定为「应当拦截」的把握，0~100。
-${(['ok', ...on] as (keyof typeof CATEGORY_DESC)[])
-  .map((k) => `- ${k}：${CATEGORY_DESC[k]}${k === 'ok' ? '**批评不等于辱骂。**' : '。'}`)
+${(['ok', ...on] as (keyof typeof VERDICT_DESC)[])
+  .map((k) => `- ${k}：${VERDICT_DESC[k]}。`)
   .join('\n')}
 - reasons 最多 3 条，每条不超过 20 字。`;
 }
@@ -294,10 +290,10 @@ ${(['ok', ...on] as (keyof typeof CATEGORY_DESC)[])
 // 它只回 label 与 confidence，所以延迟 70~500ms、且输出不计费。
 // 「判断」和「策略」是分开的：它负责判，阈值和动作在我们的代码里。
 // ——————————————————————————————————————————————————————————
-const VALID_VERDICT = new Set(['ok', 'spam', 'abuse', 'privacy']);
+const VALID_VERDICT = new Set<string>(['ok', ...VERDICTS]);
 
 interface Verdict {
-  verdict: 'ok' | 'spam' | 'abuse' | 'privacy';
+  verdict: 'ok' | VerdictKey;
   score: number;
   reasons: string[];
   note: string;
@@ -343,8 +339,8 @@ async function callJev(
               '判断这条博客留言的性质。正常交流、提问、合理批评、调侃都算 ok；批评不等于辱骂。',
             // 关掉的类别不进候选：模型压根没机会选它，比「选了再丢」可靠
             criteria: Object.fromEntries([
-              ['ok', CATEGORY_DESC.ok],
-              ...VERDICTS.filter((k) => cats.includes(k)).map((k) => [k, CATEGORY_DESC[k]]),
+              ['ok', VERDICT_DESC.ok],
+              ...VERDICTS.filter((k) => cats.includes(k)).map((k) => [k, VERDICT_DESC[k]]),
             ]),
           },
         },
@@ -374,14 +370,19 @@ async function callJev(
     if (!a) throw new AiError('ai_empty', 'Jev 没返回 answers.verdict', 502);
 
     const choice = String(a.choice ?? '').trim().toLowerCase();
-    const verdict = (VALID_VERDICT.has(choice) ? choice : 'ok') as Verdict['verdict'];
+    // 上游给了关掉的类别也要映射回 ok：criteria 里没有它，但它可能凭印象硬答
+    const verdict = (
+      VALID_VERDICT.has(choice) && (choice === 'ok' || cats.includes(choice as VerdictKey))
+        ? choice
+        : 'ok'
+    ) as Verdict['verdict'];
     const conf = Math.max(0, Math.min(1, Number(a.confidence ?? 0.5) || 0.5));
 
     // Jev 不给 0~100 的风险分，用 confidence 折算：
     // 判「正常」时越确信风险越低；判违规时越确信风险越高。
     const score = Math.round((verdict === 'ok' ? 1 - conf : conf) * 100);
 
-    // 官方响应带 probabilities（四类各自的概率），比单看 confidence 更有信息量：
+    // 官方响应带 probabilities（各类各自的概率），比单看 confidence 更有信息量：
     // 后台「AI 体检」那一行直接显示出来，一眼能看出「是不是勉强判成 ok」。
     const probs = a.probabilities ?? {};
     // 上游偶尔只给 confidence 不给 probabilities：这里补成一个只有选中项有值的分布，
@@ -396,7 +397,7 @@ async function callJev(
     const note =
       verdict === 'ok'
         ? `正常 · 把握 ${(conf * 100).toFixed(0)}%`
-        : `${CATEGORY_DESC[verdict]} · 把握 ${(conf * 100).toFixed(0)}%`;
+        : `${VERDICT_DESC[verdict]} · 把握 ${(conf * 100).toFixed(0)}%`;
 
     return {
       verdict,
@@ -548,12 +549,12 @@ async function runJudge(env: Env, ctx: CommentCtx, cats: VerdictKey[] = [...VERD
 // ——————————————————————————————————————————————————————————
 // 评论审核：判定 + 按规则决定动不动手
 //
-// 和「AI 体检」的区别：体检只给结论，站长自己点按钮；这里直接给出**处置结论**，
-// 供两条路复用 ——
-//   ① 访客提交留言时（friends-board.ts），命中就按 judge.action 转待审或拒收；
-//   ② 后台「评论审核」页的试判，改完规则先拿一段文字试试会不会被误拦。
+// **每一条留言都会过这一遍**，没有「开不开审核」的开关 —— 站长要的是
+// 「用户发什么都要判一次」，而不是「想起来了才判」。
 //
-// 同一份判定逻辑，两处调用。改阈值、改类别只改 settings 表，不改这里。
+// 只有访客提交留言这一条路会用到它（friends-board.ts）。
+// 命中就落 `status='spam'`：前台不展示，收件箱「垃圾」里留着可以复核。
+// 改阈值、改类别只改 settings 表，不改这里。
 // ——————————————————————————————————————————————————————————
 export interface ModerationResult {
   /** 是否应当动手（类别命中且分数达到阈值） */
@@ -562,33 +563,29 @@ export interface ModerationResult {
   score: number;
   reasons: string[];
   note: string;
-  /** 命中时给访客看的提示 */
-  notice: string;
   model: string;
   ms: number;
   probs: Record<string, number>;
-  /** 这次判定用的阈值，回给前端方便对照 */
+  /** 这次判定用的阈值，写进日志方便对账 */
   threshold: number;
   categories: VerdictKey[];
-  action: 'hold' | 'reject';
 }
 
 /**
  * 判断一条留言该不该拦。
  *
- * **返回 null 表示「这次不做审核」**（开关关着 / 没配 judge key / 没启用任何类别），
+ * **返回 null 表示「这次判不了」**（没配 judge key / 一个类别都没开），
  * 调用方据此原样放行 —— 不要把它当成「通过」再写一遍分支。
  *
- * `force` 只给后台试判用：跳过 judge.on 开关，但阈值与类别仍然生效
- * （试判的意义就是「按当前规则会发生什么」）。
+ * 注意这是唯一一处**故意允许静默失败**的地方：审核是加分项，不能因为
+ * 模型上游抖动就让留言板收不到话。调用方那层还要再包一次 try/catch。
  */
 export async function moderateComment(
   env: Env,
   ctx: CommentCtx,
-  opts: { force?: boolean; settings?: Settings } = {},
+  opts: { settings?: Settings } = {},
 ): Promise<ModerationResult | null> {
   const s = opts.settings ?? (await loadSettings(env));
-  if (!opts.force && !s.judge.on) return null;
 
   const cats = s.judge.categories;
   if (cats.length === 0) return null;
@@ -604,13 +601,11 @@ export async function moderateComment(
     score: v.score,
     reasons: v.reasons,
     note: v.note,
-    notice: hit ? s.judge.notice || DEFAULT_JUDGE_NOTICE : '',
     model: v.model,
     ms: v.ms,
     probs: v.probs ?? {},
     threshold: s.judge.threshold,
     categories: cats,
-    action: s.judge.action,
   };
 }
 
@@ -971,46 +966,6 @@ export async function postAiJudge(request: Request, env: Env, _admin: Admin): Pr
       ms: v.ms,
       tokens: v.tokensIn + v.tokensOut,
     });
-  } catch (e) {
-    return fail(e);
-  }
-}
-
-// ——————————————————————————————————————————————————————————
-// POST /admin/review/test —— 审核规则试判
-//
-// 后台「评论审核」页的那块测试区。改完类别与阈值，先拿一段文字看看会不会误拦，
-// 再决定要不要真的接进留言提交路径。
-//
-// **不写任何表、不改任何评论状态**，只花一次 judge 配额。
-// 这是唯一一条不传 id、直接收正文的 AI 接口 —— 因为它的用途就是「试还没发出去的
-// 那段话」，站里根本还没有这条留言。
-// ——————————————————————————————————————————————————————————
-export async function postReviewTest(request: Request, env: Env, _admin: Admin): Promise<Response> {
-  let author = '';
-  let body = '';
-  let path = '/friends/';
-  try {
-    const v = (await request.json()) as { author?: unknown; body?: unknown; path?: unknown };
-    author = String(v?.author ?? '').trim().slice(0, 40) || '访客';
-    body = String(v?.body ?? '').slice(0, MAX_CONTEXT_LEN);
-    path = String(v?.path ?? '/friends/').trim().slice(0, 120) || '/friends/';
-  } catch {
-    return json({ ok: false, reason: 'bad_request' }, 400);
-  }
-  if (!body.trim()) return json({ ok: false, reason: 'empty', message: '先写一段要试的留言' }, 400);
-
-  const target = judgeTargetOf(env);
-  if (!target) return unconfigured('judge');
-  const gate = await quotaGate(env, 'judge');
-  if (gate) return gate;
-
-  try {
-    // force：开关关着也能试。试判的意义就是「如果我打开它，会发生什么」，
-    // 被开关挡住就永远调不了规则。
-    const r = await moderateComment(env, { id: 0, author, body, path, replies: [] }, { force: true });
-    if (!r) return json({ ok: false, reason: 'ai_unconfigured', message: 'judge 通道没配，试判跑不了' }, 503);
-    return json({ ok: true, ...r });
   } catch (e) {
     return fail(e);
   }
@@ -1402,11 +1357,10 @@ export async function autoReplyTo(env: Env, commentId: number): Promise<void> {
 
   // —— 闸门 ④：先判垃圾 ——
   // 判断不出来就不回。误判一条广告的成本，远低于在小爱嘴里复述一条垃圾。
-  // force: 这条闸属于自动回复自己，与「评论提交审核」总开关无关；
-  // 但类别与阈值仍然用同一份设置，改规则时两处一起变。
+  // 与提交时的审核用同一份规则（类别 + 阈值），改规则时两处一起变。
   if (judgeTargetOf(env)) {
     try {
-      const v = await moderateComment(env, ctx, { force: true, settings });
+      const v = await moderateComment(env, ctx, { settings });
       if (v && v.hit) {
         await logAuto(env, {
           commentId,

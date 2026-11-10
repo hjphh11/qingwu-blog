@@ -142,8 +142,9 @@ function toEntry(row: CommentRow, replies: CommentRow[], likes: number) {
     avatar: row.avatar ?? '',
     intro: row.body,
     at: new Date(row.ts).toISOString(),
-    // `visible` = 已经加进友链墙（站长审过），其余（pending）都算「等我看看」。
-    // 注意：pending 也照样返回给前端 —— 评论区是公开的，只是徽章不一样。
+    // `visible` = 已经收录进友链墙，其余（pending）显示「等我看看」。
+    // 这两个状态都会返回给前端 —— 评论区是公开的，只是徽章不一样。
+    // **spam 在上面那条 SQL 里就被排除了**：审核判成垃圾的不上前台，这是拦截唯一的落点。
     status: row.status === 'visible' ? ('approved' as const) : ('pending' as const),
     emailHash: row.email_hash ?? '',
     likes,
@@ -167,7 +168,7 @@ export async function getFriendsBoard(request: Request, env: Env): Promise<Respo
   try {
     const rows = await env.DB.prepare(
       `SELECT id, parent_id, author, author_url, avatar, body, status, ts, email_hash, notify
-       FROM comments WHERE post_slug = ? AND status != 'deleted'
+       FROM comments WHERE post_slug = ? AND status IN ('visible', 'pending')
        ORDER BY ts DESC LIMIT 300`,
     )
       .bind(SLUG)
@@ -245,17 +246,18 @@ export async function postFriendsBoard(request: Request, env: Env, ctx: Executio
     const hash = /^[a-f0-9]{32}$/.test(hashRaw) ? hashRaw : null;
 
     /**
-     * 发布前审核。
+     * 发布前审核 —— **每一条留言都会过这一遍**，没有开关。
      *
-     * 这是**唯一**一条会挡住访客提交的路径 —— 打开后每条留言多花 200ms~1s
-     * （Jev 快，走聊天模型的慢）。默认关着，在 /admin/review 打开。
+     * 这是唯一一条会挡住访客提交的路径，每条多花 200ms~1s（Jev 快，走聊天模型的慢）。
+     * 规则（类别 / 阈值）在 /admin/review，判定逻辑在 admin/ai.ts 的 moderateComment。
      *
      * 三条原则：
      *   · 审核自己挂了（超时、key 失效、表没迁移）→ **放行**。宁可漏一条垃圾，
      *     也不能因为上游抖动就让留言板收不到话。
-     *   · 命中后仍然落库（pending 或 spam），不直接丢 —— 误判要能复核。
-     *   · 给访客的话只用设置里那句 notice，不复述判定理由
-     *     （理由里可能带着「你像广告」这种话，读起来很冲）。
+     *   · 命中就落 `spam`，**不丢** —— 前台不展示，收件箱「垃圾」里留着能复核，
+     *     误判了站长点一下就放行。
+     *   · 不告诉访客「你被拦了」。判定理由里常有「像广告」这种话，说出去很冲；
+     *     何况告诉对方反而方便他改一版再试。
      */
     let status = 'pending';
     try {
@@ -267,20 +269,18 @@ export async function postFriendsBoard(request: Request, env: Env, ctx: Executio
         replies: [],
       });
       if (mod?.hit) {
-        status = mod.action === 'reject' ? 'spam' : 'pending';
-        if (status === 'spam') {
-          console.log(`[friends-board] 审核拦截 ${v.v.name}：${mod.verdict} ${mod.score} >= ${mod.threshold}`);
-        }
+        status = 'spam';
+        console.log(`[friends-board] 审核拦截 ${v.v.name}：${mod.verdict} ${mod.score} >= ${mod.threshold}`);
       }
     } catch (e) {
       console.warn('[friends-board] 审核失败，照常收下：', e instanceof Error ? e.message : e);
     }
 
     /**
-     * 新留言一律 `pending`（被审核拦下的可能是 `spam`）。
+     * 新留言一律 `pending`（被审核拦下的落 `spam`）。
      *
-     * 为什么不是 visible：前端拿 status 决定徽章 —— visible 显示「已是友链」，
-     * 其余显示「等我看看」。访客刚提交的站还没审过，直接标成「已是友链」是撒谎。
+     * ⚠️ 这里的 pending **不是「待审核」**，是「还没收录进友链墙」——
+     * 前台徽章据此显示「等我看看」。内容审核在上一步已经做完了。
      */
     const deleteToken = newDeleteToken();
 

@@ -7,7 +7,7 @@
 
 import type { Env } from '../types';
 import { json } from '../util';
-import { getAiStatus, postAiDraft, postAiJudge, postFriendReply, postReviewTest } from './ai';
+import { getAiStatus, postAiDraft, postAiJudge, postFriendReply } from './ai';
 import { getDevLogin, getSessionInfo, postLogin, postLogout, postVerify, requireAdmin } from './auth';
 import { getThread, listComments, replyToComment, setCommentStatus } from './comments';
 import { getPublishLog } from './publish';
@@ -87,11 +87,6 @@ export async function handleAdmin(request: Request, env: Env, path: string): Pro
   }
   if (path === '/admin/settings' && m === 'PATCH') {
     return requireAdmin(request, env, (admin) => patchSettings(request, env, admin));
-  }
-
-  // —— 评论审核：改完规则先试判 ——
-  if (path === '/admin/review/test' && m === 'POST') {
-    return requireAdmin(request, env, (admin) => postReviewTest(request, env, admin));
   }
 
   // —— 友链（P2 审核 / P3 回链）——
