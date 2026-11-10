@@ -8,58 +8,55 @@
  *  3) 只消费 tokens.css 里的变量，新色以局部变量形式定义在 .q-admin-body 上 ——
  *     跑 scripts/check-tokens.mjs 时不会当成裸色值。
  *
- * 视觉来源：朝朝听雨的小爱后台（黑白 + 点阵），换成本站爱弥斯暖色系。
- * 结构照抄，配色不照抄 —— 见 docs/方案-后台-admin.md 第三节。
+ * 视觉来源：朝朝听雨的小爱后台（rainzt.cn，2026-10-30）。
+ * **配色照抄，不做暖化** —— 他要的就是那套黑白点阵工作台：淡灰点阵底、纯白卡片、
+ * 墨黑主按钮、淡蓝灰输入框、思源黑标题。前台是爱弥斯暖色，后台是工具，两套各走各的。
+ * 信息架构见 docs/方案-后台-admin.md 第二节。
  */
 
 .q-admin-body {
-  /* 局部色板：暖色化的语义色，不新增全局 token */
+  /* 局部色板。数值取自他那 18 张截图的实拍：#fafafa 底 / #111 主按钮 / #f1f4fb 输入框 */
+  --qa-page: #fafafa;
+  --qa-dot: rgba(17, 17, 17, 0.105);
   --qa-card: #fff;
-  --qa-field: rgba(74, 55, 40, 0.05);
-  --qa-field-focus: rgba(194, 58, 85, 0.06);
-  --qa-line: var(--color-hairline);
-  --qa-line-strong: rgba(194, 58, 85, 0.28);
-  --qa-ok-bg: rgba(76, 107, 69, 0.1);
-  --qa-ok-fg: #4c6b45;
-  --qa-warn-bg: rgba(232, 176, 75, 0.16);
-  --qa-warn-fg: #8a6420;
-  --qa-danger-bg: rgba(194, 58, 85, 0.1);
-  /* 文字版的绯红：--color-crimson 是为**白底**调的（5.21:1），压在 11% 粉底上只剩 4.43，
-     13px 的导航项按 AA 不够。这个深一档的值在粉底上是 5.79。 */
-  --qa-crimson-ink: #a52e47;
-  --qa-shadow: 0 1px 2px rgba(74, 55, 40, 0.04), 0 18px 48px -20px rgba(74, 55, 40, 0.28);
+  --qa-field: #f1f4fb;
+  --qa-field-focus: #e9effd;
+  --qa-line: #ececec;
+  --qa-line-strong: #d9d9d9;
+  /* 强调一律墨黑（他的主按钮就是黑底白字）；红只留给危险，不再当主色用 */
+  --qa-accent: #111;
+  --qa-accent-hover: #000;
+  --qa-accent-soft: rgba(17, 17, 17, 0.055);
+  --qa-ok-bg: #e9f5ea;
+  --qa-ok-fg: #2e7d32;
+  --qa-warn-bg: #fff8e1;
+  --qa-warn-fg: #a9761a;
+  --qa-danger: #c62828;
+  --qa-danger-bg: #fdecea;
+  --qa-shadow: 0 1px 2px rgba(17, 17, 17, 0.04), 0 16px 40px -24px rgba(17, 17, 17, 0.22);
+
+  /* 覆盖全局 token，只在这个壳里生效：
+     标题不再用 ZCOOL 书法体 —— 他的标题就是思源黑粗体，照抄；
+     三级文字统一到中性灰（暖棕小字放在黑白底上会发脏）。 */
+  --color-ink: #171717;
+  --color-muted: #555;
+  --color-subtle: #8c8c8c;
+  --color-hairline: #ececec;
+  --font-display: var(--font-body);
 
   margin: 0;
   min-height: 100vh;
   font-family: var(--font-body);
   color: var(--color-ink);
-  background-color: var(--color-cream);
-  background-image: radial-gradient(circle, rgba(74, 55, 40, 0.11) 1px, transparent 1px);
+  background-color: var(--qa-page);
+  background-image: radial-gradient(circle, var(--qa-dot) 1px, transparent 1px);
   background-size: 13px 13px;
   -webkit-font-smoothing: antialiased;
 }
 
-/* 氛围光：只做两团极淡的模糊色块，不参与布局 */
+/* 他那套画面里没有氛围光，只有点阵。节点留着（页面里还写着），彻底隐掉。 */
 .q-admin-glow {
-  position: fixed;
-  border-radius: 50%;
-  pointer-events: none;
-  filter: blur(80px);
-  z-index: 0;
-}
-.q-admin-glow--rose {
-  width: 52vw;
-  height: 52vw;
-  left: -18vw;
-  top: -22vw;
-  background: rgba(246, 165, 184, 0.28);
-}
-.q-admin-glow--amber {
-  width: 40vw;
-  height: 40vw;
-  right: -14vw;
-  bottom: -18vw;
-  background: rgba(232, 176, 75, 0.14);
+  display: none;
 }
 
 /* ————————————————————————— 登录页 ————————————————————————— */
@@ -87,7 +84,7 @@
   display: flex;
   flex-direction: column;
   padding: 44px 40px 36px;
-  background: linear-gradient(168deg, rgba(246, 165, 184, 0.1), rgba(253, 246, 240, 0.55) 62%);
+  background: var(--qa-card);
   border-right: 1px solid var(--qa-line);
 }
 .q-admin-avatar {
@@ -97,15 +94,14 @@
   object-fit: cover;
   object-position: 50% 22%;
   border: 2px solid #fff;
-  box-shadow: 0 2px 10px rgba(194, 58, 85, 0.16);
+  box-shadow: 0 2px 10px rgba(17, 17, 17, 0.16);
 }
 .q-admin-brand h1 {
-  margin: 22px 0 0;
-  font-family: var(--font-display);
-  font-size: 32px;
-  font-weight: 400;
-  line-height: 1.25;
-  letter-spacing: 0.02em;
+  margin: 18px 0 0;
+  font-size: 26px;
+  font-weight: 600;
+  line-height: 1.3;
+  letter-spacing: 0;
 }
 .q-admin-brand p {
   margin: 12px 0 0;
@@ -138,8 +134,8 @@
   width: 17px;
   height: 17px;
   border-radius: 50%;
-  background: rgba(194, 58, 85, 0.08);
-  color: var(--color-crimson);
+  background: rgba(17, 17, 17, 0.08);
+  color: var(--qa-accent);
   font-family: var(--font-display);
   font-size: 12px;
   transform: translateY(1px);
@@ -185,12 +181,12 @@
   transition: background var(--dur-micro), border-color var(--dur-micro), box-shadow var(--dur-micro);
 }
 .q-admin-field input::placeholder {
-  color: rgba(74, 55, 40, 0.42);
+  color: rgba(17, 17, 17, 0.42);
 }
 .q-admin-field input:focus {
   background: var(--qa-field-focus);
-  border-color: rgba(194, 58, 85, 0.42);
-  box-shadow: 0 0 0 3px rgba(194, 58, 85, 0.09);
+  border-color: var(--qa-line-strong);
+  box-shadow: 0 0 0 3px rgba(17, 17, 17, 0.05);
 }
 .q-admin-field input:disabled {
   opacity: 0.6;
@@ -213,8 +209,8 @@
 }
 .q-admin-code:focus {
   background: var(--qa-field-focus);
-  border-color: rgba(194, 58, 85, 0.42);
-  box-shadow: 0 0 0 3px rgba(194, 58, 85, 0.09);
+  border-color: var(--qa-line-strong);
+  box-shadow: 0 0 0 3px rgba(17, 17, 17, 0.05);
 }
 
 .q-admin-mailbox {
@@ -224,12 +220,12 @@
   margin: 16px 0 18px;
   padding: 11px 14px;
   border-radius: 9px;
-  background: rgba(194, 58, 85, 0.045);
-  border: 1px dashed rgba(194, 58, 85, 0.22);
+  background: rgba(17, 17, 17, 0.045);
+  border: 1px dashed rgba(17, 17, 17, 0.22);
 }
 .q-admin-mailbox svg {
   flex: none;
-  color: var(--color-crimson);
+  color: var(--qa-accent);
   opacity: 0.85;
 }
 .q-admin-mailbox b {
@@ -262,13 +258,13 @@
 }
 .q-admin-btn--primary {
   width: 100%;
-  background: var(--color-crimson);
+  background: var(--qa-accent);
   color: #fff;
-  box-shadow: 0 6px 16px -8px rgba(194, 58, 85, 0.7);
+  box-shadow: 0 1px 2px rgba(17, 17, 17, 0.18);
 }
 .q-admin-btn--primary:hover:not(:disabled) {
-  background: #b03149;
-  box-shadow: 0 8px 20px -8px rgba(194, 58, 85, 0.8);
+  background: var(--qa-accent-hover);
+  box-shadow: 0 2px 6px rgba(17, 17, 17, 0.2);
 }
 .q-admin-btn--primary:active:not(:disabled) {
   transform: translateY(1px);
@@ -280,7 +276,7 @@
 }
 .q-admin-btn--ghost:hover:not(:disabled) {
   border-color: var(--qa-line-strong);
-  background: rgba(194, 58, 85, 0.04);
+  background: rgba(17, 17, 17, 0.04);
 }
 .q-admin-btn--sm {
   height: 30px;
@@ -298,10 +294,10 @@
   margin: 16px 0 0;
   font-size: 11px;
   line-height: 1.75;
-  color: rgba(74, 55, 40, 0.55);
+  color: rgba(17, 17, 17, 0.55);
 }
 .q-admin-fine b {
-  color: var(--color-crimson);
+  color: var(--qa-accent);
   font-weight: 500;
 }
 
@@ -312,7 +308,7 @@
   font-size: 12.5px;
   line-height: 1.6;
   background: var(--qa-danger-bg);
-  color: var(--color-crimson);
+  color: var(--qa-danger);
 }
 .q-admin-again {
   margin: 14px 0 0;
@@ -320,154 +316,150 @@
   gap: 10px;
   align-items: center;
   font-size: 11.5px;
-  color: rgba(74, 55, 40, 0.55);
+  color: rgba(17, 17, 17, 0.55);
 }
 .q-admin-linkbtn {
   padding: 0;
   border: 0;
   background: none;
   font: inherit;
-  color: var(--color-crimson);
+  color: var(--qa-accent);
   cursor: pointer;
   text-decoration: underline;
   text-underline-offset: 2px;
 }
 .q-admin-linkbtn:disabled {
-  color: rgba(74, 55, 40, 0.4);
+  color: rgba(17, 17, 17, 0.4);
   cursor: not-allowed;
   text-decoration: none;
 }
 
 /* ————————————————————————— 顶栏 —————————————————————————
- * 结构抄朝朝听雨（rainzt.cn）的 firefly-navbar：**三团独立的胶囊**浮在同一条带上
- * ——品牌在左、导航居中、动作在右，不再是一整条带底色的横条。
+ * 照抄朝朝听雨（rainzt.cn）现在这一版：**一整条居中的胶囊**装着品牌 + 导航，
+ * 「退出登录」在右边缘做**纯文字**，不套胶囊。
+ * （三团分开是他更早的形态；2026-11-10 那版我们照的是旧的，这次按实拍改回来。）
  *
- * 数值照抄他的 .nav-brand / .nav-links / .nav-link（高度 48/50、内边距 .24rem、
- * 项高 40、项内边距 0 .72rem、gap .32rem、圆角 999），只做三处本地化：
- *   1) 主色 primary → --color-crimson（他是蓝，本站是绯红）；
- *   2) 字号 1rem → 13px：后台正文 12.5px，照抄 16px 会让导航比表格还大；
- *   3) 图标用描边而非实心：他整站是 Material Symbols 实心，后台其余部分都是细线，
- *      混用会跳。形状（项内 gap、圆角、高度）仍按他的比例走。
+ * 数值取自实拍：胶囊内边距 4 + 项高 40 → 总高 48，圆角 999，描边 #ececec，
+ * 白底不透明（不再毛玻璃 —— 他那条胶囊是实心白）。选中项淡灰底 + 描边 + 深字。
+ * 两处本地化：字号 16 → 13px（后台正文 12.5px，照抄 16 会喧宾夺主）；
+ * 图标用 1.7px 描边（他整站是实心 Material Symbols，混进来会跳）。
  *
- * 顶栏改成 sticky：评论列表能滚很长，翻到第十屏还得回头点导航很蠢。
- * 底色留在带上做毛玻璃，胶囊自己再带一层 blur —— 他两层都是这么叠的。
+ * sticky：评论列表能滚很长，翻到第十屏还得回头点导航很蠢。
  */
 .q-admin-top {
   position: sticky;
   top: 0;
   z-index: 30;
-  display: grid;
-  /* 两侧各一格等宽：导航团才是真正的页面居中。他那边是 auto/1fr/auto，
-   * 因为他的品牌和右侧按钮宽度接近；我们右侧只有一个圆钮，照抄会偏右。 */
-  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  display: flex;
   align-items: center;
+  justify-content: center;
   gap: 12px;
-  padding: 10px 24px;
-  background: rgba(253, 246, 240, 0.78);
-  backdrop-filter: blur(16px) saturate(1.1);
+  padding: 12px 24px;
+  background: rgba(250, 250, 250, 0.86);
+  backdrop-filter: blur(14px);
   /* 一条极淡的分隔线：不加的话滚动时那条「毛玻璃带」的下边缘会是一条硬缝 */
-  border-bottom: 1px solid rgba(194, 58, 85, 0.1);
+  border-bottom: 1px solid rgba(17, 17, 17, 0.06);
 }
 
-/* 胶囊的三件套：底板 / 描边 / 投影。三团共用，改一处三处一起动 */
-.q-admin-brand-pill,
-.q-admin-nav,
-.q-admin-acts {
-  border: 1px solid rgba(194, 58, 85, 0.16);
+/* 胶囊本体：品牌和导航同住一格，不再各占一团 */
+.q-admin-bar {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  max-width: 100%;
+  padding: 4px;
+  border: 1px solid var(--qa-line);
   border-radius: 999px;
-  background: rgba(255, 255, 255, 0.72);
-  backdrop-filter: blur(24px) saturate(1.25);
-  box-shadow: 0 4px 14px rgba(74, 55, 40, 0.05);
+  background: var(--qa-card);
+  box-shadow: 0 1px 2px rgba(17, 17, 17, 0.04);
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.q-admin-bar::-webkit-scrollbar {
+  display: none;
 }
 
 .q-admin-brand-pill {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
-  justify-self: start;
-  height: 44px;
-  padding: 0 16px;
+  gap: 7px;
+  flex: none;
+  height: 40px;
+  padding: 0 12px 0 8px;
+  border-radius: 999px;
   color: var(--color-ink);
   text-decoration: none;
   white-space: nowrap;
-  transition:
-    background-color var(--dur-micro),
-    border-color var(--dur-micro),
-    transform var(--dur-micro);
+  transition: background-color var(--dur-micro);
 }
 .q-admin-brand-pill img {
   width: 26px;
   height: 26px;
   flex: none;
-  border-radius: 8px;
+  border-radius: 50%;
   object-fit: cover;
   object-position: 50% 22%;
-  box-shadow: 0 0 0 1px rgba(194, 58, 85, 0.14);
 }
 .q-admin-brand-pill b {
-  font-family: var(--font-display);
-  font-size: 15px;
-  font-weight: 400;
-  letter-spacing: 0.03em;
-  color: var(--color-crimson);
+  font-size: 13.5px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--color-ink);
 }
 .q-admin-brand-pill:hover {
-  background: rgba(194, 58, 85, 0.07);
-  border-color: rgba(194, 58, 85, 0.24);
-  transform: translateY(-1px);
+  background: var(--qa-accent-soft);
 }
 
 .q-admin-nav {
   display: flex;
   align-items: center;
   gap: 2px;
-  justify-self: center;
-  max-width: 100%;
-  padding: 4px;
-  overflow-x: auto;
-  scrollbar-width: none;
-}
-.q-admin-nav::-webkit-scrollbar {
-  display: none;
+  flex: none;
+  padding: 0;
 }
 
+/* 右边缘：登着谁 + 退出登录。位置脱离文档流，中间那颗胶囊才真居中 */
 .q-admin-acts {
+  position: absolute;
+  right: 20px;
+  top: 50%;
+  transform: translateY(-50%);
   display: flex;
   align-items: center;
-  gap: 2px;
-  justify-self: end;
-  padding: 4px;
+  gap: 10px;
 }
-/* 登着谁 —— 他的右侧是纯圆钮，名字没地方放；这里留一行小字，比 hover 才知道强 */
+/* 登着谁 —— 他的名字那一格；比 hover 才知道强 */
 .q-admin-acts__who {
-  max-width: 12em;
-  padding: 0 8px 0 10px;
+  max-width: 10em;
   font-size: 11.5px;
   color: var(--color-subtle);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.q-admin-act--icon {
-  width: 36px;
+/* 「退出登录」在他那儿就是一行灰字，没有底也没有边 */
+.q-admin-act {
   padding: 0;
-  color: var(--color-subtle);
+  border: 0;
+  background: none;
+  font-family: var(--font-body);
+  font-size: 12.5px;
+  color: var(--color-muted);
+  white-space: nowrap;
+  cursor: pointer;
+  transition: color var(--dur-micro);
 }
-/* 单独一颗圆钮，图标比带字的小胶囊里那颗大一号 —— 否则圆圈里显得空 */
-.q-admin-act.q-admin-act--icon svg {
-  width: 17px;
-  height: 17px;
-  opacity: 1;
+.q-admin-act:hover {
+  color: var(--color-ink);
 }
 
-/* 导航项与「退出登录」共用一套：他那边 .nav-link 就是一个 <a> / <button> 通吃 */
-.q-admin-nav__item,
-.q-admin-act {
+/* 导航项：图标 + 文字 */
+.q-admin-nav__item {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: 5px;
-  height: 36px;
+  height: 40px;
   padding: 0 12px;
   border: 1px solid transparent;
   border-radius: 999px;
@@ -484,27 +476,24 @@
     background-color var(--dur-micro),
     border-color var(--dur-micro);
 }
-.q-admin-nav__item svg,
-.q-admin-act svg {
+.q-admin-nav__item svg {
   width: 15px;
   height: 15px;
   flex: none;
-  opacity: 0.82;
+  opacity: 0.72;
   transition: opacity var(--dur-micro);
 }
-.q-admin-nav__item:hover:not([aria-current="page"]),
-.q-admin-act:hover {
-  color: var(--qa-crimson-ink);
-  background: rgba(194, 58, 85, 0.07);
-  border-color: rgba(194, 58, 85, 0.2);
+.q-admin-nav__item:hover:not([aria-current="page"]) {
+  color: var(--color-ink);
+  background: var(--qa-accent-soft);
 }
-.q-admin-nav__item:hover:not([aria-current="page"]) svg,
-.q-admin-act:hover svg {
+.q-admin-nav__item:hover:not([aria-current="page"]) svg {
   opacity: 1;
 }
 .q-admin-nav__item[aria-current="page"] {
-  color: var(--qa-crimson-ink);
-  background: rgba(194, 58, 85, 0.11);
+  color: var(--color-ink);
+  background: #f2f2f2;
+  border-color: var(--qa-line);
   font-weight: 600;
 }
 .q-admin-nav__item[aria-current="page"] svg {
@@ -520,14 +509,14 @@
   gap: 2px;
   margin: 0 auto;
   padding: 3px;
-  border-radius: 999px;
-  background: rgba(74, 55, 40, 0.05);
+  border-radius: 9px;
+  background: rgba(17, 17, 17, 0.05);
 }
 .q-admin-tab {
   display: inline-block;
   padding: 6px 14px;
   border: 0;
-  border-radius: 999px;
+  border-radius: 7px;
   background: none;
   font-family: var(--font-body);
   font-size: 12.5px;
@@ -541,7 +530,7 @@
 .q-admin-tab[aria-current="page"] {
   background: var(--qa-card);
   color: var(--color-ink);
-  box-shadow: 0 1px 3px rgba(74, 55, 40, 0.12);
+  box-shadow: 0 1px 2px rgba(17, 17, 17, 0.12);
   cursor: default;
 }
 
@@ -561,22 +550,49 @@
 }
 .q-admin-head h1 {
   margin: 0;
-  font-family: var(--font-display);
-  font-size: 26px;
-  font-weight: 400;
-  letter-spacing: 0.02em;
+  font-size: 28px;
+  font-weight: 600;
+  line-height: 1.2;
+  letter-spacing: -0.01em;
 }
 .q-admin-head p {
   margin: 6px 0 0;
   font-size: 12.5px;
   color: var(--color-subtle);
 }
+/* 标题右侧那一行：页序 + 刷新。照他做的纯文字，不加边框 */
+.q-admin-head__meta {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex: none;
+  padding-bottom: 2px;
+  font-size: 12px;
+  color: var(--color-subtle);
+  font-variant-numeric: tabular-nums;
+}
+.q-admin-head__meta button {
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  color: var(--color-muted);
+  cursor: pointer;
+  transition: color var(--dur-micro);
+}
+.q-admin-head__meta button:hover:not(:disabled) {
+  color: var(--color-ink);
+}
+.q-admin-head__meta button:disabled {
+  cursor: default;
+  opacity: 0.6;
+}
 
 .q-admin-panel {
   background: var(--qa-card);
   border: 1px solid var(--qa-line);
   border-radius: 12px;
-  box-shadow: 0 1px 2px rgba(74, 55, 40, 0.04);
+  box-shadow: 0 1px 2px rgba(17, 17, 17, 0.04);
   overflow: hidden;
 }
 
@@ -593,7 +609,7 @@
   gap: 2px;
   padding: 3px;
   border-radius: 8px;
-  background: rgba(74, 55, 40, 0.05);
+  background: rgba(17, 17, 17, 0.05);
 }
 .q-admin-seg button {
   padding: 5px 11px;
@@ -608,12 +624,12 @@
 .q-admin-seg button[aria-pressed="true"] {
   background: var(--qa-card);
   color: var(--color-ink);
-  box-shadow: 0 1px 2px rgba(74, 55, 40, 0.1);
+  box-shadow: 0 1px 2px rgba(17, 17, 17, 0.1);
 }
 .q-admin-seg .n {
   margin-left: 5px;
   font-size: 10.5px;
-  color: rgba(74, 55, 40, 0.45);
+  color: rgba(17, 17, 17, 0.45);
 }
 
 .q-admin-search {
@@ -630,7 +646,7 @@
   outline: none;
 }
 .q-admin-search:focus {
-  border-color: rgba(194, 58, 85, 0.35);
+  border-color: var(--qa-line-strong);
   background: var(--qa-field-focus);
 }
 
@@ -645,20 +661,31 @@
   font-weight: 500;
   font-size: 11.5px;
   letter-spacing: 0.03em;
-  color: rgba(74, 55, 40, 0.55);
+  color: rgba(17, 17, 17, 0.55);
   border-bottom: 1px solid var(--qa-line);
   white-space: nowrap;
 }
 .q-admin-table td {
   padding: 13px 14px;
   vertical-align: top;
-  border-bottom: 1px solid rgba(194, 58, 85, 0.09);
+  border-bottom: 1px solid rgba(17, 17, 17, 0.09);
 }
 .q-admin-table tr:last-child td {
   border-bottom: 0;
 }
+/* 操作列：主操作留描边，转待审 / 标垃圾这类次级操作退成文字，不然一列全是盒子 */
+.q-admin-table .q-admin-btn--ghost.q-admin-btn--sm {
+  border-color: transparent;
+  color: var(--color-muted);
+  background: none;
+}
+.q-admin-table .q-admin-btn--ghost.q-admin-btn--sm:hover:not(:disabled) {
+  border-color: var(--qa-line);
+  color: var(--color-ink);
+  background: var(--qa-card);
+}
 .q-admin-table tbody tr:hover {
-  background: rgba(194, 58, 85, 0.022);
+  background: rgba(17, 17, 17, 0.022);
 }
 
 .q-admin-who-cell b {
@@ -670,15 +697,16 @@
   display: block;
   margin-top: 3px;
   font-size: 11px;
-  color: rgba(74, 55, 40, 0.45);
+  color: rgba(17, 17, 17, 0.45);
   font-variant-numeric: tabular-nums;
 }
 
+/* 留言正文：他那张表里就是纯文字，没有气泡底色 —— 底色会把每行切成一块块 */
 .q-admin-body-cell p {
   margin: 0;
-  padding: 9px 11px;
+  padding: 0;
   border-radius: 8px;
-  background: var(--qa-field);
+  background: none;
   font-size: 12.5px;
   line-height: 1.65;
   color: var(--color-muted);
@@ -692,7 +720,7 @@
   margin-top: 5px;
   font-style: normal;
   font-size: 11px;
-  color: var(--color-crimson);
+  color: var(--qa-accent);
   opacity: 0.75;
 }
 
@@ -700,8 +728,8 @@
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  padding: 2px 8px;
-  border-radius: 999px;
+  padding: 2px 7px;
+  border-radius: 5px;
   font-size: 11px;
   line-height: 1.7;
   white-space: nowrap;
@@ -716,11 +744,11 @@
 }
 .q-admin-tag--danger {
   background: var(--qa-danger-bg);
-  color: var(--color-crimson);
+  color: var(--qa-danger);
 }
 .q-admin-tag--muted {
-  background: rgba(74, 55, 40, 0.06);
-  color: rgba(74, 55, 40, 0.5);
+  background: rgba(17, 17, 17, 0.06);
+  color: rgba(17, 17, 17, 0.5);
 }
 
 .q-admin-row-actions {
@@ -732,14 +760,14 @@
 /* 展开区 */
 .q-admin-thread {
   padding: 14px 16px 16px;
-  background: rgba(74, 55, 40, 0.018);
+  background: rgba(17, 17, 17, 0.018);
 }
 .q-admin-thread h4 {
   margin: 0 0 8px;
   font-size: 11.5px;
   font-weight: 500;
   letter-spacing: 0.03em;
-  color: rgba(74, 55, 40, 0.5);
+  color: rgba(17, 17, 17, 0.5);
 }
 .q-admin-bubble {
   margin-bottom: 10px;
@@ -761,12 +789,12 @@
   color: var(--color-ink);
 }
 .q-admin-bubble--mine {
-  background: rgba(194, 58, 85, 0.04);
-  border-color: rgba(194, 58, 85, 0.18);
+  background: rgba(17, 17, 17, 0.04);
+  border-color: rgba(17, 17, 17, 0.18);
 }
 .q-admin-bubble__ts {
   font-weight: 400;
-  color: rgba(74, 55, 40, 0.42);
+  color: rgba(17, 17, 17, 0.42);
   font-variant-numeric: tabular-nums;
 }
 /* 爱弥斯代笔的回复，名字后面挂一枚小标 —— 和前台 FriendsBoard 的那枚同形 */
@@ -778,8 +806,8 @@
   font-size: 9.5px;
   font-weight: 700;
   line-height: 14px;
-  color: var(--color-crimson);
-  background: rgba(194, 58, 85, 0.1);
+  color: var(--qa-accent);
+  background: rgba(17, 17, 17, 0.1);
   border-radius: 999px;
   vertical-align: 1px;
 }
@@ -804,8 +832,8 @@
   resize: vertical;
 }
 .q-admin-reply textarea:focus {
-  border-color: rgba(194, 58, 85, 0.42);
-  box-shadow: 0 0 0 3px rgba(194, 58, 85, 0.08);
+  border-color: rgba(17, 17, 17, 0.42);
+  box-shadow: 0 0 0 3px rgba(17, 17, 17, 0.08);
 }
 .q-admin-reply-bar {
   display: flex;
@@ -816,12 +844,12 @@
 .q-admin-reply-bar .count {
   margin-left: auto;
   font-size: 11px;
-  color: rgba(74, 55, 40, 0.45);
+  color: rgba(17, 17, 17, 0.45);
   font-variant-numeric: tabular-nums;
 }
 .q-admin-saved {
   font-size: 11px;
-  color: rgba(74, 55, 40, 0.4);
+  color: rgba(17, 17, 17, 0.4);
 }
 
 /* —— AI 双通道（writer 起草/润色 · judge 体检）——
@@ -836,7 +864,7 @@
 .q-admin-ai__note {
   margin-left: auto;
   font-size: 11px;
-  color: rgba(74, 55, 40, 0.42);
+  color: rgba(17, 17, 17, 0.42);
   font-variant-numeric: tabular-nums;
 }
 
@@ -844,9 +872,9 @@
 .q-admin-ai__sug {
   margin-bottom: 8px;
   padding: 10px 12px;
-  border: 1px dashed rgba(194, 58, 85, 0.32);
+  border: 1px dashed rgba(17, 17, 17, 0.32);
   border-radius: 9px;
-  background: rgba(194, 58, 85, 0.035);
+  background: rgba(17, 17, 17, 0.035);
   font-size: 11.5px;
   color: var(--color-muted);
 }
@@ -888,7 +916,7 @@
 .q-admin-judge__score {
   padding: 1px 6px;
   border-radius: 5px;
-  background: rgba(74, 55, 40, 0.07);
+  background: rgba(17, 17, 17, 0.07);
   color: var(--color-muted);
   font-size: 10.5px;
   font-weight: 600;
@@ -912,13 +940,13 @@
 }
 /* 只给左边一条色带，别把整块染色（奶油底色一染就脏） */
 .q-admin-judge--ok {
-  border-left: 3px solid rgba(52, 130, 92, 0.45);
+  border-left: 3px solid rgba(46, 125, 50, 0.45);
 }
 .q-admin-judge--spam {
-  border-left: 3px solid rgba(194, 58, 85, 0.5);
+  border-left: 3px solid rgba(17, 17, 17, 0.5);
 }
 .q-admin-judge--abuse {
-  border-left: 3px solid rgba(194, 58, 85, 0.72);
+  border-left: 3px solid rgba(17, 17, 17, 0.72);
 }
 .q-admin-judge--privacy {
   border-left: 3px solid rgba(176, 122, 32, 0.6);
@@ -928,9 +956,9 @@
 .q-admin-letter {
   margin-top: 10px;
   padding: 10px 12px;
-  border: 1px dashed rgba(194, 58, 85, 0.3);
+  border: 1px dashed rgba(17, 17, 17, 0.3);
   border-radius: 9px;
-  background: rgba(194, 58, 85, 0.028);
+  background: rgba(17, 17, 17, 0.028);
 }
 .q-admin-letter__head {
   display: flex;
@@ -947,15 +975,15 @@
   font-weight: 600;
 }
 .q-admin-letter__tag--found {
-  background: rgba(52, 130, 92, 0.1);
-  color: rgba(40, 110, 80, 0.95);
+  background: rgba(46, 125, 50, 0.1);
+  color: rgba(28, 96, 44, 0.95);
 }
 .q-admin-letter__tag--missing {
   background: rgba(176, 122, 32, 0.13);
   color: rgba(140, 100, 32, 0.95);
 }
 .q-admin-letter__tag--unreachable {
-  background: rgba(74, 55, 40, 0.08);
+  background: rgba(17, 17, 17, 0.08);
   color: var(--color-muted);
 }
 .q-admin-letter__head em {
@@ -985,8 +1013,8 @@
   resize: vertical;
 }
 .q-admin-letter textarea:focus {
-  border-color: rgba(194, 58, 85, 0.42);
-  box-shadow: 0 0 0 3px rgba(194, 58, 85, 0.08);
+  border-color: rgba(17, 17, 17, 0.42);
+  box-shadow: 0 0 0 3px rgba(17, 17, 17, 0.08);
 }
 .q-admin-letter__bar {
   display: flex;
@@ -1132,10 +1160,10 @@
 .q-admin-tab .n {
   margin-left: 5px;
   font-size: 10.5px;
-  color: rgba(74, 55, 40, 0.45);
+  color: rgba(17, 17, 17, 0.45);
 }
 .q-admin-tab[aria-selected="true"] .n {
-  color: var(--color-crimson);
+  color: var(--qa-accent);
 }
 
 /* 「有未提交的改动」—— 常驻在标题右侧，不给它单独一行占位 */
@@ -1147,7 +1175,7 @@
   border: 1px solid var(--qa-line-strong);
   border-radius: 999px;
   background: var(--qa-card);
-  box-shadow: 0 10px 28px -18px rgba(194, 58, 85, 0.55);
+  box-shadow: 0 10px 28px -18px rgba(17, 17, 17, 0.55);
   font-size: 12.5px;
   color: var(--color-muted);
   white-space: nowrap;
@@ -1196,7 +1224,7 @@
   white-space: nowrap;
 }
 .q-admin-card > header a:hover {
-  color: var(--color-crimson);
+  color: var(--qa-accent);
 }
 .q-admin-card > p {
   margin: 0;
@@ -1238,7 +1266,7 @@
 /*
  * .q-admin-btn--primary 带着 width:100%（那是给登录表单整行按钮用的），
  * 放进卡片的横排按钮组里会把邻居挤成竖排 ——「拒绝」两个字被压成上下两行。
- * 这里把它缩回内容宽度，主按钮再吃掉剩余空间。
+ * 这里一律缩回内容宽度：他卡片底部的「同意 / 拒绝」就是两个小按钮，不拉通栏。
  */
 .q-admin-card > footer .q-admin-btn,
 .q-admin-reject .q-admin-btn,
@@ -1247,12 +1275,9 @@
   flex: 0 0 auto;
   white-space: nowrap;
 }
-.q-admin-card > footer .q-admin-btn--primary {
-  flex: 1 1 auto;
-}
 .q-admin-shot {
   font-size: 11.5px;
-  color: var(--color-crimson);
+  color: var(--qa-accent);
   text-decoration: none;
 }
 .q-admin-shot:hover {
@@ -1284,41 +1309,67 @@
   color: var(--color-ink);
 }
 
-/* —— 已收录列表 —— */
+/* —— 已收录列表：他那一屏是**三列卡片**，不是一行一条的表格 ——
+ * 结构没动，还是 <li> 里的那几块（头像 / 名字 / 标记 / 按钮 / 展开面板），
+ * 只把 li 自身改成卡片、把把手挪到右上角 —— 他那张卡的把手就在那儿。
+ */
 .q-admin-linklist {
   margin: 0;
-  padding: 0;
+  padding: 14px;
   list-style: none;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: 12px;
 }
 .q-admin-linklist > li {
+  position: relative;
   display: grid;
-  grid-template-columns: 14px 34px minmax(0, 1fr) auto auto;
+  grid-template-columns: 40px minmax(0, 1fr);
+  align-content: start;
   gap: 10px;
-  align-items: center;
-  padding: 10px 16px;
-  border-top: 1px solid var(--qa-line);
+  padding: 14px;
+  border: 1px solid var(--qa-line);
+  border-radius: 10px;
+  background: var(--qa-card);
   cursor: grab;
-}
-.q-admin-linklist > li:first-child {
-  border-top: 0;
+  transition: border-color var(--dur-micro), box-shadow var(--dur-micro);
 }
 .q-admin-linklist > li:hover {
-  background: var(--qa-field);
+  border-color: var(--qa-line-strong);
+  box-shadow: 0 1px 3px rgba(17, 17, 17, 0.06);
 }
 /* 隐藏中的友链压暗：改的是草稿状态，视觉上要能一眼看出哪几条不展示 */
 .q-admin-linklist > li.is-hidden {
-  opacity: 0.5;
+  opacity: 0.55;
 }
+/* 把手挪到右上角，和卡片标题同一行 */
 .q-admin-grip {
+  position: absolute;
+  top: 10px;
+  right: 12px;
   font-size: 13px;
+  line-height: 1;
   color: var(--color-subtle);
   user-select: none;
 }
+.q-admin-linklist .q-admin-avatar {
+  grid-column: 1;
+  grid-row: 1;
+  width: 40px;
+  height: 40px;
+  border-radius: 8px;
+  border: 1px solid var(--qa-line);
+  box-shadow: none;
+  background: var(--qa-field);
+}
 .q-admin-linkmeta {
+  grid-column: 2;
+  grid-row: 1;
   display: flex;
   flex-direction: column;
   gap: 1px;
   min-width: 0;
+  padding-right: 22px;
 }
 .q-admin-linkmeta b {
   font-size: 13px;
@@ -1330,7 +1381,7 @@
   text-decoration: none;
 }
 .q-admin-linkmeta a:hover {
-  color: var(--color-crimson);
+  color: var(--qa-accent);
 }
 .q-admin-linkmeta em {
   font-size: 11.5px;
@@ -1341,8 +1392,18 @@
   white-space: nowrap;
 }
 .q-admin-linkflags {
+  grid-column: 1 / -1;
   display: flex;
+  flex-wrap: wrap;
   gap: 4px;
+}
+/* 卡片底部那一排：四个小按钮挤在一行，和卡片同宽 */
+.q-admin-linklist .q-admin-row-actions {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 2px;
 }
 
 /* 行内展开编辑：铺满整行 */
@@ -1392,8 +1453,8 @@
     color var(--dur-micro) var(--ease-soft);
 }
 .q-admin-statusrow > button:hover:not(:disabled) {
-  border-color: var(--color-crimson);
-  color: var(--color-crimson);
+  border-color: var(--qa-accent);
+  color: var(--qa-accent);
 }
 .q-admin-statusrow > button:disabled {
   opacity: 0.55;
@@ -1456,6 +1517,25 @@
 }
 
 @media (max-width: 760px) {
+  /* 窄屏：胶囊不能再绝对定位，「退出登录」会压到导航上。
+     改成并排两格，导航那格可横向滚。 */
+  .q-admin-top {
+    padding: 10px 12px;
+    justify-content: space-between;
+  }
+  .q-admin-bar {
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+  .q-admin-acts {
+    position: static;
+    transform: none;
+    flex: none;
+  }
+  /* 窄屏只留「退出登录」，用户名让位给导航 */
+  .q-admin-acts__who {
+    display: none;
+  }
   .q-admin-head {
     flex-wrap: wrap;
   }
@@ -1471,14 +1551,12 @@
     grid-template-columns: 1fr;
     padding: 12px;
   }
-  .q-admin-linklist > li {
-    grid-template-columns: 14px 30px minmax(0, 1fr);
-    row-gap: 8px;
-    cursor: default;
+  .q-admin-linklist {
+    grid-template-columns: 1fr;
+    padding: 12px;
   }
-  .q-admin-linkflags,
-  .q-admin-linklist .q-admin-row-actions {
-    grid-column: 2 / -1;
+  .q-admin-linklist > li {
+    cursor: default;
   }
 }
 
@@ -1639,7 +1717,7 @@
   margin-left: 6px;
   padding: 1px 6px;
   border-radius: 999px;
-  background: rgba(74, 55, 40, 0.07);
+  background: rgba(17, 17, 17, 0.07);
   font-style: normal;
   font-size: 10.5px;
   color: var(--color-muted);
@@ -1662,7 +1740,7 @@
   flex: 1;
   height: 5px;
   border-radius: 999px;
-  background: rgba(74, 55, 40, 0.09);
+  background: rgba(17, 17, 17, 0.09);
   overflow: hidden;
 }
 .q-admin-meter__bar > i {
@@ -1676,7 +1754,7 @@
   background: var(--qa-warn-fg);
 }
 .q-admin-meter__bar.is-full > i {
-  background: var(--color-crimson);
+  background: var(--qa-danger);
 }
 .q-admin-meter__num {
   font-size: 11px;
@@ -1703,7 +1781,7 @@
 }
 .q-admin-ping.is-bad {
   background: var(--qa-danger-bg);
-  color: var(--color-crimson);
+  color: var(--qa-danger);
 }
 
 /* —— 闸门 / 定义清单 —— */
@@ -1771,7 +1849,7 @@
   color: var(--qa-warn-fg);
 }
 .q-admin-kpi--danger b {
-  color: var(--color-crimson);
+  color: var(--qa-danger);
 }
 
 /* —— 7 天柱状 —— */
@@ -1801,7 +1879,7 @@
   height: 100%;
   border-radius: 5px 5px 0 0;
   overflow: hidden;
-  background: rgba(74, 55, 40, 0.05);
+  background: rgba(17, 17, 17, 0.05);
 }
 .q-admin-day__bar > i {
   display: block;
@@ -1817,7 +1895,7 @@
   opacity: 0.5;
 }
 .q-admin-day__bar > i.is-bad {
-  background: var(--color-crimson);
+  background: var(--qa-danger);
   opacity: 0.45;
 }
 .q-admin-day b {

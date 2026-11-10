@@ -322,6 +322,15 @@ export default function AdminInbox() {
               {total} 条 · 默认按时间倒序 · 回复会立刻出现在前台对应页面
             </p>
           </div>
+          {/* 右侧这一行照他：页序 + 刷新，全是灰字，不占按钮的视觉重量 */}
+          <div className="q-admin-head__meta">
+            <span>
+              {page} / {pages} 页
+            </span>
+            <button type="button" onClick={() => void load()} disabled={loading}>
+              {loading ? '刷新中…' : '刷新评论'}
+            </button>
+          </div>
         </div>
 
         {err ? <p className="q-admin-error">{err}</p> : null}

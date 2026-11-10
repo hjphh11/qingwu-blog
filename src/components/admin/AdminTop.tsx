@@ -7,8 +7,9 @@
  * 会话信息（谁登着）也由这里取：后台每个页面进来先打一次 /session 本来就是
  * 登录态校验（401 直接踢回 /admin），顶栏顺带显示用户名，不必再传一遍。
  *
- * 布局学朝朝听雨的 firefly-navbar：品牌 / 导航 / 动作三团胶囊分开，
- * 导航项是「图标 + 文字」，当前项用主色浅底反显。样式在 admin.css 的「顶栏」段。
+ * 布局照朝朝听雨（rainzt.cn）现在这一版：**一整条居中胶囊**装品牌 + 导航，
+ * 「退出登录」在右边缘做纯文字。导航项是「图标 + 文字」，选中项淡灰底反显。
+ * 样式在 admin.css 的「顶栏」段。
  */
 import { useEffect, useState } from 'react';
 
@@ -84,36 +85,33 @@ export default function AdminTop({ active }: { active: Active }) {
 
   return (
     <header className="q-admin-top">
-      {/* 品牌团：头像 + 站名。点回收件箱 —— 后台的「首页」就是它 */}
-      <a className="q-admin-brand-pill" href="/admin/console">
-        <img src="/images/emis/avatar.png" alt="" />
-        <b>清吾</b>
-      </a>
+      {/* 品牌和导航同住一格胶囊：「清吾」四个字是他那边「小爱」的位置 */}
+      <div className="q-admin-bar">
+        <a className="q-admin-brand-pill" href="/admin/console">
+          <img src="/images/emis/avatar.png" alt="" />
+          <b>清吾</b>
+        </a>
 
-      <nav className="q-admin-nav" aria-label="后台模块">
-        {NAV.map((n) => (
-          <a
-            key={n.key}
-            className="q-admin-nav__item"
-            href={n.href}
-            aria-current={active === n.key ? 'page' : undefined}
-          >
-            <Icon name={n.icon} />
-            {n.label}
-          </a>
-        ))}
-      </nav>
+        <nav className="q-admin-nav" aria-label="后台模块">
+          {NAV.map((n) => (
+            <a
+              key={n.key}
+              className="q-admin-nav__item"
+              href={n.href}
+              aria-current={active === n.key ? 'page' : undefined}
+            >
+              <Icon name={n.icon} />
+              {n.label}
+            </a>
+          ))}
+        </nav>
+      </div>
 
+      {/* 右边缘那一行：登着谁 + 退出。绝对定位，中间那颗胶囊才是真居中 */}
       <div className="q-admin-acts">
         {who ? <span className="q-admin-acts__who">{who}</span> : null}
-        <button
-          className="q-admin-act q-admin-act--icon"
-          type="button"
-          onClick={() => void logout()}
-          title="退出登录"
-          aria-label="退出登录"
-        >
-          <Icon name="logout" />
+        <button className="q-admin-act" type="button" onClick={() => void logout()}>
+          退出登录
         </button>
       </div>
     </header>
