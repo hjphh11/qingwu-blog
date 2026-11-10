@@ -144,8 +144,21 @@ const VERDICT: Record<string, string> = {
 
 const REF_LABEL: Record<string, string> = { '(direct)': '直接访问', '(other)': '其他来源' };
 
-/** 大数字数上去。prefers-reduced-motion 直接给终值。 */
-function useCountUp(target: number, dur = 820): number {
+/**
+ * x 轴标签抽稀：14 天隔一，24 小时 / 30 天每 4 格。
+ *
+ * 末项一定要有标签。它和倒数第二个常常只差一格（14 天：12 和 13），两个都画就叠字 ——
+ * 差不到半格时让末项**顶替**它；差得够远（时段图的 20 和 23）就两个都留着。
+ */
+function labelPicker(n: number): (i: number) => boolean {
+  const step = n > 20 ? 4 : n > 10 ? 2 : 1;
+  const last = n - 1;
+  const lastIdx = Math.floor(last / step) * step;
+  const replacePrev = lastIdx !== last && last - lastIdx <= step / 2;
+  return (i: number) => (i === last ? true : i % step === 0 && !(replacePrev && i === lastIdx));
+}
+
+/** 大数字数上去。prefers-reduced-motion 直接给终值。 */function useCountUp(target: number, dur = 820): number {
   const [v, setV] = useState(0);
   const from = useRef(0);
 
@@ -217,8 +230,8 @@ function TrendChart({ data }: { data: { day: string; pv: number; uv: number }[] 
   const line = (key: 'pv' | 'uv') => data.map((d, i) => `${i === 0 ? 'M' : 'L'}${x(i).toFixed(1)},${y(d[key]).toFixed(1)}`).join(' ');
   const area = `${line('pv')} L${x(data.length - 1).toFixed(1)},${PAD.t + ih} L${x(0).toFixed(1)},${PAD.t + ih} Z`;
 
-  // 标签抽稀：7 天全给，14 天隔一，30 天每 5 天
-  const step = data.length > 20 ? 5 : data.length > 10 ? 2 : 1;
+  // 标签抽稀：7 天全给，14 天隔一，30 天每 5 天（末项顶替倒数第二个，别叠字）
+  const showLabel = labelPicker(data.length);
 
   return (
     <svg className="q-chart" viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" role="img" aria-label="访问趋势">
@@ -268,7 +281,7 @@ function TrendChart({ data }: { data: { day: string; pv: number; uv: number }[] 
       })}
 
       {data.map((d, i) =>
-        i % step === 0 || i === data.length - 1 ? (
+        showLabel(i) ? (
           <text key={`t-${d.day}`} x={x(i)} y={H - 6} className="q-chart__x" textAnchor={i === 0 ? 'start' : i === data.length - 1 ? 'end' : 'middle'}>
             {fmtDay(d.day)}
           </text>
@@ -301,7 +314,7 @@ function BarChart({
 }) {
   const grow = useGrown(data.map((d) => d.a + '/' + d.b).join(','));
   const max = Math.max(1, ...data.map((d) => Math.max(d.a, d.b)));
-  const step = data.length > 20 ? 5 : data.length > 10 ? 2 : 1;
+  const showLabel = labelPicker(data.length);
   // 全为 0 时不占位：时段分布没有第二序列，多留一根 0 高的柱只会把 24 根挤成 48 格
   const hasB = data.some((d) => d.b > 0);
 
@@ -320,7 +333,7 @@ function BarChart({
                 style={{ height: grow ? `${(d.b / max) * 100}%` : 0 }}
               />
             ) : null}
-            {i % step === 0 || i === data.length - 1 ? <span>{d.label}</span> : <span aria-hidden="true" />}
+            {showLabel(i) ? <span>{d.label}</span> : <span aria-hidden="true" />}
           </div>
         ))}
       </div>

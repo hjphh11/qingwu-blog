@@ -181,7 +181,7 @@ SELECT day, 'judge', n, n * 150, 0 FROM (
 -- 折线、面积、x 轴抽稀这些全都没得验。每天 visitor 取模 88，所以 UV 也在 88 上下。
 INSERT INTO hits (ts, day, path, referrer, country, device, visitor)
 SELECT
-  CAST(strftime('%s', d.day || ' 00:00:00') AS INTEGER) + (s.n * 157) % 86400,
+  CAST(strftime('%s', d.day || ' 00:00:00') AS INTEGER) + (s.n * 7919) % 86400,
   d.day,
   CASE s.n % 5 WHEN 0 THEN '/' WHEN 1 THEN '/blog/' WHEN 2 THEN '/blog/astro-d1' WHEN 3 THEN '/links/' ELSE '/about/' END,
   CASE s.n % 4 WHEN 0 THEN 'google.com' WHEN 1 THEN 'rainzt.cn' WHEN 2 THEN '(direct)' ELSE NULL END,
