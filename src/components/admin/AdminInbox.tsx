@@ -37,6 +37,21 @@ interface AiStatus {
   judge: { on: boolean; model?: string; used?: number | null };
 }
 
+/**
+ * 回复框上的表情与快捷短语。
+ *
+ * 模板是「爱弥斯的口吻」而不是客服模板：短、具体、不客套。
+ * 刻意不做「一键回复」—— 点一下只是把话填进框里，还得站长自己看一眼再发。
+ */
+const EMOJIS = ['😊', '🌙', '✨', '🌸', '🍃', '🫧', '💛', '🌿'] as const;
+
+const TEMPLATES: { label: string; text: string }[] = [
+  { label: '谢谢', text: '谢谢你还特地来说一声，我记下啦。' },
+  { label: '已收录', text: '已经加好了，回链也看到了，谢谢交换 🌸' },
+  { label: '稍后看', text: '收到，我晚点去你站上看看，别急。' },
+  { label: '没找到回链', text: '我这边暂时没找到指向这边的友链入口，方便的话补一个？' },
+];
+
 const JUDGE_LABEL: Record<JudgeResult['verdict'], string> = {
   ok: '看着正常',
   spam: '疑似广告',
@@ -105,6 +120,9 @@ export default function AdminInbox() {
   const [sending, setSending] = useState(false);
   const draftRef = useRef(draft);
   draftRef.current = draft;
+  /** 回复框本体：表情与模板要插在光标处，不能一律追加到末尾 */
+  const taRef = useRef<HTMLTextAreaElement | null>(null);
+  const [showPreview, setShowPreview] = useState(false);
 
   // —— AI（双通道）——
   // ai 为 null = 还没问出来；能拿到就说明接口活着，按 on 决定显示哪些按钮。
@@ -200,6 +218,32 @@ export default function AdminInbox() {
       else window.localStorage.removeItem(DRAFT_KEY(id));
     },
     [],
+  );
+
+  /**
+   * 把一段文字插进草稿的**光标处**（不是末尾）。
+   *
+   * 要点两个：有选中范围时替换选中；插完把光标放到插入内容之后 ——
+   * 否则连点两个表情，第二个会跑到第一个前面去。
+   */
+  const insertAt = useCallback(
+    (text: string) => {
+      if (openId == null) return;
+      const cur = draftRef.current;
+      const ta = taRef.current;
+      const start = ta?.selectionStart ?? cur.length;
+      const end = ta?.selectionEnd ?? cur.length;
+      const next = (cur.slice(0, start) + text + cur.slice(end)).slice(0, 500);
+      onDraft(openId, next);
+      requestAnimationFrame(() => {
+        const el = taRef.current;
+        if (!el) return;
+        const pos = Math.min(start + text.length, next.length);
+        el.focus();
+        el.setSelectionRange(pos, pos);
+      });
+    },
+    [onDraft, openId],
   );
 
   const sendReply = useCallback(async () => {
@@ -558,12 +602,56 @@ export default function AdminInbox() {
 
                                     {aiErr ? <p className="q-admin-error">{aiErr}</p> : null}
 
+                                    <div className="q-admin-tools">
+                                      {EMOJIS.map((em) => (
+                                        <button
+                                          key={em}
+                                          className="q-admin-emoji"
+                                          type="button"
+                                          title={`插入 ${em}`}
+                                          aria-label={`插入 ${em}`}
+                                          onClick={() => insertAt(em)}
+                                        >
+                                          {em}
+                                        </button>
+                                      ))}
+                                      <span className="q-admin-tools__sep" aria-hidden="true" />
+                                      {TEMPLATES.map((t) => (
+                                        <button
+                                          key={t.label}
+                                          className="q-admin-tpl"
+                                          type="button"
+                                          title={t.text}
+                                          onClick={() => insertAt(t.text)}
+                                        >
+                                          {t.label}
+                                        </button>
+                                      ))}
+                                      <button
+                                        className="q-admin-tpl"
+                                        type="button"
+                                        aria-pressed={showPreview}
+                                        style={{ marginLeft: 'auto' }}
+                                        onClick={() => setShowPreview((v) => !v)}
+                                      >
+                                        {showPreview ? '收起预览' : '预览'}
+                                      </button>
+                                    </div>
+
                                     <textarea
+                                      ref={taRef}
                                       placeholder={`${AI_PERSONA}要说什么？AI 起草的稿子会落进这个框，发之前随便改`}
                                       value={draft}
                                       onChange={(e) => onDraft(it.id, e.target.value)}
                                       maxLength={500}
                                     />
+
+                                    {/* 预览按纯文本 + 换行渲染，和前台留言的显示方式一致 */}
+                                    {showPreview ? (
+                                      <div className="q-admin-preview" aria-live="polite">
+                                        {draft}
+                                      </div>
+                                    ) : null}
                                     <div className="q-admin-reply-bar">
                                       <button
                                         className="q-admin-btn q-admin-btn--primary"

@@ -2004,3 +2004,527 @@ html.q-route-done .q-admin-route i {
     flex: 1;
   }
 }
+
+/* ————————————————————————— 设置表单 —————————————————————————
+ * 「运行与设置」「评论审核」两页共用。黑白那套里没有现成的开关与滑块，
+ * 但形状要克制：开关是一个 34×20 的灰槽 + 白圆点，滑块只用一条 4px 的轨道，
+ * 不做渐变、不做发光 —— 强调色只有墨黑一处。
+ */
+.q-admin-settings {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+/* 卡片右上角那组按钮：主按钮默认 width:100%（登录表单要用），
+   放进操作条会把「试判一次」拉成一整条黑带 —— 这里统一收回内容宽度 */
+.q-admin-stat-actions .q-admin-btn,
+.q-admin-head .q-admin-stat-actions .q-admin-btn {
+  width: auto;
+  flex: 0 0 auto;
+}
+
+/* 一行设置：左说明、右控件。窄屏自动折成上下 */
+.q-admin-setting {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 18px;
+  padding: 13px 0;
+  border-top: 1px solid var(--qa-line);
+}
+.q-admin-setting:first-child {
+  border-top: 0;
+  padding-top: 0;
+}
+.q-admin-setting__label {
+  min-width: 0;
+}
+.q-admin-setting__label b {
+  display: block;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--color-ink);
+}
+.q-admin-setting__label span {
+  display: block;
+  margin-top: 4px;
+  font-size: 11.5px;
+  line-height: 1.6;
+  color: var(--color-subtle);
+}
+.q-admin-setting__ctrl {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* 开关：按钮而不是 checkbox —— 它要能带 aria-checked 给读屏 */
+.q-admin-switch {
+  position: relative;
+  width: 38px;
+  height: 22px;
+  padding: 0;
+  border: 1px solid rgba(17, 17, 17, 0.16);
+  border-radius: 999px;
+  background: rgba(17, 17, 17, 0.08);
+  cursor: pointer;
+  transition: background-color var(--dur-micro), border-color var(--dur-micro);
+}
+.q-admin-switch::after {
+  content: '';
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 1px 2px rgba(17, 17, 17, 0.22);
+  transition: transform var(--dur-micro);
+}
+.q-admin-switch[aria-checked='true'] {
+  background: var(--qa-accent);
+  border-color: var(--qa-accent);
+}
+.q-admin-switch[aria-checked='true']::after {
+  transform: translateX(16px);
+}
+.q-admin-switch:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+/* 多选 chip：审核类别用它。选中 = 墨黑描边 + 极浅底，不是实心黑块 */
+.q-admin-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.q-admin-chip {
+  height: 30px;
+  padding: 0 11px;
+  border: 1px solid var(--qa-line);
+  border-radius: 7px;
+  background: var(--qa-card);
+  font-family: var(--font-body);
+  font-size: 12px;
+  color: var(--color-muted);
+  cursor: pointer;
+  transition: border-color var(--dur-micro), color var(--dur-micro), background-color var(--dur-micro);
+}
+.q-admin-chip:hover {
+  border-color: rgba(17, 17, 17, 0.3);
+  color: var(--color-ink);
+}
+.q-admin-chip[aria-pressed='true'] {
+  border-color: var(--qa-accent);
+  background: var(--qa-accent);
+  color: #fff;
+  font-weight: 600;
+}
+
+/* 滑块 + 数值 */
+.q-admin-range {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 210px;
+}
+.q-admin-range input[type='range'] {
+  flex: 1;
+  height: 4px;
+  margin: 0;
+  border-radius: 999px;
+  background: rgba(17, 17, 17, 0.14);
+  appearance: none;
+  outline: none;
+  cursor: pointer;
+}
+.q-admin-range input[type='range']::-webkit-slider-thumb {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--qa-accent);
+  border: 2px solid #fff;
+  box-shadow: 0 1px 3px rgba(17, 17, 17, 0.3);
+  appearance: none;
+}
+.q-admin-range input[type='range']::-moz-range-thumb {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--qa-accent);
+  border: 2px solid #fff;
+  box-shadow: 0 1px 3px rgba(17, 17, 17, 0.3);
+}
+.q-admin-range output {
+  min-width: 3.2em;
+  font-size: 12.5px;
+  font-variant-numeric: tabular-nums;
+  color: var(--color-ink);
+  text-align: right;
+}
+
+/* 两列 / 三列小表单 */
+.q-admin-grid2 {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+.q-admin-grid3 {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+.q-admin-field textarea {
+  width: 100%;
+  min-height: 74px;
+  padding: 10px 12px;
+  font-family: var(--font-body);
+  font-size: 13px;
+  line-height: 1.7;
+  color: var(--color-ink);
+  background: var(--qa-field);
+  border: 1px solid transparent;
+  border-radius: 9px;
+  outline: none;
+  resize: vertical;
+  transition: background var(--dur-micro), border-color var(--dur-micro), box-shadow var(--dur-micro);
+}
+.q-admin-field textarea:focus {
+  background: var(--qa-field-focus);
+  border-color: var(--qa-line-strong);
+  box-shadow: 0 0 0 3px rgba(17, 17, 17, 0.05);
+}
+.q-admin-field select {
+  width: 100%;
+  height: 38px;
+  padding: 0 10px;
+  font-family: var(--font-body);
+  font-size: 12.5px;
+  color: var(--color-ink);
+  background: var(--qa-field);
+  border: 1px solid transparent;
+  border-radius: 8px;
+  outline: none;
+  cursor: pointer;
+}
+.q-admin-field select:focus {
+  border-color: var(--qa-line-strong);
+}
+
+/* 访客会看到的提示：用虚线框圈出来，一眼知道「这段是给外人看的」 */
+.q-admin-notice {
+  margin-top: 8px;
+  padding: 10px 13px;
+  border: 1px dashed rgba(17, 17, 17, 0.2);
+  border-radius: 9px;
+  background: rgba(17, 17, 17, 0.02);
+  font-size: 12.5px;
+  line-height: 1.7;
+  color: var(--color-muted);
+}
+.q-admin-notice b {
+  font-weight: 600;
+  color: var(--color-ink);
+}
+
+/* 试判结果 */
+.q-admin-verdict {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.q-admin-verdict__score {
+  font-family: var(--font-display);
+  font-size: 30px;
+  font-weight: 600;
+  line-height: 1;
+  letter-spacing: -0.02em;
+}
+.q-admin-probs {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  margin-top: 14px;
+}
+.q-admin-prob {
+  display: grid;
+  grid-template-columns: 72px minmax(0, 1fr) 46px;
+  align-items: center;
+  gap: 10px;
+  font-size: 11.5px;
+  color: var(--color-muted);
+}
+.q-admin-prob__bar {
+  height: 6px;
+  border-radius: 999px;
+  background: rgba(17, 17, 17, 0.08);
+  overflow: hidden;
+}
+.q-admin-prob__fill {
+  height: 100%;
+  border-radius: 999px;
+  background: var(--qa-accent);
+  transition: width var(--dur-state);
+}
+.q-admin-prob--hit .q-admin-prob__fill {
+  background: var(--qa-danger);
+}
+.q-admin-prob output {
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+/* 待提交改动 */
+.q-admin-diff {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.q-admin-diff li {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: start;
+  padding: 10px 0;
+  border-top: 1px solid var(--qa-line);
+}
+.q-admin-diff li:first-child {
+  border-top: 0;
+}
+.q-admin-diff__who {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--color-ink);
+}
+.q-admin-diff__what {
+  margin-top: 3px;
+  font-size: 11.5px;
+  line-height: 1.6;
+  color: var(--color-muted);
+  word-break: break-all;
+}
+.q-admin-diff__what del {
+  color: var(--color-subtle);
+  text-decoration-color: rgba(17, 17, 17, 0.3);
+}
+.q-admin-diff__what ins {
+  color: var(--color-ink);
+  text-decoration: none;
+  border-bottom: 1px solid rgba(17, 17, 17, 0.35);
+}
+.q-admin-diff__undo {
+  padding: 2px 0;
+  border: 0;
+  background: none;
+  font-family: var(--font-body);
+  font-size: 11.5px;
+  color: var(--color-muted);
+  text-decoration: underline;
+  text-decoration-color: rgba(17, 17, 17, 0.22);
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+.q-admin-diff__undo:hover {
+  color: var(--qa-danger);
+}
+
+/* 发布记录 */
+.q-admin-plog {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.q-admin-plog li {
+  display: grid;
+  grid-template-columns: 96px minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: baseline;
+  padding: 11px 0;
+  border-top: 1px solid var(--qa-line);
+  font-size: 12px;
+}
+.q-admin-plog li:first-child {
+  border-top: 0;
+}
+.q-admin-plog__ts {
+  font-variant-numeric: tabular-nums;
+  color: var(--color-subtle);
+}
+.q-admin-plog__main {
+  min-width: 0;
+  line-height: 1.65;
+  color: var(--color-muted);
+  word-break: break-all;
+}
+.q-admin-plog__main b {
+  color: var(--color-ink);
+  font-weight: 600;
+}
+.q-admin-plog__main code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11px;
+  color: var(--color-subtle);
+}
+
+/* 弹层：待提交改动确认。遮罩不做模糊（后台不需要氛围），只压一层半透明白 */
+.q-admin-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: rgba(17, 17, 17, 0.22);
+}
+.q-admin-modal__sheet {
+  display: flex;
+  flex-direction: column;
+  width: min(560px, 100%);
+  max-height: min(72vh, 640px);
+  border: 1px solid var(--qa-line);
+  border-radius: 14px;
+  background: var(--qa-card);
+  box-shadow: 0 24px 60px -24px rgba(17, 17, 17, 0.34);
+  overflow: hidden;
+}
+.q-admin-modal__head {
+  padding: 16px 18px 12px;
+  border-bottom: 1px solid var(--qa-line);
+}
+.q-admin-modal__head h2 {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+}
+.q-admin-modal__head p {
+  margin: 5px 0 0;
+  font-size: 11.5px;
+  color: var(--color-subtle);
+}
+.q-admin-modal__body {
+  flex: 1 1 auto;
+  padding: 6px 18px;
+  overflow-y: auto;
+}
+.q-admin-modal__foot {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+  padding: 12px 18px;
+  border-top: 1px solid var(--qa-line);
+  background: rgba(17, 17, 17, 0.02);
+}
+.q-admin-modal__foot .q-admin-btn {
+  width: auto;
+  flex: 0 0 auto;
+}
+
+/* 回复编辑器的表情 / 模板 / 预览 */
+.q-admin-tools {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-wrap: wrap;
+  margin-bottom: 6px;
+}
+.q-admin-emoji {
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: none;
+  font-size: 15px;
+  line-height: 1;
+  cursor: pointer;
+}
+.q-admin-emoji:hover {
+  border-color: var(--qa-line);
+  background: var(--qa-field);
+}
+.q-admin-tpl {
+  height: 26px;
+  padding: 0 9px;
+  border: 1px solid var(--qa-line);
+  border-radius: 999px;
+  background: none;
+  font-family: var(--font-body);
+  font-size: 11.5px;
+  color: var(--color-muted);
+  cursor: pointer;
+  white-space: nowrap;
+}
+.q-admin-tpl:hover {
+  border-color: rgba(17, 17, 17, 0.3);
+  color: var(--color-ink);
+}
+.q-admin-tpl[aria-pressed='true'] {
+  border-color: var(--qa-accent);
+  background: var(--qa-accent-soft);
+  color: var(--color-ink);
+}
+/* 表情与模板之间的竖线。1px 就够，别做成一条分割带 */
+.q-admin-tools__sep {
+  width: 1px;
+  height: 16px;
+  margin: 0 5px;
+  background: var(--qa-line);
+}
+.q-admin-preview {
+  margin-top: 8px;
+  padding: 10px 12px;
+  border: 1px dashed rgba(17, 17, 17, 0.2);
+  border-radius: 9px;
+  background: rgba(17, 17, 17, 0.02);
+  font-size: 12.5px;
+  line-height: 1.75;
+  color: var(--color-ink);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.q-admin-preview:empty::before {
+  content: '预览会显示在这里';
+  color: var(--color-subtle);
+}
+
+@media (max-width: 760px) {
+  .q-admin-setting {
+    flex-direction: column;
+    gap: 10px;
+  }
+  .q-admin-setting__ctrl {
+    width: 100%;
+  }
+  .q-admin-range {
+    width: 100%;
+    min-width: 0;
+  }
+  .q-admin-grid2,
+  .q-admin-grid3 {
+    grid-template-columns: 1fr;
+  }
+  .q-admin-modal {
+    padding: 12px;
+  }
+  .q-admin-plog li {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+  .q-admin-plog__ts {
+    grid-column: 1 / -1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .q-admin-switch,
+  .q-admin-switch::after,
+  .q-admin-chip,
+  .q-admin-prob__fill {
+    transition: none;
+  }
+}

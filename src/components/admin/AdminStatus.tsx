@@ -11,6 +11,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import type { ReactNode } from 'react';
 import AdminTop from './AdminTop.tsx';
+import AdminSettingsPanel from './AdminSettingsPanel.tsx';
 
 const API = '/api/admin';
 
@@ -661,6 +662,10 @@ export default function AdminStatus() {
             </section>
           </>
         ) : null}
+
+        {/* 可调项：落在 admin_settings 表，保存即生效。
+            和上面那块只读总览分开 —— 一个是「现在什么状况」，一个是「改成什么样」。 */}
+        <AdminSettingsPanel />
       </main>
     </>
   );

@@ -36,6 +36,8 @@ interface Friend {
   intro: string;
   url: string;
   visible?: boolean;
+  /** 推荐位：前台卡片描金 + 小徽章。与 visible 是两件事 —— 推荐不等于展示。 */
+  recommend?: boolean;
   addedAt?: string;
   shot?: string;
 }
@@ -88,6 +90,107 @@ interface Overview {
   writable: boolean;
   checks: Record<string, Check>;
   statuses: Record<string, FriendFlag>;
+  /** 最近几次提交（表没迁移时是空数组） */
+  publishLog?: PublishEntry[];
+}
+
+/** 一条字段级改动。`field` 为 `+` / `-` / `order` 时表示新增 / 删除 / 排序。 */
+interface Change {
+  url: string;
+  name: string;
+  field: string;
+  from: string;
+  to: string;
+}
+
+interface PublishEntry {
+  id: number;
+  ts: number;
+  by: string;
+  commit: string;
+  message: string;
+  changes: Change[];
+  status: 'ok' | 'manual' | 'failed';
+  detail: string;
+}
+
+const FIELD_LABEL: Record<string, string> = {
+  name: '名称',
+  url: '网址',
+  avatar: '头像',
+  intro: '描述',
+  shot: '主页图',
+  visible: '展示',
+  recommend: '推荐',
+  addedAt: '收录日期',
+  order: '顺序',
+  '+': '新增',
+  '-': '删除',
+};
+
+const fieldLabel = (f: string): string => FIELD_LABEL[f] ?? f;
+
+/** 值的可读化：布尔说「展示中 / 已隐藏」，空串说「（空）」。 */
+function showVal(field: string, v: unknown): string {
+  if (field === 'visible') return v === false ? '已隐藏' : '展示中';
+  if (field === 'recommend') return v === true ? '推荐中' : '未推荐';
+  const s = String(v ?? '').trim();
+  return s || '（空）';
+}
+
+/**
+ * 两份友链数组 → 字段级改动。
+ *
+ * 用 `url` 做匹配键（它是唯一稳定的身份），不用下标 —— 拖拽排序之后下标全变，
+ * 按下标比会把「顺序变了」误报成「每条都改了」。
+ * 顺序变化单独合成一条 `order`，撤销它就是整体还原顺序。
+ */
+function diffLinks(orig: Friend[], next: Friend[]): Change[] {
+  const byUrl = new Map(orig.map((f) => [f.url, f]));
+  const nextUrls = new Set(next.map((f) => f.url));
+  const out: Change[] = [];
+
+  for (const f of next) {
+    const o = byUrl.get(f.url);
+    if (!o) {
+      out.push({ url: f.url, name: f.name, field: '+', from: '', to: `${f.name} · ${f.url}` });
+      continue;
+    }
+    for (const k of ['name', 'url', 'avatar', 'intro', 'shot', 'addedAt', 'visible', 'recommend'] as const) {
+      const a = k === 'visible' ? (o.visible !== false) : String(o[k] ?? '');
+      const b = k === 'visible' ? (f.visible !== false) : String(f[k] ?? '');
+      if (a !== b) {
+        out.push({
+          url: f.url,
+          name: f.name || o.name,
+          field: k,
+          from: showVal(k, k === 'visible' ? o.visible : o[k]),
+          to: showVal(k, k === 'visible' ? f.visible : f[k]),
+        });
+      }
+    }
+  }
+
+  for (const o of orig) {
+    if (!nextUrls.has(o.url)) {
+      out.push({ url: o.url, name: o.name, field: '-', from: `${o.name} · ${o.url}`, to: '' });
+    }
+  }
+
+  // 顺序：只有「两边是同一批站、只是次序不同」才算排序改动。
+  // 有新删或新增时，顺序差异会跟着那几条一起看，不必再报一遍。
+  const sameSet = orig.length === next.length && orig.every((o) => nextUrls.has(o.url));
+  if (sameSet && next.some((f, i) => f.url !== orig[i]?.url)) {
+    out.push({
+      url: '',
+      name: '列表',
+      field: 'order',
+      from: orig.map((f) => f.name).join(' → '),
+      to: next.map((f) => f.name).join(' → '),
+    });
+  }
+
+  return out;
 }
 
 const TABS = [
@@ -183,6 +286,8 @@ export default function AdminFriends() {
   const [manualText, setManualText] = useState('');
   const [editIdx, setEditIdx] = useState<number | null>(null);
   const dragFrom = useRef<number | null>(null);
+  /** 待提交改动的核对弹层。改一批 -> 核对 -> 统一提交，而不是改一次提交一次 */
+  const [showDiff, setShowDiff] = useState(false);
 
   // —— 申请详情 ——
   const [rejecting, setRejecting] = useState<number | null>(null);
@@ -206,6 +311,51 @@ export default function AdminFriends() {
 
   const original = useMemo(() => JSON.stringify(data?.links ?? []), [data]);
   const dirty = useMemo(() => JSON.stringify(draft) !== original, [draft, original]);
+
+  /** 原始 links.json 与当前草稿的字段级差异。保存条与核对弹层都用它。 */
+  const changes = useMemo(() => diffLinks(data?.links ?? [], draft), [data, draft]);
+
+  /**
+   * 撤销一条改动：把该字段按**原始值**写回去。
+   *
+   * 不能用弹层里显示的 from 字符串回写 —— 那是给人看的（「展示中」「（空）」），
+   * 写回数据会变成字面量。这里从 data.links 里取真值。
+   */
+  const undoChange = useCallback(
+    (c: Change) => {
+      if (c.field === 'order') {
+        setDraft(data?.links ?? []);
+        return;
+      }
+      if (c.field === '+') {
+        setDraft((d) => d.filter((f) => f.url !== c.url));
+        return;
+      }
+      if (c.field === '-') {
+        const o = (data?.links ?? []).find((f) => f.url === c.url);
+        if (o) setDraft((d) => [...d, o]);
+        return;
+      }
+      const o = (data?.links ?? []).find((f) => f.url === c.url);
+      if (!o) return;
+      setDraft((d) =>
+        d.map((f) => {
+          if (f.url !== c.url) return f;
+          const next = { ...f } as Record<string, unknown>;
+          if (c.field === 'visible') {
+            // visible 缺省等于 true；原值没有这个键时要把键删掉，
+            // 否则 JSON 比对永远「有改动」
+            if (o.visible === undefined) delete next.visible;
+            else next.visible = o.visible;
+          } else {
+            next[c.field] = (o as unknown as Record<string, unknown>)[c.field];
+          }
+          return next as Friend;
+        }),
+      );
+    },
+    [data],
+  );
 
   useEffect(() => {
     (async () => {
@@ -424,8 +574,11 @@ export default function AdminFriends() {
         friends?: Friend[];
       }>('/friends/links', {
         method: 'POST',
-        body: JSON.stringify({ friends: draft, sha }),
+        // changes 让后端记进发布历史：git log 只能看到「改了 links.json」，
+        // 看不到「哪条友链的哪个字段从什么变成了什么」
+        body: JSON.stringify({ friends: draft, sha, changes }),
       });
+      setShowDiff(false);
       if (r.ok) {
         setNotice(r.message || '已提交');
         setTab('links');
@@ -442,7 +595,7 @@ export default function AdminFriends() {
     } finally {
       setSaving(false);
     }
-  }, [draft, sha, load]);
+  }, [draft, sha, changes, load]);
 
   // ———————————————— 回链 ————————————————
   /**
@@ -519,23 +672,104 @@ export default function AdminFriends() {
           </div>
           {dirty ? (
             <div className="q-admin-savebar">
-              <span>有未提交的改动</span>
+              <span>
+                {changes.length ? `${changes.length} 处待提交改动` : '有未提交的改动'}
+              </span>
               <button
                 className="q-admin-btn q-admin-btn--ghost q-admin-btn--sm"
                 type="button"
                 onClick={() => setDraft(data?.links ?? [])}
                 disabled={saving}
               >
-                撤销
+                全部撤销
               </button>
               <button
                 className="q-admin-btn q-admin-btn--primary q-admin-btn--sm"
                 type="button"
-                onClick={() => void submitLinks()}
+                onClick={() => setShowDiff(true)}
                 disabled={saving}
               >
-                {saving ? '提交中…' : '提交到仓库'}
+                {saving ? '提交中…' : '核对并提交'}
               </button>
+            </div>
+          ) : null}
+
+          {/* 待提交改动：逐条列「字段：旧 → 新」，可单条撤销。
+              不做「点一下提交一次」—— 一次改几条推荐状态再统一提交，仓库里只留一条记录。 */}
+          {showDiff ? (
+            <div
+              className="q-admin-modal"
+              role="dialog"
+              aria-modal="true"
+              aria-label="待提交改动"
+              onClick={() => setShowDiff(false)}
+            >
+              <div className="q-admin-modal__sheet" onClick={(e) => e.stopPropagation()}>
+                <div className="q-admin-modal__head">
+                  <h2>待提交的改动</h2>
+                  <p>
+                    共 {changes.length} 处 · 提交后会合并成仓库的一次修改
+                    {sha ? '' : ' · 没拿到文件版本，可能只能手动粘贴'}
+                  </p>
+                </div>
+                <div className="q-admin-modal__body">
+                  {changes.length === 0 ? (
+                    <p className="q-admin-hint" style={{ margin: '12px 0' }}>
+                      没有字段级差异（可能只是格式差别）。可以直接提交。
+                    </p>
+                  ) : (
+                    <ul className="q-admin-diff">
+                      {changes.map((c, i) => (
+                        <li key={`${c.url}-${c.field}-${i}`}>
+                          <div>
+                            <div className="q-admin-diff__who">
+                              {c.name || c.url}
+                              <span className="q-admin-tag q-admin-tag--muted" style={{ marginLeft: 8 }}>
+                                {fieldLabel(c.field)}
+                              </span>
+                            </div>
+                            <div className="q-admin-diff__what">
+                              {c.field === '+' || c.field === '-' ? (
+                                <ins>{c.to || c.from}</ins>
+                              ) : (
+                                <>
+                                  <del>{c.from}</del>
+                                  {' → '}
+                                  <ins>{c.to}</ins>
+                                </>
+                              )}
+                            </div>
+                          </div>
+                          <button
+                            className="q-admin-diff__undo"
+                            type="button"
+                            onClick={() => undoChange(c)}
+                          >
+                            撤销
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+                <div className="q-admin-modal__foot">
+                  <button
+                    className="q-admin-btn q-admin-btn--ghost q-admin-btn--sm"
+                    type="button"
+                    onClick={() => setShowDiff(false)}
+                  >
+                    再改改
+                  </button>
+                  <button
+                    className="q-admin-btn q-admin-btn--primary q-admin-btn--sm"
+                    type="button"
+                    onClick={() => void submitLinks()}
+                    disabled={saving}
+                  >
+                    {saving ? '提交中…' : '保存并提交'}
+                  </button>
+                </div>
+              </div>
             </div>
           ) : null}
         </div>
@@ -768,7 +1002,7 @@ export default function AdminFriends() {
               <b style={{ fontSize: 13 }}>
                 {links.length} 个友链
                 <span className="q-admin-hint" style={{ marginLeft: 8 }}>
-                  拖动左侧把手排序 · 改完点右上「提交到仓库」才会生效
+                  拖动左侧把手排序 · 改完会先攒着，点「核对并提交」才写仓库
                 </span>
               </b>
               {data?.writable ? (
@@ -846,6 +1080,17 @@ export default function AdminFriends() {
                           title="只影响草稿，提交后才生效"
                         >
                           {f.visible === false ? '隐藏中' : '展示中'}
+                        </button>
+                        {/* 推荐：前台那张卡会描金并挂小标。和「展示中」互不替代 ——
+                            推荐但还是可以隐藏，两者各管一件事。
+                            星号用字符而不是图标：这一列已经是文字的密度，塞图标会更乱。 */}
+                        <button
+                          className="q-admin-btn q-admin-btn--ghost q-admin-btn--sm"
+                          type="button"
+                          onClick={() => setField(i, 'recommend', f.recommend !== true)}
+                          title="前台卡片会描金并挂「推荐」小标 · 只影响草稿"
+                        >
+                          {f.recommend ? '★ 已推荐' : '☆ 推荐'}
                         </button>
                         {/* 展示状态是**即时生效**的（写 D1），和上面那个「展示中」不是一回事：
                             那个改的是 links.json 草稿、要提交+构建；这个点完前台就到。
@@ -955,6 +1200,68 @@ export default function AdminFriends() {
                 </button>
               </div>
             ) : null}
+          </section>
+        ) : null}
+
+        {/* ———————————— 最近发布 ————————————
+            提交之后「我到底改过哪条」这个问题，git log 答不上来（它只看到 links.json 变了）。
+            这里逐条列字段改动，失败与降级成人肉粘贴的也记。 */}
+        {tab === 'links' && data?.publishLog?.length ? (
+          <section className="q-admin-panel">
+            <div className="q-admin-filters">
+              <b style={{ fontSize: 13 }}>最近发布</b>
+              <span className="q-admin-hint q-admin-push">
+                只留最近 {data.publishLog.length} 次 · 降级成手动粘贴的也会记
+              </span>
+            </div>
+            <ul className="q-admin-plog">
+              {data.publishLog.map((p) => (
+                <li key={p.id}>
+                  <span className="q-admin-plog__ts">{fmtTime(p.ts)}</span>
+                  <div className="q-admin-plog__main">
+                    <b>{p.message || '（没有提交说明）'}</b>
+                    {p.changes.length ? (
+                      <>
+                        {' · '}
+                        {p.changes.slice(0, 4).map((c, i) => (
+                          <span key={`${p.id}-${i}`}>
+                            {i > 0 ? '；' : ''}
+                            {c.name} {fieldLabel(c.field)}
+                            {c.field === '+' || c.field === '-' ? '' : `「${c.from}」→「${c.to}」`}
+                          </span>
+                        ))}
+                        {p.changes.length > 4 ? ` 等 ${p.changes.length} 处` : ''}
+                      </>
+                    ) : (
+                      ' · 没有字段明细'
+                    )}
+                    {p.commit ? (
+                      <>
+                        {' '}
+                        <code>{p.commit.slice(0, 7)}</code>
+                      </>
+                    ) : null}
+                    {p.detail ? (
+                      <>
+                        {' '}
+                        <span className="q-admin-stat__mini">{p.detail}</span>
+                      </>
+                    ) : null}
+                  </div>
+                  <span
+                    className={`q-admin-tag ${
+                      p.status === 'ok'
+                        ? 'q-admin-tag--ok'
+                        : p.status === 'manual'
+                          ? 'q-admin-tag--warn'
+                          : 'q-admin-tag--danger'
+                    }`}
+                  >
+                    {p.status === 'ok' ? '已提交' : p.status === 'manual' ? '手动粘贴' : '失败'}
+                  </span>
+                </li>
+              ))}
+            </ul>
           </section>
         ) : null}
 

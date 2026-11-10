@@ -1,0 +1,16 @@
+---
+/*
+ * /admin/review —— 评论审核（规则 + 试判）
+ *
+ * 和其他后台页一样是静态预渲染：进来先打 /api/admin/session，401 跳回 /admin。
+ * 规则读写走 GET/PATCH /api/admin/settings，试判走 POST /api/admin/review/test。
+ *
+ * 与收件箱的「AI 体检」分工：那边看已经发出来的留言，这边管还没发出来的。
+ */
+import AdminLayout from '../../layouts/AdminLayout.astro';
+import AdminReview from '../../components/admin/AdminReview.tsx';
+---
+
+<AdminLayout title="评论审核">
+  <AdminReview client:load />
+</AdminLayout>

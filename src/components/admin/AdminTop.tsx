@@ -28,6 +28,13 @@ const ICONS = {
       <path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75" />
     </>
   ),
+  /* 盾牌 + 勾：审核。别用「对勾圆环」—— 那是「通过」，审核是「先查一遍」 */
+  shield: (
+    <>
+      <path d="M12 3 4 6v6c0 4.4 3.4 7.9 8 9 4.6-1.1 8-4.6 8-9V6l-8-3Z" />
+      <path d="m8.5 11.5 2.5 2.5 4.5-4.5" />
+    </>
+  ),
   status: (
     <>
       <path d="M21 4h-7M10 4H3M21 12h-9M8 12H3M21 20h-5M12 20H3" />
@@ -60,6 +67,7 @@ function Icon({ name }: { name: keyof typeof ICONS }) {
 
 const NAV = [
   { key: 'comments', label: '评论收件箱', href: '/admin/console', icon: 'comments' },
+  { key: 'review', label: '评论审核', href: '/admin/review', icon: 'shield' },
   { key: 'friends', label: '友链审核', href: '/admin/friends', icon: 'friends' },
   { key: 'status', label: '运行与设置', href: '/admin/status', icon: 'status' },
 ] as const;
