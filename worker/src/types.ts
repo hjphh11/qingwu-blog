@@ -65,14 +65,52 @@ export interface Env {
   MAIL_FROM?: string;
   /** 有人留言时通知谁（站长邮箱）。没配 = 不通知站长 */
   MAIL_TO?: string;
-  /** /stats 响应里回显的数据来源（纯展示）。默认 cloudflare-d1 / hits */
   /** GitHub 细粒度 PAT：只授权 qingwu-blog 仓库的 contents:write，后台提交 links.json 用 */
   GITHUB_TOKEN?: string;
   /** 形如 owner/repo，缺省 hjphh11/qingwu-blog */
   GITHUB_REPO?: string;
 
+  /** /stats 响应里回显的数据来源（纯展示）。默认 cloudflare-d1 / hits */
   STATS_SOURCE_REPO?: string;
   STATS_SOURCE_PATH?: string;
+
+  // ————————————————————————————————————————————————
+  // AI（双通道：writer 写作 / judge 判断）
+  //
+  // 协议一律 OpenAI 兼容（POST {base}/chat/completions），所以 DeepSeek /
+  // 通义 / 智谱 / Kimi 换哪家都只改环境变量。细节见 admin/ai.ts 顶部注释。
+  //
+  // **没配 key = 该通道关闭**，前端自动隐藏按钮，接口返回 503 ai_unconfigured。
+  // ————————————————————————————————————————————————
+  /** writer 通道密钥。缺省走 DeepSeek */
+  AI_API_KEY?: string;
+  /** 形如 `https://api.deepseek.com`（可带 /v1）。缺省同上 */
+  AI_BASE_URL?: string;
+  /** writer 模型名，缺省 deepseek-chat */
+  AI_MODEL?: string;
+
+  /** judge 通道密钥。**不配则回落 AI_API_KEY** */
+  AI_JUDGE_KEY?: string;
+  /** judge 通道地址。不配则回落 AI_BASE_URL */
+  AI_JUDGE_BASE_URL?: string;
+  /** judge 模型名。不配则回落 AI_MODEL —— 想把审核换成更便宜的小模型时只填这一项 */
+  AI_JUDGE_MODEL?: string;
+
+  /**
+   * judge 走哪套协议：`openai`（默认）或 `jev`。
+   *
+   * Jev 是 TypeSafe AI 的**决策模型**，不是聊天模型 —— 它不生成文字，只回答
+   * 你定义好的 typed questions，返回 label + confidence。协议也完全不同：
+   * `POST /api/v1/decisions`，体是 `{ model, state, questions }`，回 `{ answers }`。
+   * 快（70~500ms）且**输出不计费**，所以特别适合「每条评论都过一遍」。
+   *
+   * 配成 `jev` 时要求同时有 `AI_JUDGE_KEY`（jevmodel.io 的 key），
+   * 缺 key 会直接回落 openai 那条路，不会把判断功能整挂。
+   */
+  AI_JUDGE_PROVIDER?: string;
+
+  /** 每通道每日调用上限，缺省 300。防手抖连点与 key 被盗刷 */
+  AI_DAILY_LIMIT?: string;
 }
 
 /** `/hit` 请求体 —— **必须与旧 `src/pages/api/hit.ts` 一致**（前端只发这两个字段） */

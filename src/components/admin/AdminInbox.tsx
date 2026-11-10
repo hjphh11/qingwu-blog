@@ -19,6 +19,29 @@ interface Thread {
   replies: Item[];
 }
 
+/** judge 通道的单条体检结果 —— 只是建议，不改任何状态 */
+interface JudgeResult {
+  verdict: 'ok' | 'spam' | 'abuse' | 'privacy';
+  score: number;
+  reasons: string[];
+  note: string;
+  model: string;
+  ms: number;
+}
+
+interface AiStatus {
+  quota: number;
+  writer: { on: boolean; model?: string; used?: number | null };
+  judge: { on: boolean; model?: string; used?: number | null };
+}
+
+const JUDGE_LABEL: Record<JudgeResult['verdict'], string> = {
+  ok: '看着正常',
+  spam: '疑似广告',
+  abuse: '疑似辱骂',
+  privacy: '疑似泄露隐私',
+};
+
 const STATUS_LABEL: Record<string, string> = {
   visible: '已通过',
   pending: '待审核',
@@ -81,12 +104,25 @@ export default function AdminInbox() {
   const draftRef = useRef(draft);
   draftRef.current = draft;
 
+  // —— AI（双通道）——
+  // ai 为 null = 还没问出来；能拿到就说明接口活着，按 on 决定显示哪些按钮。
+  const [ai, setAi] = useState<AiStatus | null>(null);
+  const [aiBusy, setAiBusy] = useState<'' | 'draft' | 'polish' | 'judge'>('');
+  const [aiErr, setAiErr] = useState('');
+  /** 等待期间站长自己又打了字 → AI 结果先停在这里，点「替换」才覆盖 */
+  const [aiSug, setAiSug] = useState('');
+  const [judged, setJudged] = useState<Record<number, JudgeResult>>({});
+
   // —— 会话 ——
   useEffect(() => {
     (async () => {
       try {
         await api<{ username: string }>('/session');
         setReady(true);
+        // AI 状态拉不到不影响后台本身（没配 key 时就是 503）
+        void api<AiStatus>('/ai/status')
+          .then(setAi)
+          .catch(() => setAi(null));
       } catch {
         /* api() 已经跳转了 */
       }
@@ -140,6 +176,8 @@ export default function AdminInbox() {
       setThread(null);
       setThreadLoading(true);
       setDraft(window.localStorage.getItem(DRAFT_KEY(id)) || '');
+      setAiSug('');
+      setAiErr('');
       try {
         const d = await api<Thread>(`/comments/${id}`);
         setThread(d);
@@ -181,6 +219,61 @@ export default function AdminInbox() {
       setSending(false);
     }
   }, [load, openId, sending]);
+
+  // —— AI 起草 / 润色 ——
+  // 关键点：AI 只往草稿框里写，**永远不替我们发布**。
+  // 另外，等待期间如果站长自己又敲了字，就不覆盖他的输入，把 AI 版本挂到 aiSug 上等他决定。
+  const runAi = useCallback(
+    async (mode: 'draft' | 'polish') => {
+      if (openId == null || aiBusy) return;
+      const base = draftRef.current;
+      if (mode === 'polish' && !base.trim()) return;
+
+      setAiBusy(mode);
+      setAiErr('');
+      setAiSug('');
+      try {
+        const d = await api<{ text: string }>('/ai/draft', {
+          method: 'POST',
+          body: JSON.stringify({ id: openId, mode, text: mode === 'polish' ? base : undefined }),
+        });
+        if (draftRef.current.trim() === base.trim()) {
+          onDraft(openId, d.text);
+        } else {
+          setAiSug(d.text);
+        }
+      } catch (e) {
+        setAiErr(e instanceof Error ? e.message : 'AI 请求失败');
+      } finally {
+        setAiBusy('');
+      }
+    },
+    [aiBusy, onDraft, openId],
+  );
+
+  // —— AI 体检（judge 通道，只给建议）——
+  const runJudge = useCallback(async () => {
+    if (openId == null || aiBusy) return;
+    setAiBusy('judge');
+    setAiErr('');
+    try {
+      const d = await api<JudgeResult>('/ai/judge', {
+        method: 'POST',
+        body: JSON.stringify({ id: openId }),
+      });
+      setJudged((prev) => ({ ...prev, [openId]: d }));
+    } catch (e) {
+      setAiErr(e instanceof Error ? e.message : 'AI 判断失败');
+    } finally {
+      setAiBusy('');
+    }
+  }, [aiBusy, openId]);
+
+  const adoptSug = useCallback(() => {
+    if (openId == null || !aiSug) return;
+    onDraft(openId, aiSug);
+    setAiSug('');
+  }, [aiSug, onDraft, openId]);
 
   const setStatus = useCallback(
     async (id: number, status: string) => {
@@ -282,6 +375,7 @@ export default function AdminInbox() {
               <tbody>
                 {items.map((it) => {
                   const open = openId === it.id;
+                  const jr = judged[it.id];
                   return (
                     <Fragment key={it.id}>
                       <tr>
@@ -354,6 +448,19 @@ export default function AdminInbox() {
                                 <div className="q-admin-loading">读取对话…</div>
                               ) : (
                                 <>
+                                  {jr ? (
+                                    <div className={`q-admin-judge q-admin-judge--${jr.verdict}`}>
+                                      <div className="q-admin-judge__head">
+                                        <b>{JUDGE_LABEL[jr.verdict]}</b>
+                                        <span className="q-admin-judge__score">{jr.score}</span>
+                                        <span className="q-admin-judge__meta">
+                                          {jr.ms}ms · {jr.model}
+                                        </span>
+                                      </div>
+                                      {jr.note ? <p>{jr.note}</p> : null}
+                                      {jr.reasons.length ? <em>{jr.reasons.join(' · ')}</em> : null}
+                                    </div>
+                                  ) : null}
                                   <h4>对话记录</h4>
                                   <div className="q-admin-bubble">
                                     <b>{it.author}</b>
@@ -373,6 +480,71 @@ export default function AdminInbox() {
                                   )}
 
                                   <div className="q-admin-reply">
+                                    {ai && (ai.writer.on || ai.judge.on) ? (
+                                      <div className="q-admin-ai">
+                                        {ai.writer.on ? (
+                                          <>
+                                            <button
+                                              className="q-admin-btn q-admin-btn--ghost q-admin-btn--sm"
+                                              type="button"
+                                              disabled={!!aiBusy}
+                                              onClick={() => void runAi('draft')}
+                                            >
+                                              {aiBusy === 'draft' ? '生成中…' : 'AI 起草'}
+                                            </button>
+                                            <button
+                                              className="q-admin-btn q-admin-btn--ghost q-admin-btn--sm"
+                                              type="button"
+                                              disabled={!!aiBusy || !draft.trim()}
+                                              onClick={() => void runAi('polish')}
+                                            >
+                                              {aiBusy === 'polish' ? '润色中…' : '润色'}
+                                            </button>
+                                          </>
+                                        ) : null}
+                                        {ai.judge.on ? (
+                                          <button
+                                            className="q-admin-btn q-admin-btn--ghost q-admin-btn--sm"
+                                            type="button"
+                                            disabled={!!aiBusy}
+                                            onClick={() => void runJudge()}
+                                          >
+                                            {aiBusy === 'judge' ? '判断中…' : 'AI 体检'}
+                                          </button>
+                                        ) : null}
+                                        <span className="q-admin-ai__note">
+                                          {aiBusy
+                                            ? '模型正在想…'
+                                            : `今天已用 ${(ai.writer.used ?? 0) + (ai.judge.used ?? 0)} / ${ai.quota} 次`}
+                                        </span>
+                                      </div>
+                                    ) : null}
+
+                                    {aiSug ? (
+                                      <div className="q-admin-ai__sug">
+                                        <span>你刚才自己改过草稿，AI 的版本先没覆盖：</span>
+                                        <i>{aiSug}</i>
+                                        <div>
+                                          <button
+                                            className="q-admin-btn q-admin-btn--ghost q-admin-btn--sm"
+                                            type="button"
+                                            onClick={adoptSug}
+                                          >
+                                            用它替换
+                                          </button>
+                                          <button
+                                            className="q-admin-btn q-admin-btn--ghost q-admin-btn--sm"
+                                            type="button"
+                                            onClick={() => setAiSug('')}
+                                          >
+                                            丢掉
+                                          </button>
+                                        </div>
+                                      </div>
+                                    ) : null}
+
+                                    {aiErr ? <p className="q-admin-error">{aiErr}</p> : null}
+
                                     <textarea
                                       placeholder="写回复，或先打在草稿框里（会自动保存在本浏览器）"
                                       value={draft}

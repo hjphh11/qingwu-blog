@@ -660,6 +660,106 @@
   color: rgba(74, 55, 40, 0.4);
 }
 
+/* —— AI 双通道（writer 起草/润色 · judge 体检）——
+   全部裸规则：要和 admin.css 其余部分一样直接盖在 base.css 之上，别包 @layer。 */
+.q-admin-ai {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.q-admin-ai__note {
+  margin-left: auto;
+  font-size: 11px;
+  color: rgba(74, 55, 40, 0.42);
+  font-variant-numeric: tabular-nums;
+}
+
+/* AI 结果因为「等待期间你又打了字」而暂存时的提示卡 —— 点了才替换 */
+.q-admin-ai__sug {
+  margin-bottom: 8px;
+  padding: 10px 12px;
+  border: 1px dashed rgba(194, 58, 85, 0.32);
+  border-radius: 9px;
+  background: rgba(194, 58, 85, 0.035);
+  font-size: 11.5px;
+  color: var(--color-muted);
+}
+.q-admin-ai__sug > span {
+  display: block;
+}
+.q-admin-ai__sug > i {
+  display: block;
+  margin: 6px 0 8px;
+  font-style: normal;
+  font-size: 12.5px;
+  line-height: 1.7;
+  color: var(--color-ink);
+}
+.q-admin-ai__sug > div {
+  display: flex;
+  gap: 8px;
+}
+
+/* judge 的结论条：只是建议，不改状态 */
+.q-admin-judge {
+  margin-bottom: 10px;
+  padding: 9px 12px;
+  border: 1px solid var(--qa-line);
+  border-radius: 9px;
+  background: var(--qa-card);
+  font-size: 11.5px;
+  line-height: 1.65;
+}
+.q-admin-judge__head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.q-admin-judge__head b {
+  font-size: 12px;
+  font-weight: 600;
+}
+.q-admin-judge__score {
+  padding: 1px 6px;
+  border-radius: 5px;
+  background: rgba(74, 55, 40, 0.07);
+  color: var(--color-muted);
+  font-size: 10.5px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.q-admin-judge__meta {
+  margin-left: auto;
+  color: var(--color-subtle);
+  font-size: 10.5px;
+  font-variant-numeric: tabular-nums;
+}
+.q-admin-judge p {
+  margin: 5px 0 0;
+  color: var(--color-muted);
+}
+.q-admin-judge > em {
+  display: block;
+  margin-top: 3px;
+  font-style: normal;
+  color: var(--color-subtle);
+}
+/* 只给左边一条色带，别把整块染色（奶油底色一染就脏） */
+.q-admin-judge--ok {
+  border-left: 3px solid rgba(52, 130, 92, 0.45);
+}
+.q-admin-judge--spam {
+  border-left: 3px solid rgba(194, 58, 85, 0.5);
+}
+.q-admin-judge--abuse {
+  border-left: 3px solid rgba(194, 58, 85, 0.72);
+}
+.q-admin-judge--privacy {
+  border-left: 3px solid rgba(176, 122, 32, 0.6);
+}
+
 .q-admin-empty {
   padding: 46px 20px;
   text-align: center;

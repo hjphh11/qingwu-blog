@@ -7,6 +7,7 @@
 
 import type { Env } from '../types';
 import { json } from '../util';
+import { getAiStatus, postAiDraft, postAiJudge } from './ai';
 import { getSessionInfo, postLogin, postLogout, postVerify, requireAdmin } from './auth';
 import { getThread, listComments, replyToComment, setCommentStatus } from './comments';
 import {
@@ -47,6 +48,17 @@ export async function handleAdmin(request: Request, env: Env, path: string): Pro
   if (status && m === 'PATCH') {
     const id = Number(status[1]);
     return requireAdmin(request, env, (admin) => setCommentStatus(request, env, admin, id));
+  }
+
+  // —— AI（writer 起草/润色，judge 单条体检）——
+  if (path === '/admin/ai/status' && m === 'GET') {
+    return requireAdmin(request, env, (admin) => getAiStatus(request, env, admin));
+  }
+  if (path === '/admin/ai/draft' && m === 'POST') {
+    return requireAdmin(request, env, (admin) => postAiDraft(request, env, admin));
+  }
+  if (path === '/admin/ai/judge' && m === 'POST') {
+    return requireAdmin(request, env, (admin) => postAiJudge(request, env, admin));
   }
 
   // —— 友链（P2 审核 / P3 回链）——
