@@ -760,6 +760,80 @@
   border-left: 3px solid rgba(176, 122, 32, 0.6);
 }
 
+/* 友链申请：AI 起草的回信。仍然是草稿 —— 发送必须人点。 */
+.q-admin-letter {
+  margin-top: 10px;
+  padding: 10px 12px;
+  border: 1px dashed rgba(194, 58, 85, 0.3);
+  border-radius: 9px;
+  background: rgba(194, 58, 85, 0.028);
+}
+.q-admin-letter__head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+  font-size: 11.5px;
+}
+.q-admin-letter__tag {
+  flex: none;
+  padding: 2px 7px;
+  border-radius: 5px;
+  font-size: 11px;
+  font-weight: 600;
+}
+.q-admin-letter__tag--found {
+  background: rgba(52, 130, 92, 0.1);
+  color: rgba(40, 110, 80, 0.95);
+}
+.q-admin-letter__tag--missing {
+  background: rgba(176, 122, 32, 0.13);
+  color: rgba(140, 100, 32, 0.95);
+}
+.q-admin-letter__tag--unreachable {
+  background: rgba(74, 55, 40, 0.08);
+  color: var(--color-muted);
+}
+.q-admin-letter__head em {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-style: normal;
+  color: var(--color-subtle);
+}
+.q-admin-letter input {
+  width: 100%;
+  margin-bottom: 8px;
+}
+.q-admin-letter textarea {
+  width: 100%;
+  min-height: 108px;
+  padding: 10px 12px;
+  font-family: var(--font-body);
+  font-size: 12.5px;
+  line-height: 1.7;
+  color: var(--color-ink);
+  background: var(--qa-card);
+  border: 1px solid var(--qa-line);
+  border-radius: 9px;
+  outline: none;
+  resize: vertical;
+}
+.q-admin-letter textarea:focus {
+  border-color: rgba(194, 58, 85, 0.42);
+  box-shadow: 0 0 0 3px rgba(194, 58, 85, 0.08);
+}
+.q-admin-letter__bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+}
+.q-admin-letter__bar .q-admin-saved {
+  margin-left: auto;
+}
+
 .q-admin-empty {
   padding: 46px 20px;
   text-align: center;

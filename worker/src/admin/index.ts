@@ -7,7 +7,7 @@
 
 import type { Env } from '../types';
 import { json } from '../util';
-import { getAiStatus, postAiDraft, postAiJudge } from './ai';
+import { getAiStatus, postAiDraft, postAiJudge, postFriendReply } from './ai';
 import { getSessionInfo, postLogin, postLogout, postVerify, requireAdmin } from './auth';
 import { getThread, listComments, replyToComment, setCommentStatus } from './comments';
 import {
@@ -15,6 +15,8 @@ import {
   commitLinks,
   getFriendsOverview,
   patchApplication,
+  probeApplication,
+  sendApplicationMail,
   setFriendStatus,
 } from './friends';
 
@@ -60,6 +62,10 @@ export async function handleAdmin(request: Request, env: Env, path: string): Pro
   if (path === '/admin/ai/judge' && m === 'POST') {
     return requireAdmin(request, env, (admin) => postAiJudge(request, env, admin));
   }
+  // 友链申请：探测对方站点 + 起草回信（两步一起返回）
+  if (path === '/admin/ai/friend-reply' && m === 'POST') {
+    return requireAdmin(request, env, (admin) => postFriendReply(request, env, admin));
+  }
 
   // —— 友链（P2 审核 / P3 回链）——
   if (path === '/admin/friends' && m === 'GET') {
@@ -79,6 +85,18 @@ export async function handleAdmin(request: Request, env: Env, path: string): Pro
   if (apply && m === 'POST') {
     const id = Number(apply[1]);
     return requireAdmin(request, env, (admin) => patchApplication(request, env, admin, id));
+  }
+
+  const probe = path.match(/^\/admin\/friends\/applications\/(\d+)\/probe$/);
+  if (probe && m === 'POST') {
+    const id = Number(probe[1]);
+    return requireAdmin(request, env, (admin) => probeApplication(request, env, admin, id));
+  }
+
+  const mail = path.match(/^\/admin\/friends\/applications\/(\d+)\/mail$/);
+  if (mail && m === 'POST') {
+    const id = Number(mail[1]);
+    return requireAdmin(request, env, (admin) => sendApplicationMail(request, env, admin, id));
   }
 
   return json({ ok: false, reason: 'not_found' }, 404);

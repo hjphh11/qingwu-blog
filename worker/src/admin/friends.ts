@@ -15,6 +15,7 @@
 
 import type { Env } from '../types';
 import { json } from '../util';
+import { sendMail } from '../mail';
 import type { Admin } from './auth';
 
 const LINKS_PATH = 'src/data/links.json';
@@ -311,11 +312,13 @@ interface OneCheck {
   status: number;
   matched: string | null;
   error: string | null;
+  /** 没命中时留给 AI 复核的正文片段（已去标签）。命中时为���串。 */
+  excerpt: string;
 }
 
 async function checkOne(rawUrl: string, name: string): Promise<OneCheck> {
   const key = normUrl(rawUrl) || rawUrl;
-  const result: OneCheck = { url: key, name, ok: false, status: 0, matched: null, error: null };
+  const result: OneCheck = { url: key, name, ok: false, status: 0, matched: null, error: null, excerpt: '' };
 
   let base = key;
   let first = await crawl(base, SELF_HOST);
@@ -353,7 +356,25 @@ async function checkOne(rawUrl: string, name: string): Promise<OneCheck> {
   }
 
   result.error = '页面里没找到 qingwu.ink';
+  // 没命中时留一段正文给 DeepSeek 复核：有的站把链接写成中文「清吾」、
+  // 塞在 JS 变量里，或者图片 alt 里，纯字符串匹配会漏。
+  result.excerpt = htmlToText(first.text).slice(0, 3000);
   return result;
+}
+
+/**
+ * 粗略去标签。不做完整 HTML 解析 —— 给模型看的东西，只要别把 <div class="…">
+ * 这种噪声灌进去就行。顺手掐掉 script/style，免得读到一屏打包代码。
+ */
+function htmlToText(html: string): string {
+  return html
+    .replace(/<script[\s\S]*?<\/script>/gi, ' ')
+    .replace(/<style[\s\S]*?<\/style>/gi, ' ')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/&nbsp;/gi, ' ')
+    .replace(/&(?:[a-z]+|#\d+);/gi, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
 }
 
 /**
@@ -513,6 +534,131 @@ export async function patchApplication(request: Request, env: Env, admin: Admin,
 
   console.log(`[admin] ${admin.username} 把申请 ${id} 改为 ${status}`);
   return json({ ok: true, status });
+}
+
+// ——————————————————————————————————————————————————————————
+// POST /admin/friends/applications/:id/probe —— 去对方站点看有没有我们的友链
+//
+// 判定主责是 checkOne（流式抓 + 友链页候选 + 极宽匹配），**不花模型钱**。
+// 没命中时额外留一段正文（excerpt），交给 AI 复核「是不是写成了中文名/图片链接」。
+// 结果落 application_probes，过几天回来看「上次什么时候查的」不用重打对方服务器。
+// ——————————————————————————————————————————————————————————
+export interface ProbeOutcome {
+  url: string;
+  ok: boolean;
+  status: number;
+  matched: string | null;
+  error: string | null;
+  excerpt: string;
+  checkedAt: number;
+}
+
+/** 探测一条申请并落库。申请不存在时返回 null。 */
+export async function runProbe(env: Env, appId: number): Promise<ProbeOutcome | null> {
+  const app = await env.DB.prepare('SELECT id, name, url FROM applications WHERE id = ?')
+    .bind(appId)
+    .first<{ id: number; name: string; url: string }>();
+  if (!app) return null;
+
+  const r = await checkOne(app.url, app.name);
+  const now = Date.now();
+
+  try {
+    await env.DB.prepare(
+      `INSERT INTO application_probes (app_id, url, ok, status, matched, error, checked_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?)
+       ON CONFLICT(app_id) DO UPDATE SET
+         url = excluded.url, ok = excluded.ok, status = excluded.status,
+         matched = excluded.matched, error = excluded.error, checked_at = excluded.checked_at`,
+    )
+      .bind(app.id, r.url, r.ok ? 1 : 0, r.status || null, r.matched, r.error, now)
+      .run();
+  } catch (e) {
+    // 表不存在（迁移没跑）不能挡住探测本身
+    console.warn('[probe] 写 application_probes 失败：', e instanceof Error ? e.message : e);
+  }
+
+  return {
+    url: r.url,
+    ok: r.ok,
+    status: r.status,
+    matched: r.matched,
+    error: r.error,
+    excerpt: r.excerpt,
+    checkedAt: now,
+  };
+}
+
+export async function probeApplication(
+  _request: Request,
+  env: Env,
+  admin: Admin,
+  id: number,
+): Promise<Response> {
+  const p = await runProbe(env, id);
+  if (!p) return json({ ok: false, reason: 'not_found' }, 404);
+
+  console.log(`[admin] ${admin.username} 探测申请 ${id}：${p.ok ? '有回链' : '无回链'}`);
+  // excerpt 不给前端：几 KB 的正文塞进响应里没意义，AI 那一步自己会读
+  return json({
+    ok: true,
+    probe: {
+      url: p.url,
+      ok: p.ok,
+      status: p.status,
+      matched: p.matched,
+      error: p.error,
+      checkedAt: p.checkedAt,
+    },
+  });
+}
+
+// ——————————————————————————————————————————————————————————
+// POST /admin/friends/applications/:id/mail —— 把（AI 起草的）回信发出去
+//
+// ⚠️ 这里**只发已经由站长确认过的正文**。AI 的草稿永远停在前端编辑框里，
+// 和评论回复同一条铁律：AI 不自己发东西。
+// 用 MAIL_TO / 中继那套发信链路，失败会落 mail_outbox 由 cron 机会式补发。
+// ——————————————————————————————————————————————————————————
+export async function sendApplicationMail(
+  request: Request,
+  env: Env,
+  admin: Admin,
+  id: number,
+): Promise<Response> {
+  let body: { subject?: unknown; text?: unknown };
+  try {
+    body = (await request.json()) as typeof body;
+  } catch {
+    return json({ ok: false, reason: 'bad_request' }, 400);
+  }
+
+  const subject = String(body?.subject ?? '').trim().slice(0, 120);
+  const text = String(body?.text ?? '').trim().slice(0, 4000);
+  if (!subject || !text) return json({ ok: false, reason: 'empty', message: '标题和正文都要有' }, 400);
+
+  const app = await env.DB.prepare('SELECT id, name, email FROM applications WHERE id = ?')
+    .bind(id)
+    .first<{ id: number; name: string; email: string | null }>();
+  if (!app) return json({ ok: false, reason: 'not_found' }, 404);
+  if (!app.email) {
+    return json({ ok: false, reason: 'no_email', message: '这条申请没留邮箱，发不了信' }, 400);
+  }
+
+  const sent = await sendMail(env, { to: app.email, subject, text });
+
+  if (sent) {
+    try {
+      await env.DB.prepare('UPDATE application_probes SET mailed_at = ? WHERE app_id = ?')
+        .bind(Date.now(), id)
+        .run();
+    } catch {
+      /* 计时失败无所谓 */
+    }
+  }
+
+  console.log(`[admin] ${admin.username} 给申请 ${id} 回信：${sent ? '已发出' : '未直接发出'}`);
+  return json({ ok: true, sent });
 }
 
 // ——————————————————————————————————————————————————————————

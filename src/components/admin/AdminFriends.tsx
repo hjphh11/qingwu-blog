@@ -55,6 +55,22 @@ interface FriendFlag {
   updated_at: number;
 }
 
+/** AI 起草的回信草稿 —— 只是草稿，站长点「发送邮件」才真的出去 */
+interface Letter {
+  id: number;
+  intent: 'found' | 'missing' | 'unreachable';
+  evidence: string;
+  hasEmail: boolean;
+  subject: string;
+  body: string;
+}
+
+const INTENT_LABEL: Record<Letter['intent'], string> = {
+  found: '对方已经加了本站',
+  missing: '没找到本站友链',
+  unreachable: '对方站点打不开',
+};
+
 interface Overview {
   ok: boolean;
   applications: AppItem[];
@@ -165,6 +181,13 @@ export default function AdminFriends() {
   const [rejecting, setRejecting] = useState<number | null>(null);
   const [rejectReason, setRejectReason] = useState('');
 
+  // —— 友链申请：探测 + AI 起草回信 ——
+  // aiWriter 只决定按钮显不显示（没配 key 时接口 503，先把入口藏掉）。
+  const [aiWriter, setAiWriter] = useState(false);
+  const [letterBusy, setLetterBusy] = useState<number | null>(null);
+  const [letter, setLetter] = useState<Letter | null>(null);
+  const [mailSending, setMailSending] = useState(false);
+
   // —— 回链 ——
   const [checking, setChecking] = useState(false);
   const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
@@ -177,6 +200,9 @@ export default function AdminFriends() {
       try {
         await api<{ username: string }>('/session');
         setReady(true);
+        void api<{ writer: { on: boolean } }>('/ai/status')
+          .then((s) => setAiWriter(Boolean(s?.writer?.on)))
+          .catch(() => setAiWriter(false));
       } catch {
         /* api() 已跳转 */
       }
@@ -232,6 +258,52 @@ export default function AdminFriends() {
     },
     [],
   );
+
+  /** 探测对方站点 + 让 AI 起草回信。**不会自己发出去**，正文仍要人看一眼。 */
+  const draftLetter = useCallback(async (app: AppItem) => {
+    setErr('');
+    setLetterBusy(app.id);
+    setLetter(null);
+    try {
+      const d = await api<{
+        intent: Letter['intent'];
+        evidence: string;
+        hasEmail: boolean;
+        subject: string;
+        body: string;
+      }>('/ai/friend-reply', { method: 'POST', body: JSON.stringify({ id: app.id }) });
+      setLetter({
+        id: app.id,
+        intent: d.intent,
+        evidence: d.evidence,
+        hasEmail: d.hasEmail,
+        subject: d.subject,
+        body: d.body,
+      });
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : '探测失败');
+    } finally {
+      setLetterBusy(null);
+    }
+  }, []);
+
+  const sendLetter = useCallback(async () => {
+    if (!letter || mailSending) return;
+    setErr('');
+    setMailSending(true);
+    try {
+      const d = await api<{ sent: boolean }>(`/friends/applications/${letter.id}/mail`, {
+        method: 'POST',
+        body: JSON.stringify({ subject: letter.subject, text: letter.body }),
+      });
+      setNotice(d.sent ? `回信已发到申请人邮箱` : '没直接发出去，已进待发队列，稍后自动补发');
+      setLetter(null);
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : '发送失败');
+    } finally {
+      setMailSending(false);
+    }
+  }, [letter, mailSending]);
 
   /** 通过 + 顺手放进待提交的友链草稿（两步合一，但仍要点「提交」才进仓库） */
   const adopt = useCallback(
@@ -481,6 +553,16 @@ export default function AdminFriends() {
                       </a>
                     ) : null}
                     <footer>
+                      {aiWriter ? (
+                        <button
+                          className="q-admin-btn q-admin-btn--ghost q-admin-btn--sm"
+                          type="button"
+                          disabled={letterBusy === a.id}
+                          onClick={() => void draftLetter(a)}
+                        >
+                          {letterBusy === a.id ? '正在探测…' : '探测并起草回信'}
+                        </button>
+                      ) : null}
                       <button
                         className="q-admin-btn q-admin-btn--primary q-admin-btn--sm"
                         type="button"
@@ -525,6 +607,48 @@ export default function AdminFriends() {
                         >
                           确认拒绝
                         </button>
+                      </div>
+                    ) : null}
+
+                    {letter?.id === a.id ? (
+                      <div className="q-admin-letter">
+                        <div className="q-admin-letter__head">
+                          <b className={`q-admin-letter__tag q-admin-letter__tag--${letter.intent}`}>
+                            {INTENT_LABEL[letter.intent]}
+                          </b>
+                          <em title={letter.evidence}>{letter.evidence}</em>
+                        </div>
+                        <input
+                          className="q-admin-search"
+                          placeholder="邮件标题"
+                          value={letter.subject}
+                          onChange={(e) => setLetter({ ...letter, subject: e.target.value })}
+                        />
+                        <textarea
+                          placeholder="回信正文（AI 起草，改完再发）"
+                          value={letter.body}
+                          onChange={(e) => setLetter({ ...letter, body: e.target.value })}
+                        />
+                        <div className="q-admin-letter__bar">
+                          <button
+                            className="q-admin-btn q-admin-btn--primary q-admin-btn--sm"
+                            type="button"
+                            disabled={mailSending || !letter.hasEmail || !letter.subject.trim() || !letter.body.trim()}
+                            onClick={() => void sendLetter()}
+                          >
+                            {mailSending ? '发送中…' : '发送邮件'}
+                          </button>
+                          <button
+                            className="q-admin-btn q-admin-btn--ghost q-admin-btn--sm"
+                            type="button"
+                            onClick={() => setLetter(null)}
+                          >
+                            收起
+                          </button>
+                          <span className="q-admin-saved">
+                            {letter.hasEmail ? `发到 ${a.email}` : '这条申请没留邮箱，只能看不能发'}
+                          </span>
+                        </div>
                       </div>
                     ) : null}
                   </article>
