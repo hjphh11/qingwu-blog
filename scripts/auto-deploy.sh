@@ -11,6 +11,11 @@
 #      也不要造出一个 merge 提交把仓库弄脏。
 #   3) 构建回来先确认 dist/client/index.html 还在，再重启 Worker。
 #      构建中途失败可能留下半套产物，那就保持现状等下一轮，别骗自己「上线成功」。
+#   4) ⚠️ 下面 build 那行的两个环境变量**不能省**。服务器上没有 .env（只有
+#      .env.example），缺了 PUBLIC_HIT_WORKER_URL=/api 时 import.meta.env 会回落到
+#      代码默认的 https://api.qingwu.ink（早已废弃的 ECS）→ 全站打点、/link-status、
+#      友链提交全部 CORS 失败，而**页面本身看着完全正常**，只有开 console 才发现。
+#      手动上线时也要照抄这一行，别裸跑 npm run build。
 #
 # 日志：/var/log/qingwu-deploy.log
 
