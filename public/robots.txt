@@ -7,3 +7,24 @@ Disallow: /admin/
 
 # 接口不是内容
 Disallow: /api/
+
+# ── AI 训练爬虫：抓走正文却不带来任何访客，直接拒绝 ──
+# 检索型爬虫（OAI-SearchBot / PerplexityBot / Claude-SearchBot）不在此列——
+# 它们会带引荐流量，只靠 nginx 限流控速，不在这里拦。
+User-agent: GPTBot
+User-agent: ClaudeBot
+User-agent: CCBot
+User-agent: Bytespider
+User-agent: meta-externalagent
+User-agent: ImagesiftBot
+Disallow: /
+
+# Google-Extended / Applebot-Extended 不会作为 UA 出现，只在 robots.txt 生效：
+# 不参与它们的 AI 训练，同时保留 Google/Apple 搜索收录。
+User-agent: Google-Extended
+Disallow: /
+
+User-agent: Applebot-Extended
+Disallow: /
+
+Sitemap: https://www.qingwu.ink/sitemap-index.xml
