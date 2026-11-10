@@ -1033,6 +1033,11 @@
   resize: vertical;
 }
 
+/* 靠右推：.q-admin-filters 是 flex，右侧的状态标签 / 按钮组要贴到另一头 */
+.q-admin-push {
+  margin-left: auto;
+}
+
 @media (max-width: 760px) {
   .q-admin-head {
     flex-wrap: wrap;
@@ -1040,6 +1045,9 @@
   .q-admin-savebar {
     width: 100%;
     justify-content: space-between;
+  }
+  .q-admin-push {
+    margin-left: 0;
   }
   .q-admin-cards,
   .q-admin-checkgrid {

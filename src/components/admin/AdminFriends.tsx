@@ -103,6 +103,19 @@ function hostOf(url: string): string {
     return url;
   }
 }
+/**
+ * 回链「发现于」显示路径而不是域名 —— 同一站点的域名栏已经写过了，
+ * 站长真正想知道的是「他把我挂在哪个页面」，比如 /links/ 还是 /about/。
+ */
+function matchedLabel(url: string): string {
+  try {
+    const u = new URL(url);
+    const p = u.pathname.replace(/\/+$/, '');
+    return p === '' ? '/' : p;
+  } catch {
+    return url;
+  }
+}
 /** 与后端 normUrl 逐字对齐：补协议、去尾斜杠、小写主机名、协议统一成 https。回链结果按这个 key 索引。 */
 function normUrl(raw: string): string {
   const s = String(raw || '').trim();
@@ -572,10 +585,10 @@ export default function AdminFriends() {
                 </span>
               </b>
               {data?.writable ? (
-                <span className="q-admin-tag q-admin-tag--ok">已接入 GitHub 直写</span>
+                <span className="q-admin-tag q-admin-tag--ok q-admin-push">已接入 GitHub 直写</span>
               ) : (
-                <span className="q-admin-tag q-admin-tag--warn">
-                  未配置 GITHUB_TOKEN · 提交会给你一份 JSON 手动更新
+                <span className="q-admin-tag q-admin-tag--warn q-admin-push">
+                  未配置 GITHUB_TOKEN · 提交会给一份 JSON 手动更新
                 </span>
               )}
             </div>
@@ -722,7 +735,7 @@ export default function AdminFriends() {
               <b style={{ fontSize: 13 }}>
                 规则很宽：对方任意页面出现 <code>qingwu.ink</code> 即视为有回链
               </b>
-              <div className="q-admin-row-actions">
+              <div className="q-admin-row-actions q-admin-push">
                 {progress ? (
                   <span className="q-admin-hint">
                     {progress.done}/{progress.total}
@@ -779,7 +792,7 @@ export default function AdminFriends() {
                             <dt>发现于</dt>
                             <dd>
                               <a href={c.matched} target="_blank" rel="noreferrer noopener">
-                                {hostOf(c.matched)}
+                                {matchedLabel(c.matched)}
                               </a>
                             </dd>
                           </div>
