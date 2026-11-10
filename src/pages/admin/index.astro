@@ -1,0 +1,14 @@
+---
+/*
+ * /admin —— 后台入口（登录页）
+ *
+ * 刻意做成**静态预渲染**：香港机跑的是 workerd，一旦这里用 prerender=false
+ * 就会被 Vercel adapter 绑死、搬不过去。鉴权全在接口层，页面本身不含任何数据。
+ */
+import AdminLayout from '../../layouts/AdminLayout.astro';
+import AdminLogin from '../../components/admin/AdminLogin.tsx';
+---
+
+<AdminLayout title="管理员登录">
+  <AdminLogin client:load />
+</AdminLayout>

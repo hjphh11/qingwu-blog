@@ -1,0 +1,9 @@
+User-agent: *
+Allow: /
+
+# 后台：登录框本身是公开的（页面无数据），但没必要被收录
+Disallow: /admin
+Disallow: /admin/
+
+# 接口不是内容
+Disallow: /api/

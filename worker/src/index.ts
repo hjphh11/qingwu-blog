@@ -13,6 +13,7 @@
 // 第 3~5 步的路由（/comments、/likes、Cron）以后再加，别现在就把口子开着。
 
 import { getApply, patchApply, postApply } from './apply';
+import { handleAdmin } from './admin/index';
 import { deleteFriendComment, getFriendsBoard, postFriendLike, postFriendReply, postFriendsBoard } from './friends-board';
 import { getLinkPosts, getLinkStats, postLinkClick } from './link';
 import { refreshAllFeeds } from './links-refresh';
@@ -72,6 +73,11 @@ export default {
     if (path === '/health') {
       return json({ ok: true, service: 'qingwu-api', time: new Date().toISOString() });
     }
+
+    // —— 后台（对外 /api/admin/*，nginx 去前缀后到这里）——
+    // 说明见 docs/方案-后台-admin.md；路由表在 src/admin/index.ts。
+    // 注意它排在归档只读判断之后 —— CF 那份 READONLY 时后台的写接口也会 410，这是对的。
+    if (path.startsWith('/admin/')) return handleAdmin(request, env, path);
 
     if (path === '/hit') {
       if (request.method === 'POST') return postHit(request, env, ctx);

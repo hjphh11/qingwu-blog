@@ -1,0 +1,35 @@
+---
+/*
+ * 后台专用外壳 —— 刻意**不**复用 Layout.astro。
+ *
+ * 前台那套带导航、页脚、开屏、爱弥斯伴读、光标与迷你播放器，
+ * 后台一样都不该有；而且开屏脚本会读 sessionStorage，在 /admin 上跑毫无意义。
+ * 这里只保留「字体 + 色板 + 后台样式」，保证视觉同源、行为互不干扰。
+ */
+import '../styles/global.css';
+import '../styles/admin.css';
+import { SITE } from '../config';
+
+interface Props {
+  title: string;
+}
+
+const { title } = Astro.props;
+---
+
+<!doctype html>
+<html lang={SITE.language}>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <!-- 后台不该被收录：登录框公开可见，但页面本身不值得出现在搜索结果里 -->
+    <meta name="robots" content="noindex,nofollow,noarchive" />
+    <link rel="icon" type="image/png" href="/images/emis/avatar.png" />
+    <title>{title} · {SITE.title}</title>
+  </head>
+  <body class="q-admin-body">
+    <div class="q-admin-glow q-admin-glow--rose" aria-hidden="true"></div>
+    <div class="q-admin-glow q-admin-glow--amber" aria-hidden="true"></div>
+    <slot />
+  </body>
+</html>
