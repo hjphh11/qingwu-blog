@@ -103,6 +103,8 @@ docs/后台迁移-Cloudflare方案.md
 .tmp-mig/
 .tmp-*/
 .astro-old-tmp/
+# 本地起服务时重定向出来的日志（dev:admin / build）
+.tmp-*.log
 
 # 局域网自建部署的脚本与截图（见 README「局域网部署」）
 .deploy/
