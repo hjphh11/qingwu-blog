@@ -7,9 +7,11 @@
 
 import type { Env } from '../types';
 import { json } from '../util';
-import { getAiStatus, postAiDraft, postAiJudge, postFriendReply } from './ai';
+import { getAiStatus, postAiDraft, postAiJudge, postFriendReply, postReviewTest } from './ai';
 import { getDevLogin, getSessionInfo, postLogin, postLogout, postVerify, requireAdmin } from './auth';
 import { getThread, listComments, replyToComment, setCommentStatus } from './comments';
+import { getPublishLog } from './publish';
+import { getSettings, patchSettings } from './settings';
 import { getStatus, postStatusPing } from './status';
 import {
   checkBacklinks,
@@ -79,12 +81,28 @@ export async function handleAdmin(request: Request, env: Env, path: string): Pro
     return requireAdmin(request, env, (admin) => postStatusPing(request, env, admin));
   }
 
+  // —— 可调设置（自动回复策略 / writer 参数 / 审核规则）——
+  if (path === '/admin/settings' && m === 'GET') {
+    return requireAdmin(request, env, (admin) => getSettings(request, env, admin));
+  }
+  if (path === '/admin/settings' && m === 'PATCH') {
+    return requireAdmin(request, env, (admin) => patchSettings(request, env, admin));
+  }
+
+  // —— 评论审核：改完规则先试判 ——
+  if (path === '/admin/review/test' && m === 'POST') {
+    return requireAdmin(request, env, (admin) => postReviewTest(request, env, admin));
+  }
+
   // —— 友链（P2 审核 / P3 回链）——
   if (path === '/admin/friends' && m === 'GET') {
     return requireAdmin(request, env, (admin) => getFriendsOverview(request, env, admin));
   }
   if (path === '/admin/friends/links' && m === 'POST') {
     return requireAdmin(request, env, (admin) => commitLinks(request, env, admin));
+  }
+  if (path === '/admin/friends/publish-log' && m === 'GET') {
+    return requireAdmin(request, env, (admin) => getPublishLog(request, env, admin));
   }
   if (path === '/admin/friends/backlinks' && m === 'POST') {
     return requireAdmin(request, env, (admin) => checkBacklinks(request, env, admin));

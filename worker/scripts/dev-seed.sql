@@ -18,6 +18,7 @@ DELETE FROM backlink_checks;
 DELETE FROM ai_usage;
 DELETE FROM hits;
 DELETE FROM mail_outbox;
+DELETE FROM friend_publish_log;
 
 -- ——————————————————————————————— 留言板 ———————————————————————————————
 -- 4 条顶层：待回复 / 已回复 / 待审核 / 垃圾。后台列表的四种样子各来一个。
@@ -143,3 +144,20 @@ VALUES
    '{"to":"1454109769@qq.com","subject":"有人回复了你的留言","text":"演示数据"}'),
   (strftime('%s','now') - 90000, strftime('%s','now') - 3600, 6, 'smtp_550',
    '{"to":"1454109769@qq.com","subject":"友链留言板有新留言","text":"演示数据"}');
+
+-- ——————————————————————————— 友链发布记录 ———————————————————————————
+-- 「最近发布」那块要有东西可看：一次真提交（带字段明细），一次降级成手动粘贴。
+-- changes 是 JSON 数组，字段名与后端 publish.ts 的 FieldChange 对齐。
+INSERT INTO friend_publish_log (ts, by_name, commit_sha, message, changes, status, detail, base_sha)
+VALUES
+  (strftime('%s','now') - 86400,
+   'qingwu',
+   'a1b2c3d4e5f60718293a4b5c6d7e8f9012345678',
+   'chore(links): 新增「昭鸾笺」，改一条简介',
+   '[{"url":"https://blog.mibase.top","name":"昭鸾笺","field":"+","from":"","to":"昭鸾笺 · https://blog.mibase.top"},{"url":"http://rainzt.cn","name":"朝朝听雨","field":"intro","from":"物物而不物于物","to":"物物而不物于物，念念而不念于念"}]',
+   'ok', '共 15 条友链', 'deadbeefdeadbeefdeadbeefdeadbeefdeadbeef'),
+  (strftime('%s','now') - 172800,
+   'qingwu', NULL,
+   'chore(links): 后台更新友链（qingwu）',
+   '[{"url":"https://hty.rest","name":"吴彦祖论坛","field":"visible","from":"展示中","to":"已隐藏"}]',
+   'manual', '没配 GITHUB_TOKEN，降级为手动粘贴', NULL);

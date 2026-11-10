@@ -50,7 +50,7 @@ export function identityOf(env: Env): Identity {
 }
 
 /** post_slug → 前台路径。目前只有留言板在用这张表，文章评论接进来后这里要补分支。 */
-function pathOf(slug: string): string {
+export function pathOf(slug: string): string {
   if (slug === 'friends') return '/friends/';
   if (slug === 'guestbook') return '/guestbook/';
   if (slug.startsWith('/')) return slug;

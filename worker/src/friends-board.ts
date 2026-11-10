@@ -17,7 +17,7 @@
 import type { Env } from './types';
 import { json, originAllowed, parseOrigins, secretEqual } from './util';
 import { boardMailText, flushOutbox, sendMail } from './mail';
-import { autoReplyTo } from './admin/ai';
+import { autoReplyTo, moderateComment } from './admin/ai';
 
 /** 友链评论区在 comments 表里的分区名 */
 const SLUG = 'friends';
@@ -245,17 +245,48 @@ export async function postFriendsBoard(request: Request, env: Env, ctx: Executio
     const hash = /^[a-f0-9]{32}$/.test(hashRaw) ? hashRaw : null;
 
     /**
-     * 新留言一律 `pending`。
+     * 发布前审核。
+     *
+     * 这是**唯一**一条会挡住访客提交的路径 —— 打开后每条留言多花 200ms~1s
+     * （Jev 快，走聊天模型的慢）。默认关着，在 /admin/review 打开。
+     *
+     * 三条原则：
+     *   · 审核自己挂了（超时、key 失效、表没迁移）→ **放行**。宁可漏一条垃圾，
+     *     也不能因为上游抖动就让留言板收不到话。
+     *   · 命中后仍然落库（pending 或 spam），不直接丢 —— 误判要能复核。
+     *   · 给访客的话只用设置里那句 notice，不复述判定理由
+     *     （理由里可能带着「你像广告」这种话，读起来很冲）。
+     */
+    let status = 'pending';
+    try {
+      const mod = await moderateComment(env, {
+        id: 0,
+        author: v.v.name,
+        body: v.v.intro,
+        path: '/friends/',
+        replies: [],
+      });
+      if (mod?.hit) {
+        status = mod.action === 'reject' ? 'spam' : 'pending';
+        if (status === 'spam') {
+          console.log(`[friends-board] 审核拦截 ${v.v.name}：${mod.verdict} ${mod.score} >= ${mod.threshold}`);
+        }
+      }
+    } catch (e) {
+      console.warn('[friends-board] 审核失败，照常收下：', e instanceof Error ? e.message : e);
+    }
+
+    /**
+     * 新留言一律 `pending`（被审核拦下的可能是 `spam`）。
      *
      * 为什么不是 visible：前端拿 status 决定徽章 —— visible 显示「已是友链」，
      * 其余显示「等我看看」。访客刚提交的站还没审过，直接标成「已是友链」是撒谎。
-     * 站长审核 = 把它 UPDATE 成 visible（暂时用 D1 控制台/SQL，后台以后再说）。
      */
     const deleteToken = newDeleteToken();
 
     const res = await env.DB.prepare(
       `INSERT INTO comments (post_slug, parent_id, author, email, email_hash, author_url, avatar, body, status, ts, ip_hash, delete_token)
-       VALUES (?, NULL, ?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?)`,
+       VALUES (?, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     )
       .bind(
         SLUG,
@@ -265,6 +296,7 @@ export async function postFriendsBoard(request: Request, env: Env, ctx: Executio
         v.v.url || null,
         v.v.avatar || null,
         v.v.intro,
+        status,
         now,
         key,
         deleteToken,
@@ -280,7 +312,8 @@ export async function postFriendsBoard(request: Request, env: Env, ctx: Executio
      * await 在请求路径上会让访客盯着"提交中"发呆。
      * 失败也只是少一条回复 —— autoReplyTo 内部全 try/catch，不抛错。
      */
-    ctx.waitUntil(autoReplyTo(env, id));
+    // 被判成垃圾的就不叫小爱来接话了 —— 别在她嘴里复述一条广告
+    if (status !== 'spam') ctx.waitUntil(autoReplyTo(env, id));
 
     // 通知站长（配了 RESEND_KEY + MAIL_TO 才发）
     if (env.MAIL_TO) {

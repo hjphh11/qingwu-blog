@@ -1,0 +1,386 @@
+// 清吾 · 后台可调设置
+//
+// 一张 key-value 表（`0018_admin_settings.sql`），一个读入口、一个写入口。
+// 之所以不做「一个设置一行」的宽表：这里全是稀疏的开关与小数值，
+// 宽表每加一项就要写一次迁移，而 key-value 加新键只是代码里多一行默认值。
+//
+// —— 三条规矩 ——
+// 1) **库里有的值才算数，库里没有就回落到 env / 代码默认**。老部署不跑迁移也不会坏。
+// 2) **写只走 `saveSettings`**，白名单 + 逐项校验在下面收口。前端送什么进来都不算数。
+// 3) **读不做缓存**。一次 `SELECT key, value` 几十微秒，比不上缓存失效带来的麻烦。
+//    （`autoReplyTo` 在 waitUntil 里跑，每次多这一条完全无感。）
+
+import type { Env } from '../types';
+import { json } from '../util';
+import type { Admin } from './auth';
+
+/** judge 能识别、也能被单独关掉的四类判定。`ok` 不是类别，是「没命中」。 */
+export const VERDICTS = ['spam', 'abuse', 'privacy'] as const;
+export type VerdictKey = (typeof VERDICTS)[number];
+
+export const VERDICT_LABEL: Record<VerdictKey | 'ok', string> = {
+  ok: '正常',
+  spam: '垃圾广告',
+  abuse: '辱骂攻击',
+  privacy: '隐私泄露',
+};
+
+export type ModerationAction = 'hold' | 'reject';
+
+export interface Settings {
+  autoReply: {
+    on: boolean;
+    daily: number;
+    perGuest: number;
+    /** top = 只回顶层；all = 楼中楼也回 */
+    scope: 'top' | 'all';
+    /** 允许自动回复的路径（空 = 不限）；逗号分隔，前缀匹配 */
+    allowPaths: string[];
+    /** 一律不回自动回复的路径，优先级高于 allowPaths */
+    blockPaths: string[];
+    /** 正文命中的关键词，命中就跳过（逗号分隔，不区分大小写） */
+    skipKeywords: string[];
+    /** 安静时段，支持跨午夜（22:00 → 08:00）。空 = 不设 */
+    quietFrom: string;
+    quietTo: string;
+  };
+  writer: {
+    /** 空 = 用 env.AI_MODEL */
+    model: string;
+    temperature: number;
+    maxTokens: number;
+  };
+  judge: {
+    /** 评论提交时是否先过一遍审核。默认关 —— 打开就给每次提交加 200ms~1s */
+    on: boolean;
+    /** 启用哪几类拦截。关掉的类别即使 judge 判出来也不拦 */
+    categories: VerdictKey[];
+    /** 判定为「应拦截」的把握达到这个分数才动手（0~100） */
+    threshold: number;
+    /**
+     * 命中后怎么处置：
+     * · hold   = 存成待审（前台不显示，站长在收件箱能看见并放行）
+     * · reject = 直接标成垃圾（前台不显示，收件箱「垃圾」页仍留证）
+     * 两种都落库 —— 直接丢掉就没法复核误判了。
+     */
+    action: ModerationAction;
+    /** 命中时给访客看的提示。空 = 用默认文案 */
+    notice: string;
+  };
+}
+
+const DEFAULT_NOTICE = '这条留言没通过自动审核，先压下来了。如果它其实没问题，我会手动放出来。';
+
+export const DEFAULTS: Settings = {
+  autoReply: {
+    on: true,
+    daily: 20,
+    perGuest: 1,
+    scope: 'top',
+    allowPaths: [],
+    blockPaths: [],
+    skipKeywords: [],
+    quietFrom: '',
+    quietTo: '',
+  },
+  writer: { model: '', temperature: 0.8, maxTokens: 400 },
+  judge: { on: false, categories: ['spam', 'abuse', 'privacy'], threshold: 60, action: 'hold', notice: DEFAULT_NOTICE },
+};
+
+export const DEFAULT_JUDGE_NOTICE = DEFAULT_NOTICE;
+
+// ——————————————————————————————————————————————————————————
+// 解析
+// ——————————————————————————————————————————————————————————
+function str(v: unknown): string {
+  return String(v ?? '').trim();
+}
+
+function boolOf(v: string | undefined, fallback: boolean): boolean {
+  if (v == null || v === '') return fallback;
+  const s = v.toLowerCase();
+  if (s === 'off' || s === '0' || s === 'false' || s === 'no') return false;
+  if (s === 'on' || s === '1' || s === 'true' || s === 'yes') return true;
+  return fallback;
+}
+
+function intOf(v: string | undefined, fallback: number, min: number, max: number): number {
+  if (v == null || v === '') return fallback;
+  const n = Number.parseInt(v, 10);
+  if (!Number.isFinite(n)) return fallback;
+  return Math.max(min, Math.min(max, n));
+}
+
+function numOf(v: string | undefined, fallback: number, min: number, max: number): number {
+  if (v == null || v === '') return fallback;
+  const n = Number(v);
+  if (!Number.isFinite(n)) return fallback;
+  return Math.max(min, Math.min(max, n));
+}
+
+/** 逗号 / 换行 / 中文逗号都当分隔符：从文章里拷一行关键词进来不该被判成非法。 */
+function listOf(v: string | undefined): string[] {
+  return str(v)
+    .split(/[,，\n]+/)
+    .map((s) => s.trim())
+    .filter(Boolean)
+    .slice(0, 50);
+}
+
+/** `HH:MM`，24 小时制。空串合法（表示不设）。 */
+function timeOf(v: string | undefined): string {
+  const s = str(v);
+  if (!s) return '';
+  return /^([01]\d|2[0-3]):[0-5]\d$/.test(s) ? s : '';
+}
+
+function categoriesOf(v: string | undefined, fallback: VerdictKey[]): VerdictKey[] {
+  if (v == null) return fallback;
+  const picked = listOf(v).filter((k): k is VerdictKey => (VERDICTS as readonly string[]).includes(k));
+  // 一个都不选是没有意义的（等于关掉审核却又开着开关），回落到全选
+  return picked.length ? picked : [...VERDICTS];
+}
+
+function autoReplyEnvOn(env: Env): boolean {
+  const v = str(env.AUTO_REPLY);
+  return boolOf(v, DEFAULTS.autoReply.on);
+}
+
+/** 把「库里读出来的扁平 map」+ env 合并成结构化设置。 */
+export function parseSettings(rows: Record<string, string>, env: Env): Settings {
+  const g = (k: string): string | undefined => rows[k];
+
+  return {
+    autoReply: {
+      // 总开关的特例：库里没写过这一项时，仍然认 env 的老开关（AUTO_REPLY=off）
+      on: g('autoReply.on') == null ? autoReplyEnvOn(env) : boolOf(g('autoReply.on'), DEFAULTS.autoReply.on),
+      daily:
+        g('autoReply.daily') == null
+          ? intOf(str(env.AUTO_REPLY_DAILY), DEFAULTS.autoReply.daily, 0, 500)
+          : intOf(g('autoReply.daily'), DEFAULTS.autoReply.daily, 0, 500),
+      perGuest:
+        g('autoReply.perGuest') == null
+          ? intOf(str(env.AUTO_REPLY_PER_GUEST), DEFAULTS.autoReply.perGuest, 0, 50)
+          : intOf(g('autoReply.perGuest'), DEFAULTS.autoReply.perGuest, 0, 50),
+      scope: str(g('autoReply.scope')) === 'all' ? 'all' : 'top',
+      allowPaths: listOf(g('autoReply.allowPaths')),
+      blockPaths: listOf(g('autoReply.blockPaths')),
+      skipKeywords: listOf(g('autoReply.skipKeywords')),
+      quietFrom: timeOf(g('autoReply.quietFrom')),
+      quietTo: timeOf(g('autoReply.quietTo')),
+    },
+    writer: {
+      model: str(g('writer.model')),
+      temperature: numOf(g('writer.temperature'), DEFAULTS.writer.temperature, 0, 2),
+      maxTokens: intOf(g('writer.maxTokens'), DEFAULTS.writer.maxTokens, 80, 2000),
+    },
+    judge: {
+      on: boolOf(g('judge.on'), DEFAULTS.judge.on),
+      categories: categoriesOf(g('judge.categories'), DEFAULTS.judge.categories),
+      threshold: intOf(g('judge.threshold'), DEFAULTS.judge.threshold, 0, 100),
+      action: str(g('judge.action')) === 'reject' ? 'reject' : 'hold',
+      notice: str(g('judge.notice')).slice(0, 200) || DEFAULT_NOTICE,
+    },
+  };
+}
+
+/**
+ * 读全部设置。表不存在（迁移没跑）时退回纯 env 口径，**不抛错** ——
+ * 后台只是少几个开关，不该因此整页 500。
+ */
+export async function loadSettings(env: Env): Promise<Settings> {
+  try {
+    const r = await env.DB.prepare('SELECT key, value FROM admin_settings').all<{ key: string; value: string }>();
+    const m: Record<string, string> = {};
+    for (const it of r.results ?? []) m[it.key] = it.value;
+    return parseSettings(m, env);
+  } catch {
+    return parseSettings({}, env);
+  }
+}
+
+// ——————————————————————————————————————————————————————————
+// 保存
+// ——————————————————————————————————————————————————————————
+
+/** 扁平化：结构化设置 → 那一串 key。写库和「恢复默认」都走它，避免两处各写一份。 */
+export function flatten(s: Settings): Record<string, string> {
+  return {
+    'autoReply.on': s.autoReply.on ? 'on' : 'off',
+    'autoReply.daily': String(s.autoReply.daily),
+    'autoReply.perGuest': String(s.autoReply.perGuest),
+    'autoReply.scope': s.autoReply.scope,
+    'autoReply.allowPaths': s.autoReply.allowPaths.join(','),
+    'autoReply.blockPaths': s.autoReply.blockPaths.join(','),
+    'autoReply.skipKeywords': s.autoReply.skipKeywords.join(','),
+    'autoReply.quietFrom': s.autoReply.quietFrom,
+    'autoReply.quietTo': s.autoReply.quietTo,
+    'writer.model': s.writer.model,
+    'writer.temperature': String(s.writer.temperature),
+    'writer.maxTokens': String(s.writer.maxTokens),
+    'judge.on': s.judge.on ? 'on' : 'off',
+    'judge.categories': s.judge.categories.join(','),
+    'judge.threshold': String(s.judge.threshold),
+    'judge.action': s.judge.action,
+    'judge.notice': s.judge.notice,
+  };
+}
+
+/** 允许前端改的键。不在这张表里的键一律忽略（不是报错 —— 多送几个无害）。 */
+const WRITABLE = new Set(Object.keys(flatten(DEFAULTS)));
+
+/**
+ * 合并式保存：只写传进来的键，其余保持原样。
+ *
+ * 传入的值先过一遍 `parseSettings` 的同一套解析 —— **校验和读取用同一份代码**，
+ * 不另写一套，否则迟早出现「存进去 0.9、读出来 0.8」这种事。
+ */
+export async function saveSettings(
+  env: Env,
+  admin: Admin | null,
+  patch: Record<string, unknown>,
+): Promise<Settings> {
+  const raw: Record<string, string> = {};
+  for (const [k, v] of Object.entries(patch)) {
+    if (!WRITABLE.has(k)) continue;
+    raw[k] = typeof v === 'boolean' ? (v ? 'on' : 'off') : String(v ?? '');
+  }
+
+  // 用「当前值 + 补丁」的完整结构过一遍校验，保证写进去的就是将来读出来的
+  const cur = await loadSettings(env);
+  const merged = flatten(cur);
+  for (const [k, v] of Object.entries(raw)) merged[k] = v;
+  const clean = flatten(parseSettings(merged, env));
+
+  const ts = Date.now();
+  const by = admin?.username ?? null;
+  const stmts = [...WRITABLE]
+    .filter((k) => k in raw)
+    .map((k) =>
+      env.DB.prepare(
+        `INSERT INTO admin_settings (key, value, ts, by_name) VALUES (?, ?, ?, ?)
+         ON CONFLICT(key) DO UPDATE SET value = excluded.value, ts = excluded.ts, by_name = excluded.by_name`,
+      ).bind(k, clean[k], ts, by),
+    );
+
+  if (stmts.length) await env.DB.batch(stmts);
+  return parseSettings(clean, env);
+}
+
+// ——————————————————————————————————————————————————————————
+// 时间与路径判定（纯函数，给 ai.ts / friends-board.ts 用）
+// ——————————————————————————————————————————————————————————
+
+/** 北京时间（固定 +8，与 util.dayKey 同一口径）的分钟数。 */
+export function bjMinutes(now = Date.now()): number {
+  const d = new Date(now + 8 * 3_600_000);
+  return d.getUTCHours() * 60 + d.getUTCMinutes();
+}
+
+function toMin(hhmm: string): number {
+  const [h, m] = hhmm.split(':').map((x) => Number.parseInt(x, 10));
+  return h * 60 + m;
+}
+
+/**
+ * 是否处在安静时段。支持跨午夜（22:00 → 08:00）。
+ *
+ * 起止任一为空 = 不设；两个相同 = 不设（否则就成了「全天安静」，填错一次
+ * 会让小爱再也不说话，太容易踩）。
+ */
+export function inQuietHours(s: Settings, now = Date.now()): boolean {
+  const { quietFrom: a, quietTo: b } = s.autoReply;
+  if (!a || !b || a === b) return false;
+  const t = bjMinutes(now);
+  const from = toMin(a);
+  const to = toMin(b);
+  return from < to ? t >= from && t < to : t >= from || t < to;
+}
+
+/** 路径是否命中一条规则。以 `/` 结尾的按前缀比，其余按整段比，避免 `/friends` 误吃 `/friendship`。 */
+function hitsPath(path: string, rule: string): boolean {
+  const p = path || '/';
+  const r = rule.startsWith('/') ? rule : `/${rule}`;
+  return r.endsWith('/') ? p.startsWith(r) : p === r || p.startsWith(`${r}/`);
+}
+
+/** 自动回复的路径闸：blockPaths 优先，再看 allowPaths（空 = 不限）。 */
+export function autoReplyPathAllowed(s: Settings, path: string): boolean {
+  if (s.autoReply.blockPaths.some((r) => hitsPath(path, r))) return false;
+  if (s.autoReply.allowPaths.length === 0) return true;
+  return s.autoReply.allowPaths.some((r) => hitsPath(path, r));
+}
+
+/** 正文是否命中跳过关键词（不区分大小写）。返回命中的那一个，方便写进流水。 */
+export function skipKeywordOf(s: Settings, body: string): string | null {
+  const text = body.toLowerCase();
+  for (const k of s.autoReply.skipKeywords) {
+    if (text.includes(k.toLowerCase())) return k;
+  }
+  return null;
+}
+
+// ——————————————————————————————————————————————————————————
+// HTTP —— GET /admin/settings、PATCH /admin/settings
+//
+// 就这两个动作。没有「新建」「删除」：键集合由代码里的 DEFAULTS 决定，
+// 前端只能改值，不能凭空造一个谁都不认识的键出来。
+// ——————————————————————————————————————————————————————————
+export async function getSettings(_request: Request, env: Env, _admin: Admin): Promise<Response> {
+  const s = await loadSettings(env);
+  return json({
+    ok: true,
+    settings: s,
+    // 前端要画选项，得知道合法值有哪些；这里一并给出，避免两边各写一份常量
+    meta: {
+      verdicts: VERDICTS,
+      verdictLabel: VERDICT_LABEL,
+      defaultNotice: DEFAULT_JUDGE_NOTICE,
+      // 环境变量里是否已经配好两条 AI 通道 —— 设置页据此提示「这条改不了 key」
+      envHasWriter: Boolean(String(env.AI_API_KEY ?? '').trim()),
+      envHasJudge: Boolean(String(env.AI_JUDGE_KEY ?? '').trim() || String(env.AI_API_KEY ?? '').trim()),
+      envModel: String(env.AI_MODEL ?? '').trim(),
+      envBase: String(env.AI_BASE_URL ?? '').trim(),
+    },
+  });
+}
+
+export async function patchSettings(request: Request, env: Env, admin: Admin): Promise<Response> {
+  let body: Record<string, unknown>;
+  try {
+    const v = (await request.json()) as unknown;
+    if (!v || typeof v !== 'object') throw new Error('not_object');
+    body = v as Record<string, unknown>;
+  } catch {
+    return json({ ok: false, reason: 'bad_request' }, 400);
+  }
+
+  // 前端可以把整份设置平铺回来（form 表单最自然的形状），也可以只送改动的几个键。
+  // 两种都吃：saveSettings 本来就是合并式的。
+  const patch: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(body)) {
+    if (k === 'settings' && v && typeof v === 'object') {
+      const flat = flatten(v as unknown as Settings);
+      Object.assign(patch, flat);
+      continue;
+    }
+    patch[k] = v;
+  }
+  if (Object.keys(patch).length === 0) return json({ ok: false, reason: 'empty' }, 400);
+
+  try {
+    const s = await saveSettings(env, admin, patch);
+    console.log(`[admin] ${admin.username} 更新设置：${Object.keys(patch).slice(0, 8).join(', ')}`);
+    return json({ ok: true, settings: s });
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    // 迁移没跑是最常见的原因，直接把话说明白，别让站长猜
+    if (/no such table/i.test(msg)) {
+      return json(
+        { ok: false, reason: 'no_table', message: 'admin_settings 表不存在，先跑 0018 迁移（本地：npx wrangler d1 migrations apply qingwu --local）' },
+        503,
+      );
+    }
+    return json({ ok: false, reason: 'db_error', message: msg.slice(0, 200) }, 500);
+  }
+}

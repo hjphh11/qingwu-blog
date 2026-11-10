@@ -213,6 +213,10 @@ export async function getStatus(_request: Request, env: Env, _admin: Admin): Pro
       ? 'resend'
       : 'none';
 
+  // 设置表读一次，值直接铺进返回体 —— 前端设置表单的初值就来自这里，
+  // 不必再单开一个请求
+  const arCfg = await autoReplyConfig(env);
+
   return json({
     ok: true,
     now,
@@ -220,7 +224,7 @@ export async function getStatus(_request: Request, env: Env, _admin: Admin): Pro
     warnings,
     ai,
     autoReply: {
-      ...autoReplyConfig(env),
+      ...arCfg,
       today: {
         replied: rt.replied ?? 0,
         skipped: rt.skipped ?? 0,

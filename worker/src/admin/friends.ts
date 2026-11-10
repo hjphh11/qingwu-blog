@@ -17,6 +17,7 @@ import type { Env } from '../types';
 import { json } from '../util';
 import { sendMail } from '../mail';
 import type { Admin } from './auth';
+import { listPublishLog, logPublish } from './publish';
 
 const LINKS_PATH = 'src/data/links.json';
 const GH_TIMEOUT_MS = 12_000;
@@ -48,6 +49,8 @@ interface FriendItem {
   intro: string;
   url: string;
   visible?: boolean;
+  /** 推荐位：前台描金 + 小徽章。此前只能手改 json，现在后台能点了 */
+  recommend?: boolean;
   addedAt?: string;
   shot?: string;
 }
@@ -491,6 +494,9 @@ export async function getFriendsOverview(request: Request, env: Env, _admin: Adm
     }
   }
 
+  // 最近发布：和友链页一起返回，省一次往返。表没迁移时是空数组
+  const publishLog = skipLinks ? [] : await listPublishLog(env, 12);
+
   return json({
     ok: true,
     applications: items,
@@ -501,6 +507,7 @@ export async function getFriendsOverview(request: Request, env: Env, _admin: Adm
     writable: Boolean(env.GITHUB_TOKEN && sha),
     checks: checkMap,
     statuses: statusMap,
+    publishLog,
     fetchedAt: Date.now(),
   });
 }
@@ -668,7 +675,7 @@ export async function sendApplicationMail(
 // links.json 只有十几条，整份提交最简单、无歧义；diff 还得处理数组重排的歧义。
 // ——————————————————————————————————————————————————————————
 export async function commitLinks(request: Request, env: Env, admin: Admin): Promise<Response> {
-  let body: { friends?: unknown; sha?: unknown; message?: unknown; baseSha?: unknown };
+  let body: { friends?: unknown; sha?: unknown; message?: unknown; baseSha?: unknown; changes?: unknown };
   try {
     body = (await request.json()) as typeof body;
   } catch {
@@ -687,6 +694,9 @@ export async function commitLinks(request: Request, env: Env, admin: Admin): Pro
       intro: String(f.intro ?? '').trim(),
       url: String(f.url ?? '').trim(),
       visible: f.visible !== false,
+      // 只写 true，不写 false：没推荐过的条目保持不带这个键，
+      // 免得把 15 条全刷成 recommend:false（json 里一片噪音）
+      recommend: f.recommend === true ? true : undefined,
       addedAt: f.addedAt ? String(f.addedAt) : undefined,
       shot: f.shot ? String(f.shot) : undefined,
     };
@@ -697,8 +707,20 @@ export async function commitLinks(request: Request, env: Env, admin: Admin): Pro
 
   const sha = String(body.sha ?? '').trim();
 
+  // 提交说明先定下来：manual / 失败这两条分支也要记进发布历史，
+  // 否则「我明明改过」和「记录里没有」会打架
+  const message =
+    String(body.message ?? '').trim().slice(0, 120) || `chore(links): 后台更新友链（${admin.username}）`;
+
   // 没有 token 或没有 sha → 没法安全提交。把成品 JSON 回给前端让它显示「复制粘贴」。
   if (!env.GITHUB_TOKEN || !sha) {
+    await logPublish(env, admin, {
+      status: 'manual',
+      changes: body.changes,
+      message,
+      baseSha: sha,
+      detail: env.GITHUB_TOKEN ? '读文件时没拿到 sha' : '没配 GITHUB_TOKEN，降级为手动粘贴',
+    });
     return json(
       {
         ok: false,
@@ -713,12 +735,16 @@ export async function commitLinks(request: Request, env: Env, admin: Admin): Pro
     );
   }
 
-  const message =
-    String(body.message ?? '').trim().slice(0, 120) || `chore(links): 后台更新友链（${admin.username}）`;
-
   try {
     const r = await writeLinks(env, friends, sha, message);
     if (r.conflict) {
+      await logPublish(env, admin, {
+        status: 'failed',
+        changes: body.changes,
+        message,
+        baseSha: sha,
+        detail: 'sha 冲突：links.json 在编辑期间被改过',
+      });
       return json(
         {
           ok: false,
@@ -728,9 +754,26 @@ export async function commitLinks(request: Request, env: Env, admin: Admin): Pro
         409,
       );
     }
-    if (!r.ok) return json({ ok: false, reason: 'github_error', message: r.error }, 502);
+    if (!r.ok) {
+      await logPublish(env, admin, {
+        status: 'failed',
+        changes: body.changes,
+        message,
+        baseSha: sha,
+        detail: `GitHub 返回错误：${r.error ?? '未知'}`,
+      });
+      return json({ ok: false, reason: 'github_error', message: r.error }, 502);
+    }
 
     console.log(`[admin] ${admin.username} 提交 links.json：${friends.length} 条，commit ${r.commit}`);
+    await logPublish(env, admin, {
+      status: 'ok',
+      changes: body.changes,
+      message,
+      commit: r.commit,
+      baseSha: sha,
+      detail: `共 ${friends.length} 条友链`,
+    });
     return json({
       ok: true,
       commit: r.commit,
@@ -738,6 +781,13 @@ export async function commitLinks(request: Request, env: Env, admin: Admin): Pro
     });
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
+    await logPublish(env, admin, {
+      status: 'failed',
+      changes: body.changes,
+      message,
+      baseSha: sha,
+      detail: `网络错误：${msg.slice(0, 200)}`,
+    });
     return json({ ok: false, reason: 'network', message: msg }, 502);
   }
 }
