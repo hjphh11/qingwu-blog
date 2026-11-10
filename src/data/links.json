@@ -124,6 +124,14 @@
       "url": "https://detached.online/",
       "visible": true,
       "addedAt": "2026-11-09"
+    },
+    {
+      "name": "昭鸾笺",
+      "avatar": "https://blog.mibase.top/img/miro.jpg",
+      "intro": "昭有明朗向远之意，鸾乘风而上，笺以载笔墨见闻",
+      "url": "https://blog.mibase.top",
+      "visible": true,
+      "addedAt": "2026-11-10"
     }
   ]
 }
