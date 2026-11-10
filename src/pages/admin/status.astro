@@ -1,0 +1,14 @@
+---
+/*
+ * /admin/status —— 运行与设置（状态总览）
+ *
+ * 和其他后台页一样是静态预渲染：进来先打 /api/admin/session，401 跳回 /admin。
+ * 页面本身不含数据，所有读数走 GET /api/admin/status。
+ */
+import AdminLayout from '../../layouts/AdminLayout.astro';
+import AdminStatus from '../../components/admin/AdminStatus.tsx';
+---
+
+<AdminLayout title="运行与设置">
+  <AdminStatus client:load />
+</AdminLayout>

@@ -12,6 +12,7 @@ import { useEffect, useState } from 'react';
 const NAV = [
   { key: 'comments', label: '评论收件箱', href: '/admin/console' },
   { key: 'friends', label: '友链审核', href: '/admin/friends' },
+  { key: 'status', label: '运行与设置', href: '/admin/status' },
 ] as const;
 
 type Active = (typeof NAV)[number]['key'];
@@ -53,9 +54,6 @@ export default function AdminTop({ active }: { active: Active }) {
             {n.label}
           </a>
         ))}
-        <button className="q-admin-tab" type="button" disabled title="待上线">
-          运行与设置
-        </button>
       </nav>
 
       <button

@@ -10,6 +10,7 @@ import { json } from '../util';
 import { getAiStatus, postAiDraft, postAiJudge, postFriendReply } from './ai';
 import { getSessionInfo, postLogin, postLogout, postVerify, requireAdmin } from './auth';
 import { getThread, listComments, replyToComment, setCommentStatus } from './comments';
+import { getStatus, postStatusPing } from './status';
 import {
   checkBacklinks,
   commitLinks,
@@ -55,8 +56,7 @@ export async function handleAdmin(request: Request, env: Env, path: string): Pro
   // —— AI（writer 起草/润色，judge 单条体检）——
   if (path === '/admin/ai/status' && m === 'GET') {
     return requireAdmin(request, env, (admin) => getAiStatus(request, env, admin));
-  }
-  if (path === '/admin/ai/draft' && m === 'POST') {
+  }  if (path === '/admin/ai/draft' && m === 'POST') {
     return requireAdmin(request, env, (admin) => postAiDraft(request, env, admin));
   }
   if (path === '/admin/ai/judge' && m === 'POST') {
@@ -65,6 +65,14 @@ export async function handleAdmin(request: Request, env: Env, path: string): Pro
   // 友链申请：探测对方站点 + 起草回信（两步一起返回）
   if (path === '/admin/ai/friend-reply' && m === 'POST') {
     return requireAdmin(request, env, (admin) => postFriendReply(request, env, admin));
+  }
+
+  // —— 运行与设置（状态总览 + 通道探活）——
+  if (path === '/admin/status' && m === 'GET') {
+    return requireAdmin(request, env, (admin) => getStatus(request, env, admin));
+  }
+  if (path === '/admin/status/ping' && m === 'POST') {
+    return requireAdmin(request, env, (admin) => postStatusPing(request, env, admin));
   }
 
   // —— 友链（P2 审核 / P3 回链）——

@@ -1274,3 +1274,416 @@
     grid-column: 2 / -1;
   }
 }
+
+/* ============================================================================
+ * 运行与设置（/admin/status）
+ *
+ * 只读状态总览。通道卡（AI）、闸门与计数（自动回复）、指标格（内容/友链/设施）。
+ * 配色全部沿用上面那套 --qa-*，不新增语义色 —— 这里信息密度比列表页高，
+ * 再加一套颜色只会让「红」失去意义。
+ * ========================================================================== */
+
+.q-admin-stat-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+/* 顶栏两个按钮不许折行 —— 中文按钮一旦折行就成了竖排两个字 */
+.q-admin-stat-actions .q-admin-btn {
+  white-space: nowrap;
+}
+
+/* —— 读不到的表：黄色提示条，比整页 500 有用 —— */
+.q-admin-warnbox {
+  margin-bottom: 12px;
+  padding: 12px 16px;
+  border: 1px solid var(--qa-line-strong);
+  border-radius: 12px;
+  background: var(--qa-warn-bg);
+  color: var(--qa-warn-fg);
+  font-size: 12.5px;
+  line-height: 1.7;
+}
+.q-admin-warnbox b {
+  display: block;
+  margin-bottom: 4px;
+}
+.q-admin-warnbox ul {
+  margin: 0;
+  padding-left: 18px;
+}
+.q-admin-warnbox em {
+  display: block;
+  margin-top: 6px;
+  font-style: normal;
+  opacity: 0.8;
+}
+
+/* —— 面板内边距：表格类用 --flush 贴边 —— */
+.q-admin-stat {
+  padding: 18px 18px 16px;
+  margin-bottom: 12px;
+}
+.q-admin-stat--flush {
+  padding: 18px 0 0;
+}
+.q-admin-stat--flush > .q-admin-stat__head,
+.q-admin-stat--flush > .q-admin-stat__foot {
+  padding: 0 18px;
+}
+.q-admin-stat--flush > .q-admin-stat__head {
+  padding-bottom: 12px;
+}
+.q-admin-stat--flush > .q-admin-stat__foot {
+  padding-bottom: 14px;
+}
+.q-admin-stat--flush .q-admin-table th:first-child,
+.q-admin-stat--flush .q-admin-table td:first-child {
+  padding-left: 18px;
+}
+.q-admin-stat--flush .q-admin-table th:last-child,
+.q-admin-stat--flush .q-admin-table td:last-child {
+  padding-right: 18px;
+}
+
+.q-admin-stat__head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+  margin-bottom: 14px;
+}
+.q-admin-stat__head h2 {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: 17px;
+  font-weight: 400;
+  letter-spacing: 0.01em;
+  color: var(--color-ink);
+}
+.q-admin-stat__head p {
+  margin: 4px 0 0;
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--color-subtle);
+}
+.q-admin-stat__foot {
+  margin: 12px 0 0;
+  font-size: 11.5px;
+  line-height: 1.7;
+  color: var(--color-subtle);
+}
+.q-admin-stat__na {
+  font-size: 11.5px;
+  color: var(--color-subtle);
+}
+.q-admin-stat__na--block {
+  display: block;
+  margin: 14px 0 0;
+}
+.q-admin-stat__mini {
+  font-size: 11.5px;
+  color: var(--color-muted);
+  white-space: nowrap;
+}
+
+/* —— 两列大卡 —— */
+.q-admin-stat-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
+  gap: 12px;
+}
+
+/* —— 通道卡 —— */
+.q-admin-channels {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 10px;
+}
+.q-admin-channel {
+  padding: 12px 14px;
+  border: 1px solid var(--qa-line);
+  border-radius: 10px;
+  background: var(--qa-field);
+}
+.q-admin-channel.is-off {
+  border-style: dashed;
+  background: transparent;
+}
+.q-admin-channel__title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.q-admin-channel__title b {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--color-ink);
+}
+.q-admin-channel__model {
+  margin: 8px 0 0;
+  font-size: 12px;
+  color: var(--color-muted);
+  font-variant-numeric: tabular-nums;
+}
+.q-admin-channel__model em {
+  margin-left: 6px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: rgba(74, 55, 40, 0.07);
+  font-style: normal;
+  font-size: 10.5px;
+  color: var(--color-muted);
+}
+.q-admin-channel__hint {
+  margin: 8px 0 0;
+  font-size: 11.5px;
+  line-height: 1.65;
+  color: var(--color-subtle);
+}
+
+/* —— 用量条 —— */
+.q-admin-meter {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+}
+.q-admin-meter__bar {
+  flex: 1;
+  height: 5px;
+  border-radius: 999px;
+  background: rgba(74, 55, 40, 0.09);
+  overflow: hidden;
+}
+.q-admin-meter__bar > i {
+  display: block;
+  height: 100%;
+  border-radius: 999px;
+  background: var(--qa-ok-fg);
+  transition: width var(--dur-state) ease;
+}
+.q-admin-meter__bar.is-high > i {
+  background: var(--qa-warn-fg);
+}
+.q-admin-meter__bar.is-full > i {
+  background: var(--color-crimson);
+}
+.q-admin-meter__num {
+  font-size: 11px;
+  color: var(--color-muted);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* —— 探活结果 —— */
+.q-admin-ping {
+  margin: 8px 0 0;
+  padding: 7px 10px;
+  border-radius: 8px;
+  font-size: 11.5px;
+  line-height: 1.6;
+  word-break: break-word;
+}
+.q-admin-ping b {
+  margin-right: 6px;
+}
+.q-admin-ping.is-ok {
+  background: var(--qa-ok-bg);
+  color: var(--qa-ok-fg);
+}
+.q-admin-ping.is-bad {
+  background: var(--qa-danger-bg);
+  color: var(--color-crimson);
+}
+
+/* —— 闸门 / 定义清单 —— */
+.q-admin-gates {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 10px 16px;
+  margin: 0;
+}
+.q-admin-gates > div {
+  padding-top: 8px;
+  border-top: 1px solid var(--qa-line);
+}
+.q-admin-gates dt {
+  font-size: 11px;
+  color: var(--color-subtle);
+}
+.q-admin-gates dd {
+  margin: 3px 0 0;
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--color-ink);
+}
+
+/* —— 指标格 —— */
+.q-admin-kpis {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(96px, 1fr));
+  gap: 10px;
+  margin-top: 14px;
+}
+.q-admin-kpi {
+  padding: 10px 12px;
+  border: 1px solid var(--qa-line);
+  border-radius: 10px;
+  background: var(--qa-card);
+}
+.q-admin-kpi b {
+  display: block;
+  font-family: var(--font-display);
+  font-size: 22px;
+  font-weight: 400;
+  line-height: 1.15;
+  color: var(--color-ink);
+  font-variant-numeric: tabular-nums;
+}
+.q-admin-kpi span {
+  display: block;
+  margin-top: 2px;
+  font-size: 11.5px;
+  color: var(--color-muted);
+}
+.q-admin-kpi em {
+  display: block;
+  margin-top: 3px;
+  font-style: normal;
+  font-size: 10.5px;
+  line-height: 1.5;
+  color: var(--color-subtle);
+}
+.q-admin-kpi--ok b {
+  color: var(--qa-ok-fg);
+}
+.q-admin-kpi--warn b {
+  color: var(--qa-warn-fg);
+}
+.q-admin-kpi--danger b {
+  color: var(--color-crimson);
+}
+
+/* —— 7 天柱状 —— */
+.q-admin-days {
+  display: flex;
+  align-items: flex-end;
+  gap: 10px;
+  height: 96px;
+  margin-top: 14px;
+  padding: 0 2px;
+}
+.q-admin-day {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-end;
+  height: 100%;
+  gap: 4px;
+}
+.q-admin-day__bar {
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  width: 100%;
+  max-width: 26px;
+  height: 100%;
+  border-radius: 5px 5px 0 0;
+  overflow: hidden;
+  background: rgba(74, 55, 40, 0.05);
+}
+.q-admin-day__bar > i {
+  display: block;
+  width: 100%;
+  flex-shrink: 0;
+}
+.q-admin-day__bar > i.is-ok {
+  background: var(--qa-ok-fg);
+  opacity: 0.85;
+}
+.q-admin-day__bar > i.is-warn {
+  background: var(--qa-warn-fg);
+  opacity: 0.5;
+}
+.q-admin-day__bar > i.is-bad {
+  background: var(--color-crimson);
+  opacity: 0.45;
+}
+.q-admin-day b {
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--color-muted);
+  font-variant-numeric: tabular-nums;
+}
+.q-admin-day span {
+  font-size: 10px;
+  color: var(--color-subtle);
+}
+
+/* —— 开关清单 —— */
+.q-admin-flags {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+  gap: 8px 16px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.q-admin-flags li {
+  display: grid;
+  grid-template-columns: 8px auto 1fr;
+  align-items: baseline;
+  gap: 8px;
+  padding: 7px 0;
+  border-top: 1px solid var(--qa-line);
+  font-size: 11.5px;
+}
+.q-admin-flags i {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--qa-ok-fg);
+  align-self: center;
+}
+.q-admin-flags li.is-off i {
+  background: var(--qa-warn-fg);
+}
+.q-admin-flags b {
+  font-weight: 600;
+  color: var(--color-ink);
+  white-space: nowrap;
+}
+.q-admin-flags span {
+  color: var(--color-muted);
+}
+
+@media (max-width: 760px) {
+  .q-admin-stat {
+    padding: 14px 14px 12px;
+  }
+  .q-admin-stat--flush > .q-admin-stat__head,
+  .q-admin-stat--flush > .q-admin-stat__foot {
+    padding-left: 14px;
+    padding-right: 14px;
+  }
+  .q-admin-stat-grid {
+    grid-template-columns: 1fr;
+  }
+  .q-admin-stat__head {
+    flex-wrap: wrap;
+  }
+  /* 窄屏上四格并排只剩 60px 一格，字会挤成竖排 —— 直接两列 */
+  .q-admin-kpis {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .q-admin-stat-actions {
+    width: 100%;
+  }
+  .q-admin-stat-actions .q-admin-btn {
+    flex: 1;
+  }
+}

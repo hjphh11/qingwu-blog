@@ -91,7 +91,12 @@ export interface Env {
 
   /** judge 通道密钥。**不配则回落 AI_API_KEY**（此时 judge 走 OpenAI 兼容的 JSON 模式） */
   AI_JUDGE_KEY?: string;
-  /** **仅 Jev 用**：决策模型地址，缺省 `https://jevmodel.io`。别填成聊天模型的地址 */
+  /**
+   * **仅 Jev 用**：决策模型地址，缺省 `https://api.typesafe.ai`。别填聊天模型的地址。
+   *
+   * ⚠️ `jevmodel.io` 是仿站：它的文档要求 `sk-` 前缀的 key，而 console.typesafe.ai
+   * 发的是 `apikey_…`，打过去永远 401 Invalid API key（看起来像 key 坏了）。
+   */
   AI_JUDGE_BASE_URL?: string;
   /** 模型名。缺省 `jev-latest`（Jev 分支）或 `AI_MODEL`（OpenAI 分支） */
   AI_JUDGE_MODEL?: string;
@@ -101,10 +106,10 @@ export interface Env {
    *
    * Jev 是 TypeSafe AI 的**决策模型**，不是聊天模型 —— 它不生成文字，只回答
    * 你定义好的 typed questions，返回 label + confidence。协议也完全不同：
-   * `POST /api/v1/decisions`，体是 `{ model, state, questions }`，回 `{ answers }`。
-   * 快（70~500ms）且**输出不计费**，所以特别适合「每条评论都过一遍」。
+   * `POST https://api.typesafe.ai/v1/systemone`，体是 `{ model, state, questions }`，
+   * 回 `{ answers }`。快（200~350ms 实测）且**输出不计费**，所以特别适合「每条评论都过一遍」。
    *
-   * 配成 `jev` 时要求同时有 `AI_JUDGE_KEY`（jevmodel.io 的 key），
+   * 配成 `jev` 时要求同时有 `AI_JUDGE_KEY`（console.typesafe.ai 领的 `apikey_…`），
    * 缺 key 会直接回落 openai 那条路，不会把判断功能整挂。
    */
   AI_JUDGE_PROVIDER?: string;

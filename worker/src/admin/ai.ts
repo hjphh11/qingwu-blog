@@ -575,23 +575,151 @@ function fail(e: unknown): Response {
 // ——————————————————————————————————————————————————————————
 // GET /admin/ai/status —— 前端决定要不要显示按钮
 // ——————————————————————————————————————————————————————————
-export async function getAiStatus(_request: Request, env: Env, _admin: Admin): Promise<Response> {
-  const w = cfgOf(env, 'writer');
-  const j = judgeTargetOf(env);
+export interface AiChannelState {
+  on: boolean;
+  /** 实际生效的协议：writer 恒为 openai 兼容；judge 可能是 jev 或 openai */
+  provider: 'writer' | 'jev' | 'openai';
+  model: string;
+  used: number | null;
+  quota: number;
+  /** 通道没开时要补哪个变量 —— 前端直接显示，不用回来翻代码 */
+  missing?: string;
+}
+
+export interface AiSnapshot {
+  writer: AiChannelState;
+  judge: AiChannelState;
+}
+
+/**
+ * 两条通道的当前状态。**只读配置与计数，不打上游** ——
+ * 想验证 key 真的能用请走 `pingChannels()`。
+ */
+export async function aiSnapshot(env: Env): Promise<AiSnapshot> {
+  const quota = quotaOf(env);
   const [wUsed, jUsed] = await Promise.all([usedToday(env, 'writer'), usedToday(env, 'judge')]);
-  return json({
-    ok: true,
-    quota: quotaOf(env),
-    writer: w ? { on: true, model: w.model, used: wUsed } : { on: false },
-    judge: j
-      ? {
-          on: true,
-          model: j.kind === 'jev' ? j.model : j.cfg.model,
-          provider: j.kind,
-          used: jUsed,
-        }
-      : { on: false },
-  });
+
+  const w = cfgOf(env, 'writer');
+  const writer: AiChannelState = w
+    ? { on: true, provider: 'writer', model: w.model, used: wUsed, quota }
+    : { on: false, provider: 'writer', model: '', used: wUsed, quota, missing: 'AI_API_KEY' };
+
+  const j = judgeTargetOf(env);
+  let judge: AiChannelState;
+  if (!j) {
+    judge = {
+      on: false,
+      provider: 'openai',
+      model: '',
+      used: jUsed,
+      quota,
+      missing: 'AI_JUDGE_KEY 或 AI_API_KEY',
+    };
+  } else if (j.kind === 'jev') {
+    judge = { on: true, provider: 'jev', model: j.model, used: jUsed, quota };
+  } else {
+    judge = { on: true, provider: 'openai', model: j.cfg.model, used: jUsed, quota };
+  }
+
+  return { writer, judge };
+}
+
+/** 自动回复的三道闸当前取值（总开关 / 每日总量 / 单访客）。 */
+export function autoReplyConfig(env: Env): { on: boolean; daily: number; perGuest: number } {
+  return { on: autoReplyOn(env), daily: autoReplyDaily(env), perGuest: autoReplyPerGuest(env) };
+}
+
+export interface PingResult {
+  ok: boolean;
+  ms: number;
+  model?: string;
+  /** 失败原因 / 成功时的一句摘要 */
+  detail: string;
+  verdict?: string;
+  score?: number;
+  tokens?: number;
+}
+
+/**
+ * 真打一次两条通道，验证「key 能用」而不只是「key 存在」。
+ *
+ * 为什么单独做一个探活：2026-11-10 那次排查里，配置界面全绿、接口全绿，
+ * 但 judge 一直 401 —— 因为端点填的是仿站。只看配置永远看不出这种事。
+ *
+ * 成本：writer 约 30 token，judge 输出不计费。各受每日配额约束，用满就跳过。
+ */
+export async function pingChannels(env: Env): Promise<{ writer: PingResult; judge: PingResult }> {
+  const writer = await (async (): Promise<PingResult> => {
+    const cfg = cfgOf(env, 'writer');
+    if (!cfg) return { ok: false, ms: 0, detail: '没配 AI_API_KEY，这条通道没开' };
+    const gate = await quotaGate(env, 'writer');
+    if (gate) return { ok: false, ms: 0, detail: '今日额度已用满，先不占额' };
+
+    try {
+      const r = await chat(cfg, {
+        system: '你是接口探活器。只回两个字：在的。',
+        user: 'ping',
+        temperature: 0,
+        maxTokens: 16,
+      });
+      await recordUsage(env, 'writer', r.tokensIn, r.tokensOut);
+      return {
+        ok: true,
+        ms: r.ms,
+        model: r.model,
+        detail: r.text.trim().slice(0, 40) || '（回了空串）',
+        tokens: r.tokensIn + r.tokensOut,
+      };
+    } catch (e) {
+      return {
+        ok: false,
+        ms: 0,
+        detail: e instanceof Error ? e.message.slice(0, 180) : '未知错误',
+      };
+    }
+  })();
+
+  const judge = await (async (): Promise<PingResult> => {
+    const target = judgeTargetOf(env);
+    if (!target) return { ok: false, ms: 0, detail: '没配 judge 的 key，这条通道没开' };
+    const gate = await quotaGate(env, 'judge');
+    if (gate) return { ok: false, ms: 0, detail: '今日额度已用满，先不占额' };
+
+    // 一句明显正常的留言：judge 应该判 ok。judge 判不出 ok 说明提示词或模型出了问题
+    const probe: CommentCtx = {
+      id: 0,
+      author: '探活',
+      body: '你好，这篇写得很清楚，收藏了。',
+      path: '/',
+      replies: [],
+    };
+    try {
+      const v = await runJudge(env, probe);
+      await recordUsage(env, 'judge', v.tokensIn, v.tokensOut);
+      return {
+        ok: true,
+        ms: v.ms,
+        model: v.model,
+        verdict: v.verdict,
+        score: v.score,
+        detail: v.note || '判为正常留言',
+      };
+    } catch (e) {
+      return {
+        ok: false,
+        ms: 0,
+        detail: e instanceof Error ? e.message.slice(0, 180) : '未知错误',
+      };
+    }
+  })();
+
+  return { writer, judge };
+}
+
+export async function getAiStatus(_request: Request, env: Env, _admin: Admin): Promise<Response> {
+  const s = await aiSnapshot(env);
+  const cfg = autoReplyConfig(env);
+  return json({ ok: true, quota: s.writer.quota, ...s, autoReply: cfg });
 }
 
 // ——————————————————————————————————————————————————————————
