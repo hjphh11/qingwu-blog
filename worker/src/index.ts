@@ -38,6 +38,12 @@ function preflight(request: Request, env: Env): Response {
   return new Response(null, { status: 204, headers });
 }
 
+/** 归档只读判定：READONLY 为 "1"/"true" 时，写入一律 410 */
+function isReadOnly(env: Env): boolean {
+  const v = (env.READONLY || '').trim().toLowerCase();
+  return v === '1' || v === 'true';
+}
+
 export default {
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     const url = new URL(request.url);
@@ -45,6 +51,23 @@ export default {
     const path = url.pathname.replace(/\/+$/, '') || '/';
 
     if (request.method === 'OPTIONS') return preflight(request, env);
+
+    // —— 归档只读 ——
+    // Cloudflare 上那份 D1 自 2026-11-09 22:42 导出后已冻结（唯一主库是香港机本地 SQLite，
+    // 见 docs/决策-数据主从.md）。但 api.qingwu.ink 这个 Custom Domain 还活着：
+    // 旧缓存页面 / 外部脚本打过来，就会往死库里写，分叉了也看不出来。
+    // 这里把写口全关，只留 GET/HEAD —— 观测还能做，数据回不去。
+    // 开关只在 Cloudflare 那份配（secret READONLY），本地不配，行为不变。
+    if (isReadOnly(env) && request.method !== 'GET' && request.method !== 'HEAD') {
+      return json(
+        {
+          ok: false,
+          reason: 'archived',
+          message: '本站数据已迁至 https://www.qingwu.ink，此接口仅作只读归档',
+        },
+        410,
+      );
+    }
 
     if (path === '/health') {
       return json({ ok: true, service: 'qingwu-api', time: new Date().toISOString() });
@@ -132,6 +155,12 @@ export default {
    * 两条互不影响，各自 catch，别让死信队列把友链刷新拖下水。
    */
   async scheduled(_event: ScheduledController, env: Env, ctx: ExecutionContext): Promise<void> {
+    // 归档只读：cron 也停。CF 上那条 03:00 的定时任务原本每天写 link_feeds，
+    // 不停掉的话死库会自己长出「更新」假象。
+    if (isReadOnly(env)) {
+      console.log('[cron] 归档只读模式，跳过友链刷新与补发');
+      return;
+    }
     ctx.waitUntil(
       refreshAllFeeds(env)
         .then((s) => console.log(`[cron] 友链更新探测：${s.updated}/${s.total} 命中，${s.failed} 未抓到`))

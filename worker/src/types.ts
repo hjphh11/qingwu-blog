@@ -37,6 +37,20 @@ export interface Env {
   ALLOWED_ORIGINS?: string;
 
   /**
+   * **归档只读开关**：设为 `"1"` / `"true"` 时，除 GET/HEAD 外的请求一律 `410 Gone`，
+   * cron 也直接跳过。
+   *
+   * 为什么需要：2026-11-10 起唯一主库是香港机本地 SQLite，
+   * Cloudflare 上这份 D1 已冻结为归档（见 `docs/决策-数据主从.md`）。
+   * 但 `api.qingwu.ink` 这个 Custom Domain 仍然活着 —— 旧缓存页面、外部脚本、
+   * 甚至写错的一条 curl 都能往死库里写，分叉了还看不出来。
+   *
+   * **只在 Cloudflare 那份配**（`wrangler secret put READONLY`），
+   * 本地 `.dev.vars` 千万不要配，否则本地写入全变 410。
+   */
+  READONLY?: string;
+
+  /**
    * Resend 发信密钥（`wrangler secret put RESEND_KEY`）。
    * **没配就不发信**，接口照常成功 —— 邮件是锦上添花，不能卡住留言。
    */
