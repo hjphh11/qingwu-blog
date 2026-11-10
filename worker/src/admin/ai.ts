@@ -50,13 +50,18 @@ interface ChannelCfg {
 
 function cfgOf(env: Env, ch: Channel): ChannelCfg | null {
   const str = (v: string | undefined): string => String(v ?? '').trim();
-  const pick = (own: string | undefined, shared: string | undefined): string => str(own) || str(shared);
 
-  const key = pick(ch === 'judge' ? env.AI_JUDGE_KEY : env.AI_API_KEY, env.AI_API_KEY);
+  const key = str(ch === 'judge' ? env.AI_JUDGE_KEY : env.AI_API_KEY) || str(env.AI_API_KEY);
   if (!key) return null;
 
-  const base = pick(ch === 'judge' ? env.AI_JUDGE_BASE_URL : env.AI_BASE_URL, env.AI_BASE_URL) || DEFAULT_BASE;
-  const model = pick(ch === 'judge' ? env.AI_JUDGE_MODEL : env.AI_MODEL, env.AI_MODEL) || DEFAULT_MODEL;
+  // ⚠️ **base 只认 AI_BASE_URL**，不读 AI_JUDGE_BASE_URL ——
+  // 后者是 Jev 专用地址（jevmodel.io），只属于决策协议那条路。
+  // 如果这里也读它：配置了 provider=jev 但暂时没有 Jev key 时，judge 会回落到
+  // OpenAI 兼容分支，却仍然打到 jevmodel.io/chat/completions → 必然 404。
+  const base = str(env.AI_BASE_URL) || DEFAULT_BASE;
+  // model 可以单独指定（换更便宜的小模型），但地址不变，所以不会跑错家
+  const model =
+    (ch === 'judge' ? str(env.AI_JUDGE_MODEL) : str(env.AI_MODEL)) || str(env.AI_MODEL) || DEFAULT_MODEL;
 
   return { base: base.replace(/\/+$/, ''), key, model };
 }

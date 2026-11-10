@@ -84,7 +84,10 @@ MAIL_FROM = "清吾 <noreply@qingwu.ink>"
 #
 # 配了 jev 但没给 AI_JUDGE_KEY 时会自动回落 openai —— 不会把判断功能整挂。
 # writer 完全不受 judge 怎么配的影响，这也是「一个判断模型 + 一个评论模型」的落地方式。
-# AI_JUDGE_PROVIDER = "jev"
+#
+# 默认就指向 Jev：等 AI_JUDGE_KEY 一配好，judge 立刻改走决策模型，writer 完全不受影响。
+AI_JUDGE_PROVIDER = "jev"
+# 下面两项不用写 —— 代码里已有同样的默认值，写在这儿只是留个可改的位置。
 # AI_JUDGE_BASE_URL = "https://jevmodel.io"
 # AI_JUDGE_MODEL = "jev-latest"
 AI_BASE_URL = "https://api.deepseek.com"

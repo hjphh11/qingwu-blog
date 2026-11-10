@@ -89,11 +89,11 @@ export interface Env {
   /** writer 模型名，缺省 deepseek-chat */
   AI_MODEL?: string;
 
-  /** judge 通道密钥。**不配则回落 AI_API_KEY** */
+  /** judge 通道密钥。**不配则回落 AI_API_KEY**（此时 judge 走 OpenAI 兼容的 JSON 模式） */
   AI_JUDGE_KEY?: string;
-  /** judge 通道地址。不配则回落 AI_BASE_URL */
+  /** **仅 Jev 用**：决策模型地址，缺省 `https://jevmodel.io`。别填成聊天模型的地址 */
   AI_JUDGE_BASE_URL?: string;
-  /** judge 模型名。不配则回落 AI_MODEL —— 想把审核换成更便宜的小模型时只填这一项 */
+  /** 模型名。缺省 `jev-latest`（Jev 分支）或 `AI_MODEL`（OpenAI 分支） */
   AI_JUDGE_MODEL?: string;
 
   /**
