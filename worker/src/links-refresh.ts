@@ -3,7 +3,7 @@
 // 目的只有一个：让访客在友链页一眼看出「这家还在不在写」。
 //
 // 做法：挨个站试几个最常见的 feed 路径，从 XML 里挑出最大的日期当作「最近更新」。
-//   /atom.xml  /rss.xml  /feed  /sitemap.xml
+//   /atom.xml  /rss.xml  /index.xml  /feed  /sitemap.xml
 //
 // 为什么不用第三方接口（比如各种「友链检测」服务）：多一个依赖、多一份数据外泄，
 // 而且这些服务自己也是这么抓的。
@@ -15,7 +15,15 @@
 import type { Env } from './types';
 
 /** 依次尝试的路径，按命中概率排 —— 顺序别随便改，每多试一个就多一次出站请求 */
-const PROBE_PATHS = ['/atom.xml', '/rss.xml', '/feed', '/sitemap.xml'];
+const PROBE_PATHS = [
+  '/atom.xml',
+  '/rss.xml',
+  // Hugo（PaperMod 等主题）的默认订阅地址就是这个，且**不在 <head> 里声明**
+  // alternate 链接（或声明成别的名字），靠嗅探首页发现不了 —— 只能直接试。
+  '/index.xml',
+  '/feed',
+  '/sitemap.xml',
+];
 
 /**
  * 初始宿主名单。
@@ -47,6 +55,7 @@ const SEED_HOSTS = [
   'muyudada.dpdns.org',
   'iamyukino.cn',
   'detached.online',
+  'blog.mibase.top',
 ];
 
 /** 从一段 XML 里挑最大的合法日期。只认 YYYY-MM-DD 字面量。 */
