@@ -22,6 +22,7 @@
 """
 
 import glob
+import hashlib
 import os
 import sys
 
@@ -126,6 +127,19 @@ def subset_one(family_slug: str, chars: set[str]) -> int:
     sub.populate(text="".join(sorted(chars)))
     sub.subset(merged)
 
+    # —— 已知坏字形：**字体自身的问题**，不是子集化的锅 ——
+    # 2026-11-10 实测：ZCOOL XiaoWei 的 U+56DE「回」渲染出来是一个**实心方块**
+    # （不是缺字，是字形如此）。分片 118 与 chinese-simplified 完整包都一个样，
+    # 所以与「合并 92 个分片」无关。
+    # 处理办法：从 cmap 里摘掉这个码位 —— 浏览器找不到就会自动 fallback 到
+    # fonts.css 字体栈里的下一个（Noto Serif SC / Songti SC / serif），
+    # 视觉上仍是宋体系，几乎看不出来；但「回复」「回来」不会再变成黑方块。
+    # ⚠️ 遇到别的方块字就往这里加，并在注释里写清楚是哪个字。
+    if family_slug == "zcool-xiaowei":
+        for cp in (0x56DE,):
+            for table in merged["cmap"].tables:
+                table.cmap.pop(cp, None)
+
     os.makedirs(OUT_DIR, exist_ok=True)
     out_path = os.path.join(OUT_DIR, f"{family_slug}-subset.woff2")
     merged.flavor = "woff2"
@@ -170,13 +184,18 @@ def main() -> None:
         "",
     ]
     for css_name, slug, _size in results:
+        # ⚠️ URL 必须带内容指纹：nginx 对 /fonts/ 下的是 `immutable` + 1 年缓存，
+        # 文件名固定时老访客永远拿不到新字形（2026-11-10 修「回」字时踩过）。
+        fpath = os.path.join(OUT_DIR, f"{slug}-subset.woff2")
+        with open(fpath, "rb") as fh:
+            ver = hashlib.sha256(fh.read()).hexdigest()[:8]
         lines += [
             "@font-face {",
             f'  font-family: "{css_name}";',
             "  font-style: normal;",
             "  font-weight: 400;",
             "  font-display: swap;",
-            f'  src: url("/fonts/{slug}-subset.woff2") format("woff2");',
+            f'  src: url("/fonts/{slug}-subset.woff2?v={ver}") format("woff2");',
             "}",
             "",
         ]

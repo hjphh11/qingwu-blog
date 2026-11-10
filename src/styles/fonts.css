@@ -12,7 +12,7 @@
   font-style: normal;
   font-weight: 400;
   font-display: swap;
-  src: url("/fonts/zcool-xiaowei-subset.woff2") format("woff2");
+  src: url("/fonts/zcool-xiaowei-subset.woff2?v=7ae5b4bb") format("woff2");
 }
 
 @font-face {
@@ -20,5 +20,5 @@
   font-style: normal;
   font-weight: 400;
   font-display: swap;
-  src: url("/fonts/ma-shan-zheng-subset.woff2") format("woff2");
+  src: url("/fonts/ma-shan-zheng-subset.woff2?v=749dcaaa") format("woff2");
 }
