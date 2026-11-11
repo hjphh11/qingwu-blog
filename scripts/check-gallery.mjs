@@ -161,7 +161,16 @@ verdict(
   '大图来自 R2（不是瓦片）',
   opened.src,
 );
-verdict(opened.nat > 0, '大图真的解码出来了', `naturalWidth=${opened.nat}`);
+/* 大图是原图（几百 KB），国内到 CF 慢的时候要好几秒才解码得出来 ——
+   这里必须**轮询**，固定 sleep 600ms 会在网络差的时候假红（踩过一次）。 */
+let nat = opened.nat;
+for (let i = 0; i < 24 && !nat; i++) {
+  await sleep(500);
+  nat = await page.evaluate(
+    () => document.querySelector('.q-wall-view__img')?.naturalWidth ?? 0,
+  );
+}
+verdict(nat > 0, '大图真的解码出来了', `naturalWidth=${nat}`);
 
 /* ④ 灯箱必须盖住导航（.q-wall 的 z-0 会把子元素关在层叠上下文里，踩过一次） */
 const coverNav = await page.evaluate(() => {
