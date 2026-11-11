@@ -43,7 +43,9 @@
 .qhidden .q-splash__glow,
 .qhidden .q-lost__img,
 .qhidden .q-lost__q,
-.qhidden .q-proj-sweep {
+.qhidden .q-proj-sweep,
+.qhidden .q-wall__tile::before,
+.qhidden .q-wall__spinner {
   animation-play-state: paused !important;
 }
 

@@ -156,7 +156,11 @@ const opened = await page.evaluate(() => {
   };
 });
 verdict(opened.open && opened.vis === 'visible', '点图打开看大图', `${opened.vis} ${opened.count}`);
-verdict(/\/images\/gallery\/[a-f0-9]{10}\.webp$/.test(opened.src), '加载的是大图（不是瓦片）', opened.src);
+verdict(
+  /^https:\/\/img\.qingwu\.ink\/gallery\/[a-f0-9]{10}\.webp$/.test(opened.src),
+  '大图来自 R2（不是瓦片）',
+  opened.src,
+);
 verdict(opened.nat > 0, '大图真的解码出来了', `naturalWidth=${opened.nat}`);
 
 /* ④ 灯箱必须盖住导航（.q-wall 的 z-0 会把子元素关在层叠上下文里，踩过一次） */
@@ -247,6 +251,43 @@ verdict(
 );
 
 verdict(errors.length === 0, '无 JS 运行时错误', errors.join(' | ') || '（无）');
+
+/* ── ⑦ 取图与降级（图在 R2，索引同源分片）─────────────────
+   ① 索引 404：不能白屏，要退回构建期那 60 张（sample）
+   ② R2 整片连不上：要出「图源没连上 · 重试」，而不是一面空墙 */
+{
+  const p2 = await browser.newPage();
+  await p2.setViewport({ width: 1200, height: 800 });
+  await p2.setRequestInterception(true);
+  p2.on('request', (r) => (r.url().includes('/gallery/data/') ? r.abort() : r.continue()));
+  await p2.goto(`${BASE}/gallery/`, { waitUntil: 'domcontentloaded', timeout: 60000 });
+  await sleep(3000);
+  const fallback = await p2.evaluate(() => ({
+    tiles: document.querySelectorAll('.q-wall__tile').length,
+    loading: !!document.querySelector('.q-wall__loading'),
+  }));
+  verdict(fallback.tiles > 0, '索引取不到时用构建期样本兜底（不白屏）', `${fallback.tiles} 个瓦片`);
+  await p2.close();
+
+  const p3 = await browser.newPage();
+  await p3.setViewport({ width: 1200, height: 800 });
+  await p3.setRequestInterception(true);
+  p3.on('request', (r) => (r.url().includes('img.qingwu.ink') ? r.abort() : r.continue()));
+  await p3.goto(`${BASE}/gallery/`, { waitUntil: 'domcontentloaded', timeout: 60000 });
+  await sleep(900);
+  const skel = await p3.evaluate(() => ({
+    failed: document.querySelectorAll('.q-wall__tile.is-failed').length,
+    ready: document.querySelectorAll('.q-wall__tile.is-ready').length,
+  }));
+  verdict(skel.ready === 0, '图到之前是骨架态（没有半张图）', `ready=${skel.ready}`);
+  await sleep(3200);
+  const broken = await p3.evaluate(() => ({
+    retry: !!document.querySelector('.q-wall__retry'),
+    hintGone: !!document.querySelector('.q-wall__hint.is-gone'),
+  }));
+  verdict(broken.retry && broken.hintGone, '图源整体连不上时给「重试」而不是空墙');
+  await p3.close();
+}
 
 console.log(`\n合计失败 ${failed} 项`);
 await browser.close();

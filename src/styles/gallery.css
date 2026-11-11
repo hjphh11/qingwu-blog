@@ -64,14 +64,58 @@ html.q-wall-page {
   transition: box-shadow var(--dur-state) var(--ease-soft);
 }
 
+/* 还没到的图：一块暖色底 + 一道扫光（别用灰块，跟整站的奶油底色对不上）。
+   图一到就撤掉（.is-ready），加载失败的换成一块更暗的暖色空位（.is-failed），
+   不让墙上出现黑洞。 */
+.q-wall__tile::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    100deg,
+    transparent 25%,
+    rgba(255, 255, 255, 0.55) 50%,
+    transparent 75%
+  );
+  background-size: 240% 100%;
+  animation: q-wall-shimmer 1.5s linear infinite;
+  pointer-events: none;
+}
+
+.q-wall__tile.is-ready::before,
+.q-wall__tile.is-failed::before {
+  content: none;
+}
+
+.q-wall__tile.is-failed {
+  background: color-mix(in oklab, var(--color-ink) 10%, var(--color-cream));
+}
+
+@keyframes q-wall-shimmer {
+  from {
+    background-position: 160% 0;
+  }
+  to {
+    background-position: -60% 0;
+  }
+}
+
 .q-wall__tile img {
   display: block;
   width: 100%;
   height: 100%;
   object-fit: cover;
-  transition: transform var(--dur-state) var(--ease-soft);
+  /* 图到了再淡进来，别硬切；transform 留给悬停放大 */
+  opacity: 0;
+  transition:
+    opacity var(--dur-state) var(--ease-soft),
+    transform var(--dur-state) var(--ease-soft);
   /* 图片自己不许被拖（否则会拖出一张半透明的「幽灵图」） */
   -webkit-user-drag: none;
+}
+
+.q-wall__tile.is-ready img {
+  opacity: 1;
 }
 
 /* 悬停反馈：抬起来一点、放大一点点。
@@ -137,6 +181,61 @@ html.q-wall-page {
   color: inherit;
   text-decoration: underline;
   text-underline-offset: 2px;
+}
+
+/* ── 取图状态：转圈提示 / 重试条 ─────────────────────────── */
+.q-wall__loading {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  z-index: 30;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.6rem;
+  margin: 0;
+  padding: 0.7rem 1.15rem;
+  border-radius: var(--radius-pill);
+  border: 1px solid rgba(255, 255, 255, 0.5);
+  background: color-mix(in oklab, var(--color-ink) 52%, transparent);
+  color: #fff;
+  font-size: 0.8125rem;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+  backdrop-filter: blur(10px) saturate(140%);
+  transform: translate(-50%, -50%);
+}
+
+.q-wall__spinner {
+  flex: none;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  border: 2px solid rgba(255, 255, 255, 0.32);
+  border-top-color: #fff;
+  animation: q-wall-spin 0.9s linear infinite;
+}
+
+@keyframes q-wall-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.q-wall__retry {
+  padding: 0.3rem 0.75rem;
+  border-radius: var(--radius-pill);
+  border: 1px solid rgba(255, 255, 255, 0.5);
+  background: rgba(255, 255, 255, 0.16);
+  color: #fff;
+  font-size: 0.75rem;
+  cursor: pointer;
+  transition: background var(--dur-micro) var(--ease-soft);
+}
+
+@media (hover: hover) {
+  .q-wall__retry:hover {
+    background: rgba(255, 255, 255, 0.3);
+  }
 }
 
 /* ── 看大图 ───────────────────────────────────────────────── */
@@ -287,5 +386,11 @@ html.q-wall-page {
 
   .q-wall-view__img {
     animation: none;
+  }
+
+  /* 扫光与转圈都停：骨架退化成一块静态暖色，转圈换成静止的圆环 */
+  .q-wall__tile::before,
+  .q-wall__spinner {
+    animation: none !important;
   }
 }

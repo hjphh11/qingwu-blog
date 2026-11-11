@@ -1,36 +1,49 @@
-// 画市（/gallery）的图片清单。
-// **数据本体在 `gallery.json`**，由 `scripts/fetch-gallery.py` 生成 —— 别手改，
-// 那个脚本同时负责下载与转码（瓦片 `<id>-t.webp`、看大图 `<id>.webp`）。
+// 画市的图片索引。
 //
-// 为什么不构建期扫目录：扫目录意味着「删了图但清单没更新」会在线上变成 404，
-// 而且瓦片和原图两份文件靠命名约定配对，扫出来还得猜。清单是唯一事实来源。
+// 数据分两处：
+//   · 图片本体在 Cloudflare R2，公共域 https://img.qingwu.ink/gallery/<id>.webp
+//     （瓦片是 <id>-t.webp）。一万多张，不进仓库。
+//   · 索引是**站点同源**的：public/gallery/data/<n>.json 每片 500 条，
+//     由 scripts/build-gallery-index.py 生成；墙每次随机取一片再挑 48 张。
+//     ⚠️ 索引不能放 R2：公共域不回 Access-Control-Allow-Origin，fetch 会被浏览器拦。
+//
+// 本文件里的 `sample` 是构建期定下来的一小批（60 条）：SSR 那份无障碍/无 JS 清单
+// 用它，前端取不到分片时也拿它兜底 —— 于是「索引挂了」只会少点花样，不会白屏。
 import { z } from 'astro/zod';
 import { parseJson, urlLike } from '../lib/validate';
 import raw from './gallery.json';
 
 export interface GalleryItem {
   id: string;
-  /** 大图的尺寸（px）—— 灯箱按它算比例，避免加载瞬间跳一下 */
+  /** 原图尺寸（px）—— 灯箱按它算比例，避免加载瞬间跳一下 */
   w: number;
   h: number;
 }
 
+const item = z.object({
+  id: z.string().regex(/^[a-f0-9]{10}$/, '是图床上的 10 位 hash'),
+  w: z.number().int().positive(),
+  h: z.number().int().positive(),
+});
+
 const schema = z.object({
-  source: urlLike,
-  items: z
-    .array(
-      z.object({
-        id: z.string().regex(/^[a-f0-9]{10}$/, '是图床上的 10 位 hash'),
-        w: z.number().int().positive(),
-        h: z.number().int().positive(),
-      }),
-    )
-    .min(1, '至少要有一张图'),
+  base: urlLike,
+  count: z.number().int().positive(),
+  shards: z.number().int().positive(),
+  perShard: z.number().int().positive(),
+  sample: z.array(item).min(1),
 });
 
 const data = parseJson(schema, raw, 'src/data/gallery.json');
 
-export const galleryItems: GalleryItem[] = data.items;
+/** 图片公共前缀，不带结尾斜杠 */
+export const galleryBase: string = data.base;
+/** 一共多少张（展示用） */
+export const galleryCount: number = data.count;
+/** 分片数 —— 前端随机取 0 … shards-1 */
+export const galleryShards: number = data.shards;
+/** 构建期样本：SSR 清单 + 前端兜底 */
+export const gallerySample: GalleryItem[] = data.sample;
 
 /** 图片出处（页面上那行小字指回这里） */
-export const gallerySource: string = data.source;
+export const gallerySource = 'https://blog.mibase.top/photo';

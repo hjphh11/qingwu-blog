@@ -85,6 +85,14 @@ const hitEndpoint =
     <link rel="preload" as="image" href="/images/cursor/normal.png" />
     <link rel="preload" as="image" href="/images/cursor/link.png" />
 
+    {/* 画市的图在 R2（img.qingwu.ink）—— 提前把 TCP+TLS 握好，
+        墙铺下来时才不会每张图都先等一个 RTT。只在这一页加，别的不白连。 */}
+    {
+      pathname.startsWith('/gallery') && (
+        <link rel="preconnect" href="https://img.qingwu.ink" crossorigin />
+      )
+    }
+
     {/* 滚动揭示启用标记:让 .reveal 只在 JS 可用时才隐藏,避免无 JS 时内容缺失 */}
     <script is:inline>
       document.documentElement.classList.add('qjs');

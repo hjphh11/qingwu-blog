@@ -1,16 +1,19 @@
 ---
 import Layout from '../../layouts/Layout.astro';
 import GalleryWall from '../../components/gallery/GalleryWall.tsx';
-import { galleryItems as items, gallerySource } from '../../data/gallery';
+import { galleryBase, galleryCount, gallerySample } from '../../data/gallery';
+
+/* 服务端渲染的这一份清单只取构建期样本（60 条），不是全部一万多张：
+   它的用途是「读屏能读到东西 / 没 JS 也能一张张点开 / 搜索引擎有内容」，
+   不需要全量。交互那面墙由 GalleryWall 在浏览器里随机取一片索引去铺。 */
 ---
 {/*
   画市：一面可以往任意方向拖的图片墙。
 
   · 墙是 client:only —— 它的格数取决于视口宽高，服务端没有 window，先渲染出来
-    再改尺寸会闪一下；而它是一个铺满视口的装饰性画布，不需要首屏就有内容。
-  · 但「整页没有可读内容」对搜索和读屏都不友好，所以下面补了一份**服务端渲染**的清单：
-    每条是一个指向原图的真链接（无 JS 也能看），有 JS 时 GalleryWall 会接管点击、
-    改成打开站内的看大图层。这份清单视觉上藏起来（.sr-only），不进画面。
+    再改尺寸会闪一下；而且启动时要先取一片索引，SSR 无从预知。
+  · 图在 R2（https://img.qingwu.ink/gallery/），索引跟站点同源
+    （/gallery/data/N.json，见 scripts/build-gallery-index.py）。
   · 页脚由 Layout 的 bare 关掉：整屏是画布，页脚只会藏在墙背后，还给页面多出可滚动高度。
 */}
 <Layout
@@ -23,15 +26,15 @@ import { galleryItems as items, gallerySource } from '../../data/gallery';
   <section class="sr-only" aria-label="画市图片列表">
     <h1>画市</h1>
     <p>
-      一面可以往任意方向拖动的图片墙，共 {items.length} 张。下面是可以逐张打开的链接。
-      图片来自 <a href={gallerySource}>{gallerySource}</a>。
+      一面可以往任意方向拖动的图片墙，图库共 {galleryCount} 张，每次进来随机挑一批。
+      下面这一小批是可以直接打开的链接。
     </p>
     <ul>
       {
-        items.map((item, i) => (
+        gallerySample.map((item) => (
           <li>
-            <a href={`/images/gallery/${item.id}.webp`} data-gallery-open={i}>
-              第 {i + 1} 张图，看大图
+            <a href={`${galleryBase}/${item.id}.webp`} target="_blank" rel="noopener noreferrer">
+              看大图（{item.w}×{item.h}）
             </a>
           </li>
         ))
