@@ -282,8 +282,8 @@ const nav = await page.evaluate(() => {
   };
 });
 verdict(
-  nav && nav.labels.length === 6,
-  '顶层导航 6 项（原来 7 项，「分享」并进了「文章」）',
+  nav && nav.labels.length === 7,
+  '顶层导航 7 项（分享并进「文章」，画市是独立一项）',
   nav ? nav.labels.join(' / ') : '未找到 nav',
 );
 verdict(!nav?.shareTopLevel, '「分享」不再是顶层项');

@@ -19,9 +19,20 @@ interface Props {
   title?: string;
   description?: string;
   image?: string;
+  /**
+   * 不要页脚。给「整屏就是一个画布」的页面用（目前只有 /gallery 画市）：
+   * 那一页的墙是 position:fixed 铺满视口的，页脚留在文档流里只会藏在墙背面，
+   * 还会让页面多出一截可滚动高度（滚轮一动，墙不动、内容在下面跑）。
+   */
+  bare?: boolean;
 }
 
-const { title = SITE.title, description = SITE.description, image = SITE.ogImage } = Astro.props;
+const {
+  title = SITE.title,
+  description = SITE.description,
+  image = SITE.ogImage,
+  bare = false,
+} = Astro.props;
 const pathname = Astro.url.pathname;
 const url = SITE.url.replace(/\/$/, '') + pathname;
 
@@ -163,7 +174,7 @@ const hitEndpoint =
 
     <slot />
 
-    <Footer />
+    {!bare && <Footer />}
 
     {/* 正文图片灯箱：全站可用（文章页 / 关于页 / 项目页的 .prose 都吃）。
         纯 DOM + document 事件委托，ClientRouter 换 body 之后不需要重新绑定。 */}

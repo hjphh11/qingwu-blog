@@ -1,0 +1,291 @@
+/*
+ * 清吾 · 画市（/gallery）—— 整屏可拖的图片墙 + 看大图的覆盖层
+ *
+ * 分层见 index.css：紧跟在 lightbox 之后（同类东西摆一起），
+ * **不带 @layer** —— 要盖过 base 的 body 底色和 utilities 的 cursor-*。
+ *
+ * 纪律：
+ *   · 只在这个前缀下写：.q-wall / .q-wall-view
+ *   · 时长一律走 --dur-*，检查脚本会扫裸写的 ms
+ *   · 位移由 JS 每帧写 transform，**这里不许给 .q-wall__layer 加 transition**
+ *     （加了会跟手指打架，画面像拖着一根橡皮筋）
+ */
+
+/* 这一页整屏就是画布：页面上不许有一丝可滚动高度，否则滚轮会带着内容在墙后面跑。
+   类由 GalleryWall 挂载时加、卸载时摘（客户端路由切走要还原）。 */
+html.q-wall-page {
+  overflow: hidden;
+  overscroll-behavior: none;
+}
+
+/* ── 墙 ─────────────────────────────────────────────────── */
+.q-wall {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  overflow: hidden;
+  /* 首帧和图片解码前的那一下不要白闪 */
+  background: var(--color-cream);
+  cursor: grab;
+  /* 触屏上交给 JS，别让浏览器把这次拖拽解释成滚动 */
+  touch-action: none;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.q-wall.is-dragging {
+  cursor: grabbing;
+}
+
+/* 承接指针的整面。必须铺满视口 —— 不然只有「有图的地方」才拖得动 */
+.q-wall__surface {
+  position: absolute;
+  inset: 0;
+  touch-action: none;
+  outline: none;
+}
+
+/* 图案层：位置由 JS 写，这里只提层 */
+.q-wall__layer {
+  position: absolute;
+  top: 0;
+  left: 0;
+  will-change: transform;
+}
+
+.q-wall__tile {
+  position: absolute;
+  padding: 0;
+  border: 0;
+  border-radius: 12px;
+  overflow: hidden;
+  background: color-mix(in oklab, var(--color-rose) 16%, white);
+  cursor: pointer;
+  transition: box-shadow var(--dur-state) var(--ease-soft);
+}
+
+.q-wall__tile img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transition: transform var(--dur-state) var(--ease-soft);
+  /* 图片自己不许被拖（否则会拖出一张半透明的「幽灵图」） */
+  -webkit-user-drag: none;
+}
+
+/* 悬停反馈：抬起来一点、放大一点点。
+   抬 z-index 是必须的 —— 放大后会盖住右边和下边的邻图，不抬就被裁一半。 */
+@media (hover: hover) {
+  .q-wall__tile:hover {
+    z-index: 2;
+    box-shadow: 0 18px 44px rgba(74, 55, 40, 0.22);
+  }
+
+  .q-wall__tile:hover img {
+    transform: scale(1.06);
+  }
+}
+
+.q-wall__tile:active img {
+  transform: scale(1.02);
+}
+
+/* ── 提示 / 出处 ─────────────────────────────────────────── */
+.q-wall__hint,
+.q-wall__credit {
+  position: fixed;
+  z-index: 20;
+  margin: 0;
+  padding: 0.4rem 0.85rem;
+  border-radius: var(--radius-pill);
+  border: 1px solid rgba(255, 255, 255, 0.5);
+  background: color-mix(in oklab, var(--color-ink) 46%, transparent);
+  color: #fff;
+  font-size: 0.75rem;
+  line-height: 1.5;
+  letter-spacing: 0.02em;
+  /* 绝对定位 + left:50% 时可用宽度只有视口的一半，不 nowrap 会被折成两行 */
+  white-space: nowrap;
+  backdrop-filter: blur(10px) saturate(140%);
+  pointer-events: none;
+}
+
+.q-wall__hint {
+  left: 50%;
+  bottom: clamp(1.25rem, 4vh, 2.5rem);
+  transform: translateX(-50%);
+  transition:
+    opacity var(--dur-move) var(--ease-soft),
+    transform var(--dur-move) var(--ease-soft);
+}
+
+/* 拖过一次就退场：这句话只在「不知道怎么玩」的时候有用 */
+.q-wall__hint.is-gone {
+  opacity: 0;
+  transform: translateX(-50%) translateY(8px);
+}
+
+.q-wall__credit {
+  left: clamp(0.75rem, 2vw, 1.75rem);
+  bottom: clamp(1.25rem, 4vh, 2.5rem);
+  /* 出处是链接，得能点 */
+  pointer-events: auto;
+}
+
+.q-wall__credit a {
+  color: inherit;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+/* ── 看大图 ───────────────────────────────────────────────── */
+.q-wall-view {
+  position: fixed;
+  inset: 0;
+  z-index: 300; /* 与正文灯箱同级：高于导航(50)/迷你播放器，低于开屏兜底 */
+  display: grid;
+  place-items: center;
+  background: color-mix(in oklab, var(--color-ink) 86%, transparent);
+  backdrop-filter: blur(10px);
+  opacity: 0;
+  /* 关着的时候不可见、点不到；visibility 的过渡是「离散」的，
+     打开时立刻可见、关闭时等淡出跑完才藏 —— 不需要额外交互延迟 */
+  visibility: hidden;
+  transition:
+    opacity var(--dur-micro) ease,
+    visibility var(--dur-micro);
+}
+
+.q-wall-view.is-open {
+  opacity: 1;
+  visibility: visible;
+}
+
+/* 点空白处关闭：舞台铺满，图自己另算 */
+.q-wall-view__stage {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: clamp(0.75rem, 3vw, 2.5rem);
+  cursor: zoom-out;
+}
+
+.q-wall-view__img {
+  width: auto;
+  height: auto;
+  max-width: min(92vw, 1100px);
+  max-height: 86vh;
+  border-radius: 14px;
+  box-shadow: 0 30px 80px rgba(30, 18, 10, 0.5);
+  /* 换图时轻轻放大进来，别硬切 */
+  animation: q-wall-in var(--dur-state) var(--ease-soft) both;
+}
+
+@keyframes q-wall-in {
+  from {
+    opacity: 0;
+    transform: scale(0.975);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.q-wall-view__btn {
+  position: absolute;
+  z-index: 2;
+  display: grid;
+  place-items: center;
+  width: 46px;
+  height: 46px;
+  padding: 0;
+  border-radius: 50%;
+  border: 1px solid rgba(255, 255, 255, 0.32);
+  background: rgba(255, 255, 255, 0.14);
+  color: #fff;
+  font-size: 1.5rem;
+  line-height: 1;
+  cursor: pointer;
+  backdrop-filter: blur(8px);
+  transition: background var(--dur-micro) var(--ease-soft);
+}
+
+@media (hover: hover) {
+  .q-wall-view__btn:hover {
+    background: rgba(255, 255, 255, 0.28);
+  }
+}
+
+.q-wall-view__btn--prev,
+.q-wall-view__btn--next {
+  top: 50%;
+  transform: translateY(-50%);
+}
+
+.q-wall-view__btn--prev {
+  left: clamp(0.5rem, 3vw, 2rem);
+}
+
+.q-wall-view__btn--next {
+  right: clamp(0.5rem, 3vw, 2rem);
+}
+
+.q-wall-view__btn--close {
+  top: clamp(0.75rem, 3vw, 1.75rem);
+  right: clamp(0.75rem, 3vw, 1.75rem);
+  font-size: 1.75rem;
+}
+
+.q-wall-view__count {
+  position: absolute;
+  bottom: clamp(0.75rem, 3vh, 1.75rem);
+  left: 50%;
+  transform: translateX(-50%);
+  margin: 0;
+  color: rgba(255, 255, 255, 0.82);
+  font-size: 0.8125rem;
+  font-variant-numeric: tabular-nums;
+}
+
+/* 手机上按钮别贴边太狠，也别压住图 */
+@media (max-width: 640px) {
+  .q-wall-view__btn {
+    width: 40px;
+    height: 40px;
+  }
+
+  /* 手机底部被迷你播放器整条占着（fixed inset-0 z-50 的底栏）：
+     底部居中的提示和左下的出处都会被压在它底下，所以一个挪到导航下面、
+     一个抬到播放器上方。 */
+  .q-wall__hint {
+    bottom: auto;
+    top: calc(5.25rem + env(safe-area-inset-top, 0px));
+  }
+
+  .q-wall__hint.is-gone {
+    transform: translateX(-50%) translateY(-8px);
+  }
+
+  .q-wall__credit {
+    /* 播放器在 390 下是 90px 高的整条底栏，让到它上面 */
+    bottom: calc(6.5rem + env(safe-area-inset-bottom, 0px));
+  }
+}
+
+/* ── 减动效 ─────────────────────────────────────────────── */
+@media (prefers-reduced-motion: reduce) {
+  .q-wall__tile,
+  .q-wall__tile img,
+  .q-wall__hint,
+  .q-wall-view,
+  .q-wall-view__btn {
+    transition: none;
+  }
+
+  .q-wall-view__img {
+    animation: none;
+  }
+}
