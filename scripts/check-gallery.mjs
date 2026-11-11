@@ -201,7 +201,88 @@ await sleep(500);
 const afterClose = await read();
 verdict(covered(afterClose), '关掉灯箱后墙还能拖', `L${afterClose.l} R${afterClose.r}`);
 
-/* ── ⑥ 减动效：拖拽保留（是用户主动发起的），松手不许再自己滑 ── */
+/* ── ⑥ 滚轮缩放：两个方向都要有反应，且绕指针、不露底 ─────
+   判据三条：
+     · 瓦片实测宽度跟着变（不是只有 transform 数字变了）
+     · 指针底下还是**同一张图、同一个相对位置**（锚点没漂）
+     · 缩到最小 / 放到最大，四面仍被盖住 */
+{
+  const zoomProbe = () => page.evaluate(() => {
+    const tiles = [...document.querySelectorAll('.q-wall__tile')];
+    const r = tiles.map((t) => t.getBoundingClientRect());
+    return {
+      w: Math.round(tiles[0]?.getBoundingClientRect().width ?? 0),
+      l: Math.round(Math.min(...r.map((x) => x.left))),
+      t: Math.round(Math.min(...r.map((x) => x.top))),
+      r: Math.round(Math.max(...r.map((x) => x.right))),
+      b: Math.round(Math.max(...r.map((x) => x.bottom))),
+      vw: window.innerWidth,
+      vh: window.innerHeight,
+    };
+  });
+  /** 指针下那张图 + 指针在它内部的比例 */
+  const under = (x, y) =>
+    page.evaluate(
+      (x, y) => {
+        const el = document.elementFromPoint(x, y)?.closest('.q-wall__tile');
+        if (!el) return null;
+        const r = el.getBoundingClientRect();
+        return {
+          src: el.querySelector('img')?.getAttribute('src') ?? '',
+          fx: Math.round(((x - r.left) / r.width) * 100),
+          fy: Math.round(((y - r.top) / r.height) * 100),
+        };
+      },
+      x,
+      y,
+    );
+
+  const X = 700;
+  const Y = 420;
+  await page.mouse.move(X, Y);
+  const z0 = await zoomProbe();
+  const u0 = await under(X, Y);
+
+  await page.mouse.wheel({ deltaY: -240 });
+  await sleep(250);
+  const z1 = await zoomProbe();
+  const u1 = await under(X, Y);
+  verdict(z1.w > z0.w + 20, '滚轮向上 → 瓦片变大（放大）', `${z0.w}px → ${z1.w}px`);
+  verdict(u0 && u1 && u0.src === u1.src && Math.abs(u0.fx - u1.fx) <= 3, '放大绕指针（同一张图还在指针下）', `${u0?.src.split('/').pop()} @${u0?.fx}% → @${u1?.fx}%`);
+
+  await page.mouse.wheel({ deltaY: 480 });
+  await sleep(250);
+  const z2 = await zoomProbe();
+  verdict(z2.w < z1.w - 20, '滚轮向下 → 瓦片变小（缩小）', `${z1.w}px → ${z2.w}px`);
+
+  // 一路缩到底、放到顶
+  for (let i = 0; i < 10; i++) {
+    await page.mouse.wheel({ deltaY: 400 });
+    await sleep(50);
+  }
+  await sleep(200);
+  const zMin = await zoomProbe();
+  verdict(
+    zMin.l <= 0 && zMin.t <= 0 && zMin.r >= zMin.vw && zMin.b >= zMin.vh,
+    '缩到最小仍四面有图（不露底）',
+    `${zMin.w}px  L${zMin.l} R${zMin.r}`,
+  );
+
+  for (let i = 0; i < 14; i++) {
+    await page.mouse.wheel({ deltaY: -400 });
+    await sleep(50);
+  }
+  await sleep(200);
+  const zMax = await zoomProbe();
+  verdict(
+    zMax.l <= 0 && zMax.t <= 0 && zMax.r >= zMax.vw && zMax.b >= zMax.vh,
+    '放到最大仍四面有图',
+    `${zMax.w}px  L${zMax.l} R${zMax.r}`,
+  );
+  verdict((await page.evaluate(() => window.scrollY)) === 0, '滚轮没有把页面滚走');
+}
+
+/* ── ⑦ 减动效：拖拽保留（是用户主动发起的），松手不许再自己滑 ── */
 await page.emulateMediaFeatures([{ name: 'prefers-reduced-motion', value: 'reduce' }]);
 await page.setViewport({ width: 1440, height: 900 });
 await page.goto(`${BASE}/gallery/`, { waitUntil: 'networkidle2', timeout: 60000 });
@@ -220,7 +301,7 @@ const calmB = (await read()).tf;
 verdict(calmA === calmB, '减动效下松手即停（不留惯性）', `${calmA} → ${calmB}`);
 await page.emulateMediaFeatures([]);
 
-/* ── ⑦ 手机：底栏会吃掉底部两个浮层，提示要挪到导航下面 ── */
+/* ── ⑧ 手机：底栏会吃掉底部两个浮层，提示要挪到导航下面 ── */
 await page.setViewport({ width: 390, height: 844 });
 await page.goto(`${BASE}/gallery/`, { waitUntil: 'networkidle2', timeout: 60000 });
 await sleep(1800);
@@ -252,7 +333,7 @@ verdict(
 
 verdict(errors.length === 0, '无 JS 运行时错误', errors.join(' | ') || '（无）');
 
-/* ── ⑦ 取图与降级（图在 R2，索引同源分片）─────────────────
+/* ── ⑨ 取图与降级（图在 R2，索引同源分片）─────────────────
    ① 索引 404：不能白屏，要退回构建期那 60 张（sample）
    ② R2 整片连不上：要出「图源没连上 · 重试」，而不是一面空墙 */
 {

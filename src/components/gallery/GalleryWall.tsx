@@ -19,7 +19,7 @@
  *
  * ── 图从哪来（2026-11-11 起）────────────────────────────────
  * 图在 Cloudflare R2（https://img.qingwu.ink/gallery/），一共一万多张。
- * 每次进页面随机取**一片**索引（站点同源的 /gallery/data/N.json，几千条里挑 48 张），
+ * 每次进页面随机取**一片**索引（站点同源的 /gallery/data/N.json，几千条里挑 64 张），
  * 于是每次进来墙上的画都不一样，而首屏只多一个 4KB 的请求。
  * ⚠️ 索引不放 R2：公共域不带 CORS 头，fetch 会被浏览器拦；图片是 <img>，
  * 不受这条限制，所以图在 R2、索引跟站点走。
@@ -32,6 +32,17 @@
  * ── 惯性 ──────────────────────────────────────────────────
  * 按帧衰减 v *= 0.94^(dt/16.7)，速度 < 8px/s 收手。一次 2000px/s 的甩手大约 1.4s 停住，
  * 是「慢慢停下」而不是「滑走」。减动效下直接不滑（松手即停）。
+ *
+ * ── 滚轮缩放（不想重新排格子）──────────────────────────────
+ * 缩放做在**图层 transform** 上（translate + scale），cell 和图案一次都不重算 ——
+ * 重算会换掉 cols/rows，格子里配的图跟着变，墙会在缩放时「重排」一下，很跳。
+ *
+ * 缩放要绕**指针**做锚点：屏幕 = T + k·p（p 是图案空间坐标），
+ * 所以让 (指针 − T)/k 不变即可：T' = 指针 − k'·(指针 − T)/k。
+ *
+ * ⚠️ 图案是**按最小缩放**铺的（cols/rows 用 vw/ZOOM_MIN 算）：缩小之后一屏能看到的
+ *   格子比 k=1 时多，图案仍要更大一圈，才不会「同一列出现两次」。
+ *   配合 2×2 份（cx/cy 取 -1…0），P ≥ 视口/0.7 ⇒ 任何 k ≥ 0.7 都有 kP ≥ 视口。
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -48,8 +59,10 @@ const CELL_MIN = 150;
 const CELL_MAX = 300;
 /** 格子间距（瓦片本体 = 格子 − 间距，等于留白） */
 const GAP = 10;
-/** 一次进页面从索引片里挑多少张：要盖住最大的一块图案（约 35 格）+ 一点余量 */
-const PICK = 48;
+/** 一次进页面从索引片里挑多少张：要盖住最大的那块图案。
+ *  1440 下图案是 7×5=35 格，2560 宽屏约 13×5=65 格，取 64 张基本一图一格。
+ *  挑多了不吃亏 —— 瓦片是 lazy 的，屏外的根本不发请求。 */
+const PICK = 64;
 /** 甩手速度上限（px/s），防止一次暴拖把画面甩到天边 */
 const MAX_V = 4200;
 /** 每帧衰减系数（60fps 基准） */
@@ -58,6 +71,12 @@ const FRICTION = 0.94;
 const MIN_V = 8;
 /** 判定「拖动」而不是「点击」的位移阈值（px）—— 手指比鼠标抖，给宽一点 */
 const TAP_SLOP = 8;
+/** 缩放范围：>1 放大（一格占更多屏），<1 缩小（一屏能看更多图）。
+ *  上限 1.8 是因为瓦片源图 560px 铺在 288px 的格子上，再放大就开始糊。 */
+const ZOOM_MIN = 0.7;
+const ZOOM_MAX = 1.8;
+/** 滚轮一格（deltaY≈100）大约缩放 17%；指数映射，快滚也不会一次冲到顶 */
+const ZOOM_SPEED = 0.0016;
 
 const mod = (v: number, p: number) => ((v % p) + p) % p;
 
@@ -117,10 +136,12 @@ export default function GalleryWall() {
   } | null>(null);
 
   const raf = useRef(0);
+  /** 当前缩放倍数（图层的 scale），滚轮改它 */
+  const zoom = useRef(1);
   /** 减动效：拖拽本身是用户主动发起的，保留；但松手后不再「自己滑」。 */
   const reduce = useRef(false);
 
-  /* ── 取图：随机一片索引，挑 48 张 ────────────────────────── */
+  /* ── 取图：随机一片索引，挑 64 张 ────────────────────────── */
   const load = useCallback(() => {
     setItems(null);
     setBroken(false);
@@ -166,15 +187,17 @@ export default function GalleryWall() {
 
     const cell = Math.round(Math.min(CELL_MAX, Math.max(CELL_MIN, w * 0.2)));
     const pitch = cell + GAP;
-    // 只取 ceil：cols × pitch ≥ 视口宽就够了，多一格白多 12 个节点
-    const cols = Math.max(1, Math.ceil(w / pitch));
-    const rows = Math.max(1, Math.ceil(h / pitch));
+    /* 图案按**最小缩放**来铺：缩小到 ZOOM_MIN 时屏幕上一眼能看到的格子最多，
+       图案得比那还大一圈，才不会「同一列出现两次」。代价是 k=1 时图案比视口大
+       （多出来的一直在屏外），换来的是整段缩放范围里都不露底、也不重复。 */
+    const cols = Math.max(1, Math.ceil(w / ZOOM_MIN / pitch));
+    const rows = Math.max(1, Math.ceil(h / ZOOM_MIN / pitch));
     const periodX = cols * pitch;
     const periodY = rows * pitch;
 
     const tiles: { key: string; idx: number; left: number; top: number }[] = [];
-    // cx/cy 取 -1 与 0：图案原点在 0，位移取模后落在 [0, P)，
-    // 于是视口左/上那条缝由 -1 那份补上，右边/下面 0 那份本来就够。
+    // cx/cy 取 -1 与 0：位移取模后落在 [0, kP)，图案铺在 [-P, P]，
+    // 而 P ≥ vw/ZOOM_MIN ⇒ 任何 k ≥ ZOOM_MIN 都有 kP ≥ vw，四面都盖得住。
     for (let cy = -1; cy <= 0; cy++) {
       for (let cx = -1; cx <= 0; cx++) {
         for (let j = 0; j < rows; j++) {
@@ -193,14 +216,19 @@ export default function GalleryWall() {
     return { cell, cols, rows, periodX, periodY, tiles };
   }, [size, items]);
 
-  /** 把任意位移画上去（唯一的写 DOM 的地方） */
+  /** 把任意位移画上去（唯一的写 DOM 的地方）。
+   *  缩放后的图案周期在**屏幕坐标**里是 P·k，所以取模也用 P·k ——
+   *  不然缩小之后 wrap 点对不上，画面会一顿一顿地跳。 */
   const paint = useCallback(() => {
     const el = layerRef.current;
     if (!el) return;
-    el.style.transform = `translate3d(${mod(off.current.x, period.current.x)}px, ${mod(
+    const k = zoom.current;
+    const px = period.current.x * k;
+    const py = period.current.y * k;
+    el.style.transform = `translate3d(${mod(off.current.x, px)}px, ${mod(
       off.current.y,
-      period.current.y,
-    )}px, 0)`;
+      py,
+    )}px, 0) scale(${k})`;
   }, []);
 
   useEffect(() => {
@@ -237,6 +265,40 @@ export default function GalleryWall() {
   );
 
   useEffect(() => stopGlide, [stopGlide]);
+
+  /* ── 滚轮缩放（绕指针做锚点）─────────────────────────────── */
+  useEffect(() => {
+    const el = surfaceRef.current;
+    if (!el) return;
+
+    const onWheel = (e: WheelEvent) => {
+      // 这个页面本来就不滚，所以一律吃掉；不 preventDefault 的话
+      // 触控板双指（ctrlKey 的捏合）会被浏览器当成整页缩放。
+      e.preventDefault();
+
+      // deltaMode：0=像素 1=行 2=页，鼠标滚轮各家不一样，先归一成像素
+      const unit = e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? 400 : 1;
+      const dy = Math.max(-160, Math.min(160, e.deltaY * unit));
+      const k = zoom.current;
+      const next = Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, k * Math.exp(-dy * ZOOM_SPEED)));
+      if (next === k) return;
+
+      // 锚点：屏幕 = T + k·p。要让指针下的那张图不动，就保持 p 不变反解新的 T。
+      const tx = mod(off.current.x, period.current.x * k);
+      const ty = mod(off.current.y, period.current.y * k);
+      const ax = (e.clientX - tx) / k;
+      const ay = (e.clientY - ty) / k;
+
+      zoom.current = next;
+      off.current.x = e.clientX - ax * next;
+      off.current.y = e.clientY - ay * next;
+      paint();
+    };
+
+    // 必须 passive:false —— React 的 onWheel 是被动监听，拿不到 preventDefault
+    el.addEventListener('wheel', onWheel, { passive: false });
+    return () => el.removeEventListener('wheel', onWheel);
+  }, [paint]);
 
   /* ── 指针 ────────────────────────────────────────────────── */
   const onPointerDown = (e: React.PointerEvent) => {
@@ -488,7 +550,7 @@ export default function GalleryWall() {
         )}
 
         <p className={`q-wall__hint${moved || broken ? ' is-gone' : ''}`} aria-hidden="true">
-          按住往任意方向拖 · 点图看大图
+          按住拖 · 滚轮缩放 · 点开看大图
         </p>
 
         {gallerySource && (

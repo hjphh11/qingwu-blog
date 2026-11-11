@@ -45,11 +45,15 @@ html.q-wall-page {
   outline: none;
 }
 
-/* 图案层：位置由 JS 写，这里只提层 */
+/* 图案层：位置由 JS 写，这里只提层。
+   ⚠️ transform-origin 必须是 0 0 —— 滚轮缩放是绕**指针**算的，
+      锚点公式（T' = 指针 − k'·(指针 − T)/k）默认原点在左上角；
+      留默认的 50% 50% 会让锚点整体偏半个图层，缩放时画面往右下滑。 */
 .q-wall__layer {
   position: absolute;
   top: 0;
   left: 0;
+  transform-origin: 0 0;
   will-change: transform;
 }
 
