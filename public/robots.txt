@@ -13,10 +13,25 @@ Disallow: /api/
 # 它们会带引荐流量，只靠 nginx 限流控速，不在这里拦。
 User-agent: GPTBot
 User-agent: ClaudeBot
+User-agent: anthropic-ai
+User-agent: Claude-Web
 User-agent: CCBot
 User-agent: Bytespider
 User-agent: meta-externalagent
 User-agent: ImagesiftBot
+User-agent: Amazonbot
+User-agent: cohere-ai
+User-agent: TikTokSpider
+Disallow: /
+
+# ── 内容聚合 / 垃圾爬虫 ──
+# BokeHubSpider 只拉 /rss.xml 和文章页做搬运，2026-11-10~11 实测 102 次；
+# meta-webindexer 是 Meta 的索引爬虫（不是 externalagent，名单里没有）；
+# ApcosysBot / WebBlogGalaxy 是纯垃圾流量。nginx 那边也同步拦了。
+User-agent: BokeHubSpider
+User-agent: meta-webindexer
+User-agent: ApcosysBot
+User-agent: WebBlogGalaxy
 Disallow: /
 
 # Google-Extended / Applebot-Extended 不会作为 UA 出现，只在 robots.txt 生效：
