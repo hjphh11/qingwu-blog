@@ -72,7 +72,7 @@ if (A === B) {
 拆完之后我干的第一件事，是把「宽度」这件事收成一个变量：
 
 ```css
---shell-max: 1080px;
+--shell-max: 1240px;
 --shell-gutter: clamp(1.25rem, 0.6rem + 2.2vw, 2.5rem);
 ```
 

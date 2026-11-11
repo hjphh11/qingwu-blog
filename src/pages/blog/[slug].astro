@@ -30,87 +30,96 @@ const toc = headings.filter((h) => h.depth === 2 || h.depth === 3);
 <Layout title={`${post.data.title} · 清吾`}>
   <ReadingProgress client:load />
 
-  <div class="page-shell grid gap-12 lg:grid-cols-[minmax(0,1fr)_220px]">
-    {/* 正文 */}
-    <article class="min-w-0">
-      <header class="mb-10">
-        <button
-          id="back-btn"
-          type="button"
-          class="mb-5 -ml-2 inline-flex cursor-pointer items-center gap-1.5 px-2 py-2 text-sm text-muted transition-colors hover:text-accent"
-        >
-          <span aria-hidden="true">
-            <MorphIcon icon={ArrowLeft} size={16} color="currentColor" />
-          </span>
-          返回
-        </button>
-        <div class="list-card-meta">
-          <span class="chip chip--category">{catLabel}</span>
-          <time datetime={post.data.pubDate.toISOString()}>
-            {post.data.pubDate.toLocaleDateString('zh-CN')}
-          </time>
-          <span aria-hidden="true">·</span>
-          <span>阅读约 {readMin} 分钟</span>
-          {/* 真实阅读量：数据来自 D1 的 hits（口径同后台统计）。先 hidden，
-              脚本拿到数字才显示 —— 拿不到或为 0 就当作没有这个东西，绝不留一个空的「阅读 次」。 */}
-          <span data-views-path={`/blog/${post.id}`} hidden>
+  {/* 阅读页的宽度**不跟着版心一起放大**：正文一行的舒适区是 28~40 个汉字，
+      68ch 已经顶到 40 字（1440 下实测 678px）。版心放到 1160 之后如果还铺满，
+      文字只占左边一截、目录被推到最右，中间空出两百多像素反而更散。
+      所以这里把两栏下沉进一个 63rem 的内框（左缘仍与导航同线，不居中），
+      多出来的画布宽度当成左右留白用。 */}
+  <div class="page-shell">
+    <div class="grid max-w-[63rem] gap-8 lg:grid-cols-[minmax(0,1fr)_240px]">
+      {/* 正文 */}
+      <article class="min-w-0">
+        <header class="mb-10">
+          <button
+            id="back-btn"
+            type="button"
+            class="mb-5 -ml-2 inline-flex cursor-pointer items-center gap-1.5 px-2 py-2 text-sm text-muted transition-colors hover:text-accent"
+          >
+            <span aria-hidden="true">
+              <MorphIcon icon={ArrowLeft} size={16} color="currentColor" />
+            </span>
+            返回
+          </button>
+          <div class="list-card-meta">
+            <span class="chip chip--category">{catLabel}</span>
+            <time datetime={post.data.pubDate.toISOString()}>
+              {post.data.pubDate.toLocaleDateString('zh-CN')}
+            </time>
             <span aria-hidden="true">·</span>
-            阅读 <span data-views-num></span> 次
-          </span>
-        </div>
-        <h1 class="q-post-title mt-5 font-display text-[length:var(--text-display)] leading-[1.2] text-ink">
-          {post.data.title}
-        </h1>
-        <div class="mt-5 flex flex-wrap gap-x-3 gap-y-1">
-          {
-            post.data.tags.map((tag) => (
-              <span class="text-[length:var(--text-label)] text-subtle">#{tag}</span>
-            ))
-          }
-        </div>
-      </header>
+            <span>阅读约 {readMin} 分钟</span>
+            {/* 真实阅读量：数据来自 D1 的 hits（口径同后台统计）。先 hidden，
+                脚本拿到数字才显示 —— 拿不到或为 0 就当作没有这个东西，绝不留一个空的「阅读 次」。 */}
+            <span data-views-path={`/blog/${post.id}`} hidden>
+              <span aria-hidden="true">·</span>
+              阅读 <span data-views-num></span> 次
+            </span>
+          </div>
+          <h1
+            class="q-post-title mt-5 font-display text-[length:var(--text-display)] leading-[1.2] text-ink"
+          >
+            {post.data.title}
+          </h1>
+          <div class="mt-5 flex flex-wrap gap-x-3 gap-y-1">
+            {
+              post.data.tags.map((tag) => (
+                <span class="text-[length:var(--text-label)] text-subtle">#{tag}</span>
+              ))
+            }
+          </div>
+        </header>
 
-      <div class="prose max-w-[68ch]">
-        <Content />
-      </div>
-
-      {/* 分享 · 展开按钮 */}
-      <div class="mt-14 flex justify-center">
-        <ContactExpand
-          client:load
-          variant="share"
-          label="分享"
-          url={`${SITE.url}/blog/${post.id}`}
-          title={post.data.title}
-          email={SITE.email}
-        />
-      </div>
-    </article>
-
-    {/* 右侧目录 */}
-    <aside class="hidden lg:block">
-      <nav class="sticky top-28 self-start">
-        <div class="mb-3 flex items-center gap-2 text-sm font-medium text-muted">
-          <MorphIcon icon={List} size={16} color="currentColor" />
-          目录
+        <div class="prose max-w-[68ch]">
+          <Content />
         </div>
-        <ul data-toc class="space-y-1.5 border-l border-rose/25 pl-4 text-sm">
-          {
-            toc.map((h) => (
-              <li class={`q-toc__item${h.depth === 3 ? ' q-toc__item--sub pl-4' : ''}`}>
-                <a
-                  href={`#${h.slug}`}
-                  data-toc-link={h.slug}
-                  class="q-toc__link block py-0.5 transition-colors hover:text-accent"
-                >
-                  {h.text}
-                </a>
-              </li>
-            ))
-          }
-        </ul>
-      </nav>
-    </aside>
+
+        {/* 分享 · 展开按钮 */}
+        <div class="mt-14 flex justify-center">
+          <ContactExpand
+            client:load
+            variant="share"
+            label="分享"
+            url={`${SITE.url}/blog/${post.id}`}
+            title={post.data.title}
+            email={SITE.email}
+          />
+        </div>
+      </article>
+
+      {/* 右侧目录 */}
+      <aside class="hidden lg:block">
+        <nav class="sticky top-28 self-start">
+          <div class="mb-3 flex items-center gap-2 text-sm font-medium text-muted">
+            <MorphIcon icon={List} size={16} color="currentColor" />
+            目录
+          </div>
+          <ul data-toc class="space-y-1.5 border-l border-rose/25 pl-4 text-sm">
+            {
+              toc.map((h) => (
+                <li class={`q-toc__item${h.depth === 3 ? ' q-toc__item--sub pl-4' : ''}`}>
+                  <a
+                    href={`#${h.slug}`}
+                    data-toc-link={h.slug}
+                    class="q-toc__link block py-0.5 transition-colors hover:text-accent"
+                  >
+                    {h.text}
+                  </a>
+                </li>
+              ))
+            }
+          </ul>
+        </nav>
+      </aside>
+    </div>
   </div>
 
   {/* 小陪伴：三种形态（角落 / 滚动探头 / 文末）每次进文章页随机掷一个。

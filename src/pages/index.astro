@@ -37,14 +37,15 @@ const catNav = [...categories]
   {/*
     三栏：左「我」/ 中「文章」/ 右「此刻」。
     · 中间是内容主体，宽度自适应（minmax(0,1fr)，写 0 是为了让长标题能收缩而不是撑破）；
-    · 两侧定宽 180 / 240 —— 参考里三栏博客的常见做法就是「两侧固定、中间 1fr」
-      （如 grid-template-columns: 200px 1fr 200px）。这里的版心只有 1000px 内容宽，
-      所以取 180 / 240 而非 200 / 200：右栏要放五张卡，比左栏更需要宽度。
+    · 两侧定宽：lg（1024 起）180 / 240，**xl（1280 起）才放到 200 / 300** ——
+      1024 的可用宽度还不够养两栏 500px，硬放会把中间压回 480。
+    · 栏间距 14px（原来是 20）：站长嫌「两边的距离」太大，卡片本身是玻璃面、
+      有阴影当分隔，收紧一点更成组。
     · 断点：≥1024 三栏；768–1024 两栏（左栏收起，作者信息与快捷入口在 Hero 与顶栏里都有）；
       <768 单栏，文章在上、卡片在下。
   */}
   <div
-    class="page-shell grid gap-5 md:grid-cols-[minmax(0,1fr)_240px] lg:grid-cols-[180px_minmax(0,1fr)_240px]"
+    class="page-shell grid gap-3.5 md:grid-cols-[minmax(0,1fr)_260px] lg:grid-cols-[180px_minmax(0,1fr)_240px] xl:grid-cols-[200px_minmax(0,1fr)_300px]"
   >
     {/* ── 左栏：我是谁 + 按分类看 ───────────────────────────── */}
     <aside
@@ -113,7 +114,7 @@ const catNav = [...categories]
           posts.map((post) => (
             <a
               href={`/blog/${post.id}`}
-              class="glass-card card-spotlight group relative block p-6 card-lift sm:p-7"
+              class="glass-card card-spotlight group relative block p-7 card-lift sm:p-8"
             >
               <span
                 class="absolute right-5 top-5 text-rose transition-colors group-hover:text-crimson"

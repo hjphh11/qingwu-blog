@@ -10,22 +10,26 @@ import { SITE } from '../../config';
 
 <Layout title="关于 · 清吾">
   {/*
-    窄栏：**不要给 .page-shell 覆盖 max-w**。.page-shell 是 max-width:1080px + margin-inline:auto，
+    窄栏：**不要给 .page-shell 覆盖 max-w**。.page-shell 是 max-width:1240px + margin-inline:auto，
     改了它的 max-width 会让它按新宽度重新居中 —— 内容左缘跟着横跳（实测 /about 比其它页右移 44px）。
     正确做法是外壳保持 .page-shell 不动，把窄栏下沉到内层这个 div 上。
 
     版式（v6 §9.2）：左侧爱弥斯半身**粘住**，右侧四个编号区块
     01 我是清吾 / 02 爱弥斯 / 03 做过的事 / 04 联系。
     粘性只在 lg 生效 —— 小屏两列并排会挤成一条竖缝，所以直接单列堆叠。
+
+    内框宽度：版心 2026-11-11 从 1080 放到 1240（净内容 1160），这一页跟着
+    从 62rem 放到 68rem —— 关于页是长文本 + 卡片混排，铺满 1160 会让右半张卡
+    的字行过长，留一点边更稳。
   */}
   <div class="page-shell">
-    <div class="max-w-[62rem]">
+    <div class="max-w-[68rem]">
       <header class="page-head">
         <h1 class="page-head__title">关于</h1>
         <p class="page-head__sub">这里是清吾的小屋，和你打个招呼 ~</p>
       </header>
 
-      <div class="grid gap-10 lg:grid-cols-[minmax(0,15.5rem)_minmax(0,1fr)] lg:gap-12">
+      <div class="grid gap-10 lg:grid-cols-[minmax(0,16.5rem)_minmax(0,1fr)] lg:gap-12">
         {/* ── 左：立绘（粘住） ─────────────────────────────────
             用 portrait.webp（71KB）。.q-media 负责「白→图」的淡入；
             圆角写在容器与 img 上，ring 之类**不要**写在 img 上 ——

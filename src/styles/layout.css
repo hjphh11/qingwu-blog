@@ -8,7 +8,7 @@
   /* —— 页面容器:全站统一 ——
      原来 index/share 用 max-w-4xl(896)、about 用 max-w-3xl(768)、
      blog post / music 用 max-w-5xl(1024),换页时左缘会跳 64~128px。
-     现在统一到一个 1080px 的画布 + 一致的左右留白,所有页面共用一条左边线。 */
+     现在统一到一个 1240px 的画布 + 一致的左右留白,所有页面共用一条左边线。 */
   .page-shell {
     width: 100%;
     max-width: var(--shell-max);

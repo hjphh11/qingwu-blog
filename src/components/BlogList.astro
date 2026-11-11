@@ -43,12 +43,20 @@ const nextHref = currentPage < lastPage ? pageHref(currentPage + 1) : null;
 
 {
   posts.length > 0 ? (
-    <div id="post-list" class="reveal flex flex-col gap-6">
+    /* 宽屏两列：版心放到 1240（净 1160）之后，单列卡片会有半张空着 ——
+       摘要按阅读舒适区限在 34em，剩下一半只有标签和右下角那个小图标。
+       一列 1160 的卡不是「大气」而是「没加载完」。所以 ≥1100 转两列（每张 572），
+       筛选按钮还是按 display 隐藏卡片，grid 下照样能收。
+       ⚠️ 两列的卡片顺序变成**从左到右**读，条目多时扫读反而更快（列表页不是正文）。 */
+    <div
+      id="post-list"
+      class="reveal flex flex-col gap-6 min-[1100px]:grid min-[1100px]:grid-cols-2 min-[1100px]:items-stretch"
+    >
       {posts.map((post) => (
         <a
           href={`/blog/${post.id}`}
           data-category={post.data.category}
-          class="glass-card card-spotlight group relative block p-6 card-lift sm:p-7"
+          class="glass-card card-spotlight group relative block p-7 card-lift sm:p-8"
         >
           <span
             class="absolute right-5 top-5 text-rose transition-colors group-hover:text-crimson"

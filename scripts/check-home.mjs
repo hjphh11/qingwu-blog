@@ -184,9 +184,11 @@ const pending = (page) =>
   await ctx.close();
 }
 
-/* ── 三栏结构（2026-11-01 改版）───────────────────────────
-   左右定宽、中间自适应（180 / 1fr / 240），断点：≥1024 三栏、768–1024 两栏、
-   <768 单栏。这里量的是「真的三列、宽度对、左栏该显就显该藏就藏」。 */
+/* ── 三栏结构（2026-11-01 改版；2026-11-11 加宽）─────────────
+   左右定宽、中间自适应：lg（1024 起）180 / 1fr / 240，xl（1280 起）200 / 1fr / 300。
+   断点：≥1024 三栏、768–1024 两栏、<768 单栏。
+   这里量的是「真的三列、宽度对、左栏该显就显该藏就藏」。
+   ⚠️ 两侧的判定给的是**区间**而不是定值 —— 三档宽度里 lg/xl 用的是不同值。 */
 console.log('\n【三栏结构】');
 const ctx3 = await browser.createBrowserContext();
 const page = await ctx3.newPage();
@@ -220,8 +222,8 @@ for (const [w, expect, note] of [
   verdict(cols.overflow <= 0, `${w}px 无横向溢出`, `越界 ${cols.overflow}px`);
   if (expect === 3) {
     verdict(
-      cols.leftShown && cols.leftW >= 160 && cols.leftW <= 200 && cols.rightW >= 220 && cols.rightW <= 260,
-      `${w}px 两侧定宽合理（左 ~180 / 右 ~240）`,
+      cols.leftShown && cols.leftW >= 170 && cols.leftW <= 210 && cols.rightW >= 230 && cols.rightW <= 310,
+      `${w}px 两侧定宽合理（左 180~200 / 右 240~300）`,
       `左 ${cols.leftW} 中 ${cols.midW} 右 ${cols.rightW}`,
     );
     verdict(cols.midW > cols.leftW && cols.midW > cols.rightW, `${w}px 中间最宽（是内容主体）`, `中 ${cols.midW}`);
