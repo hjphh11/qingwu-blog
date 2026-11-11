@@ -4,3 +4,6 @@
 *.sh      text eol=lf
 *.service text eol=lf
 *.timer   text eol=lf
+
+# 服务器 nginx 配置副本：线上是 LF，入库必须保持，否则每次同步都会整文件 diff。
+deploy/nginx/*.conf text eol=lf
