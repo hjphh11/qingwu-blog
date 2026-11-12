@@ -261,7 +261,10 @@ export default function AccountStrip({
               editing ? '' : 'pointer-events-none'
             }`}
           >
-            <div className="grid gap-2 sm:max-w-xl sm:grid-cols-2">
+            {/* 一行三样：署名 / 站点 / 头像。
+                头像原来是独占一行（circle + 两个按钮 + 一句说明），把面板撑得又高又散；
+                现在缩成「圆 + 上传」，两个动作合到一个小胶囊里，跟输入框齐平 */}
+            <div className="grid gap-2 sm:grid-cols-[minmax(0,0.85fr)_minmax(0,1.25fr)_auto] sm:items-end">
               <label className="block">
                 <span className="mb-1 block text-[10.5px] text-subtle">署名</span>
                 <input
@@ -285,18 +288,25 @@ export default function AccountStrip({
                 />
               </label>
 
-              {/* 头像上传：不再是「填网址」—— 那个框没人愿意粘，还得自己找图床 */}
-              <div className="sm:col-span-2">
+              {/* 头像：不再是「填网址」—— 那个框没人愿意粘，还得自己找图床 */}
+              <div className="min-w-0">
                 <span className="mb-1 block text-[10.5px] text-subtle">头像</span>
-                <div className="flex flex-wrap items-center gap-2">
-                  <span className="grid h-10 w-10 shrink-0 place-items-center overflow-hidden rounded-full bg-rose/15 ring-1 ring-rose/25">
+                <div className="flex items-center gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => fileRef.current?.click()}
+                    disabled={avatarBusy}
+                    tabIndex={editing ? 0 : -1}
+                    title="选图后自动裁成方形，不用自己压"
+                    className="grid h-8 w-8 shrink-0 place-items-center overflow-hidden rounded-full bg-rose/15 ring-1 ring-rose/25 transition-shadow hover:ring-crimson/45 disabled:opacity-60"
+                  >
                     {shownAvatar && avatarStage < 2 ? (
                       <img
                         key={`edit-${shownAvatar}`}
                         src={shownAvatar}
                         alt=""
-                        width={40}
-                        height={40}
+                        width={32}
+                        height={32}
                         loading="lazy"
                         decoding="async"
                         referrerPolicy="no-referrer"
@@ -305,19 +315,19 @@ export default function AccountStrip({
                       />
                     ) : (
                       <span className="text-crimson">
-                        <MorphIcon icon={UserRound} size={15} color="currentColor" />
+                        <MorphIcon icon={UserRound} size={14} color="currentColor" />
                       </span>
                     )}
-                  </span>
+                  </button>
                   <button
                     type="button"
                     onClick={() => fileRef.current?.click()}
                     disabled={avatarBusy}
                     tabIndex={editing ? 0 : -1}
-                    className="inline-flex min-h-8 items-center gap-1.5 rounded-lg border border-rose/30 bg-white px-2.5 text-[11px] text-muted transition-colors hover:border-crimson/45 hover:text-crimson disabled:opacity-60"
+                    className="inline-flex min-h-8 items-center gap-1 rounded-lg border border-rose/30 bg-white px-2 text-[11px] whitespace-nowrap text-muted transition-colors hover:border-crimson/45 hover:text-crimson disabled:opacity-60"
                   >
                     <MorphIcon icon={ImageUp} size={12} color="currentColor" />
-                    上传图片
+                    {avatarBusy ? '上传中' : '上传'}
                   </button>
                   {account.avatarCustom && (
                     <button
@@ -325,15 +335,13 @@ export default function AccountStrip({
                       onClick={() => void useDefaultAvatar()}
                       disabled={avatarBusy}
                       tabIndex={editing ? 0 : -1}
-                      className="inline-flex min-h-8 items-center gap-1.5 rounded-lg px-2 text-[11px] text-subtle transition-colors hover:text-crimson disabled:opacity-60"
+                      title="回到按邮箱算的那张（QQ 邮箱就是 QQ 头像）"
+                      className="inline-flex min-h-8 items-center gap-1 rounded-lg px-1.5 text-[11px] whitespace-nowrap text-subtle transition-colors hover:text-crimson disabled:opacity-60"
                     >
                       <MorphIcon icon={RotateCcw} size={11} color="currentColor" />
-                      恢复默认
+                      默认
                     </button>
                   )}
-                  <span className="text-[10.5px] leading-relaxed text-subtle">
-                    选图后自动裁成方形，不用自己压
-                  </span>
                 </div>
               </div>
             </div>

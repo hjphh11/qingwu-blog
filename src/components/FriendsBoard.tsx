@@ -1023,6 +1023,8 @@ function EntryRow({
   const [notify, setNotify] = useState(true);
   /** 加载失败的回复头像 —— 回落到名字首字，别留一个空圆 */
   const [brokenReplyAvatar, setBrokenReplyAvatar] = useState<Record<string, boolean>>({});
+  /** 回复头像的第二档（Cravatar）—— QQ 头像接口在部分网络下 400，回复也得有退路 */
+  const [replyAvatarSrc, setReplyAvatarSrc] = useState<Record<string, string>>({});
   /** 删除要按两下：第一下变成「确认删除？」，3.5 秒没再点就复位 */
   const [confirming, setConfirming] = useState(false);
   const [deleting, setDeleting] = useState(false);
@@ -1044,6 +1046,21 @@ function EntryRow({
     setBroken(true);
   };
   const replies = entry.replies ?? [];
+
+  /**
+   * 回复头像挂了怎么办：先换 Cravatar（用回复人自己的邮箱哈希），
+   * 还不行才退回名字首字 —— 和主楼那套一致。
+   * 以前这里只有「图 or 首字」两档，QQ 头像 400 的时候一句回复就只剩个「清」字。
+   */
+  function failReplyAvatar(r: FriendReply) {
+    const current = replyAvatarSrc[r.id] ?? r.avatar ?? '';
+    const fallback = avatarFromHash(r.emailHash || '');
+    if (fallback && !current.includes('cravatar.cn')) {
+      setReplyAvatarSrc((prev) => ({ ...prev, [r.id]: fallback }));
+      return;
+    }
+    setBrokenReplyAvatar((prev) => ({ ...prev, [r.id]: true }));
+  }
   /** 票数只认 entry.likes：演示模式在 toggleLike 里就改好了，真实模式是服务端返回的 */
   const likes = entry.likes ?? 0;
 
@@ -1064,6 +1081,9 @@ function EntryRow({
       // 访客把 @ 点掉了就不给 to，服务端也就不发信。
       to: notify ? entry.name : '',
       notify,
+      // 乐观上屏时先用手上的头像顶着，别等接口回来才从「清」字变成脸
+      avatar: account ? account.avatar : '',
+      emailHash: account ? account.emailHash : '',
       intro: text,
       at: new Date().toISOString(),
     });
@@ -1087,8 +1107,17 @@ function EntryRow({
             : 'hover:bg-white/45'
       }`}
     >
-      <span className="mt-px h-10 w-10 shrink-0 overflow-hidden rounded-full bg-gradient-to-br from-rose/35 to-amber/25 ring-2 ring-white/70">
-        {avatarSrc && !broken ? (
+      {/* 首字打底、图片盖上去。
+          这样「图还在加载」和「图彻底挂了」都不会是一个空圆 ——
+          QQ 头像 400、Cravatar 又超时的时候（本机就是），至少先看到名字第一个字 */}
+      <span className="relative mt-px grid h-10 w-10 shrink-0 place-items-center overflow-hidden rounded-full bg-gradient-to-br from-rose/35 to-amber/25 ring-2 ring-white/70">
+        <span
+          aria-hidden="true"
+          className="absolute font-display text-[15px] leading-none text-crimson"
+        >
+          {initial}
+        </span>
+        {avatarSrc && !broken && (
           <img
             src={avatarSrc}
             alt=""
@@ -1099,12 +1128,8 @@ function EntryRow({
             // 外站头像同样会被 Referer 防盗链拦掉，和友链墙一个道理
             referrerPolicy="no-referrer"
             onError={failAvatar}
-            className="h-full w-full object-cover"
+            className="relative h-full w-full object-cover"
           />
-        ) : (
-          <span className="grid h-full w-full place-items-center font-display text-[15px] text-crimson">
-            {initial}
-          </span>
         )}
       </span>
 
@@ -1372,23 +1397,28 @@ function EntryRow({
             {replies.map((r) => (
               <li key={r.id} className="flex gap-2">
                 {/* 站长用爱弥斯身份回复时自带头像；访客回复仍是名字首字 */}
-                {r.avatar && !brokenReplyAvatar[r.id] ? (
-                  <img
-                    src={r.avatar}
-                    onError={() => setBrokenReplyAvatar((prev) => ({ ...prev, [r.id]: true }))}
-                    alt=""
-                    width={24}
-                    height={24}
-                    loading="lazy"
-                    decoding="async"
-                    referrerPolicy="no-referrer"
-                    className="mt-0.5 h-6 w-6 shrink-0 rounded-full bg-rose/15 object-cover"
-                  />
-                ) : (
-                  <span className="mt-0.5 grid h-6 w-6 shrink-0 place-items-center rounded-full bg-rose/25 font-display text-[11px] leading-none text-crimson">
+                {/* 同主楼：首字打底，图盖上。图挂了两档兜底都不成也不会是空圆 */}
+                <span className="relative mt-0.5 grid h-6 w-6 shrink-0 place-items-center overflow-hidden rounded-full bg-rose/25">
+                  <span
+                    aria-hidden="true"
+                    className="absolute font-display text-[11px] leading-none text-crimson"
+                  >
                     {(r.name || '·').trim().slice(0, 1)}
                   </span>
-                )}
+                  {r.avatar && !brokenReplyAvatar[r.id] && (
+                    <img
+                      src={replyAvatarSrc[r.id] ?? r.avatar}
+                      onError={() => failReplyAvatar(r)}
+                      alt=""
+                      width={24}
+                      height={24}
+                      loading="lazy"
+                      decoding="async"
+                      referrerPolicy="no-referrer"
+                      className="relative h-6 w-6 object-cover"
+                    />
+                  )}
+                </span>
                 <div className="min-w-0">
                   <div className="flex flex-wrap items-center gap-1.5">
                     <span className="text-[12px] font-medium text-ink">{r.name}</span>

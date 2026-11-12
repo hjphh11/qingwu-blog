@@ -217,6 +217,8 @@ function toEntry(
       // notify = 0 表示访客主动取消了 @：不给 to，前端就不显示「@某某」
       to: r.notify === 0 ? '' : row.acc_name || row.author,
       avatar: r.acc_avatar || r.avatar || '',
+      // 回复头像同样要能退到 Cravatar（QQ 头像接口会 400），所以把哈希一起给出去
+      emailHash: r.email_hash,
       intro: r.body,
       at: new Date(r.ts).toISOString(),
     })),
@@ -624,6 +626,8 @@ export async function postFriendReply(
           to: notify ? parent.author : '',
           // 访客回复一般没有头像；站长用爱弥斯身份回复时带上，前端就显示那张脸
           avatar: avatar || '',
+          // 头像挂了的时候要用它换 Cravatar —— 回复也走三档兜底，不能只给首字
+          emailHash: account ? account.email_hash : null,
           intro: v.v.intro,
           at: new Date(now).toISOString(),
         },

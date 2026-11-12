@@ -59,6 +59,8 @@ export interface FriendReply {
   to?: string;
   /** 回复者头像。站长以「爱弥斯」身份回复时会带，普通访客回复没有 */
   avatar?: string;
+  /** 头像挂了用它换 Cravatar —— 回复也要有第二档，不能直接掉到首字 */
+  emailHash?: string;
   /** 回复者填的网址（选填，列表里暂不展示，但存下来备查） */
   url?: string;
   /** 回复者填的邮箱 —— 只给提交用（通知收件人），列表里不会回传 */
