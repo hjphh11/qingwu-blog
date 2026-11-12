@@ -46,13 +46,9 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import {
-  galleryBase,
-  gallerySample,
-  galleryShards,
-  gallerySource,
-  type GalleryItem,
-} from '../../data/gallery';
+/* ⚠️ 从 gallery-meta 引，**不要**从 data/gallery 引 —— 后者带 zod，
+   打进来会让这个 chunk 从 ~33KB 涨到 ~91KB（实测）。见那个文件的头注释。 */
+import { galleryJson, gallerySource, type GalleryItem } from '../../data/gallery-meta';
 
 /** 格子边长：随视口宽走，但有上下限 —— 手机上太小的格子拖起来没手感，太大又像单图 */
 const CELL_MIN = 150;
@@ -90,8 +86,8 @@ function shuffle<T>(list: T[]): T[] {
   return a;
 }
 
-const tileSrc = (id: string) => `${galleryBase}/${id}-t.webp`;
-const viewSrc = (id: string) => `${galleryBase}/${id}.webp`;
+const tileSrc = (id: string) => `${galleryJson.base}/${id}-t.webp`;
+const viewSrc = (id: string) => `${galleryJson.base}/${id}.webp`;
 
 export default function GalleryWall() {
   const [items, setItems] = useState<GalleryItem[] | null>(null);
@@ -147,7 +143,7 @@ export default function GalleryWall() {
     setBroken(false);
     failed.current.clear();
 
-    const shard = Math.floor(Math.random() * Math.max(1, galleryShards));
+    const shard = Math.floor(Math.random() * Math.max(1, galleryJson.shards));
     fetch(`/gallery/data/${shard}.json`, { credentials: 'omit' })
       .then((r) => (r.ok ? r.json() : Promise.reject(new Error(String(r.status)))))
       .then((list: GalleryItem[]) => {
@@ -156,7 +152,7 @@ export default function GalleryWall() {
       })
       .catch(() => {
         // 索引取不到（断网 / 部署漏了分片）也要能看 —— 退回构建期那 60 张
-        setItems(shuffle(gallerySample).slice(0, PICK));
+        setItems(shuffle(galleryJson.sample).slice(0, PICK));
       });
   }, []);
 
@@ -408,23 +404,17 @@ export default function GalleryWall() {
     im.src = viewSrc(id);
   };
 
-  /* ── 页面级：锁滚动 + 接管 .astro 里那份无障碍清单 ────────── */
+  /* ── 页面级：锁滚动 ──────────────────────────────────────── */
   useEffect(() => {
     const root = document.documentElement;
     root.classList.add('q-wall-page');
 
-    // astro 页里那份「列表版」是给读屏和 no-JS 用的，有 JS 时点它应该进灯箱而不是跳走
-    const links = Array.from(document.querySelectorAll<HTMLAnchorElement>('[data-gallery-open]'));
-    const onLink = (e: Event) => {
-      const a = e.currentTarget as HTMLAnchorElement;
-      e.preventDefault();
-      setView(Number(a.dataset.galleryOpen));
-    };
-    links.forEach((a) => a.addEventListener('click', onLink));
-
+    /* 页里那份 sr-only 清单（给读屏和 no-JS）保持原样，就让它当**真链接**用 ——
+       它列的是构建期样本，墙上铺的是随机取的一片，两套下标对不上，拦下来也只会
+       打开错的那张。（早先这里挂过一段 `[data-gallery-open]` 的拦截，但页面从没
+       渲染过这个属性，等于死代码，2026-11-12 删掉。） */
     return () => {
       root.classList.remove('q-wall-page');
-      links.forEach((a) => a.removeEventListener('click', onLink));
     };
   }, []);
 
