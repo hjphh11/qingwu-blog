@@ -19,7 +19,7 @@ import {
   isOn,
 } from './common';
 import { sendLoginCode, verifyLoginCode } from './codes';
-import { anchorLogin, publicAccount } from './account';
+import { anchorLogin, claimComments, publicAccount } from './account';
 import {
   createSession,
   destroySession,
@@ -198,6 +198,10 @@ async function getMyComments(request: Request, env: Env): Promise<Response> {
   const headers = corsHeaders(request, env);
   const me = await sessionUser(request, env);
   if (!me) return json({ ok: false, reason: 'unauthorized' }, 401, headers);
+
+  // 读之前再认领一次。登录那一刻已经认领过，但用户可能「登录着，却在另一台设备
+  // 用未登录状态留了言」—— 那种情况不会再触发登录，只能在这里补。
+  await claimComments(env, me.account);
 
   const rows = await env.DB.prepare(
     `SELECT c.id, c.body, c.status, c.ts,

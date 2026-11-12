@@ -349,7 +349,11 @@ export default function FriendsBoard() {
     }
     if (!validate()) return;
     setStatus('submitting');
-    const res = await submitFriendEntry(values);
+    // 登录时三格根本不显示，署名与站点一律用档案 —— 显式传空串，
+    // 免得输入框里残留的旧草稿把档案盖掉（服务端是 v.name 优先）
+    const res = await submitFriendEntry(
+      me ? { ...values, name: '', email: '', url: '' } : values,
+    );
     setStatus('idle');
 
     if (!res.ok) {
@@ -362,8 +366,8 @@ export default function FriendsBoard() {
     // 把删除凭证记在本机，之后这条才删得掉
     saveToken(res.entry.id, res.deleteToken);
     setOwned((prev) => ({ ...prev, [res.entry.id]: res.deleteToken }));
-    // 登录了就把署名与站点留着 —— 刚填的三格不该发完一条就空掉
-    setValues(me ? { name: me.name, email: '', url: me.site, intro: '' } : EMPTY);
+    // 发完清空正文。登录态那三格已经不显示了，不用再回填档案
+    setValues(EMPTY);
     setSort('new');
     setFreshId(res.entry.id);
     window.setTimeout(() => setFreshId(''), 3600);
@@ -630,8 +634,10 @@ export default function FriendsBoard() {
               />
             </div>
           )}
-          {/* 左边是邮箱头像预览（填了邮箱才会亮），右边三字段一行。
-              移动端藏头像 —— 三格本来就堆叠，再挤个圆更窄 */}
+          {/* 三格只在未登录时出现。
+              登录之后署名、站点、通知地址都来自账号档案，再摆一遍就变成
+              「两个地方都能填网址，到底哪个算」—— 收起来，上面那条「我是谁」已经说清了 */}
+          {!me && (
           <div className="flex items-stretch border-b border-dashed border-rose/25">
             <span
               aria-hidden="true"
@@ -657,9 +663,7 @@ export default function FriendsBoard() {
             </span>
 
             <div
-              className={`grid min-w-0 flex-1 divide-y divide-dashed divide-rose/25 ${
-                me ? 'sm:grid-cols-2' : 'sm:grid-cols-3'
-              } sm:divide-x sm:divide-y-0`}
+              className={`grid min-w-0 flex-1 divide-y divide-dashed divide-rose/25 sm:grid-cols-3 sm:divide-x sm:divide-y-0`}
             >
             {/* 浮动标签：空且未聚焦时嵌在框内（和原来的占位符一样的位置），
                 聚焦或有内容就缩到 11px 挪到框上方并常驻。
@@ -750,14 +754,9 @@ export default function FriendsBoard() {
             </label>
             </div>
           </div>
-
-          {/* 登录后邮箱那格不填 —— 通知直接发到账号邮箱，顺便省一格里填错的机会 */}
-          {me && (
-            <p className="flex items-center gap-1.5 border-b border-dashed border-rose/25 px-4 py-1.5 text-[11px] text-subtle">
-              <MorphIcon icon={Mail} size={11} color="currentColor" />
-              通知发到 {me.email}（账号邮箱，不公开）
-            </p>
           )}
+
+          {/* 登录后不再单列一行「通知发到 xxx」—— 上面账号条上就写着邮箱，重复一遍只是噪音 */}
 
           {/* 正文 */}
           <div className="px-4 pt-3.5">

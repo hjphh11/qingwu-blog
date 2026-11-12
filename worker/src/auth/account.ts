@@ -83,6 +83,39 @@ export type AnchorResult =
   | { ok: false; reason: 'conflict' };
 
 /**
+ * 把「没登录时用同一个邮箱留的言」认领到这个账号。
+ *
+ * 为什么必须有这一步：留言归属只认 `account_id`，未登录发的只有 `email_hash`。
+ * 少了它，同一个人登录后看不到自己半小时前说的话，而且**没有任何办法补** ——
+ * 前台只会说「还没有用这个邮箱留过言」，看起来就像丢数据。
+ *
+ * 匹配靠 `email_hash`（= md5(trim+lower(email))，无盐确定性，和未登录提交时算的是同一份）；
+ * 更老的留言可能没存 hash，再用明文邮箱对一次。
+ *
+ * 认领后把明文邮箱清掉 —— 登录态的留言本来就不落明文（见 friends-board 的 POST）。
+ * 全程 try/catch：认领不到顶多列表少几条，不该让登录本身失败。
+ */
+export async function claimComments(env: Env, account: AccountRow): Promise<number> {
+  try {
+    const r = await env.DB.prepare(
+      `UPDATE comments
+          SET account_id = ?, email = NULL
+        WHERE account_id IS NULL
+          AND (
+            (email_hash IS NOT NULL AND email_hash = ?)
+            OR (email_hash IS NULL AND email IS NOT NULL AND lower(trim(email)) = ?)
+          )`,
+    )
+      .bind(account.id, account.email_hash, account.email.toLowerCase())
+      .run();
+    return r.meta?.changes ?? 0;
+  } catch (err) {
+    console.error('[auth] 历史留言认领失败:', err instanceof Error ? err.message : err);
+    return 0;
+  }
+}
+
+/**
  * 邮箱锚点：**任何拿到已验证邮箱的入口都走这里**。
  *
  *   · 邮箱已存在 → 登进那个账号（把本次 provider 记上，这就是「多登录方式互通」）
@@ -128,5 +161,11 @@ export async function anchorLogin(
   }
 
   await touchAccount(env, account.id);
+
+  // 认领历史留言（同邮箱、未登录时发的）—— 每次登录都做，不只建号时做。
+  // 场景：先在这台设备登录过，后来退出/换浏览器用同一邮箱留了言，再登回来。
+  const claimed = await claimComments(env, account);
+  if (claimed) console.log(`[auth] 认领 ${claimed} 条历史留言 → 账号 ${account.id}`);
+
   return { ok: true, account, created };
 }
