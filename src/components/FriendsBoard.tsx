@@ -446,6 +446,7 @@ export default function FriendsBoard() {
       url: reply.url,
       avatar: reply.avatar,
       notify: reply.notify,
+      replyTo: reply.replyToId,
       intro: reply.intro,
     });
     if (!res.ok) {
@@ -1015,6 +1016,12 @@ function EntryRow({
   /** 回复默认折起来（参考站就是「展开回复」那个按钮），点一下才铺开 */
   const [repliesOpen, setRepliesOpen] = useState(false);
   const [replyOpen, setReplyOpen] = useState(false);
+  /**
+   * 正在回哪一条回复。
+   * null = 回主楼；有值 = 回某条回复（结构上仍平铺，只带个 replyTo 让服务端记指针）。
+   * 复用同一个输入框，而不是每条回复底下各塞一个 —— 屏幕上同时开五个输入框没人受得了。
+   */
+  const [replyTarget, setReplyTarget] = useState<{ id: string; name: string } | null>(null);
   const [rName, setRName] = useState('');
   const [rEmail, setREmail] = useState('');
   const [rUrl, setRUrl] = useState('');
@@ -1064,6 +1071,27 @@ function EntryRow({
   /** 票数只认 entry.likes：演示模式在 toggleLike 里就改好了，真实模式是服务端返回的 */
   const likes = entry.likes ?? 0;
 
+  /**
+   * 打开回复框。传 `target` = 回某条回复，不传 = 回主楼。
+   *
+   * 三级回复也走这一个框：屏幕上同时开三个输入框既乱又容易看错回复对象，
+   * 所以「回复谁」用顶部那个 @ 标签表达，一眼能确认。
+   */
+  function openReplyForm(target: { id: string; name: string } | null) {
+    // 要登录才能回：直接弹登录，别让人写完再被拒
+    if (requireLogin && !account) {
+      onNeedLogin();
+      return;
+    }
+    // 登录了就把档案带上，回复框里不用再填名字和网址
+    if (account) {
+      setRName((v) => v || account.name);
+      setRUrl((v) => v || account.site);
+    }
+    setReplyTarget(target);
+    setReplyOpen(true);
+  }
+
   function submitReply() {
     const text = rText.trim();
     if (!text) return;
@@ -1071,6 +1099,7 @@ function EntryRow({
       onNeedLogin();
       return;
     }
+    const targetName = replyTarget?.name || entry.name;
     onReply({
       id: `r-${Date.now()}`,
       // 登录后署名、站点、通知地址都由服务端按账号补，前端不用再编
@@ -1079,8 +1108,10 @@ function EntryRow({
       url: account ? account.site : rUrl.trim(),
       // 自动 @ 被回复的人 —— 访客不用自己打，邮件通知也靠这个找到收件人。
       // 访客把 @ 点掉了就不给 to，服务端也就不发信。
-      to: notify ? entry.name : '',
+      to: notify ? targetName : '',
       notify,
+      // 二级回复：告诉服务端这条是在回谁（仍旧平铺，只记指针）
+      replyToId: replyTarget?.id || '',
       // 乐观上屏时先用手上的头像顶着，别等接口回来才从「清」字变成脸
       avatar: account ? account.avatar : '',
       emailHash: account ? account.emailHash : '',
@@ -1089,6 +1120,7 @@ function EntryRow({
     });
     setRText('');
     setReplyOpen(false);
+    setReplyTarget(null);
     setRepliesOpen(true);
   }
 
@@ -1198,21 +1230,12 @@ function EntryRow({
           <button
             type="button"
             onClick={() => {
-              if (replyOpen) {
+              // 已经在回主楼 → 再点一次收起
+              if (replyOpen && !replyTarget) {
                 setReplyOpen(false);
                 return;
               }
-              // 要登录才能回：直接弹登录，别让人写完再被拒
-              if (requireLogin && !account) {
-                onNeedLogin();
-                return;
-              }
-              // 登录了就把档案带上，回复框里不用再填名字和网址
-              if (account) {
-                setRName((v) => v || account.name);
-                setRUrl((v) => v || account.site);
-              }
-              setReplyOpen(true);
+              openReplyForm(null);
             }}
             aria-expanded={replyOpen}
             className={`inline-flex min-h-7 items-center gap-1 rounded-full px-1.5 text-[11px] transition-colors ${
@@ -1287,7 +1310,7 @@ function EntryRow({
               >
                 {notify ? (
                   <>
-                    @{entry.name}
+                    @{replyTarget?.name || entry.name}
                     <MorphIcon icon={X} size={9} color="currentColor" />
                   </>
                 ) : (
@@ -1374,7 +1397,10 @@ function EntryRow({
               />
               <button
                 type="button"
-                onClick={() => setReplyOpen(false)}
+                onClick={() => {
+                  setReplyOpen(false);
+                  setReplyTarget(null);
+                }}
                 className="shrink-0 rounded-full px-2 py-1 text-[11px] text-subtle transition-colors hover:text-ink"
               >
                 取消
@@ -1426,6 +1452,16 @@ function EntryRow({
                     <time dateTime={r.at} className="text-[10.5px] tabular-nums text-subtle">
                       {now ? timeAgo(r.at, now) : '\u00A0'}
                     </time>
+                    {/* 回「这条回复」—— 楼中楼不做无限嵌套，回复进来还是这一层，
+                        靠 @ 说明在跟谁说话（和 GitHub 一个路子） */}
+                    <button
+                      type="button"
+                      onClick={() => openReplyForm({ id: r.id, name: r.name })}
+                      aria-label={`回复 ${r.name}`}
+                      className="inline-flex min-h-5 items-center rounded-full px-1 text-[10.5px] text-subtle transition-colors hover:bg-white/60 hover:text-crimson"
+                    >
+                      回复
+                    </button>
                   </div>
                   {/* @ 放在正文上方一行：正文可能是列表/代码块，塞进 <p> 里会变成非法嵌套 */}
                   {r.to && (

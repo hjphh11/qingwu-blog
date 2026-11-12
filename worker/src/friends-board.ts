@@ -53,6 +53,8 @@ interface CommentRow {
   notify: number | null;
   /** 归属账号。老留言与匿名留言为 null */
   account_id: number | null;
+  /** 回的是哪一条回复（纯 id，不嵌套）。空 = 回主楼 */
+  reply_to_id: number | null;
   /**
    * 账号**当前**的头像 / 署名（LEFT JOIN accounts 带出来的）。
    *
@@ -150,6 +152,8 @@ interface Payload {
   avatarHash?: unknown;
   /** 回复专用：false = 访客取消了 @，不显示 @某某、也不发通知邮件 */
   notify?: unknown;
+  /** 回复专用：在回哪一条回复（纯数字 comment id）。不带 = 回主楼 */
+  replyTo?: unknown;
 }
 
 interface Clean {
@@ -186,13 +190,30 @@ function validate(
   return Object.keys(e).length ? { ok: false, fields: e } : { ok: true, v };
 }
 
-/** 组装成前端要的公开形状（字段名与 `src/lib/friendsBoard.ts` 的 FriendEntry 对齐） */
+/**
+ * 组装成前端要的公开形状（字段名与 `src/lib/friendsBoard.ts` 的 FriendEntry 对齐）
+ */
 function toEntry(
   row: CommentRow,
   replies: CommentRow[],
   likes: number,
   opts: { mine?: boolean; liked?: boolean } = {},
 ) {
+  /**
+   * 「这条回复是在回谁」。
+   *
+   * 结构上所有回复都挂在主楼（一层），二级回复只多了个 `reply_to_id`。
+   * 所以 @ 的名字要现查：先按 id 在同楼的回复里找，找不到（被删了）就退回主楼作者 ——
+   * 宁可 @ 得笼统一点，也别留一个空的「@」。
+   */
+  const nameOf = new Map(replies.map((r) => [r.id, r.acc_name || r.author]));
+  const mainName = row.acc_name || row.author;
+  const toOf = (r: CommentRow) => {
+    if (r.notify === 0) return '';
+    if (!r.reply_to_id) return mainName;
+    return nameOf.get(r.reply_to_id) || mainName;
+  };
+
   return {
     id: `c-${row.id}`,
     // 账号有当前档案就优先用它 —— 改了署名/头像，历史留言跟着变
@@ -215,7 +236,7 @@ function toEntry(
       id: `c-${r.id}`,
       name: r.acc_name || r.author,
       // notify = 0 表示访客主动取消了 @：不给 to，前端就不显示「@某某」
-      to: r.notify === 0 ? '' : row.acc_name || row.author,
+      to: toOf(r),
       avatar: r.acc_avatar || r.avatar || '',
       // 回复头像同样要能退到 Cravatar（QQ 头像接口会 400），所以把哈希一起给出去
       emailHash: r.email_hash,
@@ -238,7 +259,7 @@ export async function getFriendsBoard(request: Request, env: Env): Promise<Respo
     try {
       rows = await env.DB.prepare(
         `SELECT c.id, c.parent_id, c.author, c.author_url, c.avatar, c.body, c.status,
-                c.ts, c.email_hash, c.notify, c.account_id,
+                c.ts, c.email_hash, c.notify, c.account_id, c.reply_to_id,
                 a.avatar_url AS acc_avatar, a.display_name AS acc_name
          FROM comments c LEFT JOIN accounts a ON a.id = c.account_id
          WHERE c.post_slug = ? AND c.status IN ('visible', 'pending')
@@ -562,6 +583,27 @@ export async function postFriendReply(
     return json({ ok: false, error: 'not_found', message: '这条留言已经不在了' }, 404, headers);
   }
 
+  /**
+   * 是不是在回「某一条回复」。**仍然平铺在同一层**，只记一个指针（见 0025 迁移）。
+   * 校验必须带上 `parent_id = ?`：不然可以拿别栋楼的回复 id 当目标，
+   * 把通知发到不相干的人那里去。
+   * 找不到（刚被删）就当回复主楼，不报错 —— 用户那边不该因为一条已删的回复发不出去。
+   */
+  const replyToId = Number(body.replyTo ?? 0) || 0;
+  const target = replyToId
+    ? await env.DB.prepare(
+        `SELECT c.author AS author, c.email AS email, a.email AS acc_email, a.display_name AS acc_name
+           FROM comments c LEFT JOIN accounts a ON a.id = c.account_id
+          WHERE c.id = ? AND c.parent_id = ? AND c.post_slug = ? AND c.status != 'deleted'`,
+      )
+        .bind(replyToId, parentId, SLUG)
+        .first<{ author: string; email: string | null; acc_email: string | null; acc_name: string | null }>()
+    : null;
+
+  /** 被回复的人（名字用于 @ 显示，邮箱用于发信）；没有二级目标就是主楼作者 */
+  const targetName = target ? target.acc_name || target.author : parent.author;
+  const targetEmail = target ? target.acc_email || target.email : parent.acc_email || parent.email;
+
   try {
     // 默认 @ 对方（发信）；访客手动取消就是 false
     const notify = body.notify === false ? 0 : 1;
@@ -574,8 +616,8 @@ export async function postFriendReply(
     const avatar = v.v.avatar || account?.avatar_url || (account ? avatarFromEmail(account.email) : '');
 
     const res = await env.DB.prepare(
-      `INSERT INTO comments (post_slug, parent_id, author, email, email_hash, author_url, avatar, body, status, ts, ip_hash, notify, account_id)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'visible', ?, ?, ?, ?)`,
+      `INSERT INTO comments (post_slug, parent_id, author, email, email_hash, author_url, avatar, body, status, ts, ip_hash, notify, account_id, reply_to_id)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'visible', ?, ?, ?, ?, ?)`,
     )
       .bind(
         SLUG,
@@ -590,13 +632,14 @@ export async function postFriendReply(
         key,
         notify,
         account?.id ?? null,
+        target ? replyToId : null,
       )
       .run();
 
     // 通知被回复的人：他登录了就用账号邮箱，老留言用当时填的邮箱。
-    // 站长回复时不抄送自己，避免每回一句都收到一封信。
+    // 二级回复通知的是**被回复的那条**，不是主楼 —— 不然一句「谢谢」会把楼主也叫起来。
     // notify = 0 表示访客主动取消了 @，那就不打扰对方。
-    const notifyTo = parent.acc_email || parent.email;
+    const notifyTo = targetEmail;
     if (notify && notifyTo) {
       ctx.waitUntil(
         sendMail(env, {
@@ -606,7 +649,7 @@ export async function postFriendReply(
           text: boardMailText({
             kind: 'reply',
             from: author,
-            toName: parent.author,
+            toName: targetName,
             // 邮件是纯文本，别把 Markdown 标记原样塞进去
             body: plainOf(v.v.intro),
             site,
@@ -623,7 +666,9 @@ export async function postFriendReply(
         reply: {
           id: `c-${Number(res.meta.last_row_id)}`,
           name: author,
-          to: notify ? parent.author : '',
+          // @ 的是「被回复的那条」的作者；回主楼时就是主楼作者
+          to: notify ? targetName : '',
+          replyToId: target ? `c-${replyToId}` : '',
           // 访客回复一般没有头像；站长用爱弥斯身份回复时带上，前端就显示那张脸
           avatar: avatar || '',
           // 头像挂了的时候要用它换 Cravatar —— 回复也走三档兜底，不能只给首字

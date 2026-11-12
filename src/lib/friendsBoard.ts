@@ -61,6 +61,8 @@ export interface FriendReply {
   avatar?: string;
   /** 头像挂了用它换 Cravatar —— 回复也要有第二档，不能直接掉到首字 */
   emailHash?: string;
+  /** 这条回复是在回哪一条（`c-12`）；空 = 回主楼 */
+  replyToId?: string;
   /** 回复者填的网址（选填，列表里暂不展示，但存下来备查） */
   url?: string;
   /** 回复者填的邮箱 —— 只给提交用（通知收件人），列表里不会回传 */
@@ -378,6 +380,8 @@ export async function submitReply(
     avatar?: string;
     /** false = 取消 @，不发通知邮件 */
     notify?: boolean;
+    /** 在回哪一条回复（`c-12`）。不带 = 回主楼 */
+    replyTo?: string;
   },
 ): Promise<{ ok: true; reply: FriendReply } | { ok: false; message: string }> {
   if (FRIENDS_BOARD_DEMO) {
@@ -405,6 +409,8 @@ export async function submitReply(
         url: (input.url || '').trim(),
         avatar: input.avatar || '',
         notify: input.notify !== false,
+        // 只认 `c-12` 里的数字；服务端还要校验它是不是同一栋楼里的回复
+        replyTo: numericId(input.replyTo || '') || 0,
         intro: input.intro.trim(),
       }),
       credentials: 'include',
