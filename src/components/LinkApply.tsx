@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { motion, useReducedMotion } from 'motion/react';
 import { MorphIcon } from 'morphicons/react';
+import { WORKER_BASE as BASE } from '../lib/workerBase';
 import {
   Globe,
   Link2,
@@ -46,8 +47,8 @@ import {
 //   注意：回退时 Worker 看到的 IP 是 Vercel 的，限流粒度会变粗 —— 这是回退路径
 //   的已知代价，只在异常时才会走到。
 
-/** Worker 地址。与 `src/pages/api/hit.ts` 里那份保持同一套取值顺序。 */
-const WORKER_BASE = (import.meta.env.PUBLIC_HIT_WORKER_URL || 'https://api.qingwu.ink').replace(/\/$/, '');
+/** Worker 地址。统一走 `src/lib/workerBase.ts`（dev 下是 /api，线上同源）。 */
+const WORKER_BASE = BASE;
 const APPLY_DIRECT = `${WORKER_BASE}/apply`;
 /** 同源兜底（Vercel 函数转发给 Worker） */
 const APPLY_SAME_ORIGIN = '/api/links/apply';

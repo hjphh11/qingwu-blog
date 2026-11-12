@@ -1,4 +1,5 @@
 import { avatarFromEmail, emailHash as emailHashOf } from './avatar';
+import { WORKER_BASE as BASE } from './workerBase';
 
 /**
  * 友链评论区 · 数据层
@@ -212,7 +213,11 @@ export function timeAgo(iso: string, now: number): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
 
-const WORKER_BASE = (import.meta.env.PUBLIC_HIT_WORKER_URL || 'https://api.qingwu.ink').replace(/\/$/, '');
+/**
+ * Worker 的地址 —— 与其他地方同一份（`src/lib/workerBase.ts`）：
+ * dev 恒走 `/api`（astro.config 的代理转到 8799），线上走同源。
+ */
+const WORKER_BASE = BASE;
 
 /** 读公开列表 */
 export async function loadFriendEntries(): Promise<FriendEntry[]> {

@@ -9,7 +9,7 @@
  *    表现为「登录成功但马上又变成未登录」。那是构建参数问题，不是这里的问题。
  */
 
-const BASE = (import.meta.env.PUBLIC_HIT_WORKER_URL || 'https://api.qingwu.ink').replace(/\/$/, '');
+import { WORKER_BASE as BASE } from './workerBase';
 
 export interface Identity {
   provider: 'email' | 'github';
@@ -69,7 +69,9 @@ export async function fetchMe(): Promise<{ account: SessionAccount | null; confi
 type Result<T> = ({ ok: true } & T) | { ok: false; message: string; retryAfter?: number; cooldown?: number };
 
 /** 发验证码。**无论邮箱是否注册过，回答都一样** —— 首次登录即注册 */
-export async function startEmailLogin(rawEmail: string): Promise<Result<{ cooldown?: number }>> {
+export async function startEmailLogin(
+  rawEmail: string,
+): Promise<Result<{ cooldown?: number; devCode?: string }>> {
   try {
     const res = await fetch(`${BASE}/auth/email/start`, {
       method: 'POST',
@@ -82,8 +84,10 @@ export async function startEmailLogin(rawEmail: string): Promise<Result<{ cooldo
       ok?: boolean;
       message?: string;
       retryAfter?: number;
+      /** 仅本机预览（AUTH_DEV_CODE=1）会带回来 */
+      devCode?: string;
     };
-    if (res.ok && data.ok) return { ok: true };
+    if (res.ok && data.ok) return { ok: true, devCode: data.devCode };
     return { ok: false, message: data.message || '验证码没发出去，稍后再试', retryAfter: data.retryAfter };
   } catch {
     return { ok: false, message: '网络好像不太顺，稍后再试一次' };

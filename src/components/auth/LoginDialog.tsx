@@ -109,7 +109,13 @@ export default function LoginDialog({
     }
     setStep('code');
     setCool(60);
-    setHint('验证码 5 分钟内有效');
+    if (r.devCode) {
+      // 本机预览（AUTH_DEV_CODE=1）：没有发信中继，码直接塞进格子里
+      setDigits(r.devCode.split(''));
+      setHint('本地预览：验证码已自动填好（线上会发到邮箱）');
+    } else {
+      setHint('验证码 5 分钟内有效');
+    }
     window.setTimeout(() => codeRefs.current[0]?.focus(), 80);
   }
 

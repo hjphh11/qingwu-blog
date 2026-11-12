@@ -32,13 +32,30 @@ const LOCK_WINDOW_MS = 15 * 60 * 1000;
 const LOCK_MAX_FAIL = 15;
 
 export type SendResult =
-  | { ok: true }
+  | { ok: true; devCode?: string }
   | {
       ok: false;
       reason: 'bad_email' | 'cooldown' | 'limited' | 'locked' | 'mail';
       message: string;
       retryAfter?: number;
     };
+
+/**
+ * 本地预览用的验证码旁路 —— 与 `ADMIN_DEV_LOGIN` 同一套思路。
+ *
+ * 本机没有发信中继（`.dev.vars` 里没有 RESEND_KEY），验证码根本寄不出去，
+ * 「登录后是什么样」就永远看不到。开着它时**不发信**，直接把码回给前端。
+ *
+ * 两道锁：`AUTH_DEV_CODE=1` **且** 请求落在回环地址。
+ * 变量只写在 `worker/.dev.vars`（已 gitignore），线上没有；
+ * 即使误配，nginx 转过来的 Host 是真实域名，hostname 不可能是 127.0.0.1。
+ * 复核：`grep AUTH_DEV_CODE worker/wrangler.toml` 应无结果。
+ */
+function devCodeAllowed(request: Request, env: Env): boolean {
+  if (env.AUTH_DEV_CODE !== '1') return false;
+  const host = new URL(request.url).hostname;
+  return host === '127.0.0.1' || host === 'localhost' || host === '::1' || host === '[::1]';
+}
 
 async function lockRemain(env: Env, iph: string): Promise<number> {
   const now = Date.now();
@@ -73,7 +90,8 @@ export async function sendLoginCode(
   const email = normalizeEmail(rawEmail);
   if (!isEmail(email)) return { ok: false, reason: 'bad_email', message: '邮箱格式看起来不对' };
 
-  if (!env.RESEND_KEY) {
+  const devMode = devCodeAllowed(request, env);
+  if (!env.RESEND_KEY && !devMode) {
     return { ok: false, reason: 'mail', message: '发信通道还没开，先用别的方式联系站长吧' };
   }
 
@@ -131,6 +149,12 @@ export async function sendLoginCode(
   )
     .bind(email, account?.id ?? null, codeHash, salt, purpose, iph, now, now + CODE_TTL_MS)
     .run();
+
+  // 本地预览：不发信，把码直接回给前端（只有回环地址 + AUTH_DEV_CODE=1 才有）
+  if (devMode) {
+    console.log(`[auth][dev] ${email} 的验证码是 ${code}`);
+    return { ok: true, devCode: code };
+  }
 
   const sent = await sendMail(env, {
     to: email,

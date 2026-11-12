@@ -79,6 +79,17 @@ export interface Env {
   GITHUB_CLIENT_SECRET?: string;
 
   /**
+   * **仅本地 `wrangler dev`**：设为 `"1"` 时，邮箱验证码不发信，直接回给前端。
+   *
+   * 为什么需要：本机没有发信中继，验证码寄不出去，登录之后长什么样就永远看不到。
+   * 两道锁 —— 变量为 1 **且** 请求 host 是回环地址（127.0.0.1 / localhost / ::1）。
+   *
+   * **只写在 `worker/.dev.vars`（已 gitignore），线上绝对不要配**。
+   * 复核：`grep AUTH_DEV_CODE worker/wrangler.toml` 应无结果。
+   */
+  AUTH_DEV_CODE?: string;
+
+  /**
    * **归档只读开关**：设为 `"1"` / `"true"` 时，除 GET/HEAD 外的请求一律 `410 Gone`，
    * cron 也直接跳过。
    *

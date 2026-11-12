@@ -61,11 +61,12 @@ if (workerBusy || webBusy) {
 }
 
 const children = [];
-function run(label, command, cwd) {
+function run(label, command, cwd, extraEnv = {}) {
   const child = spawn(command, {
     cwd,
     shell: true,
     stdio: ['ignore', 'pipe', 'pipe'],
+    env: { ...process.env, ...extraEnv },
   });
   children.push(child);
   const tag = `[${label}]`;
@@ -117,6 +118,8 @@ console.log(`    · Worker  http://127.0.0.1:${WORKER_PORT}  （数据、接口�
 console.log(`    · 页面    http://127.0.0.1:${WEB_PORT}  （astro dev，改组件即时热更新）\n`);
 
 run('worker', `npx wrangler dev --port ${WORKER_PORT} --local`, join(ROOT, 'worker'));
+// 页面走同源 /api（astro.config 里转到 8799）—— dev 下客户端会自己回落 `/api`，
+// 不在这儿传 PUBLIC_HIT_WORKER_URL：Git Bash 的 MSYS 会把 `/api` 当路径转成 D:\…\api。
 run('web', 'npx astro dev', ROOT);
 
 // 等页面起来再把地址打出来，省得用户盯着日志猜

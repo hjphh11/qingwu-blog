@@ -84,7 +84,16 @@ async function postEmailStart(request: Request, env: Env): Promise<Response> {
     return json({ ok: false, reason: r.reason, message: r.message, retryAfter: r.retryAfter }, status, headers);
   }
   // ⚠️ 文案不暗示邮箱是否注册过 —— 首次登录即注册，两条路长得一样
-  return json({ ok: true, message: '如果这个邮箱能收信，验证码已经在路上了' }, 200, headers);
+  return json(
+    {
+      ok: true,
+      message: '如果这个邮箱能收信，验证码已经在路上了',
+      // 仅本地预览（AUTH_DEV_CODE=1 + 回环地址）才有；线上恒为 undefined
+      devCode: r.devCode,
+    },
+    200,
+    headers,
+  );
 }
 
 async function postEmailVerify(request: Request, env: Env): Promise<Response> {

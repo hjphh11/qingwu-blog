@@ -388,7 +388,13 @@ shown.forEach((f, i) => wallColumns[i % WALL_COLS]!.push({ f, i }));
      * 统计接口没上线（Worker 还没部署）时，fetch 会 404 —— 上面那条 catch 吞掉，
      * 卡片上那一格本来就是空的，看不出任何异常。
      */
-    const LINK_API = (import.meta.env.PUBLIC_HIT_WORKER_URL || 'https://api.qingwu.ink').replace(/\/$/, '');
+    // 与 src/lib/workerBase.ts 同一条规则（内联脚本里没法 import）：
+    // dev 走 /api（astro 代理转 8799），线上构建注入同源 /api。
+    const LINK_API = (
+      import.meta.env.DEV
+        ? '/api'
+        : import.meta.env.PUBLIC_HIT_WORKER_URL || 'https://api.qingwu.ink'
+    ).replace(/\/$/, '');
 
     /** 把 `2026-10-28` 说成人话：今天 / 昨天 / N 天前 / N 个月前 */
     function relativeUpdate(iso: string): string {

@@ -31,7 +31,10 @@ export default defineConfig({
      */
     server: {
       proxy: {
-        '/api/admin': {
+        // 本地预览时把 /api/* 整体转给 Worker，**与线上同源**：
+        // 会话 cookie（q_sess）在 dev 下也能正常带上，跨源那套 CORS/凭证问题不会在本地冒出来。
+        // 线上走 nginx 的 location /api/，行为一致（都去前缀）。
+        '/api': {
           target: process.env.QINGWU_WORKER_DEV || 'http://127.0.0.1:8799',
           rewrite: (p) => p.replace(/^\/api/, ''),
         },
