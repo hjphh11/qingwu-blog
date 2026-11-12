@@ -25,6 +25,7 @@ import { isOn } from './auth/common';
 import { avatarFromEmail } from './auth/avatar';
 import { sessionUser, type AccountRow } from './auth/store';
 import { loginRequiredMessage } from './auth/index';
+import { visitorKey } from './visitor';
 
 /** 友链评论区在 comments 表里的分区名 */
 const SLUG = 'friends';
@@ -79,23 +80,6 @@ function withCors(request: Request, env: Env, extra: Record<string, string> = {}
   return headers;
 }
 
-function clientIp(request: Request): string {
-  return (
-    request.headers.get('cf-connecting-ip') ||
-    request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ||
-    'unknown'
-  );
-}
-
-/** 匿名访客标识（IP + UA 哈希截断）—— 点赞去重与限流用，不落明文 */
-async function visitorKey(request: Request, env: Env): Promise<string> {
-  const data = new TextEncoder().encode(
-    `${env.HIT_IP_SALT || 'dev'}|${clientIp(request)}|${request.headers.get('user-agent') || ''}`,
-  );
-  const d = await crypto.subtle.digest('SHA-256', data);
-  return [...new Uint8Array(d)].map((b) => b.toString(16).padStart(2, '0')).join('').slice(0, 16);
-}
-
 /**
  * 当前账号。
  *
@@ -121,6 +105,37 @@ async function currentAccount(request: Request, env: Env): Promise<AccountRow | 
 /** 登录后点过的赞按账号去重；未登录仍按 IP|UA 哈希 */
 function likeKeyOf(key: string, account: AccountRow | null | undefined): string {
   return account ? `a${account.id}` : key;
+}
+
+/**
+ * 限流：10 分钟内同一个「人」最多 6 条 —— **主楼和回复都算**。
+ *
+ * 登录后按账号计：NAT / 校园网下几十个人共用一个出口 IP，
+ * 按 IP 限会让素不相识的人互相顶额度。未登录仍按 IP|UA 哈希。
+ * （`account` 为 undefined = 身份表没迁移，按未登录处理。）
+ *
+ * ⚠️ 回复以前**根本没有限流** —— 只要有一栋楼存在，就能无限往里回。
+ * 现在两处共用这一个判断。
+ */
+async function overRate(
+  env: Env,
+  account: AccountRow | null | undefined,
+  anonKey: string,
+  now: number,
+): Promise<boolean> {
+  const row = account
+    ? await env.DB.prepare(
+        `SELECT COUNT(*) AS n FROM comments WHERE post_slug = ? AND account_id = ? AND ts > ?`,
+      )
+        .bind(SLUG, account.id, now - RATE_WINDOW_MS)
+        .first<{ n: number }>()
+    : await env.DB.prepare(
+        `SELECT COUNT(*) AS n FROM comments WHERE post_slug = ? AND ip_hash = ? AND ts > ?`,
+      )
+        .bind(SLUG, anonKey, now - RATE_WINDOW_MS)
+        .first<{ n: number }>();
+
+  return (row?.n ?? 0) >= RATE_MAX;
 }
 
 /**
@@ -247,18 +262,24 @@ function toEntry(
 }
 
 /**
- * 读列表：**主楼和回复分两条查**。
+ * 读列表：**主楼和回复分两条查**，主楼支持游标分页。
  *
  * 以前是一条 `ORDER BY ts DESC LIMIT 300` 把两类一次捞出来，再在内存里按 parent_id 分组。
  * 那样有个迟早会炸的坑：回复也算进这 300 条 —— 活跃的楼里回复一多，
  * 老的主楼就被挤出窗口，然后**它下面的回复全部变成孤儿、整栋楼从页面上消失**。
- * 现在先取 300 条主楼，再按这批 id 取它们的回复，数量再多也不会互相挤。
+ * 现在先取一页主楼，再按这批 id 取它们的回复，数量再多也不会互相挤。
+ *
+ * 分页用 **ts 游标**（`before`）而不是 OFFSET：翻页时有人刚发了新留言，
+ * OFFSET 会让同一条重复出现两次；按时间往前取则永远接着上一页。
  *
  * JOIN accounts 是为了拿「当前」头像与署名（改名换头像后历史留言跟着变）；
  * 身份表还没迁移时 accounts 可能不存在，整段退到不带 JOIN 的老查询 ——
  * **列表永远不能因为「新功能没就位」而挂掉**。
  */
-async function loadBoardRows(env: Env): Promise<{ roots: CommentRow[]; reps: CommentRow[] }> {
+async function loadBoardRows(
+  env: Env,
+  opts: { limit: number; before: number },
+): Promise<{ roots: CommentRow[]; reps: CommentRow[]; hasMore: boolean; nextBefore: number }> {
   const joined = `SELECT c.id, c.parent_id, c.author, c.author_url, c.avatar, c.body, c.status,
                           c.ts, c.email_hash, c.notify, c.account_id, c.reply_to_id,
                           a.avatar_url AS acc_avatar, a.display_name AS acc_name
@@ -267,16 +288,25 @@ async function loadBoardRows(env: Env): Promise<{ roots: CommentRow[]; reps: Com
                         ts, email_hash, notify, account_id
                    FROM comments`;
 
-  async function run(sel: string, prefix: 'c.' | ''): Promise<{ roots: CommentRow[]; reps: CommentRow[] }> {
-    const roots = await env.DB.prepare(
-      `${sel} WHERE ${prefix}post_slug = ? AND ${prefix}parent_id IS NULL
-        AND ${prefix}status IN ('visible', 'pending') ORDER BY ${prefix}ts DESC LIMIT 300`,
-    )
-      .bind(SLUG)
-      .all<CommentRow>();
+  type Page = { roots: CommentRow[]; reps: CommentRow[]; hasMore: boolean; nextBefore: number };
 
-    const ids = (roots.results ?? []).map((r) => r.id);
-    if (ids.length === 0) return { roots: [], reps: [] };
+  async function run(sel: string, prefix: 'c.' | ''): Promise<Page> {
+    // 多取一条只为判断「还有没有」，不返回给前端
+    const older = opts.before > 0 ? ` AND ${prefix}ts < ?` : '';
+    const stmt = env.DB.prepare(
+      `${sel} WHERE ${prefix}post_slug = ? AND ${prefix}parent_id IS NULL
+        AND ${prefix}status IN ('visible', 'pending')${older}
+        ORDER BY ${prefix}ts DESC LIMIT ?`,
+    );
+    const roots = opts.before > 0
+      ? await stmt.bind(SLUG, opts.before, opts.limit + 1).all<CommentRow>()
+      : await stmt.bind(SLUG, opts.limit + 1).all<CommentRow>();
+
+    const fetched = roots.results ?? [];
+    const hasMore = fetched.length > opts.limit;
+    const page = hasMore ? fetched.slice(0, opts.limit) : fetched;
+    const ids = page.map((r) => r.id);
+    if (ids.length === 0) return { roots: [], reps: [], hasMore: false, nextBefore: 0 };
 
     const reps = await env.DB.prepare(
       `${sel} WHERE ${prefix}post_slug = ? AND ${prefix}parent_id IN (${ids.map(() => '?').join(',')})
@@ -285,7 +315,13 @@ async function loadBoardRows(env: Env): Promise<{ roots: CommentRow[]; reps: Com
       .bind(SLUG, ...ids)
       .all<CommentRow>();
 
-    return { roots: roots.results ?? [], reps: reps.results ?? [] };
+    return {
+      roots: page,
+      reps: reps.results ?? [],
+      hasMore,
+      // 下一页从这一页最旧的那条往前取
+      nextBefore: page[page.length - 1]?.ts ?? 0,
+    };
   }
 
   try {
@@ -297,12 +333,21 @@ async function loadBoardRows(env: Env): Promise<{ roots: CommentRow[]; reps: Com
 }
 
 // ——————————————————————————————————————————————————————————
-// GET /friends-board
+// GET /friends-board?limit=20&before=<ts>
 // ——————————————————————————————————————————————————————————
 export async function getFriendsBoard(request: Request, env: Env): Promise<Response> {
   const headers = withCors(request, env);
   try {
-    const { roots: rootRows, reps: replyRows } = await loadBoardRows(env);
+    const url = new URL(request.url);
+    const asked = Number.parseInt(url.searchParams.get('limit') || '', 10);
+    // 每页条数：默认 20，最多 50（再多首屏就没人愿意等了）
+    const limit = Number.isFinite(asked) ? Math.min(Math.max(asked, 1), 50) : 20;
+    const before = Number(url.searchParams.get('before') || '') || 0;
+
+    const { roots: rootRows, reps: replyRows, hasMore, nextBefore } = await loadBoardRows(env, {
+      limit,
+      before,
+    });
 
     const likeRows = await env.DB.prepare(
       'SELECT comment_id, COUNT(*) AS n FROM friend_likes GROUP BY comment_id',
@@ -356,6 +401,10 @@ export async function getFriendsBoard(request: Request, env: Env): Promise<Respo
       {
         ok: true,
         items,
+        /** 还有更早的没有 —— 前端据此显示「加载更多」 */
+        hasMore,
+        /** 下一页的游标（这一页最旧那条的 ts）；0 = 没有了 */
+        nextBefore,
         // 前台据此决定「能不能发」以及要不要显示登录入口
         auth: {
           signedIn: Boolean(account),
@@ -396,14 +445,8 @@ export async function postFriendsBoard(request: Request, env: Env, ctx: Executio
   const now = Date.now();
   const key = await visitorKey(request, env);
 
-  // 限流：同一访客 10 分钟最多 6 条
-  const recent = await env.DB.prepare(
-    `SELECT COUNT(*) AS n FROM comments
-     WHERE post_slug = ? AND ip_hash = ? AND ts > ?`,
-  )
-    .bind(SLUG, key, now - RATE_WINDOW_MS)
-    .first<{ n: number }>();
-  if ((recent?.n ?? 0) >= RATE_MAX) {
+  // 限流：同一个「人」10 分钟最多 6 条（登录按账号、未登录按 IP|UA）
+  if (await overRate(env, account, key, now)) {
     return json(
       { ok: false, error: 'rate_limited', message: '说得有点频繁，歇一会儿再来 ~' },
       429,
@@ -603,6 +646,16 @@ export async function postFriendReply(
 
   const now = Date.now();
   const key = await visitorKey(request, env);
+
+  // 回复与主楼共用同一个限流额度 —— 以前回复**完全没有闸门**，
+  // 只要有一栋楼存在就能无限往里刷
+  if (await overRate(env, account, key, now)) {
+    return json(
+      { ok: false, error: 'rate_limited', message: '说得有点频繁，歇一会儿再来 ~' },
+      429,
+      headers,
+    );
+  }
 
   // 只允许回复主楼（不做无限嵌套），并且要能拿到被回复者的邮箱用于通知。
   // 登录后留言不再存明文邮箱，所以从账号那边取 —— 这也是「邮箱只在一个地方」的好处。

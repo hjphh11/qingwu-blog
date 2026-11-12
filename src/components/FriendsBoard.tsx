@@ -108,6 +108,11 @@ export default function FriendsBoard() {
   const uid = useId();
   const [entries, setEntries] = useState<FriendEntry[]>([]);
   const [loading, setLoading] = useState(true);
+  /** 还有更早的没加载 —— 决定「加载更多」显不显示 */
+  const [hasMore, setHasMore] = useState(false);
+  /** 下一页游标（当前这页最旧那条的 ts）。用时间而不是页码，翻页时来新留言也不会重复 */
+  const [cursor, setCursor] = useState(0);
+  const [moreBusy, setMoreBusy] = useState(false);
   const [now, setNow] = useState(0);
 
   const [values, setValues] = useState(EMPTY);
@@ -171,13 +176,15 @@ export default function FriendsBoard() {
   useEffect(() => {
     let alive = true;
     loadFriendEntries()
-      .then((list) => {
+      .then((page) => {
         if (!alive) return;
         // 新的在上，和评论区的阅读顺序一致
-        setEntries([...list].sort((a, b) => Date.parse(b.at) - Date.parse(a.at)));
+        setEntries([...page.items].sort((a, b) => Date.parse(b.at) - Date.parse(a.at)));
+        setHasMore(page.hasMore);
+        setCursor(page.nextBefore);
         // 服务端知道「这个账号点过哪些赞」—— 登录后换设备也一致，
         // 和本机记录取并集，覆盖「未登录时点过、之后才登录」的情况
-        const serverLiked = list.filter((e) => e.liked).map((e) => e.id);
+        const serverLiked = page.items.filter((e) => e.liked).map((e) => e.id);
         if (serverLiked.length) {
           setLiked((prev) => Array.from(new Set([...prev, ...serverLiked])));
         }
@@ -329,15 +336,48 @@ export default function FriendsBoard() {
     if (round >= 3) return;
     window.setTimeout(async () => {
       try {
-        const list = await loadFriendEntries();
-        const own = list.find((e) => e.id === id);
-        setEntries([...list].sort((a, b) => Date.parse(b.at) - Date.parse(a.at)));
-        if (!own || (own.replies?.length ?? 0) > 0) return;
+        const page = await loadFriendEntries();
+        const own = page.items.find((e) => e.id === id);
+        // ⚠️ 只替换这一条，别拿第一页去覆盖整个列表 ——
+        //    用户可能已经点过「加载更多」，整页替换会把后面几页丢掉。
+        //    找不到（这条已经很靠后了）就什么都不做。
+        if (!own) return;
+        setEntries((prev) => prev.map((e) => (e.id === id ? own : e)));
+        if ((own.replies?.length ?? 0) > 0) return;
       } catch {
         /* 网络抖一下就等下一轮 */
       }
       pollReply(id, round + 1);
     }, 2000);
+  }
+
+  /**
+   * 加载更早的一页。**追加**，不是替换 —— 用户已经看到的东西不能跳走。
+   *
+   * 服务端只按时间往前给（`before` = 当前最旧那条的 ts），所以中途有人发了新留言
+   * 也不会让同一行出现两次（页码分页就会）。
+   */
+  async function loadMore() {
+    if (moreBusy || !hasMore) return;
+    setMoreBusy(true);
+    try {
+      const page = await loadFriendEntries({ before: cursor });
+      setEntries((prev) => {
+        const seen = new Set(prev.map((e) => e.id));
+        return [...prev, ...page.items.filter((e) => !seen.has(e.id))];
+      });
+      setHasMore(page.hasMore);
+      setCursor(page.nextBefore);
+      // 这些条目我点过赞没 —— 服务端知道，接着并进本机那份
+      const serverLiked = page.items.filter((e) => e.liked).map((e) => e.id);
+      if (serverLiked.length) {
+        setLiked((prev) => Array.from(new Set([...prev, ...serverLiked])));
+      }
+    } catch {
+      setNotice({ kind: 'warn', text: '更早的留言没加载出来，稍后再点一次' });
+    } finally {
+      setMoreBusy(false);
+    }
   }
 
   async function handleSubmit() {
@@ -958,6 +998,31 @@ export default function FriendsBoard() {
             </li>
           )}
         </ol>
+
+        {/* 分页：默认 20 条，剩下的**由用户决定要不要看** ——
+            一下子把几百条塞进 DOM，首屏会明显变慢，而绝大多数人只看最近几条 */}
+        {!loading && hasMore && (
+          <div className="mt-5 flex justify-center">
+            <button
+              type="button"
+              onClick={() => void loadMore()}
+              disabled={moreBusy}
+              className="inline-flex min-h-9 items-center gap-1.5 rounded-full border border-rose/30 bg-white/70 px-4 text-xs text-muted transition-colors hover:border-crimson/45 hover:text-crimson disabled:opacity-60"
+            >
+              {moreBusy ? (
+                <span className="animate-spin">
+                  <MorphIcon icon={LoaderCircle} size={12} color="currentColor" />
+                </span>
+              ) : (
+                <MorphIcon icon={ChevronDown} size={12} color="currentColor" />
+              )}
+              {moreBusy ? '正在找更早的…' : '加载更早的留言'}
+            </button>
+          </div>
+        )}
+        {!loading && !hasMore && count > 0 && (
+          <p className="mt-5 text-center text-[11px] text-subtle">到最早的一条了</p>
+        )}
       </div>
 
       <LoginDialog
@@ -968,10 +1033,13 @@ export default function FriendsBoard() {
           setMe(account);
           setLoginOpen(false);
           setNotice({ kind: 'ok', text: '登录好了，写吧 ~' });
-          // 身份变了，点赞态与「我的」标记都要重算
+          // 身份变了，点赞态与「我的」标记都要重算。
+          // 顺手把分页重置回第一页 —— 重新登录后从头看是合理的
           void loadFriendEntries()
-            .then((list) => {
-              setEntries([...list].sort((a, b) => Date.parse(b.at) - Date.parse(a.at)));
+            .then((page) => {
+              setEntries([...page.items].sort((a, b) => Date.parse(b.at) - Date.parse(a.at)));
+              setHasMore(page.hasMore);
+              setCursor(page.nextBefore);
             })
             .catch(() => undefined);
         }}

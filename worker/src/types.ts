@@ -155,6 +155,14 @@ export interface Env {
   AI_JUDGE_MODEL?: string;
 
   /**
+   * 本地判定替身：`1` = 不走真模型，按关键词表判（见 admin/ai.ts 的 mockJudge）。
+   *
+   * 只写 `worker/.dev.vars`，用于在没买 judge key 时验证「拦截 → spam」整条链路。
+   * ⚠️ **线上绝不要配** —— 配了就是所有留言都按关键词判，真模型一次都不会调。
+   */
+  AI_JUDGE_MOCK?: string;
+
+  /**
    * judge 走哪套协议：`openai`（默认）或 `jev`。
    *
    * Jev 是 TypeSafe AI 的**决策模型**，不是聊天模型 —— 它不生成文字，只回答

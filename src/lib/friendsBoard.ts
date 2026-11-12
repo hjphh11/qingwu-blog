@@ -232,20 +232,57 @@ export function timeAgo(iso: string, now: number): string {
 const WORKER_BASE = BASE;
 
 /** 读公开列表 */
-export async function loadFriendEntries(): Promise<FriendEntry[]> {
+/** 一页留言。`hasMore` 决定要不要显示「加载更多」，`nextBefore` 是下一页的游标 */
+export interface BoardPage {
+  items: FriendEntry[];
+  hasMore: boolean;
+  nextBefore: number;
+  /** 未登录能不能发 —— 服务端说了算，前端别自己猜 */
+  requireLogin: boolean;
+  signedIn: boolean;
+}
+
+/**
+ * 拉一页留言。
+ *
+ * 分页用**时间游标**（`before` = 上一页最旧那条的 ts），不用页码：
+ * 翻页时要是有人刚发了新留言，页码分页会让同一条重复出现两次，
+ * 按时间往前取则永远接着上一页。
+ *
+ * 不传参数 = 第一页（`limit` 20 条）。
+ */
+export async function loadFriendEntries(opts: { before?: number; limit?: number } = {}): Promise<BoardPage> {
   if (FRIENDS_BOARD_DEMO) {
     // 演示：假装请求了一次，顺便让加载态有真实的手感
     await new Promise((r) => setTimeout(r, 320));
-    return DEMO_ENTRIES;
+    return { items: DEMO_ENTRIES, hasMore: false, nextBefore: 0, requireLogin: false, signedIn: false };
   }
-  const res = await fetch(`${WORKER_BASE}/friends-board`, {
+
+  const qs = new URLSearchParams();
+  if (opts.limit) qs.set('limit', String(opts.limit));
+  if (opts.before) qs.set('before', String(opts.before));
+
+  const res = await fetch(`${WORKER_BASE}/friends-board${qs.size ? `?${qs}` : ''}`, {
     headers: { accept: 'application/json' },
     credentials: 'include',
     signal: AbortSignal.timeout(8000),
   });
   if (!res.ok) throw new Error(`load ${res.status}`);
-  const data = (await res.json()) as { items?: FriendEntry[] };
-  return Array.isArray(data.items) ? data.items : [];
+
+  const data = (await res.json()) as {
+    items?: FriendEntry[];
+    hasMore?: boolean;
+    nextBefore?: number;
+    auth?: { requireLogin?: boolean; signedIn?: boolean };
+  };
+
+  return {
+    items: Array.isArray(data.items) ? data.items : [],
+    hasMore: Boolean(data.hasMore),
+    nextBefore: Number(data.nextBefore) || 0,
+    requireLogin: Boolean(data.auth?.requireLogin),
+    signedIn: Boolean(data.auth?.signedIn),
+  };
 }
 
 export interface SubmitInput {

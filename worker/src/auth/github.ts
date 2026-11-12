@@ -28,6 +28,7 @@ import {
 } from './common';
 import { attachIdentity, createSession, sessionUser } from './store';
 import { anchorLogin } from './account';
+import { claimLikes, visitorKey } from '../visitor';
 
 const STATE_TTL_SEC = 600;
 
@@ -182,6 +183,10 @@ export async function githubCallback(request: Request, env: Env): Promise<Respon
   if (!anchored.ok) return redirectBack(env, 'conflict', clear);
 
   const sessionToken = await createSession(env, request, anchored.account.id, 'visitor');
+
+  // 同邮箱验证码那条路：把匿名点过的赞搬到账号上，否则同一个人会占两个 key
+  await claimLikes(env, await visitorKey(request, env), anchored.account.id);
+
   return new Response(null, {
     status: 302,
     headers: {

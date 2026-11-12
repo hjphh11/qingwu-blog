@@ -30,6 +30,7 @@ import {
 } from './store';
 import { githubCallback, githubEnabled, githubStart } from './github';
 import { clearAvatar, getAvatar, putAvatar } from './avatar-store';
+import { claimLikes, visitorKey } from '../visitor';
 
 const NAME_MAX = 30;
 const URL_MAX = 300;
@@ -118,6 +119,11 @@ async function postEmailVerify(request: Request, env: Env): Promise<Response> {
   }
 
   const token = await createSession(env, request, anchored.account.id, 'visitor');
+
+  // 把「没登录时点的赞」搬到账号名下 —— 不搬的话同一个人会占两个 key，
+  // 一条留言能被他自己点出两票（实测过）。搬不动也只是留条旧票，不影响登录。
+  await claimLikes(env, await visitorKey(request, env), anchored.account.id);
+
   return json(
     {
       ok: true,
