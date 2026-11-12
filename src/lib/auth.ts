@@ -174,6 +174,8 @@ export interface MyComment {
   status: 'approved' | 'pending';
   at: string;
   likes: number;
+  /** 非空 = 这是一条回复。定位要跳到主楼（回复在页面上默认是折叠的） */
+  parentId?: string;
 }
 
 /**

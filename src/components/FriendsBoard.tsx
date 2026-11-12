@@ -1042,8 +1042,14 @@ function EntryRow({
    * 头像：提交时就把「没填头像但有邮箱」的地址算好了。
    * 但 QQ 头像接口会挂（本机实测 400），所以加载失败时先退 Cravatar，
    * 还不行才回落到名字首字 —— 三档兜底。
+   *
+   * ⚠️ 初始值也要兜一次：未登录留言服务端**不存 avatar**（只有 email_hash），
+   * 直接拿 `entry.avatar` 会得到一个空串，于是连 Cravatar 都不试、直接显示首字。
+   * 填了邮箱的人理应有头像，这里先按邮箱哈希补上。
    */
-  const [avatarSrc, setAvatarSrc] = useState(entry.avatar);
+  const [avatarSrc, setAvatarSrc] = useState(
+    entry.avatar || avatarFromHash(entry.emailHash || ''),
+  );
   const failAvatar = () => {
     const fallback = avatarFromHash(entry.emailHash || '');
     if (fallback && !avatarSrc.includes('cravatar.cn')) {
@@ -1059,8 +1065,11 @@ function EntryRow({
    * 还不行才退回名字首字 —— 和主楼那套一致。
    * 以前这里只有「图 or 首字」两档，QQ 头像 400 的时候一句回复就只剩个「清」字。
    */
+  const replySrcOf = (r: FriendReply) =>
+    replyAvatarSrc[r.id] ?? (r.avatar || avatarFromHash(r.emailHash || ''));
+
   function failReplyAvatar(r: FriendReply) {
-    const current = replyAvatarSrc[r.id] ?? r.avatar ?? '';
+    const current = replySrcOf(r);
     const fallback = avatarFromHash(r.emailHash || '');
     if (fallback && !current.includes('cravatar.cn')) {
       setReplyAvatarSrc((prev) => ({ ...prev, [r.id]: fallback }));
@@ -1431,9 +1440,9 @@ function EntryRow({
                   >
                     {(r.name || '·').trim().slice(0, 1)}
                   </span>
-                  {r.avatar && !brokenReplyAvatar[r.id] && (
+                  {replySrcOf(r) && !brokenReplyAvatar[r.id] && (
                     <img
-                      src={replyAvatarSrc[r.id] ?? r.avatar}
+                      src={replySrcOf(r)}
                       onError={() => failReplyAvatar(r)}
                       alt=""
                       width={24}

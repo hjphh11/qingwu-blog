@@ -246,36 +246,63 @@ function toEntry(
   };
 }
 
+/**
+ * 读列表：**主楼和回复分两条查**。
+ *
+ * 以前是一条 `ORDER BY ts DESC LIMIT 300` 把两类一次捞出来，再在内存里按 parent_id 分组。
+ * 那样有个迟早会炸的坑：回复也算进这 300 条 —— 活跃的楼里回复一多，
+ * 老的主楼就被挤出窗口，然后**它下面的回复全部变成孤儿、整栋楼从页面上消失**。
+ * 现在先取 300 条主楼，再按这批 id 取它们的回复，数量再多也不会互相挤。
+ *
+ * JOIN accounts 是为了拿「当前」头像与署名（改名换头像后历史留言跟着变）；
+ * 身份表还没迁移时 accounts 可能不存在，整段退到不带 JOIN 的老查询 ——
+ * **列表永远不能因为「新功能没就位」而挂掉**。
+ */
+async function loadBoardRows(env: Env): Promise<{ roots: CommentRow[]; reps: CommentRow[] }> {
+  const joined = `SELECT c.id, c.parent_id, c.author, c.author_url, c.avatar, c.body, c.status,
+                          c.ts, c.email_hash, c.notify, c.account_id, c.reply_to_id,
+                          a.avatar_url AS acc_avatar, a.display_name AS acc_name
+                     FROM comments c LEFT JOIN accounts a ON a.id = c.account_id`;
+  const plain = `SELECT id, parent_id, author, author_url, avatar, body, status,
+                        ts, email_hash, notify, account_id
+                   FROM comments`;
+
+  async function run(sel: string, prefix: 'c.' | ''): Promise<{ roots: CommentRow[]; reps: CommentRow[] }> {
+    const roots = await env.DB.prepare(
+      `${sel} WHERE ${prefix}post_slug = ? AND ${prefix}parent_id IS NULL
+        AND ${prefix}status IN ('visible', 'pending') ORDER BY ${prefix}ts DESC LIMIT 300`,
+    )
+      .bind(SLUG)
+      .all<CommentRow>();
+
+    const ids = (roots.results ?? []).map((r) => r.id);
+    if (ids.length === 0) return { roots: [], reps: [] };
+
+    const reps = await env.DB.prepare(
+      `${sel} WHERE ${prefix}post_slug = ? AND ${prefix}parent_id IN (${ids.map(() => '?').join(',')})
+        AND ${prefix}status IN ('visible', 'pending') ORDER BY ${prefix}ts ASC`,
+    )
+      .bind(SLUG, ...ids)
+      .all<CommentRow>();
+
+    return { roots: roots.results ?? [], reps: reps.results ?? [] };
+  }
+
+  try {
+    return await run(joined, 'c.');
+  } catch {
+    // 0023/0024/0025 没跑时 accounts 或 reply_to_id 可能不存在 —— 退到最朴素的查询
+    return run(plain, '');
+  }
+}
+
 // ——————————————————————————————————————————————————————————
 // GET /friends-board
 // ——————————————————————————————————————————————————————————
 export async function getFriendsBoard(request: Request, env: Env): Promise<Response> {
   const headers = withCors(request, env);
   try {
-    // 带上账号的当前档案（头像 / 署名）—— 改名换头像后历史留言跟着变。
-    // 老查询作为兜底：0023/0024 没迁移时 accounts 表可能还不存在，
-    // **列表永远不能因为「新功能没就位」而挂掉**。
-    let rows: D1Result<CommentRow>;
-    try {
-      rows = await env.DB.prepare(
-        `SELECT c.id, c.parent_id, c.author, c.author_url, c.avatar, c.body, c.status,
-                c.ts, c.email_hash, c.notify, c.account_id, c.reply_to_id,
-                a.avatar_url AS acc_avatar, a.display_name AS acc_name
-         FROM comments c LEFT JOIN accounts a ON a.id = c.account_id
-         WHERE c.post_slug = ? AND c.status IN ('visible', 'pending')
-         ORDER BY c.ts DESC LIMIT 300`,
-      )
-        .bind(SLUG)
-        .all<CommentRow>();
-    } catch {
-      rows = await env.DB.prepare(
-        `SELECT id, parent_id, author, author_url, avatar, body, status, ts, email_hash, notify, account_id
-         FROM comments WHERE post_slug = ? AND status IN ('visible', 'pending')
-         ORDER BY ts DESC LIMIT 300`,
-      )
-        .bind(SLUG)
-        .all<CommentRow>();
-    }
+    const { roots: rootRows, reps: replyRows } = await loadBoardRows(env);
 
     const likeRows = await env.DB.prepare(
       'SELECT comment_id, COUNT(*) AS n FROM friend_likes GROUP BY comment_id',
@@ -284,23 +311,28 @@ export async function getFriendsBoard(request: Request, env: Env): Promise<Respo
     const likeMap = new Map<number, number>();
     for (const l of likeRows.results ?? []) likeMap.set(l.comment_id, l.n);
 
-    // 当前访客已点过哪些 —— 一次查完，别在列表里逐条判
+    // 当前访客已点过哪些 —— 一次查完，别在列表里逐条判。
+    // 两种 key 都要认：没登录时点时存的是 IP|UA 哈希，登录后是 a<id>，
+    // 只查一种会让「登录前点过的赞」在登录后忽然变成没点。
     const account = await currentAccount(request, env);
-    const mineKey = likeKeyOf(await visitorKey(request, env), account);
+    const anonKey = await visitorKey(request, env);
+    const likeKeys = account ? [likeKeyOf(anonKey, account), anonKey] : [anonKey];
     let likedSet = new Set<number>();
     try {
-      const mine = await env.DB.prepare('SELECT comment_id FROM friend_likes WHERE visitor = ?')
-        .bind(mineKey)
+      const mine = await env.DB.prepare(
+        `SELECT comment_id FROM friend_likes WHERE visitor IN (${likeKeys.map(() => '?').join(',')})`,
+      )
+        .bind(...likeKeys)
         .all<{ comment_id: number }>();
       likedSet = new Set((mine.results ?? []).map((r) => r.comment_id));
     } catch {
       /* 点赞表异常不该让整个列表挂掉 */
     }
 
-    const all = rows.results ?? [];
-    const roots = all.filter((r) => r.parent_id === null);
+    // 主楼保持「新的在前」，回复按时间正序（下面 for 里已经排过）
+    const roots = rootRows;
     const byParent = new Map<number, CommentRow[]>();
-    for (const r of all) {
+    for (const r of replyRows) {
       if (r.parent_id === null) continue;
       const list = byParent.get(r.parent_id) ?? [];
       list.push(r);
@@ -385,17 +417,20 @@ export async function postFriendsBoard(request: Request, env: Env, ctx: Executio
     const hash = /^[a-f0-9]{32}$/.test(hashRaw) ? hashRaw : null;
 
     /**
-     * 署名、站点、头像：**登录后以档案为准**（前端填的只作本条覆盖）。
+     * 署名、站点、头像：**登录后一律以档案为准**，前端传的当作没看见。
+     *
+     * 以前是 `v.name || account.display_name`，看着只是「允许本条覆盖」，
+     * 实际等于「任何登录用户都能把自己写成任意名字」—— 实测传一个 `name: "爱弥斯"`
+     * 就顶着 AI 的名字和徽章发帖了。三格在登录后本来就不显示，这条口子没有任何产品价值。
      *
      * 邮箱反过来 —— 登录后一律不落明文，通知走 `accounts.email`。
      * 这样库里少一份明文邮箱，`email_hash` 也统一从账号来，迁移后的归并才对得上。
      */
-    const author = (v.v.name || account?.display_name || account?.email.split('@')[0] || '').slice(
-      0,
-      LIMITS.author,
-    );
-    const site = v.v.url || account?.site_url || '';
-    const avatar = v.v.avatar || account?.avatar_url || (account ? avatarFromEmail(account.email) : '');
+    const author = account
+      ? (account.display_name || account.email.split('@')[0] || '').slice(0, LIMITS.author)
+      : v.v.name.slice(0, LIMITS.author);
+    const site = account ? account.site_url || '' : v.v.url;
+    const avatar = account ? account.avatar_url || avatarFromEmail(account.email) : v.v.avatar;
     const emailHash = account ? account.email_hash : hash;
     const emailPlain = account ? null : v.v.email || null;
 
@@ -608,16 +643,42 @@ export async function postFriendReply(
     // 默认 @ 对方（发信）；访客手动取消就是 false
     const notify = body.notify === false ? 0 : 1;
 
-    const author = (v.v.name || account?.display_name || account?.email.split('@')[0] || '').slice(
-      0,
-      LIMITS.author,
-    );
-    const site = v.v.url || account?.site_url || '';
-    const avatar = v.v.avatar || account?.avatar_url || (account ? avatarFromEmail(account.email) : '');
+    // 同留言：登录后署名/站点/头像一律取档案，不接受前端覆盖（防冒充）
+    const author = account
+      ? (account.display_name || account.email.split('@')[0] || '').slice(0, LIMITS.author)
+      : v.v.name.slice(0, LIMITS.author);
+    const site = account ? account.site_url || '' : v.v.url;
+    const avatar = account ? account.avatar_url || avatarFromEmail(account.email) : v.v.avatar;
+
+    /**
+     * 回复也要过审。
+     *
+     * ⚠️ 这里原来直接写死 `status='visible'` —— 只要主楼过了审，回复就是一条
+     * **完全不过筛的通道**：广告、辱骂随便回，一样挂在前台，站长连拦截记录都看不到。
+     * 现在和主楼同一套：判一遍，命中落 `spam`（前台不展示，收件箱里能复核）。
+     * 审核自己挂了照常放行 —— 规则同主楼，宁可漏一条也不让留言板发不出话。
+     */
+    let status = 'visible';
+    let mod: ModerationResult | null = null;
+    try {
+      mod = await moderateComment(env, {
+        id: 0,
+        author,
+        body: plainOf(v.v.intro),
+        path: '/friends/',
+        replies: [],
+      });
+      if (mod?.hit) {
+        status = 'spam';
+        console.log(`[friends-board] 回复被拦 ${author}：${mod.verdict} ${mod.score} >= ${mod.threshold}`);
+      }
+    } catch (e) {
+      console.warn('[friends-board] 回复审核失败，照常收下：', e instanceof Error ? e.message : e);
+    }
 
     const res = await env.DB.prepare(
       `INSERT INTO comments (post_slug, parent_id, author, email, email_hash, author_url, avatar, body, status, ts, ip_hash, notify, account_id, reply_to_id)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'visible', ?, ?, ?, ?, ?)`,
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     )
       .bind(
         SLUG,
@@ -628,6 +689,7 @@ export async function postFriendReply(
         site || null,
         avatar || null,
         v.v.intro,
+        status,
         now,
         key,
         notify,
@@ -636,11 +698,30 @@ export async function postFriendReply(
       )
       .run();
 
+    const id2 = Number(res.meta.last_row_id);
+
+    // 被拦下的回复留一笔依据（与主楼同一张表、同一套口径）
+    if (mod?.hit) {
+      ctx.waitUntil(
+        recordModeration(env, {
+          commentId: id2,
+          verdict: mod.verdict,
+          score: mod.score,
+          threshold: mod.threshold,
+          reasons: mod.reasons,
+          note: mod.note,
+          model: mod.model,
+          ms: mod.ms,
+        }),
+      );
+    }
+
     // 通知被回复的人：他登录了就用账号邮箱，老留言用当时填的邮箱。
     // 二级回复通知的是**被回复的那条**，不是主楼 —— 不然一句「谢谢」会把楼主也叫起来。
     // notify = 0 表示访客主动取消了 @，那就不打扰对方。
+    // 被判成垃圾的也不发 —— 别替一条广告去敲人家的门。
     const notifyTo = targetEmail;
-    if (notify && notifyTo) {
+    if (notify && notifyTo && status !== 'spam') {
       ctx.waitUntil(
         sendMail(env, {
           to: notifyTo,
@@ -702,24 +783,34 @@ export async function postFriendLike(
 
   // 登录后按账号去重（换设备也算同一个人的赞）；未登录仍按 IP|UA 哈希
   const account = await currentAccount(request, env);
-  const key = likeKeyOf(await visitorKey(request, env), account);
+  const anonKey = await visitorKey(request, env);
+  /**
+   * **同一个人可能占两个 key**：没登录时点是 `IP|UA 哈希`，登录后是 `a<id>`。
+   * 只查一种的话，同一个人登录前后各点一次就算两票 —— 实测确实能刷出 +2。
+   * 所以取消/判重都同时认这两种；真正插入时只写账号那一个（登录后身份是账号）。
+   */
+  const keys = account ? [likeKeyOf(anonKey, account), anonKey] : [anonKey];
+  const inClause = keys.map(() => '?').join(',');
 
   try {
     const existing = await env.DB.prepare(
-      'SELECT 1 AS x FROM friend_likes WHERE comment_id = ? AND visitor = ?',
+      `SELECT visitor FROM friend_likes WHERE comment_id = ? AND visitor IN (${inClause})`,
     )
-      .bind(commentId, key)
-      .first<{ x: number }>();
+      .bind(commentId, ...keys)
+      .all<{ visitor: string }>();
 
-    if (existing) {
-      await env.DB.prepare('DELETE FROM friend_likes WHERE comment_id = ? AND visitor = ?')
-        .bind(commentId, key)
+    if ((existing.results ?? []).length > 0) {
+      // 全删：历史数据里可能两种 key 都在，取消就该整个取消掉
+      await env.DB.prepare(
+        `DELETE FROM friend_likes WHERE comment_id = ? AND visitor IN (${inClause})`,
+      )
+        .bind(commentId, ...keys)
         .run();
     } else {
       await env.DB.prepare(
         'INSERT OR IGNORE INTO friend_likes (comment_id, visitor, ts, account_id) VALUES (?, ?, ?, ?)',
       )
-        .bind(commentId, key, Date.now(), account?.id ?? null)
+        .bind(commentId, keys[0]!, Date.now(), account?.id ?? null)
         .run();
     }
 
@@ -727,7 +818,11 @@ export async function postFriendLike(
       .bind(commentId)
       .first<{ n: number }>();
 
-    return json({ ok: true, liked: !existing, likes: cnt?.n ?? 0 }, 200, headers);
+    return json(
+      { ok: true, liked: (existing.results ?? []).length === 0, likes: cnt?.n ?? 0 },
+      200,
+      headers,
+    );
   } catch (err) {
     console.error('[friends-board] 点赞失败:', err instanceof Error ? err.message : err);
     return json({ ok: false, error: 'storage' }, 502, headers);
@@ -768,10 +863,10 @@ export async function deleteFriendComment(
   }
 
   const row = await env.DB.prepare(
-    'SELECT delete_token, status, account_id FROM comments WHERE id = ? AND post_slug = ?',
+    'SELECT delete_token, status, account_id, parent_id FROM comments WHERE id = ? AND post_slug = ?',
   )
     .bind(id, SLUG)
-    .first<{ delete_token: string | null; status: string; account_id: number | null }>();
+    .first<{ delete_token: string | null; status: string; account_id: number | null; parent_id: number | null }>();
 
   if (!row) {
     return json({ ok: false, error: 'not_found', message: '这条留言已经不在了' }, 404, headers);
@@ -797,6 +892,22 @@ export async function deleteFriendComment(
   // 已经删过就直接当成功，免得多点两下报错
   if (row.status === 'deleted') return json({ ok: true }, 200, headers);
 
-  await env.DB.prepare("UPDATE comments SET status = 'deleted' WHERE id = ?").bind(id).run();
+  /**
+   * 删主楼就把整栋一起删 —— 光把主楼置 deleted，它的回复会变成一串
+   * 没有主楼的孤儿：列表里看不见（分组时找不到父楼），**但谁也删不掉**
+   * （接口只能按 id 一条条删，而它们不在任何列表里）。
+   * 删单条回复时 `parent_id` 非空，就只删它自己。
+   */
+  const stmts = [env.DB.prepare("UPDATE comments SET status = 'deleted' WHERE id = ?").bind(id)];
+  if (row.parent_id === null) {
+    stmts.push(
+      env.DB.prepare("UPDATE comments SET status = 'deleted' WHERE parent_id = ? AND post_slug = ?").bind(
+        id,
+        SLUG,
+      ),
+    );
+  }
+  await env.DB.batch(stmts);
+
   return json({ ok: true }, 200, headers);
 }

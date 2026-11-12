@@ -60,13 +60,18 @@ export default function MyCommentList({
             >
               {c.status === 'approved' ? '已是友链' : '等我看看'}
             </span>
+            {/* 回复也列在这里 —— 不标一下会让人以为是条独立留言 */}
+            {c.parentId && (
+              <span className="rounded-full bg-rose/15 px-1.5 py-px text-[10px] text-muted">回复</span>
+            )}
             <span className="text-[10.5px] tabular-nums text-subtle">{c.at.slice(0, 10)}</span>
 
             <div className="ml-auto flex items-center gap-2.5">
+              {/* 回复在页面上默认折着，所以定位到它所在的主楼，不硬指到回复本身 */}
               {onLocate ? (
                 <button
                   type="button"
-                  onClick={() => onLocate(c.id)}
+                  onClick={() => onLocate(c.parentId || c.id)}
                   className="inline-flex items-center gap-1 text-[10.5px] text-subtle transition-colors hover:text-crimson"
                 >
                   <MorphIcon icon={MapPin} size={10} color="currentColor" />
@@ -74,7 +79,7 @@ export default function MyCommentList({
                 </button>
               ) : (
                 <a
-                  href={`/links/#${c.id}`}
+                  href={`/links/#${c.parentId || c.id}`}
                   className="inline-flex items-center gap-1 text-[10.5px] text-subtle transition-colors hover:text-crimson"
                 >
                   <MorphIcon icon={MapPin} size={10} color="currentColor" />

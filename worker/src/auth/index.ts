@@ -203,15 +203,29 @@ async function getMyComments(request: Request, env: Env): Promise<Response> {
   // 用未登录状态留了言」—— 那种情况不会再触发登录，只能在这里补。
   await claimComments(env, me.account);
 
+  /**
+   * 自己的话**包括回复**。
+   *
+   * 之前那句 SQL 带 `parent_id IS NULL`，于是在某条留言下面说过的话永远不出现 ——
+   * 「我的留言」里看不到、也删不掉自己的回复，只能翻到那一楼去删。
+   * 现在连回复一起列，带 `parentId`，前端据此标注「回复」并退回主楼定位。
+   */
   const rows = await env.DB.prepare(
-    `SELECT c.id, c.body, c.status, c.ts,
+    `SELECT c.id, c.body, c.status, c.ts, c.parent_id,
             (SELECT COUNT(*) FROM friend_likes l WHERE l.comment_id = c.id) AS likes
        FROM comments c
-      WHERE c.post_slug = 'friends' AND c.account_id = ? AND c.parent_id IS NULL AND c.status != 'deleted'
+      WHERE c.post_slug = 'friends' AND c.account_id = ? AND c.status != 'deleted'
       ORDER BY c.ts DESC LIMIT 50`,
   )
     .bind(me.account.id)
-    .all<{ id: number; body: string; status: string; ts: number; likes: number }>();
+    .all<{
+      id: number;
+      body: string;
+      status: string;
+      ts: number;
+      parent_id: number | null;
+      likes: number;
+    }>();
 
   return json(
     {
@@ -222,6 +236,8 @@ async function getMyComments(request: Request, env: Env): Promise<Response> {
         status: r.status === 'visible' ? 'approved' : 'pending',
         at: new Date(r.ts).toISOString(),
         likes: r.likes,
+        /** 非空 = 这是一条回复；定位要跳到它所在的主楼（回复默认是折着的） */
+        parentId: r.parent_id ? `c-${r.parent_id}` : '',
       })),
     },
     200,
