@@ -68,4 +68,6 @@ export {
   KeyRound,
   Pencil,
   Trash2,
+  // 表情面板
+  Smile,
 } from 'lucide';

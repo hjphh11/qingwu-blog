@@ -1,4 +1,4 @@
-import { useEffect, useId, useMemo, useState } from 'react';
+import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import { MorphIcon } from 'morphicons/react';
 import {
   Send,
@@ -19,8 +19,11 @@ import {
   X,
   UserRound,
   KeyRound,
+  Smile,
 } from '../lib/icons';
 import GithubMark from './auth/GithubMark';
+import EmojiPicker from './EmojiPicker';
+import { renderRich } from '../lib/richText';
 import {
   COMMENT_TEMPLATE,
   FRIENDS_BOARD_DEMO,
@@ -137,6 +140,10 @@ export default function FriendsBoard() {
   /** 身份还没读回来时先别判「未登录」，否则会闪一下「请登录」 */
   const [authReady, setAuthReady] = useState(false);
   const [loginOpen, setLoginOpen] = useState(false);
+  /** 表情面板开着没有 */
+  const [emojiOpen, setEmojiOpen] = useState(false);
+  /** 往光标处插表情 token —— 用 ref 拿 selection，React 的状态拿不到 */
+  const introRef = useRef<HTMLTextAreaElement | null>(null);
 
   // 相对时间要等客户端算：SSR 与客户端各算一次会水合不匹配（见 timeAgo 注释）
   useEffect(() => setNow(Date.now()), []);
@@ -390,6 +397,31 @@ export default function FriendsBoard() {
     if (errors.intro) setErrors((prev) => ({ ...prev, intro: undefined }));
   }
 
+  /**
+   * 在光标处插入 `:[key]`。
+   *
+   * 光标位置只能从 DOM 拿（React 状态里没有 selection），插完还要把光标
+   * 挪到 token 之后 —— 否则连点三个表情，后两个会插到第一个前面。
+   */
+  function insertEmoji(key: string) {
+    const token = `:[${key}]`;
+    const el = introRef.current;
+    if (!el) {
+      setValues((prev) => ({ ...prev, intro: `${prev.intro}${token}`.slice(0, CONTENT_MAX) }));
+      return;
+    }
+    const start = el.selectionStart ?? el.value.length;
+    const end = el.selectionEnd ?? start;
+    const next = `${el.value.slice(0, start)}${token}${el.value.slice(end)}`.slice(0, CONTENT_MAX);
+    setValues((prev) => ({ ...prev, intro: next }));
+    // 等 React 把新值写进 DOM 再设选区，否则会被打回上一次的位置
+    window.requestAnimationFrame(() => {
+      const pos = Math.min(start + token.length, next.length);
+      el.focus();
+      el.setSelectionRange(pos, pos);
+    });
+  }
+
   return (
     <section id="friends-comments" aria-labelledby="fc-title" className="mt-16 scroll-mt-24">
       <div className="glass-card relative overflow-hidden p-5 sm:p-8">
@@ -628,6 +660,7 @@ export default function FriendsBoard() {
             <textarea
               id={`${uid}-intro`}
               name="intro"
+              ref={introRef}
               value={values.intro}
               maxLength={CONTENT_MAX}
               rows={3}
@@ -665,6 +698,28 @@ export default function FriendsBoard() {
               ml-auto 只对同一行里的下一个元素生效。 */}
           <div className="flex flex-wrap items-center gap-x-3 gap-y-2 px-3 pb-3 pt-1.5">
             <div className="flex items-center gap-1">
+              <div className="relative">
+                <button
+                  type="button"
+                  onClick={() => setEmojiOpen((v) => !v)}
+                  aria-expanded={emojiOpen}
+                  aria-label="插入表情"
+                  className={`inline-flex min-h-8 items-center gap-1.5 rounded-full border px-3 text-xs transition-colors ${
+                    emojiOpen
+                      ? 'border-crimson/40 bg-crimson/10 text-crimson'
+                      : 'border-rose/25 bg-white/60 text-muted hover:border-rose/45 hover:bg-rose/10 hover:text-crimson'
+                  }`}
+                >
+                  <MorphIcon icon={Smile} size={13} color="currentColor" />
+                  表情
+                </button>
+                <EmojiPicker
+                  open={emojiOpen}
+                  onPick={(key) => insertEmoji(key)}
+                  onClose={() => setEmojiOpen(false)}
+                />
+              </div>
+
               <button
                 type="button"
                 onClick={fillTemplate}
@@ -975,10 +1030,13 @@ function EntryRow({
         {/* 内容包成气泡：参考站就是这么区分的 —— 头像 + 一块浅底文本，
             比「一条条横线」更像在说话。上左圆角收小，气泡像是从头像那侧发出来的 */}
         {/* 正文完整显示 —— 用户要的是「评论不折，只折回复」：
-            申请模板本来就是一段段写下来的，折起来反而看不全 */}
-        <p className="mt-1.5 w-fit max-w-[94%] whitespace-pre-wrap rounded-xl rounded-tl-[5px] bg-rose/12 px-3 py-2 text-[13.5px] leading-relaxed text-muted">
-          {entry.intro}
-        </p>
+            申请模板本来就是一段段写下来的，折起来反而看不全。
+            `renderRich` 先转义再加白名单标签，所以这里可以放心用 innerHTML */}
+        <div
+          className="q-rich mt-1.5 w-fit max-w-[94%] rounded-xl rounded-tl-[5px] bg-rose/12 px-3 py-2 text-[13.5px] text-muted"
+          // eslint-disable-next-line react/no-danger
+          dangerouslySetInnerHTML={{ __html: renderRich(entry.intro) }}
+        />
 
         {/* ——— 点赞 / 回复 ——— */}
         <div className="mt-1 flex flex-wrap items-center gap-1">
@@ -1222,12 +1280,15 @@ function EntryRow({
                       {now ? timeAgo(r.at, now) : '\u00A0'}
                     </time>
                   </div>
-                  <p className="mt-0.5 whitespace-pre-wrap text-[12.5px] leading-relaxed text-muted">
-                    {r.to && (
-                      <span className="mr-1 font-medium text-crimson">@{r.to}</span>
-                    )}
-                    {r.intro}
-                  </p>
+                  {/* @ 放在正文上方一行：正文可能是列表/代码块，塞进 <p> 里会变成非法嵌套 */}
+                  {r.to && (
+                    <span className="mr-1 text-[12px] font-medium text-crimson">@{r.to}</span>
+                  )}
+                  <div
+                    className="q-rich mt-0.5 text-[12.5px] text-muted"
+                    // eslint-disable-next-line react/no-danger
+                    dangerouslySetInnerHTML={{ __html: renderRich(r.intro) }}
+                  />
                 </div>
               </li>
             ))}

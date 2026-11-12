@@ -15,7 +15,7 @@
 // ⚠️ 发信一律 `ctx.waitUntil`：邮件失败不能把访客的留言卡在 502 上。
 
 import type { Env } from './types';
-import { json, originAllowed, parseOrigins, secretEqual } from './util';
+import { json, originAllowed, parseOrigins, plainOf, secretEqual } from './util';
 import { boardMailText, flushOutbox, sendMail } from './mail';
 import { autoReplyTo, moderateComment } from './admin/ai';
 import type { ModerationResult } from './admin/ai';
@@ -371,7 +371,7 @@ export async function postFriendsBoard(request: Request, env: Env, ctx: Executio
       mod = await moderateComment(env, {
         id: 0,
         author,
-        body: v.v.intro,
+        body: plainOf(v.v.intro),
         path: '/friends/',
         replies: [],
       });
@@ -450,7 +450,7 @@ export async function postFriendsBoard(request: Request, env: Env, ctx: Executio
         sendMail(env, {
           to: env.MAIL_TO,
           subject: `友链评论区 · ${author}`,
-          text: `有人留了言：\n\n${v.v.intro}\n\n站点：${site || '（没填）'}\n\nhttps://www.qingwu.ink/links/#friends-comments`,
+          text: `有人留了言：\n\n${plainOf(v.v.intro)}\n\n站点：${site || '（没填）'}\n\nhttps://www.qingwu.ink/links/#friends-comments`,
         }),
       );
       // 机会式补发积压的通知信：cron 每天才一次，有人留言说明站点正热，
@@ -579,7 +579,8 @@ export async function postFriendReply(
             kind: 'reply',
             from: author,
             toName: parent.author,
-            body: v.v.intro,
+            // 邮件是纯文本，别把 Markdown 标记原样塞进去
+            body: plainOf(v.v.intro),
             site,
           }),
         }),

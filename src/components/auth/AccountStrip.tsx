@@ -21,6 +21,7 @@ import {
   type SessionAccount,
 } from '../../lib/auth';
 import { deleteEntry } from '../../lib/friendsBoard';
+import { renderRich } from '../../lib/richText';
 
 /**
  * 留言框顶部的「我是谁」那一条。
@@ -347,9 +348,11 @@ function MyCommentsDrawer({
                     {busyId === c.id ? '删除中' : '删除'}
                   </button>
                 </div>
-                <p className="mt-1.5 line-clamp-3 whitespace-pre-wrap text-[12px] leading-relaxed text-muted">
-                  {c.intro}
-                </p>
+                <div
+                  className="q-rich mt-1.5 line-clamp-3 text-[12px] text-muted"
+                  // eslint-disable-next-line react/no-danger
+                  dangerouslySetInnerHTML={{ __html: renderRich(c.intro) }}
+                />
               </li>
             ))}
           </ul>

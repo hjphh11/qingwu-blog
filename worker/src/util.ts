@@ -95,6 +95,25 @@ export async function visitorHash(ip: string, ua: string, salt: string): Promise
 // ——————————————————————————————————————————————————————————
 // HTTP 小工具
 // ——————————————————————————————————————————————————————————
+/**
+ * 留言正文的「纯文本版」—— 邮件里不能塞 Markdown 标记。
+ *
+ * 与前端 `src/lib/richText.ts` 的 `toPlain` 保持同一套规则（那两份不共享代码：
+ * 一个跑在浏览器、一个跑在 Worker，中间只靠「写法约定」对齐）。
+ * 表情 token（`:[bb_doge]`）原样留着 —— 收件人看到也不难懂，换成图片反而要处理失效。
+ */
+export function plainOf(raw: string): string {
+  return String(raw ?? '')
+    .replace(/```[a-z0-9+#.-]*\n?/gi, '')
+    .replace(/`([^`]*)`/g, '$1')
+    .replace(/\*\*([^*]*)\*\*/g, '$1')
+    .replace(/\[([^\]]{1,80})\]\((https?:\/\/[^\s)]+)\)/gi, '$1（$2）')
+    .replace(/^\s*>\s?/gm, '')
+    .replace(/^\s*[-*+]\s+/gm, '· ')
+    .replace(/^\s*\d+[.)]\s+/gm, '')
+    .trim();
+}
+
 /** JSON 响应。统计接口**永远 no-store**：后台要看到刚写进去的那条。 */
 export function json(body: unknown, status = 200, extraHeaders: Record<string, string> = {}): Response {
   return new Response(JSON.stringify(body), {

@@ -1,0 +1,126 @@
+/* 留言正文（Markdown 子集 + 表情）的排版。
+   只挂在 `.q-rich` 上 —— 后台、文章正文都不受这里影响。
+   为什么不用 Tailwind 逐处拼：这套是「内容里的元素」，形状要一致，
+   散在组件里改一处就漏一处。 */
+
+@layer components {
+  .q-rich {
+    /* 段落间距跟着行高走，别用固定 px —— 小字号时看起来会「空一块」 */
+    line-height: 1.75;
+  }
+
+  .q-rich > *:first-child {
+    margin-top: 0;
+  }
+
+  .q-rich > *:last-child {
+    margin-bottom: 0;
+  }
+
+  .q-rich p {
+    margin: 0.5em 0;
+  }
+
+  .q-rich a {
+    color: var(--color-crimson);
+    text-decoration: underline;
+    text-decoration-thickness: 1px;
+    text-underline-offset: 2px;
+    /* 长链接不能把卡片撑破 */
+    overflow-wrap: anywhere;
+  }
+
+  .q-rich strong {
+    font-weight: 600;
+    color: var(--color-ink);
+  }
+
+  /* 行内代码：底色比正文略浅，别用纯灰 —— 这个站没有纯灰 */
+  .q-rich code {
+    font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+    font-size: 0.9em;
+    padding: 0.1em 0.35em;
+    border-radius: 0.35rem;
+    background: color-mix(in srgb, var(--color-rose) 16%, transparent);
+    color: var(--color-brown);
+    overflow-wrap: anywhere;
+  }
+
+  .q-rich pre {
+    margin: 0.6em 0;
+    padding: 0.7em 0.85em;
+    border: 1px solid color-mix(in srgb, var(--color-rose) 30%, transparent);
+    border-radius: 0.6rem;
+    background: rgba(255, 255, 255, 0.7);
+    overflow-x: auto;
+    /* 滚动条别太扎眼 */
+    scrollbar-width: thin;
+  }
+
+  .q-rich pre code {
+    padding: 0;
+    background: none;
+    color: var(--color-ink);
+    font-size: 0.85em;
+    white-space: pre;
+  }
+
+  .q-rich ul,
+  .q-rich ol {
+    margin: 0.5em 0;
+    padding-left: 1.35em;
+  }
+
+  .q-rich ul {
+    list-style: disc;
+  }
+
+  .q-rich ol {
+    list-style: decimal;
+  }
+
+  .q-rich li {
+    margin: 0.2em 0;
+  }
+
+  .q-rich li::marker {
+    color: color-mix(in srgb, var(--color-crimson) 70%, transparent);
+  }
+
+  .q-rich blockquote {
+    margin: 0.6em 0;
+    padding: 0.1em 0 0.1em 0.8em;
+    border-left: 2px solid color-mix(in srgb, var(--color-crimson) 55%, transparent);
+    color: var(--color-muted);
+  }
+
+  /* 表情：跟着字号走，不写死像素 —— 回复框里小一号也协调 */
+  .q-emoji {
+    display: inline-block;
+    width: 1.25em;
+    height: 1.25em;
+    margin: 0 0.05em;
+    vertical-align: -0.22em;
+    object-fit: contain;
+  }
+
+  /* 表情面板（EmojiPicker）：一次挂 150+ 张图，别让布局在加载时跳 */
+  .q-emoji-cell {
+    display: grid;
+    place-items: center;
+    width: 2rem;
+    height: 2rem;
+    border-radius: 0.5rem;
+    transition: background-color var(--dur-micro) ease;
+  }
+
+  .q-emoji-cell:hover {
+    background: color-mix(in srgb, var(--color-rose) 22%, transparent);
+  }
+
+  .q-emoji-cell img {
+    width: 1.5rem;
+    height: 1.5rem;
+    object-fit: contain;
+  }
+}
