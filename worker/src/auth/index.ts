@@ -29,10 +29,10 @@ import {
   sessionUser,
 } from './store';
 import { githubCallback, githubEnabled, githubStart } from './github';
+import { clearAvatar, getAvatar, putAvatar } from './avatar-store';
 
 const NAME_MAX = 30;
 const URL_MAX = 300;
-const AVATAR_MAX = 300;
 
 async function readJson(request: Request): Promise<Record<string, unknown>> {
   try {
@@ -147,21 +147,49 @@ async function patchProfile(request: Request, env: Env): Promise<Response> {
   const body = await readJson(request);
   const name = str(body.display_name, NAME_MAX);
   const site = normalizeUrl(str(body.site_url, URL_MAX));
-  const avatarRaw = str(body.avatar_url, AVATAR_MAX);
-  const avatar = avatarRaw ? normalizeUrl(avatarRaw) : '';
 
   if (site && !/^https?:\/\/[^\s/]+\.[^\s]+$/i.test(site)) {
     return json({ ok: false, reason: 'bad_site', message: '站点网址看起来不太对' }, 400, headers);
   }
 
-  await env.DB.prepare(
-    'UPDATE accounts SET display_name = ?, site_url = ?, avatar_url = ? WHERE id = ?',
-  )
-    // 头像留空就存 NULL —— 读的时候按邮箱现算（QQ 邮箱自然是 QQ 头像），
-    // 别把「算出来的地址」写死，否则以后换邮箱头像不跟着变、avatarCustom 也永远是真
-    .bind(name || null, site || null, avatar || null, me.account.id)
+  // 头像走独立接口（上传见 postAvatar）—— 这里**不碰** avatar_url。
+  // 曾经把「署名 + 站点 + 头像」写进同一个 UPDATE，结果「只改署名」也会把
+  // 头像一起覆盖掉；分开之后各自说得清。
+  await env.DB.prepare('UPDATE accounts SET display_name = ?, site_url = ? WHERE id = ?')
+    .bind(name || null, site || null, me.account.id)
     .run();
 
+  const fresh = await findAccountById(env, me.account.id);
+  return json({ ok: true, account: fresh ? await publicAccount(env, fresh) : null }, 200, headers);
+}
+
+/**
+ * 上传头像。前端已经压成 160×160 的 webp（十 KB 级），这里只做格式与尺寸的复核。
+ *
+ * 图不进 `accounts.avatar_url`，而是 `account_avatars` 表 + 一个短地址 ——
+ * 理由见 `0024_account_avatars.sql` 顶部：留言会快照头像，十几 KB 的 data URL
+ * 复制进每一条留言，列表响应会爆。
+ */
+async function postAvatar(request: Request, env: Env): Promise<Response> {
+  const headers = corsHeaders(request, env);
+  const me = await sessionUser(request, env);
+  if (!me) return json({ ok: false, reason: 'unauthorized' }, 401, headers);
+
+  const body = await readJson(request);
+  const r = await putAvatar(env, me.account.id, String(body.data ?? ''));
+  if (!r.ok) return json({ ok: false, reason: r.reason, message: r.message }, 400, headers);
+
+  const fresh = await findAccountById(env, me.account.id);
+  return json({ ok: true, account: fresh ? await publicAccount(env, fresh) : null }, 200, headers);
+}
+
+/** 删掉上传的头像 → 回落到按邮箱算的那张（QQ 邮箱就是 QQ 头像） */
+async function deleteAvatar(request: Request, env: Env): Promise<Response> {
+  const headers = corsHeaders(request, env);
+  const me = await sessionUser(request, env);
+  if (!me) return json({ ok: false, reason: 'unauthorized' }, 401, headers);
+
+  await clearAvatar(env, me.account.id);
   const fresh = await findAccountById(env, me.account.id);
   return json({ ok: true, account: fresh ? await publicAccount(env, fresh) : null }, 200, headers);
 }
@@ -230,9 +258,17 @@ export async function handleAuth(request: Request, env: Env, path: string): Prom
   if (path === '/auth/profile' && m === 'PATCH') return patchProfile(request, env);
   if (path === '/auth/my-comments' && m === 'GET') return getMyComments(request, env);
 
+  // 头像：读是公开的（<img src> 不需要会话），写要登录
+  const av = path.match(/^\/auth\/avatar\/(\d+)$/);
+  if (av && m === 'GET') return getAvatar(env, av[1]!);
+  if (path === '/auth/avatar' && m === 'POST') return postAvatar(request, env);
+  if (path === '/auth/avatar' && m === 'DELETE') return deleteAvatar(request, env);
+
   if (path === '/auth/github/start' && m === 'GET') return githubStart(request, env);
   if (path === '/auth/github/callback' && m === 'GET') return githubCallback(request, env);
-  if (path === '/auth/bind/github' && m === 'POST') {
+  // GET 也认：绑定是一整页跳转（GitHub 授权完 302 回来），用 <a href> 最省事。
+  // CSRF 风险低 —— 绑定写的是「当前会话」，而且要对方自己的 GitHub 已登录。
+  if (path === '/auth/bind/github' && (m === 'POST' || m === 'GET')) {
     const me = await sessionUser(request, env);
     if (!me) return json({ ok: false, reason: 'unauthorized' }, 401, corsHeaders(request, env));
     return githubStart(request, env, me.account.id);

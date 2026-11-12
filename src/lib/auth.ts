@@ -176,6 +176,52 @@ export interface MyComment {
   likes: number;
 }
 
+/**
+ * 上传头像。传的是前端压好的 `data:image/…;base64,…`（192×192，十 KB 级）。
+ * 服务端会存进账号自己的表并回一个新地址 —— 图**不是**放在 `avatar_url` 里的。
+ */
+export async function uploadAvatar(dataUrl: string): Promise<Result<{ account: SessionAccount | null }>> {
+  try {
+    const res = await fetch(`${BASE}/auth/avatar`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ data: dataUrl }),
+      credentials: 'include',
+      // 十 KB 级的图，12 秒足够；慢到超时多半是网络问题，重试即可
+      signal: AbortSignal.timeout(12000),
+    });
+    const data = (await res.json().catch(() => ({}))) as {
+      ok?: boolean;
+      message?: string;
+      account?: SessionAccount | null;
+    };
+    if (res.ok && data.ok) return { ok: true, account: data.account ?? null };
+    return { ok: false, message: data.message || '头像没传上去，稍后再试' };
+  } catch {
+    return { ok: false, message: '网络好像不太顺，稍后再试一次' };
+  }
+}
+
+/** 删掉上传的头像 → 回到按邮箱算的那张（QQ 邮箱就是 QQ 头像） */
+export async function clearAvatar(): Promise<Result<{ account: SessionAccount | null }>> {
+  try {
+    const res = await fetch(`${BASE}/auth/avatar`, {
+      method: 'DELETE',
+      credentials: 'include',
+      signal: AbortSignal.timeout(10000),
+    });
+    const data = (await res.json().catch(() => ({}))) as {
+      ok?: boolean;
+      message?: string;
+      account?: SessionAccount | null;
+    };
+    if (res.ok && data.ok) return { ok: true, account: data.account ?? null };
+    return { ok: false, message: data.message || '没换成默认头像' };
+  } catch {
+    return { ok: false, message: '网络好像不太顺，稍后再试一次' };
+  }
+}
+
 export async function fetchMyComments(): Promise<MyComment[]> {
   try {
     const res = await fetch(`${BASE}/auth/my-comments`, {
@@ -214,6 +260,11 @@ export async function unbindIdentity(provider: string): Promise<Result<{ account
 /** GitHub 登录是整页跳转（回调会 302 回 /links/），所以这里只给地址 */
 export function githubLoginUrl(): string {
   return `${BASE}/auth/github/start`;
+}
+
+/** 已登录状态下绑定 GitHub —— 同样是一整页跳转，回来自动带 `?auth=bind_ok` */
+export function githubBindUrl(): string {
+  return `${BASE}/auth/bind/github`;
 }
 
 /**

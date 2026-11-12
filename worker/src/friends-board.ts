@@ -53,6 +53,14 @@ interface CommentRow {
   notify: number | null;
   /** 归属账号。老留言与匿名留言为 null */
   account_id: number | null;
+  /**
+   * 账号**当前**的头像 / 署名（LEFT JOIN accounts 带出来的）。
+   *
+   * 有这两个字段，改了头像或署名之后历史留言会跟着变 —— 那才叫「一份档案」。
+   * 匿名留言这两列是 null，回落 `avatar` / `author` 那份历史快照。
+   */
+  acc_avatar?: string | null;
+  acc_name?: string | null;
 }
 
 // ——————————————————————————————————————————————————————————
@@ -187,9 +195,10 @@ function toEntry(
 ) {
   return {
     id: `c-${row.id}`,
-    name: row.author,
+    // 账号有当前档案就优先用它 —— 改了署名/头像，历史留言跟着变
+    name: row.acc_name || row.author,
     url: row.author_url ?? '',
-    avatar: row.avatar ?? '',
+    avatar: row.acc_avatar || row.avatar || '',
     intro: row.body,
     at: new Date(row.ts).toISOString(),
     // `visible` = 已经收录进友链墙，其余（pending）显示「等我看看」。
@@ -204,10 +213,10 @@ function toEntry(
     liked: Boolean(opts.liked),
     replies: replies.map((r) => ({
       id: `c-${r.id}`,
-      name: r.author,
+      name: r.acc_name || r.author,
       // notify = 0 表示访客主动取消了 @：不给 to，前端就不显示「@某某」
-      to: r.notify === 0 ? '' : row.author,
-      avatar: r.avatar ?? '',
+      to: r.notify === 0 ? '' : row.acc_name || row.author,
+      avatar: r.acc_avatar || r.avatar || '',
       intro: r.body,
       at: new Date(r.ts).toISOString(),
     })),
@@ -220,13 +229,30 @@ function toEntry(
 export async function getFriendsBoard(request: Request, env: Env): Promise<Response> {
   const headers = withCors(request, env);
   try {
-    const rows = await env.DB.prepare(
-      `SELECT id, parent_id, author, author_url, avatar, body, status, ts, email_hash, notify, account_id
-       FROM comments WHERE post_slug = ? AND status IN ('visible', 'pending')
-       ORDER BY ts DESC LIMIT 300`,
-    )
-      .bind(SLUG)
-      .all<CommentRow>();
+    // 带上账号的当前档案（头像 / 署名）—— 改名换头像后历史留言跟着变。
+    // 老查询作为兜底：0023/0024 没迁移时 accounts 表可能还不存在，
+    // **列表永远不能因为「新功能没就位」而挂掉**。
+    let rows: D1Result<CommentRow>;
+    try {
+      rows = await env.DB.prepare(
+        `SELECT c.id, c.parent_id, c.author, c.author_url, c.avatar, c.body, c.status,
+                c.ts, c.email_hash, c.notify, c.account_id,
+                a.avatar_url AS acc_avatar, a.display_name AS acc_name
+         FROM comments c LEFT JOIN accounts a ON a.id = c.account_id
+         WHERE c.post_slug = ? AND c.status IN ('visible', 'pending')
+         ORDER BY c.ts DESC LIMIT 300`,
+      )
+        .bind(SLUG)
+        .all<CommentRow>();
+    } catch {
+      rows = await env.DB.prepare(
+        `SELECT id, parent_id, author, author_url, avatar, body, status, ts, email_hash, notify, account_id
+         FROM comments WHERE post_slug = ? AND status IN ('visible', 'pending')
+         ORDER BY ts DESC LIMIT 300`,
+      )
+        .bind(SLUG)
+        .all<CommentRow>();
+    }
 
     const likeRows = await env.DB.prepare(
       'SELECT comment_id, COUNT(*) AS n FROM friend_likes GROUP BY comment_id',

@@ -1,0 +1,18 @@
+---
+import Layout from '../../layouts/Layout.astro';
+import AccountCenter from '../../components/auth/AccountCenter.tsx';
+
+/**
+ * 我的账号 —— 居中一页，把散在留言板顶部那条里面的东西摊开。
+ *
+ * 为什么是 `client:only`：这一页的全部内容都取决于「当前登录的是谁」，
+ * 服务端没有 cookie 也没有会话，预渲染出来的只会是一张空壳 —— 不如直接交给客户端，
+ * 至少不会出现「先闪一个空账号再跳成你的」。骨架由组件自己画（见 phase==='loading'）。
+ */
+---
+
+<Layout title="我的账号 · 清吾" description="管理清吾留言板的署名、头像、登录方式与我的留言。">
+  <div class="page-shell">
+    <AccountCenter client:only="react" />
+  </div>
+</Layout>

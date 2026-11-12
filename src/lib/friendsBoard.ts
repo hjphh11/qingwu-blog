@@ -43,6 +43,12 @@ export interface FriendEntry {
   replies?: FriendReply[];
   /** 邮箱的 MD5 —— 只用于「QQ 头像挂了就换 Cravatar」的兜底，不是邮箱本身 */
   emailHash?: string;
+  /** 提交时算好的头像哈希（和 emailHash 同源，留着给老代码用） */
+  avatarHash?: string;
+  /** 是不是自己发的 —— 登录态下服务端算得出来，未登录恒 false */
+  mine?: boolean;
+  /** 自己点过赞没有 —— 由服务端给，前台不用再猜 */
+  liked?: boolean;
 }
 
 /** 一条回复 */
@@ -55,6 +61,8 @@ export interface FriendReply {
   avatar?: string;
   /** 回复者填的网址（选填，列表里暂不展示，但存下来备查） */
   url?: string;
+  /** 回复者填的邮箱 —— 只给提交用（通知收件人），列表里不会回传 */
+  email?: string;
   /**
    * 是否 @ 了主楼作者。
    * false = 访客主动取消了 @，服务端既不在列表里显示「@某某」，也不发通知邮件。

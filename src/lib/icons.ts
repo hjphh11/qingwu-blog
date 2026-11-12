@@ -70,4 +70,8 @@ export {
   Trash2,
   // 表情面板
   Smile,
+  // 账号页（上传头像 / 定位留言 / 站长徽章）
+  ImageUp,
+  RotateCcw,
+  BadgeCheck,
 } from 'lucide';

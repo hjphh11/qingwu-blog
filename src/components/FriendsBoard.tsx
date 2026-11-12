@@ -1,4 +1,4 @@
-import { useEffect, useId, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
 import { MorphIcon } from 'morphicons/react';
 import {
   Send,
@@ -133,6 +133,10 @@ export default function FriendsBoard() {
   const [owned, setOwned] = useState<Record<string, string>>({});
   /** 刚提交成功的那条 —— 高亮一会儿，并从任何筛选里都可见 */
   const [freshId, setFreshId] = useState('');
+  /** 「我的留言」里点定位 / URL 带 #c-12 时，临时把那条标亮 */
+  const [hlId, setHlId] = useState('');
+  const hlTimer = useRef<number | null>(null);
+  const hlClearTimer = useRef<number | null>(null);
 
   /* —— 统一身份 —— */
   const [me, setMe] = useState<SessionAccount | null>(null);
@@ -228,6 +232,60 @@ export default function FriendsBoard() {
     // entries 入库时已经是「新的在前」，所以 old 只是就地翻过来
     () => (sort === 'new' ? entries : [...entries].reverse()),
     [entries, sort],
+  );
+
+  /**
+   * 定位到某一条：滚过去 + 标亮三秒。
+   *
+   * 两个入口都走这里 —— 抽屉里点「定位」（同一页），
+   * 以及从 /account 跳回来时 URL 带的 `#c-12`（见下面的 effect）。
+   */
+  const locateEntry = useCallback((id: string) => {
+    const el = document.getElementById(id);
+    // 列表还没渲染出来就别白滚一次，直接退出（hash 那条会等 loading 结束再试）
+    if (!el) return;
+
+    setHlId(id);
+    const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    el.scrollIntoView({ block: 'center', behavior: reduce ? 'auto' : 'smooth' });
+
+    // 连续点两条时把上一个定时器清掉，否则先亮的那条会提前熄
+    if (hlClearTimer.current) window.clearTimeout(hlClearTimer.current);
+    hlClearTimer.current = window.setTimeout(() => setHlId(''), 3200);
+  }, []);
+
+  /**
+   * 从 /account 点「定位」回来时 URL 带 `#c-12`。
+   * ClientRouter 的转场不会替我们找这个锚点（元素是水合后才有的），所以自己来。
+   * 定位完把 hash 抹掉 —— 刷新不该重复触发，链接也不该带着别人的定位状态。
+   */
+  useEffect(() => {
+    if (loading) return;
+    const raw = (window.location.hash || '').replace(/^#/, '');
+    if (!/^c-\d+$/.test(raw)) return;
+
+    // 200ms：让入场动画和列表布局稳下来再算位置，否则滚到的是「还没撑开」的高度
+    hlTimer.current = window.setTimeout(() => {
+      if (!document.getElementById(raw)) return;
+      locateEntry(raw);
+      try {
+        window.history.replaceState({}, '', window.location.pathname + window.location.search);
+      } catch {
+        /* 改不动地址栏就算了，定位照样生效 */
+      }
+    }, 200);
+
+    return () => {
+      if (hlTimer.current) window.clearTimeout(hlTimer.current);
+    };
+  }, [loading, locateEntry]);
+
+  useEffect(
+    () => () => {
+      if (hlTimer.current) window.clearTimeout(hlTimer.current);
+      if (hlClearTimer.current) window.clearTimeout(hlClearTimer.current);
+    },
+    [],
   );
 
   function setField(key: keyof typeof EMPTY, v: string) {
@@ -568,6 +626,7 @@ export default function FriendsBoard() {
                   setNotice({ kind: 'warn', text: '退出了。下次留言还要重新登录 ~' });
                 }}
                 onDeleted={(id) => setEntries((prev) => prev.filter((e) => e.id !== id))}
+                onLocate={locateEntry}
               />
             </div>
           )}
@@ -879,6 +938,7 @@ export default function FriendsBoard() {
                   entry={e}
                   now={now}
                   fresh={e.id === freshId}
+                  highlight={e.id === hlId}
                   liked={liked.includes(e.id)}
                   onLike={() => toggleLike(e.id)}
                   onReply={(reply) => addReply(e.id, reply)}
@@ -926,6 +986,7 @@ function EntryRow({
   entry,
   now,
   fresh,
+  highlight,
   liked,
   onLike,
   onReply,
@@ -938,6 +999,8 @@ function EntryRow({
   entry: FriendEntry;
   now: number;
   fresh?: boolean;
+  /** 刚从「我的留言」定位过来 —— 亮三秒，好让人一眼找到 */
+  highlight?: boolean;
   liked: boolean;
   onLike: () => void;
   onReply: (reply: FriendReply) => void;
@@ -1014,8 +1077,15 @@ function EntryRow({
     /* 整行给一层 hover 底色：列表长起来之后，鼠标在哪一条上要看得出来。
        刚发出去的那条用浅绯红底 + 细描边标一会儿，方便一眼找到自己写的 */
     <li
-      className={`-mx-1 flex gap-3 rounded-[calc(var(--radius-card)-8px)] px-3 py-3.5 transition-colors duration-500 ${
-        fresh ? 'bg-crimson/6 ring-1 ring-crimson/20' : 'hover:bg-white/45'
+      // id 就是 entry.id（c-12）——「我的留言」里的定位靠它找元素，
+      // scroll-mt 给顶栏让位（顶栏 fixed，不躲会被压住）
+      id={entry.id}
+      className={`-mx-1 flex scroll-mt-28 gap-3 rounded-[calc(var(--radius-card)-8px)] px-3 py-3.5 transition-colors duration-500 ${
+        highlight
+          ? 'bg-crimson/8 ring-2 ring-crimson/35'
+          : fresh
+            ? 'bg-crimson/6 ring-1 ring-crimson/20'
+            : 'hover:bg-white/45'
       }`}
     >
       <span className="mt-px h-10 w-10 shrink-0 overflow-hidden rounded-full bg-gradient-to-br from-rose/35 to-amber/25 ring-2 ring-white/70">

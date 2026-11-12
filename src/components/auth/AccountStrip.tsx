@@ -1,34 +1,41 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { MorphIcon } from 'morphicons/react';
 import {
   CircleAlert,
   CircleCheck,
+  ImageUp,
   LoaderCircle,
   LogOut,
   MessageCircle,
   Pencil,
-  Trash2,
+  RotateCcw,
   UserRound,
   X,
 } from '../../lib/icons';
 import GithubMark from './GithubMark';
+import MyCommentList from './MyCommentList';
 import {
+  clearAvatar,
   fetchMyComments,
   saveProfile,
   unbindIdentity,
+  uploadAvatar,
   type MyComment,
   type SessionAccount,
 } from '../../lib/auth';
 import { deleteEntry } from '../../lib/friendsBoard';
-import { renderRich } from '../../lib/richText';
 import { avatarFromHash } from '../../lib/avatar';
+import { fileToAvatar } from '../../lib/avatarUpload';
 
 /**
  * 留言框顶部的「我是谁」那一条。
  *
- * 只做三件事：**认人**（头像 + 名字）、**改档案**（署名 / 站点 / 头像）、**管留言**。
- * 不做「个人主页」—— 这个站只有一个留言板，多一个页面就是多一处要维护的空壳。
+ * 只做四件事：**认人**（头像 + 名字）、**换头像**、**改档案**（署名 / 站点）、
+ * **管留言**。想看全部信息（加入时间、登录方式、统计）就去 `/account` ——
+ * 那是单独的一页，点名字/头像旁边那块就过去。
+ *
+ * 头像点击即上传：这个位置大家默认会去点，比藏进「改署名」里顺手。
  */
 export default function AccountStrip({
   account,
@@ -36,6 +43,7 @@ export default function AccountStrip({
   onAccountChange,
   onLogout,
   onDeleted,
+  onLocate,
 }: {
   account: SessionAccount;
   github: boolean;
@@ -43,15 +51,17 @@ export default function AccountStrip({
   onLogout: () => void;
   /** 在「我的留言」里删掉一条之后，让列表刷新 */
   onDeleted: (id: string) => void;
+  /** 在抽屉里点「定位」：把这页滚到那条留言并高亮 */
+  onLocate: (id: string) => void;
 }) {
   const [editing, setEditing] = useState(false);
   const [mineOpen, setMineOpen] = useState(false);
   const [name, setName] = useState(account.name);
   const [site, setSite] = useState(account.site);
-  /** 头像输入框：留空 = 用邮箱算出来的那张（QQ 邮箱就是 QQ 头像） */
-  const [avatar, setAvatar] = useState(account.avatarCustom ? account.avatar : '');
   const [busy, setBusy] = useState(false);
+  const [avatarBusy, setAvatarBusy] = useState(false);
   const [msg, setMsg] = useState<{ kind: 'ok' | 'warn'; text: string } | null>(null);
+  const fileRef = useRef<HTMLInputElement>(null);
   /**
    * 头像的三档兜底：0 = 当前地址，1 = 邮箱哈希的 Cravatar，
    * 2 = 放弃（画个图标）。QQ 头像接口（q.qlogo.cn）在部分网络下会 400，这是实测过的。
@@ -63,10 +73,9 @@ export default function AccountStrip({
   useEffect(() => {
     setName(account.name);
     setSite(account.site);
-    setAvatar(account.avatarCustom ? account.avatar : '');
     setAvatarSrc(account.avatar);
     setAvatarStage(0);
-  }, [account.id, account.name, account.site, account.avatar, account.avatarCustom]);
+  }, [account.id, account.name, account.site, account.avatar]);
 
   /** 现在该显示哪张头像 */
   const shownAvatar =
@@ -80,12 +89,8 @@ export default function AccountStrip({
 
   async function save() {
     setBusy(true);
-    const r = await saveProfile({
-      display_name: name.trim(),
-      site_url: site.trim(),
-      // 留空 = 交回服务端按邮箱算，别把上一次的自定义头像粘死
-      avatar_url: avatar.trim(),
-    });
+    // 只提交署名和站点 —— 头像有自己的接口，别在这里顺带覆盖
+    const r = await saveProfile({ display_name: name.trim(), site_url: site.trim() });
     setBusy(false);
     if (!r.ok) {
       setMsg({ kind: 'warn', text: r.message });
@@ -94,6 +99,39 @@ export default function AccountStrip({
     if (r.account) onAccountChange(r.account);
     setMsg({ kind: 'ok', text: '记住了，之后的留言都用这份档案。' });
     setEditing(false);
+  }
+
+  /** 选图 → 浏览器里裁成 192 小方图 → 直接上传（不用再点保存，换头像本来就是一个动作） */
+  async function pickAvatar(file: File) {
+    setMsg(null);
+    setAvatarBusy(true);
+    const shrunk = await fileToAvatar(file);
+    if (!shrunk.ok) {
+      setAvatarBusy(false);
+      setMsg({ kind: 'warn', text: shrunk.message });
+      return;
+    }
+    const r = await uploadAvatar(shrunk.dataUrl);
+    setAvatarBusy(false);
+    if (!r.ok) {
+      setMsg({ kind: 'warn', text: r.message });
+      return;
+    }
+    if (r.account) onAccountChange(r.account);
+    setMsg({ kind: 'ok', text: '头像换好了，留言列表里也会跟着变。' });
+  }
+
+  async function useDefaultAvatar() {
+    setMsg(null);
+    setAvatarBusy(true);
+    const r = await clearAvatar();
+    setAvatarBusy(false);
+    if (!r.ok) {
+      setMsg({ kind: 'warn', text: r.message });
+      return;
+    }
+    if (r.account) onAccountChange(r.account);
+    setMsg({ kind: 'ok', text: '换回按邮箱算的那张了。' });
   }
 
   async function unbind() {
@@ -113,14 +151,21 @@ export default function AccountStrip({
   return (
     <div className="relative">
       <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1.5">
-        <span className="grid h-8 w-8 shrink-0 place-items-center overflow-hidden rounded-full bg-rose/15 ring-1 ring-rose/25">
+        {/* 头像：点一下就能换。相机图标只在 hover/聚焦时浮出来，平时不抢视线 */}
+        <button
+          type="button"
+          onClick={() => fileRef.current?.click()}
+          aria-label="换头像"
+          title="换头像"
+          className="group relative grid h-9 w-9 shrink-0 place-items-center overflow-hidden rounded-full bg-rose/15 ring-1 ring-rose/25 transition-shadow hover:ring-crimson/45"
+        >
           {shownAvatar && avatarStage < 2 ? (
             <img
               key={shownAvatar}
               src={shownAvatar}
               alt=""
-              width={32}
-              height={32}
+              width={36}
+              height={36}
               loading="lazy"
               decoding="async"
               referrerPolicy="no-referrer"
@@ -129,23 +174,61 @@ export default function AccountStrip({
             />
           ) : (
             <span className="text-crimson">
-              <MorphIcon icon={UserRound} size={14} color="currentColor" />
+              <MorphIcon icon={UserRound} size={15} color="currentColor" />
             </span>
           )}
-        </span>
+          <span
+            className={`absolute inset-0 grid place-items-center bg-ink/45 text-white transition-opacity duration-150 group-hover:opacity-100 group-focus-visible:opacity-100 ${
+              avatarBusy ? 'opacity-100' : 'opacity-0'
+            }`}
+          >
+            {avatarBusy ? (
+              <span className="animate-spin">
+                <MorphIcon icon={LoaderCircle} size={13} color="currentColor" />
+              </span>
+            ) : (
+              <MorphIcon icon={ImageUp} size={13} color="currentColor" />
+            )}
+          </span>
+        </button>
+        <input
+          ref={fileRef}
+          type="file"
+          accept="image/png,image/jpeg,image/webp"
+          className="hidden"
+          onChange={(ev) => {
+            const f = ev.target.files?.[0];
+            // 清空 value：同一张图连选两次也要能触发 change
+            ev.target.value = '';
+            if (f) void pickAvatar(f);
+          }}
+        />
 
-        <span className="min-w-0 truncate text-[13px] font-medium text-ink">{account.name}</span>
-        <span className="truncate text-[11px] text-subtle">{account.email}</span>
+        {/* 名字 + 邮箱整体是入口：想去「我的账号」看全部信息，点这里 */}
+        <a
+          href="/account"
+          className="group/me flex min-w-0 items-baseline gap-2 rounded-md transition-colors"
+          title="查看我的账号"
+        >
+          <span className="min-w-0 truncate text-[13px] font-medium text-ink group-hover/me:text-crimson">
+            {account.name}
+          </span>
+          <span className="truncate text-[11px] text-subtle group-hover/me:text-crimson/80">
+            {account.email}
+          </span>
+        </a>
 
         <div className="ml-auto flex items-center gap-0.5">
-          <button
-            type="button"
-            onClick={() => setEditing((v) => !v)}
-            className="inline-flex min-h-7 items-center gap-1 rounded-full px-2 text-[11px] text-subtle transition-colors hover:bg-rose/12 hover:text-crimson"
-          >
-            <MorphIcon icon={Pencil} size={11} color="currentColor" />
-            改署名
-          </button>
+          {editing ? null : (
+            <button
+              type="button"
+              onClick={() => setEditing(true)}
+              className="inline-flex min-h-7 items-center gap-1 rounded-full px-2 text-[11px] text-subtle transition-colors hover:bg-rose/12 hover:text-crimson"
+            >
+              <MorphIcon icon={Pencil} size={11} color="currentColor" />
+              改署名
+            </button>
+          )}
           <button
             type="button"
             onClick={() => setMineOpen(true)}
@@ -202,18 +285,18 @@ export default function AccountStrip({
                 />
               </label>
 
-              {/* 头像：留空就交回「按邮箱算」—— QQ 邮箱自然是 QQ 头像 */}
-              <label className="block sm:col-span-2">
-                <span className="mb-1 block text-[10.5px] text-subtle">头像网址</span>
-                <span className="flex items-center gap-2">
-                  <span className="grid h-9 w-9 shrink-0 place-items-center overflow-hidden rounded-full bg-rose/15 ring-1 ring-rose/25">
+              {/* 头像上传：不再是「填网址」—— 那个框没人愿意粘，还得自己找图床 */}
+              <div className="sm:col-span-2">
+                <span className="mb-1 block text-[10.5px] text-subtle">头像</span>
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="grid h-10 w-10 shrink-0 place-items-center overflow-hidden rounded-full bg-rose/15 ring-1 ring-rose/25">
                     {shownAvatar && avatarStage < 2 ? (
                       <img
                         key={`edit-${shownAvatar}`}
                         src={shownAvatar}
                         alt=""
-                        width={36}
-                        height={36}
+                        width={40}
+                        height={40}
                         loading="lazy"
                         decoding="async"
                         referrerPolicy="no-referrer"
@@ -222,21 +305,37 @@ export default function AccountStrip({
                       />
                     ) : (
                       <span className="text-crimson">
-                        <MorphIcon icon={UserRound} size={14} color="currentColor" />
+                        <MorphIcon icon={UserRound} size={15} color="currentColor" />
                       </span>
                     )}
                   </span>
-                  <input
-                    value={avatar}
-                    maxLength={300}
-                    inputMode="url"
+                  <button
+                    type="button"
+                    onClick={() => fileRef.current?.click()}
+                    disabled={avatarBusy}
                     tabIndex={editing ? 0 : -1}
-                    onChange={(ev) => setAvatar(ev.target.value)}
-                    placeholder="留空 = 用邮箱头像（QQ 邮箱就是 QQ 头像）"
-                    className="w-full min-w-0 rounded-lg border border-rose/25 bg-white px-2.5 py-1.5 text-xs text-ink outline-none focus:border-crimson/50 placeholder:text-subtle/80"
-                  />
-                </span>
-              </label>
+                    className="inline-flex min-h-8 items-center gap-1.5 rounded-lg border border-rose/30 bg-white px-2.5 text-[11px] text-muted transition-colors hover:border-crimson/45 hover:text-crimson disabled:opacity-60"
+                  >
+                    <MorphIcon icon={ImageUp} size={12} color="currentColor" />
+                    上传图片
+                  </button>
+                  {account.avatarCustom && (
+                    <button
+                      type="button"
+                      onClick={() => void useDefaultAvatar()}
+                      disabled={avatarBusy}
+                      tabIndex={editing ? 0 : -1}
+                      className="inline-flex min-h-8 items-center gap-1.5 rounded-lg px-2 text-[11px] text-subtle transition-colors hover:text-crimson disabled:opacity-60"
+                    >
+                      <MorphIcon icon={RotateCcw} size={11} color="currentColor" />
+                      恢复默认
+                    </button>
+                  )}
+                  <span className="text-[10.5px] leading-relaxed text-subtle">
+                    选图后自动裁成方形，不用自己压
+                  </span>
+                </div>
+              </div>
             </div>
 
             <div className="mt-2.5 flex flex-wrap items-center gap-2">
@@ -255,7 +354,7 @@ export default function AccountStrip({
                 tabIndex={editing ? 0 : -1}
                 className="text-[11px] text-subtle underline underline-offset-2 hover:text-crimson"
               >
-                取消
+                收起
               </button>
 
               {/* 绑定状态：GitHub 是可选项，邮箱永远是主身份 */}
@@ -300,6 +399,10 @@ export default function AccountStrip({
       <MyCommentsDrawer
         open={mineOpen}
         onClose={() => setMineOpen(false)}
+        onLocate={(id) => {
+          setMineOpen(false);
+          onLocate(id);
+        }}
         onDeleted={(id) => {
           onDeleted(id);
           setMsg({ kind: 'ok', text: '这条删掉了。' });
@@ -314,10 +417,12 @@ function MyCommentsDrawer({
   open,
   onClose,
   onDeleted,
+  onLocate,
 }: {
   open: boolean;
   onClose: () => void;
   onDeleted: (id: string) => void;
+  onLocate: (id: string) => void;
 }) {
   const [items, setItems] = useState<MyComment[] | null>(null);
   const [busyId, setBusyId] = useState('');
@@ -395,6 +500,12 @@ function MyCommentsDrawer({
       >
         <div className="flex items-center gap-2 border-b border-rose/20 px-4 py-3">
           <h3 className="font-display text-base text-ink">我的留言</h3>
+          <a
+            href="/account"
+            className="ml-1 text-[10.5px] text-subtle underline underline-offset-2 transition-colors hover:text-crimson"
+          >
+            全部信息
+          </a>
           <button
             type="button"
             onClick={onClose}
@@ -406,57 +517,7 @@ function MyCommentsDrawer({
         </div>
 
         <div className="min-h-0 flex-1 overflow-y-auto px-4 py-3">
-          {items === null && (
-            <p className="flex items-center gap-2 py-6 text-xs text-subtle">
-              <span className="animate-spin">
-                <MorphIcon icon={LoaderCircle} size={13} color="currentColor" />
-              </span>
-              正在找…
-            </p>
-          )}
-
-          {items?.length === 0 && (
-            <p className="py-8 text-center text-xs leading-relaxed text-subtle">
-              还没有用这个邮箱留过言。
-              <br />
-              下面写一句试试 ~
-            </p>
-          )}
-
-          <ul className="flex flex-col gap-3">
-            {(items ?? []).map((c) => (
-              <li key={c.id} className="rounded-xl border border-rose/20 bg-white/70 p-3">
-                <div className="flex items-center gap-1.5">
-                  <span
-                    className={`inline-flex items-center gap-1 rounded-full px-1.5 py-px text-[10px] ${
-                      c.status === 'approved'
-                        ? 'bg-crimson/10 text-crimson'
-                        : 'border border-amber/45 bg-amber/10 text-brown'
-                    }`}
-                  >
-                    {c.status === 'approved' ? '已是友链' : '等我看看'}
-                  </span>
-                  <span className="text-[10.5px] tabular-nums text-subtle">
-                    {c.at.slice(0, 10)}
-                  </span>
-                  <button
-                    type="button"
-                    onClick={() => void remove(c.id)}
-                    disabled={busyId === c.id}
-                    className="ml-auto inline-flex items-center gap-1 text-[10.5px] text-subtle transition-colors hover:text-crimson disabled:opacity-60"
-                  >
-                    <MorphIcon icon={Trash2} size={10} color="currentColor" />
-                    {busyId === c.id ? '删除中' : '删除'}
-                  </button>
-                </div>
-                <div
-                  className="q-rich mt-1.5 line-clamp-3 text-[12px] text-muted"
-                  // eslint-disable-next-line react/no-danger
-                  dangerouslySetInnerHTML={{ __html: renderRich(c.intro) }}
-                />
-              </li>
-            ))}
-          </ul>
+          <MyCommentList items={items} busyId={busyId} onDelete={(id) => void remove(id)} onLocate={onLocate} />
 
           {error && (
             <p role="alert" className="mt-3 text-[11px] text-crimson">
