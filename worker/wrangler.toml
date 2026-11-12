@@ -69,6 +69,23 @@ STATS_SOURCE_PATH = "hits"
 # 改这里之后要重新 `wrangler deploy`；RESEND_KEY / MAIL_TO 是 secret，用 `wrangler secret put` 配。
 MAIL_FROM = "清吾 <noreply@qingwu.ink>"
 
+# ——— 统一身份（登录 / 绑定）———
+# 设计见 docs/方案-统一身份-登录与绑定.md，表结构见 migrations/0023_accounts.sql。
+#
+# 未登录能不能留言：on（默认）＝只能读，提交返回 401 login_required；
+# 想退回游客也能发，改成 "off" 重启即可，不用改代码。
+REQUIRE_LOGIN = "on"
+# 过渡期：统一会话表里查不到管理员时回落旧 admin_sessions。
+# 后台迁移稳定后改成 "0"，旧的 0013 那三张表就可以只读留档了。
+AUTH_LEGACY_ADMIN = "1"
+# GitHub OAuth App 的 client id 不是密钥，写这儿；client secret 用
+#   wrangler secret put GITHUB_CLIENT_SECRET
+# 回调地址必须与 OAuth App 里登记的完全一致：
+#   https://www.qingwu.ink/api/auth/github/callback
+# 没配 client id 时前台不显示 GitHub 按钮（邮箱通道照常可用）。
+# GITHUB_CLIENT_ID = "Ov23li…"
+
+
 # ——— AI：writer（写作）+ judge（判断）双通道 ———
 # 只有 **key 是 secret**：`wrangler secret put AI_API_KEY`，本机写 .dev.vars。
 # 地址、模型名、配额都不敏感，写在这里，改完 `wrangler deploy` / 重启即可。

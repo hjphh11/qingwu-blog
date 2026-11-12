@@ -17,7 +17,10 @@ import {
   ChevronDown,
   ChevronUp,
   X,
+  UserRound,
+  KeyRound,
 } from '../lib/icons';
+import GithubMark from './auth/GithubMark';
 import {
   COMMENT_TEMPLATE,
   FRIENDS_BOARD_DEMO,
@@ -39,6 +42,17 @@ import {
 } from '../lib/friendsBoard';
 import { APPLY_LIMITS } from '../lib/applyValidation';
 import { avatarFromEmail, avatarFromHash, emailHash as emailHashOf } from '../lib/avatar';
+import AccountStrip from './auth/AccountStrip';
+import LoginDialog from './auth/LoginDialog';
+import {
+  authFlagText,
+  consumeAuthFlag,
+  fetchMe,
+  githubLoginUrl,
+  logout as logoutApi,
+  type AuthConfig,
+  type SessionAccount,
+} from '../lib/auth';
 
 /**
  * 友链页底部 · 申请友链的评论区
@@ -117,6 +131,13 @@ export default function FriendsBoard() {
   /** 刚提交成功的那条 —— 高亮一会儿，并从任何筛选里都可见 */
   const [freshId, setFreshId] = useState('');
 
+  /* —— 统一身份 —— */
+  const [me, setMe] = useState<SessionAccount | null>(null);
+  const [config, setConfig] = useState<AuthConfig>({ requireLogin: true, github: false });
+  /** 身份还没读回来时先别判「未登录」，否则会闪一下「请登录」 */
+  const [authReady, setAuthReady] = useState(false);
+  const [loginOpen, setLoginOpen] = useState(false);
+
   // 相对时间要等客户端算：SSR 与客户端各算一次会水合不匹配（见 timeAgo 注释）
   useEffect(() => setNow(Date.now()), []);
   // 本机点过哪些赞：只能在客户端读（localStorage 在 SSR 里不存在）
@@ -133,6 +154,12 @@ export default function FriendsBoard() {
         if (!alive) return;
         // 新的在上，和评论区的阅读顺序一致
         setEntries([...list].sort((a, b) => Date.parse(b.at) - Date.parse(a.at)));
+        // 服务端知道「这个账号点过哪些赞」—— 登录后换设备也一致，
+        // 和本机记录取并集，覆盖「未登录时点过、之后才登录」的情况
+        const serverLiked = list.filter((e) => e.liked).map((e) => e.id);
+        if (serverLiked.length) {
+          setLiked((prev) => Array.from(new Set([...prev, ...serverLiked])));
+        }
       })
       .catch(() => {
         if (alive) setNotice({ kind: 'warn', text: '申请列表没加载出来，不过上面照样可以写 ~' });
@@ -140,6 +167,33 @@ export default function FriendsBoard() {
       .finally(() => {
         if (alive) setLoading(false);
       });
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  /**
+   * 读当前身份。
+   *
+   * 顺带处理 GitHub 回调带回来的 `?auth=xxx` —— 它只在这一次有用，
+   * `consumeAuthFlag` 读完就从地址栏抹掉了，刷新不会重复弹提示。
+   */
+  useEffect(() => {
+    let alive = true;
+    void fetchMe()
+      .then((r) => {
+        if (!alive) return;
+        setMe(r.account);
+        setConfig(r.config);
+      })
+      .finally(() => {
+        if (alive) setAuthReady(true);
+      });
+
+    const flag = consumeAuthFlag();
+    const text = flag ? authFlagText(flag) : null;
+    if (text) setNotice(text);
+
     return () => {
       alive = false;
     };
@@ -171,11 +225,14 @@ export default function FriendsBoard() {
     const intro = values.intro.trim();
     const email = values.email.trim();
 
-    if (!name) e.name = '请填一下站点名称';
-    else if (name.length > APPLY_LIMITS.name) e.name = `名称最多 ${APPLY_LIMITS.name} 个字`;
-    if (!values.url.trim()) e.url = '请填一下站点网址';
-    else if (!/^https?:\/\/[^\s/]+\.[^\s]+$/i.test(url)) e.url = '网址看起来不太对，例如 example.com';
-    if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email)) e.email = '邮箱格式看起来不太对';
+    // 登录之后署名与站点来自档案，这三格直接不显示了 —— 也就没有什么可校验的
+    if (!me) {
+      if (!name) e.name = '请填一下站点名称';
+      else if (name.length > APPLY_LIMITS.name) e.name = `名称最多 ${APPLY_LIMITS.name} 个字`;
+      if (!values.url.trim()) e.url = '请填一下站点网址';
+      else if (!/^https?:\/\/[^\s/]+\.[^\s]+$/i.test(url)) e.url = '网址看起来不太对，例如 example.com';
+      if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email)) e.email = '邮箱格式看起来不太对';
+    }
     if (!intro) e.intro = '写一句介绍吧，哪怕只有几个字';
     else if (intro.length > CONTENT_MAX) e.intro = `最多 ${CONTENT_MAX} 个字`;
 
@@ -210,6 +267,11 @@ export default function FriendsBoard() {
 
   async function handleSubmit() {
     setNotice(null);
+    // 必须登录时，未登录点发送直接把登录打开 —— 别让人写完一大段才被拒
+    if (config.requireLogin && !me) {
+      setLoginOpen(true);
+      return;
+    }
     if (!validate()) return;
     setStatus('submitting');
     const res = await submitFriendEntry(values);
@@ -217,6 +279,8 @@ export default function FriendsBoard() {
 
     if (!res.ok) {
       setNotice({ kind: 'warn', text: res.message });
+      // 会话过期（换设备/清 cookie）也会走到这里：把登录打开，草稿还在输入框里
+      if (res.reason === 'login') setLoginOpen(true);
       return;
     }
     setEntries((prev) => [res.entry, ...prev]);
@@ -266,8 +330,9 @@ export default function FriendsBoard() {
 
   /** 删掉自己发的那条（服务端软删，成功后从本地列表移除） */
   async function removeEntry(id: string) {
-    const token = owned[id];
-    if (!token) return;
+    // 登录后不需要 token —— 服务端按账号判；老留言仍然靠本机那串凭证
+    const token = owned[id] ?? '';
+    if (!token && !me) return;
     const res = await deleteEntry(id, token);
     if (!res.ok) {
       setNotice({ kind: 'warn', text: res.message });
@@ -372,7 +437,48 @@ export default function FriendsBoard() {
           </p>
         )}
 
-        {/* ——— 评论框：常驻在列表上方 ——— */}
+        {/* 身份还没读回来：先占位，别让「三格表单 → 登录卡」闪一下 */}
+        {!authReady ? (
+          <div className="relative mt-4 rounded-[var(--radius-card)] border border-rose/25 bg-white/55 px-5 py-8">
+            <div className="mx-auto flex max-w-sm flex-col items-center gap-3">
+              <span className="h-9 w-9 rounded-full bg-rose/15 motion-reduce:animate-none" />
+              <span className="block h-3 w-40 animate-pulse rounded bg-rose/15 motion-reduce:animate-none" />
+              <span className="block h-3 w-56 animate-pulse rounded bg-rose/10 motion-reduce:animate-none" />
+            </div>
+          </div>
+        ) : config.requireLogin && !me ? (
+          <div className="relative mt-4 flex flex-col items-center gap-3 rounded-[var(--radius-card)] border border-rose/25 bg-white/55 px-5 py-7 text-center">
+            <span className="grid h-11 w-11 place-items-center rounded-full bg-rose/15 text-crimson">
+              <MorphIcon icon={UserRound} size={18} color="currentColor" />
+            </span>
+            <div>
+              <p className="text-sm font-medium text-ink">先说一声你是谁</p>
+              <p className="mx-auto mt-1 max-w-[21rem] text-balance text-xs leading-relaxed text-muted">
+                用邮箱收个验证码就能留言，不用设密码。之后回访不用再填名字和网址，
+                以前用同一个邮箱留的话也都在自己名下。
+              </p>
+            </div>
+            <div className="flex flex-wrap items-center justify-center gap-2">
+              <button
+                type="button"
+                onClick={() => setLoginOpen(true)}
+                className="inline-flex min-h-9 items-center gap-1.5 rounded-lg bg-crimson px-4 text-sm font-medium text-white shadow-[0_6px_18px_rgba(194,58,85,0.25)] transition-[transform,background-color] duration-300 hover:scale-[1.03] q-press"
+              >
+                <MorphIcon icon={KeyRound} size={14} color="currentColor" />
+                登录 / 注册
+              </button>
+              {config.github && (
+                <a
+                  href={githubLoginUrl()}
+                  className="inline-flex min-h-9 items-center gap-1.5 rounded-lg border border-rose/30 bg-white px-3.5 text-sm text-ink transition-colors hover:border-crimson/45 hover:text-crimson"
+                >
+                  <GithubMark size={14} />
+                  GitHub
+                </a>
+              )}
+            </div>
+          </div>
+        ) : (
         <form
           onSubmit={(ev) => {
             ev.preventDefault();
@@ -381,6 +487,23 @@ export default function FriendsBoard() {
           noValidate
           className="relative mt-4 rounded-[var(--radius-card)] border border-rose/25 bg-white/55 transition-colors focus-within:border-rose/45"
         >
+          {/* 登录之后这三个框就多余了 —— 换成「我是谁」那一条 */}
+          {me ? (
+            <div className="border-b border-dashed border-rose/25 px-4 py-3">
+              <AccountStrip
+                account={me}
+                github={config.github}
+                onAccountChange={(next) => setMe(next)}
+                onLogout={() => {
+                  void logoutApi();
+                  setMe(null);
+                  setNotice({ kind: 'warn', text: '退出了。下次留言还要重新登录 ~' });
+                }}
+                onDeleted={(id) => setEntries((prev) => prev.filter((e) => e.id !== id))}
+              />
+            </div>
+          ) : (
+          <>
           {/* 左边是邮箱头像预览（填了邮箱才会亮），右边三字段一行。
               移动端藏头像 —— 三格本来就堆叠，再挤个圆更窄 */}
           <div className="flex items-stretch border-b border-dashed border-rose/25">
@@ -494,6 +617,8 @@ export default function FriendsBoard() {
             </label>
             </div>
           </div>
+          </>
+          )}
 
           {/* 正文 */}
           <div className="px-4 pt-3.5">
@@ -586,6 +711,7 @@ export default function FriendsBoard() {
             </div>
           </div>
         </form>
+        )}
 
         {notice && (
           <p
@@ -653,8 +779,12 @@ export default function FriendsBoard() {
                   liked={liked.includes(e.id)}
                   onLike={() => toggleLike(e.id)}
                   onReply={(reply) => addReply(e.id, reply)}
-                  canDelete={Boolean(owned[e.id])}
+                  // 两种凭据都算「我的」：账号（迁移后）或本机 token（老留言）
+                  canDelete={Boolean(owned[e.id]) || Boolean(e.mine)}
                   onDelete={() => removeEntry(e.id)}
+                  account={me}
+                  requireLogin={config.requireLogin}
+                  onNeedLogin={() => setLoginOpen(true)}
                 />
               ))}
 
@@ -666,6 +796,23 @@ export default function FriendsBoard() {
           )}
         </ol>
       </div>
+
+      <LoginDialog
+        open={loginOpen}
+        config={config}
+        onClose={() => setLoginOpen(false)}
+        onDone={(account) => {
+          setMe(account);
+          setLoginOpen(false);
+          setNotice({ kind: 'ok', text: '登录好了，写吧 ~' });
+          // 身份变了，点赞态与「我的」标记都要重算
+          void loadFriendEntries()
+            .then((list) => {
+              setEntries([...list].sort((a, b) => Date.parse(b.at) - Date.parse(a.at)));
+            })
+            .catch(() => undefined);
+        }}
+      />
     </section>
   );
 }
@@ -681,6 +828,9 @@ function EntryRow({
   onReply,
   canDelete,
   onDelete,
+  account,
+  requireLogin,
+  onNeedLogin,
 }: {
   entry: FriendEntry;
   now: number;
@@ -688,9 +838,13 @@ function EntryRow({
   liked: boolean;
   onLike: () => void;
   onReply: (reply: FriendReply) => void;
-  /** 本机有这个条目的删除凭证 —— 说明是我自己发的 */
+  /** 我能删这条：账号对得上，或者本机存着当次的删除凭证 */
   canDelete: boolean;
   onDelete: () => void | Promise<void>;
+  /** 当前登录账号（未登录为 null） */
+  account: SessionAccount | null;
+  requireLogin: boolean;
+  onNeedLogin: () => void;
 }) {
   const [broken, setBroken] = useState(false);
   /** 回复默认折起来（参考站就是「展开回复」那个按钮），点一下才铺开 */
@@ -731,11 +885,16 @@ function EntryRow({
   function submitReply() {
     const text = rText.trim();
     if (!text) return;
+    if (requireLogin && !account) {
+      onNeedLogin();
+      return;
+    }
     onReply({
       id: `r-${Date.now()}`,
-      name: rName.trim() || '匿名朋友',
-      email: rEmail.trim(),
-      url: rUrl.trim(),
+      // 登录后署名、站点、通知地址都由服务端按账号补，前端不用再编
+      name: account ? account.name : rName.trim() || '匿名朋友',
+      email: account ? '' : rEmail.trim(),
+      url: account ? account.site : rUrl.trim(),
       // 自动 @ 被回复的人 —— 访客不用自己打，邮件通知也靠这个找到收件人。
       // 访客把 @ 点掉了就不给 to，服务端也就不发信。
       to: notify ? entry.name : '',
@@ -838,7 +997,23 @@ function EntryRow({
 
           <button
             type="button"
-            onClick={() => setReplyOpen(!replyOpen)}
+            onClick={() => {
+              if (replyOpen) {
+                setReplyOpen(false);
+                return;
+              }
+              // 要登录才能回：直接弹登录，别让人写完再被拒
+              if (requireLogin && !account) {
+                onNeedLogin();
+                return;
+              }
+              // 登录了就把档案带上，回复框里不用再填名字和网址
+              if (account) {
+                setRName((v) => v || account.name);
+                setRUrl((v) => v || account.site);
+              }
+              setReplyOpen(true);
+            }}
             aria-expanded={replyOpen}
             className={`inline-flex min-h-7 items-center gap-1 rounded-full px-1.5 text-[11px] transition-colors ${
               replyOpen ? 'bg-crimson/10 text-crimson' : 'text-subtle hover:bg-white/50 hover:text-crimson'
@@ -926,6 +1101,15 @@ function EntryRow({
               </span>
             </div>
 
+            {/* 登录后这三格不显示 —— 署名/邮箱/网址都由账号补 */}
+            {account ? (
+              <p className="mt-1.5 flex items-center gap-1.5 text-[10.5px] text-subtle">
+                <MorphIcon icon={UserRound} size={10} color="currentColor" />
+                以 {account.name} 的身份回复
+                {account.site ? ` · ${hostOf(account.site)}` : ''}
+              </p>
+            ) : (
+            <>
             {/* 三个字段，和主留言框对齐：名字 / 邮箱 / 网址。
                 同样是浮动标签 —— 回复框更窄，字号比主框再小一档 */}
             <div className="mt-1.5 grid divide-y divide-dashed divide-rose/20 border-y border-dashed border-rose/20 sm:grid-cols-3 sm:divide-x sm:divide-y-0">
@@ -970,6 +1154,8 @@ function EntryRow({
                 </span>
               </label>
             </div>
+            </>
+            )}
 
             <div className="mt-1.5 flex items-center gap-2">
               <input

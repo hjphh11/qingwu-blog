@@ -11,6 +11,10 @@
 import type { Env } from '../types';
 import { json, secretEqual } from '../util';
 import { sendMail } from '../mail';
+// 统一身份：管理员就是 accounts 里 role='admin' 的那一行，会话与访客同一张表
+import { SESSION_COOKIE, clearCookieOf, cookieOf, isOn } from '../auth/common';
+import { createSession, destroySession, sessionUser } from '../auth/store';
+import { sendLoginCode, verifyLoginCode } from '../auth/codes';
 
 /** 与脚本 `scripts/create-admin.mjs` 必须一致，否则登录永远失败 */
 export const PBKDF2_ITER = 150_000;
@@ -156,6 +160,79 @@ interface AdminRow {
 }
 
 // ——————————————————————————————————————————————————————————
+// 身份解析：统一账号优先，旧 admin_users 兜底
+// ——————————————————————————————————————————————————————————
+//
+// 「两边一套身份」的落点就在这儿：管理员不是另一张表里的人，而是
+// `accounts` 里 `role='admin'` 的那一行。旧表在过渡期只读保留，
+// 等 `AUTH_LEGACY_ADMIN=0` 之后就可以彻底不动它了。
+interface ResolvedAdmin {
+  /** true = 来自旧 admin_users（过渡期兜底） */
+  legacy: boolean;
+  /** 统一会话要写哪个 account id；legacy 时为空 */
+  accountId: number | null;
+  /** 旧表 id，只为兼容 admin_codes / admin_sessions */
+  userId: number | null;
+  username: string;
+  email: string;
+  passHash: string;
+  salt: string;
+  iterations: number;
+}
+
+async function resolveAdmin(env: Env, username: string): Promise<ResolvedAdmin | null> {
+  // 0023 没跑时 accounts 不存在 —— 别让一次没跑完的迁移把后台锁死
+  try {
+    const a = await env.DB.prepare(
+      `SELECT id, email, display_name, pass_hash, salt, iterations FROM accounts
+        WHERE role = 'admin' AND pass_hash IS NOT NULL AND (display_name = ? OR email = ?)
+        LIMIT 1`,
+    )
+      .bind(username, username.toLowerCase())
+      .first<{
+        id: number;
+        email: string;
+        display_name: string | null;
+        pass_hash: string;
+        salt: string;
+        iterations: number;
+      }>();
+    if (a) {
+      return {
+        legacy: false,
+        accountId: a.id,
+        userId: null,
+        username: a.display_name || a.email.split('@')[0] || username,
+        email: a.email,
+        passHash: a.pass_hash,
+        salt: a.salt,
+        iterations: a.iterations,
+      };
+    }
+  } catch {
+    /* accounts 还没建，落到旧表 */
+  }
+
+  const u = await env.DB.prepare(
+    'SELECT id, username, email, pass_hash, salt, iterations FROM admin_users WHERE username = ?',
+  )
+    .bind(username)
+    .first<AdminRow>();
+  if (!u) return null;
+
+  return {
+    legacy: true,
+    accountId: null,
+    userId: u.id,
+    username: u.username,
+    email: u.email,
+    passHash: u.pass_hash,
+    salt: u.salt,
+    iterations: u.iterations,
+  };
+}
+
+// ——————————————————————————————————————————————————————————
 // 第一步：账号 + 密码 → 发验证码
 // ——————————————————————————————————————————————————————————
 export async function postLogin(request: Request, env: Env): Promise<Response> {
@@ -171,30 +248,39 @@ export async function postLogin(request: Request, env: Env): Promise<Response> {
     return json({ ok: false, reason: 'locked', retryAfter: remain, message: `尝试次数过多，请 ${Math.ceil(remain / 60)} 分钟后再试` }, 429);
   }
 
-  const row = await env.DB.prepare(
-    'SELECT id, username, email, pass_hash, salt, iterations FROM admin_users WHERE username = ?',
-  )
-    .bind(username)
-    .first<AdminRow>();
+  const resolved = await resolveAdmin(env, username);
 
   let passOk = false;
-  if (row) {
-    passOk = await secretEqual(await pbkdf2(password, row.salt, row.iterations), row.pass_hash);
+  if (resolved) {
+    passOk = await secretEqual(await pbkdf2(password, resolved.salt, resolved.iterations), resolved.passHash);
   } else {
     // 账号不存在也走一遍，耗时对齐（防用户名枚举）
     await pbkdf2(password, 'decoy-salt-for-timing', PBKDF2_ITER);
   }
 
-  if (!passOk) {
+  if (!passOk || !resolved) {
     await recordAttempt(env, iph, false);
     return json({ ok: false, reason: 'bad_credentials', message: '账号或密码不正确' }, 401);
   }
 
   const now = Date.now();
 
+  // 统一账号：验证码走 auth_codes，与访客同一套发信、同一套限流
+  if (!resolved.legacy && resolved.accountId) {
+    const r = await sendLoginCode(env, request, resolved.email, 'login');
+    if (!r.ok) {
+      const status = r.reason === 'mail' ? 502 : r.reason === 'bad_email' ? 400 : 429;
+      return json(
+        { ok: false, reason: r.reason, retryAfter: r.retryAfter, message: `验证码${r.message}` },
+        status,
+      );
+    }
+    return json({ ok: true, step: 'verify', email: maskEmail(resolved.email), cooldown: CODE_COOLDOWN_SEC });
+  }
+
   // 冷却：同一个账号 60 秒内只发一封，防止被拿来刷邮箱
   const last = await env.DB.prepare('SELECT sent_at FROM admin_codes WHERE user_id = ? ORDER BY sent_at DESC LIMIT 1')
-    .bind(row!.id)
+    .bind(resolved.userId)
     .first<{ sent_at: number }>();
   if (last && now - last.sent_at < CODE_COOLDOWN_SEC * 1000) {
     const wait = Math.ceil((CODE_COOLDOWN_SEC * 1000 - (now - last.sent_at)) / 1000);
@@ -202,15 +288,15 @@ export async function postLogin(request: Request, env: Env): Promise<Response> {
   }
 
   const code = randomCode();
-  const codeHash = await sha256(`${code}|${row!.salt}`);
+  const codeHash = await sha256(`${code}|${resolved.salt}`);
   await env.DB.prepare(
     'INSERT INTO admin_codes (user_id, code_hash, sent_at, expires_at, tries, used) VALUES (?, ?, ?, ?, 0, 0)',
   )
-    .bind(row!.id, codeHash, now, now + CODE_TTL_SEC * 1000)
+    .bind(resolved.userId, codeHash, now, now + CODE_TTL_SEC * 1000)
     .run();
 
   const sent = await sendMail(env, {
-    to: row!.email,
+    to: resolved.email,
     subject: '清吾后台 · 登录验证码',
     text: [
       `验证码：${code}`,
@@ -227,7 +313,7 @@ export async function postLogin(request: Request, env: Env): Promise<Response> {
     return json({ ok: false, reason: 'mail_failed', message: '验证码发送失败，请稍后重试' }, 502);
   }
 
-  return json({ ok: true, step: 'verify', email: maskEmail(row!.email), cooldown: CODE_COOLDOWN_SEC });
+  return json({ ok: true, step: 'verify', email: maskEmail(resolved.email), cooldown: CODE_COOLDOWN_SEC });
 }
 
 // ——————————————————————————————————————————————————————————
@@ -244,6 +330,29 @@ export async function postVerify(request: Request, env: Env): Promise<Response> 
   const remain = await lockRemain(env, iph);
   if (remain > 0) {
     return json({ ok: false, reason: 'locked', retryAfter: remain, message: `尝试次数过多，请 ${Math.ceil(remain / 60)} 分钟后再试` }, 429);
+  }
+
+  // 统一账号：验证码在 auth_codes 里（与访客同一套发信/限流），会话写 auth_sessions
+  const resolved = await resolveAdmin(env, username);
+  if (resolved && !resolved.legacy && resolved.accountId) {
+    const v = await verifyLoginCode(env, request, resolved.email, code, 'login');
+    if (!v.ok) {
+      return json(
+        { ok: false, reason: v.reason, left: v.left, message: v.message },
+        v.reason === 'locked' ? 429 : 401,
+      );
+    }
+    const token = await createSession(env, request, resolved.accountId, 'admin');
+    await recordAttempt(env, iph, true);
+    await env.DB.prepare('UPDATE accounts SET last_seen_at = ? WHERE id = ?')
+      .bind(Date.now(), resolved.accountId)
+      .run()
+      .catch(() => undefined);
+    return json(
+      { ok: true, username: resolved.username, email: maskEmail(resolved.email) },
+      200,
+      { 'set-cookie': cookieOf(request, SESSION_COOKIE, token, SESSION_TTL_SEC) },
+    );
   }
 
   const user = await env.DB.prepare('SELECT id, username, email, salt FROM admin_users WHERE username = ?')
@@ -308,10 +417,38 @@ export async function postVerify(request: Request, env: Env): Promise<Response> 
 export interface Admin {
   id: number;
   username: string;
+  /** 统一会话才有（旧 admin_sessions 的会话为空，getSessionInfo 会回查旧表） */
+  email?: string;
+  lastLoginAt?: number | null;
+  legacy?: boolean;
 }
 
-/** 校验 cookie；无效返回 null。**每个受保护接口都要先过这里。** */
+/**
+ * 校验会话。**每个受保护接口都要先过这里。**
+ *
+ * 顺序是有讲究的：先认统一会话（q_sess + kind=admin），再回落旧 admin_sessions。
+ * 过渡期两者都算数 —— 后台是修错的地方，不能因为迁移写错就把自己关在门外。
+ * 确认稳定后把 `AUTH_LEGACY_ADMIN` 设成 0，旧表就只剩只读留档的作用。
+ */
 export async function getAdmin(request: Request, env: Env): Promise<Admin | null> {
+  // ① 统一会话
+  try {
+    const s = await sessionUser(request, env);
+    if (s && s.kind === 'admin' && s.account.role === 'admin') {
+      return {
+        id: s.account.id,
+        username: s.account.display_name || s.account.email.split('@')[0] || 'admin',
+        email: s.account.email,
+        lastLoginAt: s.account.last_seen_at,
+      };
+    }
+  } catch {
+    /* auth_sessions 还没建：继续看旧表 */
+  }
+
+  if (!isOn(env.AUTH_LEGACY_ADMIN)) return null;
+
+  // ② 旧会话（过渡期）
   const token = readCookies(request)[COOKIE_NAME];
   if (!token || token.length < 32) return null;
   const tokenHash = await sha256(token);
@@ -327,7 +464,7 @@ export async function getAdmin(request: Request, env: Env): Promise<Admin | null
     await env.DB.prepare('DELETE FROM admin_sessions WHERE token_hash = ?').bind(tokenHash).run();
     return null;
   }
-  return { id: row.id, username: row.username };
+  return { id: row.id, username: row.username, legacy: true };
 }
 
 /** 给受保护接口用的包装：没登录直接 401，省得每个 handler 都写一遍 */
@@ -344,24 +481,54 @@ export async function requireAdmin(
 export async function getSessionInfo(request: Request, env: Env): Promise<Response> {
   const admin = await getAdmin(request, env);
   if (!admin) return json({ ok: false, authenticated: false }, 401);
-  const row = await env.DB.prepare('SELECT email, last_login_at FROM admin_users WHERE id = ?')
-    .bind(admin.id)
-    .first<{ email: string; last_login_at: number | null }>();
+
+  // 统一会话自带邮箱；旧会话回查 admin_users
+  let email = admin.email ? maskEmail(admin.email) : '';
+  let lastLoginAt = admin.lastLoginAt ?? null;
+  if (!admin.email) {
+    const row = await env.DB.prepare('SELECT email, last_login_at FROM admin_users WHERE id = ?')
+      .bind(admin.id)
+      .first<{ email: string; last_login_at: number | null }>()
+      .catch(() => null);
+    if (row) {
+      email = maskEmail(row.email);
+      lastLoginAt = row.last_login_at;
+    }
+  }
+
   return json({
     ok: true,
     authenticated: true,
     username: admin.username,
-    email: row ? maskEmail(row.email) : '',
-    lastLoginAt: row?.last_login_at ?? null,
+    email,
+    lastLoginAt,
   });
 }
 
 export async function postLogout(request: Request, env: Env): Promise<Response> {
+  // 两张表都清 —— 过渡期可能同时存在两种会话
+  await destroyUnifiedSession(request, env);
   const token = readCookies(request)[COOKIE_NAME];
   if (token) {
-    await env.DB.prepare('DELETE FROM admin_sessions WHERE token_hash = ?').bind(await sha256(token)).run();
+    await env.DB.prepare('DELETE FROM admin_sessions WHERE token_hash = ?')
+      .bind(await sha256(token))
+      .run()
+      .catch(() => undefined);
   }
-  return json({ ok: true }, 200, { 'set-cookie': sessionCookie(request, '', 0) });
+  // 两条 cookie 要分别 append —— 用对象字面量塞两个同名头会被后者覆盖
+  const res = json({ ok: true });
+  res.headers.append('set-cookie', sessionCookie(request, '', 0));
+  res.headers.append('set-cookie', clearCookieOf(request, SESSION_COOKIE));
+  return res;
+}
+
+/** 统一会话的注销：单独包一层，表还没建时也不该抛错 */
+async function destroyUnifiedSession(request: Request, env: Env): Promise<void> {
+  try {
+    await destroySession(request, env);
+  } catch {
+    /* 迁移未跑，忽略 */
+  }
 }
 
 /**
@@ -390,7 +557,25 @@ export async function getDevLogin(request: Request, env: Env): Promise<Response>
     id: number;
     username: string;
   }>();
+
   if (!user) {
+    // 只有统一账号（没跑 create-admin 的旧脚本）：直接开一个 kind='admin' 的会话
+    try {
+      const a = await env.DB.prepare("SELECT id FROM accounts WHERE role = 'admin' ORDER BY id LIMIT 1")
+        .first<{ id: number }>();
+      if (a) {
+        const t = await createSession(env, request, a.id, 'admin');
+        return new Response(null, {
+          status: 302,
+          headers: {
+            location: '/admin/console',
+            'set-cookie': cookieOf(request, SESSION_COOKIE, t, SESSION_TTL_SEC),
+          },
+        });
+      }
+    } catch {
+      /* accounts 还没建，落到下面的 409 */
+    }
     return json({ ok: false, reason: 'no_admin', message: '本地库里还没有管理员，先跑 scripts/create-admin.mjs' }, 409);
   }
 

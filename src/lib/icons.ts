@@ -60,4 +60,12 @@ export {
   ArrowDownWideNarrow,
   ArrowUpWideNarrow,
   ChevronUp,
+  // 统一身份（登录 / 绑定 / 我的留言）
+  // ⚠️ 没有 Github：lucide 从 v1 起去掉了品牌图标，GitHub 标志自己画
+  //    （见 components/auth/GithubMark.tsx）
+  LogOut,
+  UserRound,
+  KeyRound,
+  Pencil,
+  Trash2,
 } from 'lucide';

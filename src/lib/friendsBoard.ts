@@ -223,6 +223,7 @@ export async function loadFriendEntries(): Promise<FriendEntry[]> {
   }
   const res = await fetch(`${WORKER_BASE}/friends-board`, {
     headers: { accept: 'application/json' },
+    credentials: 'include',
     signal: AbortSignal.timeout(8000),
   });
   if (!res.ok) throw new Error(`load ${res.status}`);
@@ -242,7 +243,7 @@ export interface SubmitInput {
 
 export type SubmitResult =
   | { ok: true; entry: FriendEntry; deleteToken: string }
-  | { ok: false; reason: 'duplicate' | 'limited' | 'unavailable' | 'error'; message: string };
+  | { ok: false; reason: 'duplicate' | 'limited' | 'unavailable' | 'login' | 'error'; message: string };
 
 /** 提交一条申请 */
 export async function submitFriendEntry(input: SubmitInput): Promise<SubmitResult> {
@@ -284,6 +285,7 @@ export async function submitFriendEntry(input: SubmitInput): Promise<SubmitResul
         avatarHash: emailHashOf(input.email || ''),
         intro: input.intro.trim(),
       }),
+      credentials: 'include',
       signal: AbortSignal.timeout(12000),
     });
     const data = (await res.json().catch(() => ({}))) as {
@@ -300,6 +302,10 @@ export async function submitFriendEntry(input: SubmitInput): Promise<SubmitResul
     }
     if (res.status === 429) {
       return { ok: false, reason: 'limited', message: data.message || '提交得有点频繁，先歇一会儿 ~' };
+    }
+    if (res.status === 401) {
+      // 没登录 / 会话过期 —— 调用方据此把登录弹层打开
+      return { ok: false, reason: 'login', message: data.message || '先登录一下再来留言 ~' };
     }
     if (res.status === 503) {
       return { ok: false, reason: 'unavailable', message: data.message || '通道还没开放' };
@@ -386,6 +392,7 @@ export async function submitReply(
         notify: input.notify !== false,
         intro: input.intro.trim(),
       }),
+      credentials: 'include',
       signal: AbortSignal.timeout(12000),
     });
     const data = (await res.json().catch(() => ({}))) as { reply?: FriendReply; message?: string };
@@ -408,6 +415,7 @@ export async function toggleLike(
   try {
     const res = await fetch(`${WORKER_BASE}/friends-board/${numericId(id)}/like`, {
       method: 'POST',
+      credentials: 'include',
       signal: AbortSignal.timeout(10000),
     });
     const data = (await res.json().catch(() => ({}))) as {
@@ -483,6 +491,7 @@ export async function deleteEntry(
       method: 'DELETE',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ token }),
+      credentials: 'include',
       signal: AbortSignal.timeout(10000),
     });
     if (res.ok) return { ok: true };

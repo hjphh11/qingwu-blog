@@ -49,6 +49,35 @@ export interface Env {
   /** 允许跨源调用 /hit 的站点，逗号分隔；`*` = 不限制 */
   ALLOWED_ORIGINS?: string;
 
+  // ————————————————————————————————————————————————
+  // 统一身份（accounts / 会话 / 邮箱验证码 / GitHub 绑定）
+  // 设计见 docs/方案-统一身份-登录与绑定.md
+  // ————————————————————————————————————————————————
+  /**
+   * 未登录还能不能留言。
+   *
+   * `on` / `1` / 不配 **都算开** —— 未登录只能读，提交时 401 `login_required`。
+   * 要退回「游客也能发」，把它设成 `off` / `0` / `false`。
+   *
+   * 为什么默认开：评论区是唯一有 UGC 的入口，按人限流、按人追溯审核，
+   * 前提是知道「这是谁」。老访客的留言在迁移时已按邮箱归并到账号，
+   * 没留邮箱的孤儿仍保留 `delete_token`，所以不是单向门。
+   */
+  REQUIRE_LOGIN?: string;
+
+  /**
+   * **过渡期开关**：统一会话表里查不到管理员时，是否回落旧 `admin_sessions`。
+   * 默认开；设成 `0` 即只认新表（确认迁移没问题后再关）。
+   *
+   * 为什么留这一手：后台是修错的地方，一次性切断如果哪里写错就再也进不去。
+   */
+  AUTH_LEGACY_ADMIN?: string;
+
+  /** GitHub OAuth App 的 client id。没配 = 前台不显示 GitHub 按钮 */
+  GITHUB_CLIENT_ID?: string;
+  /** GitHub OAuth App 的 client secret（secret，配在 .dev.vars / wrangler secret） */
+  GITHUB_CLIENT_SECRET?: string;
+
   /**
    * **归档只读开关**：设为 `"1"` / `"true"` 时，除 GET/HEAD 外的请求一律 `410 Gone`，
    * cron 也直接跳过。
