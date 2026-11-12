@@ -22,6 +22,7 @@ import {
 } from '../../lib/auth';
 import { deleteEntry } from '../../lib/friendsBoard';
 import { renderRich } from '../../lib/richText';
+import { avatarFromHash } from '../../lib/avatar';
 
 /**
  * 留言框顶部的「我是谁」那一条。
@@ -47,27 +48,51 @@ export default function AccountStrip({
   const [mineOpen, setMineOpen] = useState(false);
   const [name, setName] = useState(account.name);
   const [site, setSite] = useState(account.site);
+  /** 头像输入框：留空 = 用邮箱算出来的那张（QQ 邮箱就是 QQ 头像） */
+  const [avatar, setAvatar] = useState(account.avatarCustom ? account.avatar : '');
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<{ kind: 'ok' | 'warn'; text: string } | null>(null);
-  /** 外站头像可能被 Referer 防盗链或接口 400 拦掉 —— 失败了就退回图标 */
-  const [avatarBroken, setAvatarBroken] = useState(false);
+  /**
+   * 头像的三档兜底：0 = 当前地址，1 = 邮箱哈希的 Cravatar，
+   * 2 = 放弃（画个图标）。QQ 头像接口（q.qlogo.cn）在部分网络下会 400，这是实测过的。
+   */
+  const [avatarStage, setAvatarStage] = useState(0);
+  const [avatarSrc, setAvatarSrc] = useState(account.avatar);
 
-  // 账号换了（比如刚登录）就把草稿对齐，别让人看到上一个账号的旧值
+  // 账号换了（比如刚登录/刚保存）就把草稿对齐，别让人看到上一个账号的旧值
   useEffect(() => {
     setName(account.name);
     setSite(account.site);
-  }, [account.id, account.name, account.site]);
+    setAvatar(account.avatarCustom ? account.avatar : '');
+    setAvatarSrc(account.avatar);
+    setAvatarStage(0);
+  }, [account.id, account.name, account.site, account.avatar, account.avatarCustom]);
+
+  /** 现在该显示哪张头像 */
+  const shownAvatar =
+    avatarStage === 0 ? avatarSrc : avatarStage === 1 ? avatarFromHash(account.emailHash) : '';
+
+  function failAvatar() {
+    // 第一档挂了就退到哈希头像（Gravatar/Cravatar 那条），再挂才放弃
+    if (avatarStage === 0 && avatarFromHash(account.emailHash)) setAvatarStage(1);
+    else setAvatarStage(2);
+  }
 
   async function save() {
     setBusy(true);
-    const r = await saveProfile({ display_name: name.trim(), site_url: site.trim() });
+    const r = await saveProfile({
+      display_name: name.trim(),
+      site_url: site.trim(),
+      // 留空 = 交回服务端按邮箱算，别把上一次的自定义头像粘死
+      avatar_url: avatar.trim(),
+    });
     setBusy(false);
     if (!r.ok) {
       setMsg({ kind: 'warn', text: r.message });
       return;
     }
     if (r.account) onAccountChange(r.account);
-    setMsg({ kind: 'ok', text: '记住了，之后的留言都用这个署名。' });
+    setMsg({ kind: 'ok', text: '记住了，之后的留言都用这份档案。' });
     setEditing(false);
   }
 
@@ -89,16 +114,17 @@ export default function AccountStrip({
     <div className="relative">
       <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1.5">
         <span className="grid h-8 w-8 shrink-0 place-items-center overflow-hidden rounded-full bg-rose/15 ring-1 ring-rose/25">
-          {account.avatar && !avatarBroken ? (
+          {shownAvatar && avatarStage < 2 ? (
             <img
-              src={account.avatar}
+              key={shownAvatar}
+              src={shownAvatar}
               alt=""
               width={32}
               height={32}
               loading="lazy"
               decoding="async"
               referrerPolicy="no-referrer"
-              onError={() => setAvatarBroken(true)}
+              onError={failAvatar}
               className="h-full w-full object-cover"
             />
           ) : (
@@ -139,66 +165,119 @@ export default function AccountStrip({
         </div>
       </div>
 
-      {editing && (
-        <div className="mt-2.5 rounded-xl border border-rose/25 bg-white/70 p-3">
-          <div className="grid gap-2 sm:max-w-xl sm:grid-cols-2">
-            <label className="block">
-              <span className="mb-1 block text-[10.5px] text-subtle">署名</span>
-              <input
-                value={name}
-                maxLength={30}
-                onChange={(ev) => setName(ev.target.value)}
-                className="w-full rounded-lg border border-rose/25 bg-white px-2.5 py-1.5 text-xs text-ink outline-none focus:border-crimson/50"
-              />
-            </label>
-            <label className="block">
-              <span className="mb-1 block text-[10.5px] text-subtle">站点网址（可不填）</span>
-              <input
-                value={site}
-                maxLength={300}
-                inputMode="url"
-                onChange={(ev) => setSite(ev.target.value)}
-                placeholder="example.com"
-                className="w-full rounded-lg border border-rose/25 bg-white px-2.5 py-1.5 text-xs text-ink outline-none focus:border-crimson/50"
-              />
-            </label>
-          </div>
+      {/* 展开/收起用 grid-rows 做高度动画 —— 不用猜 max-height，内容多高就多高 */}
+      <div
+        className={`grid transition-[grid-template-rows,opacity] duration-[var(--dur-state)] ease-out motion-reduce:transition-none ${
+          editing ? 'grid-rows-[1fr] opacity-100' : 'grid-rows-[0fr] opacity-0'
+        }`}
+        aria-hidden={!editing}
+      >
+        <div className="overflow-hidden">
+          <div
+            className={`mt-2.5 rounded-xl border border-rose/25 bg-white/70 p-3 ${
+              editing ? '' : 'pointer-events-none'
+            }`}
+          >
+            <div className="grid gap-2 sm:max-w-xl sm:grid-cols-2">
+              <label className="block">
+                <span className="mb-1 block text-[10.5px] text-subtle">署名</span>
+                <input
+                  value={name}
+                  maxLength={30}
+                  tabIndex={editing ? 0 : -1}
+                  onChange={(ev) => setName(ev.target.value)}
+                  className="w-full rounded-lg border border-rose/25 bg-white px-2.5 py-1.5 text-xs text-ink outline-none focus:border-crimson/50"
+                />
+              </label>
+              <label className="block">
+                <span className="mb-1 block text-[10.5px] text-subtle">站点网址（可不填）</span>
+                <input
+                  value={site}
+                  maxLength={300}
+                  inputMode="url"
+                  tabIndex={editing ? 0 : -1}
+                  onChange={(ev) => setSite(ev.target.value)}
+                  placeholder="example.com"
+                  className="w-full rounded-lg border border-rose/25 bg-white px-2.5 py-1.5 text-xs text-ink outline-none focus:border-crimson/50"
+                />
+              </label>
 
-          <div className="mt-2.5 flex flex-wrap items-center gap-2">
-            <button
-              type="button"
-              onClick={() => void save()}
-              disabled={busy || !name.trim()}
-              className="inline-flex min-h-7 items-center gap-1 rounded-lg bg-crimson px-3 text-[11px] font-medium text-white transition-colors disabled:bg-rose/30 disabled:text-muted"
-            >
-              {busy ? '保存中…' : '保存'}
-            </button>
-            <button
-              type="button"
-              onClick={() => setEditing(false)}
-              className="text-[11px] text-subtle underline underline-offset-2 hover:text-crimson"
-            >
-              取消
-            </button>
+              {/* 头像：留空就交回「按邮箱算」—— QQ 邮箱自然是 QQ 头像 */}
+              <label className="block sm:col-span-2">
+                <span className="mb-1 block text-[10.5px] text-subtle">头像网址</span>
+                <span className="flex items-center gap-2">
+                  <span className="grid h-9 w-9 shrink-0 place-items-center overflow-hidden rounded-full bg-rose/15 ring-1 ring-rose/25">
+                    {shownAvatar && avatarStage < 2 ? (
+                      <img
+                        key={`edit-${shownAvatar}`}
+                        src={shownAvatar}
+                        alt=""
+                        width={36}
+                        height={36}
+                        loading="lazy"
+                        decoding="async"
+                        referrerPolicy="no-referrer"
+                        onError={failAvatar}
+                        className="h-full w-full object-cover"
+                      />
+                    ) : (
+                      <span className="text-crimson">
+                        <MorphIcon icon={UserRound} size={14} color="currentColor" />
+                      </span>
+                    )}
+                  </span>
+                  <input
+                    value={avatar}
+                    maxLength={300}
+                    inputMode="url"
+                    tabIndex={editing ? 0 : -1}
+                    onChange={(ev) => setAvatar(ev.target.value)}
+                    placeholder="留空 = 用邮箱头像（QQ 邮箱就是 QQ 头像）"
+                    className="w-full min-w-0 rounded-lg border border-rose/25 bg-white px-2.5 py-1.5 text-xs text-ink outline-none focus:border-crimson/50 placeholder:text-subtle/80"
+                  />
+                </span>
+              </label>
+            </div>
 
-            {/* 绑定状态：GitHub 是可选项，邮箱永远是主身份 */}
-            <span className="ml-auto inline-flex items-center gap-1 text-[10.5px] text-subtle">
-              <GithubMark size={11} />
-              {githubBound ? '已绑定' : github ? '未绑定' : '未开启'}
-            </span>
-            {githubBound && (
+            <div className="mt-2.5 flex flex-wrap items-center gap-2">
               <button
                 type="button"
-                onClick={() => void unbind()}
-                disabled={busy}
-                className="text-[10.5px] text-subtle underline underline-offset-2 hover:text-crimson disabled:opacity-60"
+                onClick={() => void save()}
+                disabled={busy || !name.trim()}
+                tabIndex={editing ? 0 : -1}
+                className="inline-flex min-h-7 items-center gap-1 rounded-lg bg-crimson px-3 text-[11px] font-medium text-white transition-colors disabled:bg-rose/30 disabled:text-muted"
               >
-                解绑
+                {busy ? '保存中…' : '保存'}
               </button>
-            )}
+              <button
+                type="button"
+                onClick={() => setEditing(false)}
+                tabIndex={editing ? 0 : -1}
+                className="text-[11px] text-subtle underline underline-offset-2 hover:text-crimson"
+              >
+                取消
+              </button>
+
+              {/* 绑定状态：GitHub 是可选项，邮箱永远是主身份 */}
+              <span className="ml-auto inline-flex items-center gap-1 text-[10.5px] text-subtle">
+                <GithubMark size={11} />
+                {githubBound ? '已绑定' : github ? '未绑定' : '未开启'}
+              </span>
+              {githubBound && (
+                <button
+                  type="button"
+                  onClick={() => void unbind()}
+                  disabled={busy}
+                  tabIndex={editing ? 0 : -1}
+                  className="text-[10.5px] text-subtle underline underline-offset-2 hover:text-crimson disabled:opacity-60"
+                >
+                  解绑
+                </button>
+              )}
+            </div>
           </div>
         </div>
-      )}
+      </div>
 
       {msg && (
         <p
@@ -243,6 +322,24 @@ function MyCommentsDrawer({
   const [items, setItems] = useState<MyComment[] | null>(null);
   const [busyId, setBusyId] = useState('');
   const [error, setError] = useState('');
+  /**
+   * 进出都要动画 —— 所以不能 `open ? render : null`：
+   * 关闭时先停在 DOM 里让动画跑完，再摘掉（260ms ≈ 过渡时长）。
+   */
+  const [rendered, setRendered] = useState(open);
+  const [shown, setShown] = useState(false);
+
+  useEffect(() => {
+    if (open) {
+      setRendered(true);
+      // 下一帧再加 shown，否则「插入 DOM + 已有终态类名」在同一个样式计算里，动画不会跑
+      const raf = requestAnimationFrame(() => setShown(true));
+      return () => cancelAnimationFrame(raf);
+    }
+    setShown(false);
+    const timer = window.setTimeout(() => setRendered(false), 260);
+    return () => window.clearTimeout(timer);
+  }, [open]);
 
   useEffect(() => {
     if (!open) return;
@@ -262,7 +359,7 @@ function MyCommentsDrawer({
     };
   }, [open, onClose]);
 
-  if (!open) return null;
+  if (!rendered) return null;
 
   async function remove(id: string) {
     setBusyId(id);
@@ -284,13 +381,17 @@ function MyCommentsDrawer({
         type="button"
         aria-label="关闭"
         onClick={onClose}
-        className="absolute inset-0 cursor-default bg-ink/25 backdrop-blur-[2px]"
+        className={`absolute inset-0 cursor-default bg-ink/25 backdrop-blur-[2px] transition-opacity duration-200 motion-reduce:transition-none ${
+          shown ? 'opacity-100' : 'opacity-0'
+        }`}
       />
       <div
         role="dialog"
         aria-modal="true"
         aria-label="我的留言"
-        className="relative flex max-h-[80vh] w-full flex-col rounded-t-[var(--radius-card)] border border-rose/25 bg-[#fffdfb] sm:max-h-none sm:w-[22rem] sm:rounded-none sm:border-y-0 sm:border-r-0"
+        className={`relative flex max-h-[80vh] w-full flex-col rounded-t-[var(--radius-card)] border border-rose/25 bg-[#fffdfb] transition-transform duration-300 ease-out motion-reduce:transition-none sm:max-h-none sm:w-[22rem] sm:rounded-none sm:border-y-0 sm:border-r-0 ${
+          shown ? 'translate-y-0 sm:translate-x-0' : 'translate-y-full sm:translate-y-0 sm:translate-x-full'
+        }`}
       >
         <div className="flex items-center gap-2 border-b border-rose/20 px-4 py-3">
           <h3 className="font-display text-base text-ink">我的留言</h3>

@@ -145,6 +145,16 @@ export default function FriendsBoard() {
   /** 往光标处插表情 token —— 用 ref 拿 selection，React 的状态拿不到 */
   const introRef = useRef<HTMLTextAreaElement | null>(null);
 
+  // 登录后把档案填进表单：只在字段空着时填，别覆盖人家正在写的内容
+  useEffect(() => {
+    if (!me) return;
+    setValues((prev) => ({
+      ...prev,
+      name: prev.name || me.name,
+      url: prev.url || me.site,
+    }));
+  }, [me]);
+
   // 相对时间要等客户端算：SSR 与客户端各算一次会水合不匹配（见 timeAgo 注释）
   useEffect(() => setNow(Date.now()), []);
   // 本机点过哪些赞：只能在客户端读（localStorage 在 SSR 里不存在）
@@ -294,7 +304,8 @@ export default function FriendsBoard() {
     // 把删除凭证记在本机，之后这条才删得掉
     saveToken(res.entry.id, res.deleteToken);
     setOwned((prev) => ({ ...prev, [res.entry.id]: res.deleteToken }));
-    setValues(EMPTY);
+    // 登录了就把署名与站点留着 —— 刚填的三格不该发完一条就空掉
+    setValues(me ? { name: me.name, email: '', url: me.site, intro: '' } : EMPTY);
     setSort('new');
     setFreshId(res.entry.id);
     window.setTimeout(() => setFreshId(''), 3600);
@@ -519,8 +530,33 @@ export default function FriendsBoard() {
           noValidate
           className="relative mt-4 rounded-[var(--radius-card)] border border-rose/25 bg-white/55 transition-colors focus-within:border-rose/45"
         >
-          {/* 登录之后这三个框就多余了 —— 换成「我是谁」那一条 */}
-          {me ? (
+          {/* 不强制登录时，登录只是个「省事」的选项 —— 给一条不挡路的小入口 */}
+          {authReady && !me && !config.requireLogin && (
+            <div className="flex flex-wrap items-center gap-x-1.5 gap-y-1 border-b border-dashed border-rose/25 px-4 py-2 text-[11px] text-subtle">
+              <MorphIcon icon={UserRound} size={11} color="currentColor" />
+              <span>以前留过言？</span>
+              <button
+                type="button"
+                onClick={() => setLoginOpen(true)}
+                className="font-medium text-crimson underline underline-offset-2 transition-colors hover:text-crimson/80"
+              >
+                登录
+              </button>
+              <span>一下，之后不用再填，也能管自己的留言</span>
+              {config.github && (
+                <a
+                  href={githubLoginUrl()}
+                  className="ml-auto inline-flex items-center gap-1 underline underline-offset-2 transition-colors hover:text-crimson"
+                >
+                  <GithubMark size={11} />
+                  GitHub
+                </a>
+              )}
+            </div>
+          )}
+
+          {/* 登录之后上面挂一条「我是谁」；下面的三格照旧 —— 登录只是帮你填好，不替代表单 */}
+          {me && (
             <div className="border-b border-dashed border-rose/25 px-4 py-3">
               <AccountStrip
                 account={me}
@@ -534,8 +570,7 @@ export default function FriendsBoard() {
                 onDeleted={(id) => setEntries((prev) => prev.filter((e) => e.id !== id))}
               />
             </div>
-          ) : (
-          <>
+          )}
           {/* 左边是邮箱头像预览（填了邮箱才会亮），右边三字段一行。
               移动端藏头像 —— 三格本来就堆叠，再挤个圆更窄 */}
           <div className="flex items-stretch border-b border-dashed border-rose/25">
@@ -562,7 +597,11 @@ export default function FriendsBoard() {
               )}
             </span>
 
-            <div className="grid min-w-0 flex-1 divide-y divide-dashed divide-rose/25 sm:grid-cols-3 sm:divide-x sm:divide-y-0">
+            <div
+              className={`grid min-w-0 flex-1 divide-y divide-dashed divide-rose/25 ${
+                me ? 'sm:grid-cols-2' : 'sm:grid-cols-3'
+              } sm:divide-x sm:divide-y-0`}
+            >
             {/* 浮动标签：空且未聚焦时嵌在框内（和原来的占位符一样的位置），
                 聚焦或有内容就缩到 11px 挪到框上方并常驻。
                 靠 `placeholder=" "` + `:placeholder-shown` 判断有没有值 ——
@@ -593,6 +632,7 @@ export default function FriendsBoard() {
               </span>
             </label>
 
+            {!me && (<>
             <label className="flex min-w-0 items-center gap-2 px-4 pb-2 pt-4">
               <span className="shrink-0 self-center text-rose">
                 <MorphIcon icon={Mail} size={14} color="currentColor" />
@@ -620,6 +660,8 @@ export default function FriendsBoard() {
                 </span>
               </span>
             </label>
+            </>
+            )}
 
             <label className="flex min-w-0 items-center gap-2 px-4 pb-2 pt-4">
               <span className="shrink-0 self-center text-rose">
@@ -649,7 +691,13 @@ export default function FriendsBoard() {
             </label>
             </div>
           </div>
-          </>
+
+          {/* 登录后邮箱那格不填 —— 通知直接发到账号邮箱，顺便省一格里填错的机会 */}
+          {me && (
+            <p className="flex items-center gap-1.5 border-b border-dashed border-rose/25 px-4 py-1.5 text-[11px] text-subtle">
+              <MorphIcon icon={Mail} size={11} color="currentColor" />
+              通知发到 {me.email}（账号邮箱，不公开）
+            </p>
           )}
 
           {/* 正文 */}

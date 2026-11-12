@@ -25,6 +25,8 @@ export interface SessionAccount {
   email: string;
   emailHash: string;
   avatar: string;
+  /** 头像是不是自己设的（false = 按邮箱算出来的，QQ 邮箱就是 QQ 头像） */
+  avatarCustom: boolean;
   site: string;
   role: 'visitor' | 'admin';
   since: number;

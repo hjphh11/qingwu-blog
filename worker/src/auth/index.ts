@@ -29,7 +29,6 @@ import {
   sessionUser,
 } from './store';
 import { githubCallback, githubEnabled, githubStart } from './github';
-import { avatarFromEmail } from './avatar';
 
 const NAME_MAX = 30;
 const URL_MAX = 300;
@@ -158,7 +157,9 @@ async function patchProfile(request: Request, env: Env): Promise<Response> {
   await env.DB.prepare(
     'UPDATE accounts SET display_name = ?, site_url = ?, avatar_url = ? WHERE id = ?',
   )
-    .bind(name || null, site || null, avatar || avatarFromEmail(me.account.email), me.account.id)
+    // 头像留空就存 NULL —— 读的时候按邮箱现算（QQ 邮箱自然是 QQ 头像），
+    // 别把「算出来的地址」写死，否则以后换邮箱头像不跟着变、avatarCustom 也永远是真
+    .bind(name || null, site || null, avatar || null, me.account.id)
     .run();
 
   const fresh = await findAccountById(env, me.account.id);

@@ -30,6 +30,8 @@ export interface PublicAccount {
   email: string;
   emailHash: string;
   avatar: string;
+  /** 头像是自己传的（true）还是按邮箱算出来的（false）—— 前端据此决定输入框里要不要回填 */
+  avatarCustom: boolean;
   site: string;
   role: 'visitor' | 'admin';
   since: number;
@@ -68,6 +70,7 @@ export async function publicAccount(env: Env, account: AccountRow): Promise<Publ
     email: maskEmail(account.email),
     emailHash: account.email_hash,
     avatar: account.avatar_url || avatarFromEmail(account.email),
+    avatarCustom: Boolean(account.avatar_url),
     site: account.site_url || '',
     role: account.role === 'admin' ? 'admin' : 'visitor',
     since: account.created_at,
@@ -108,7 +111,10 @@ export async function anchorLogin(
       email,
       displayName: input.profile?.name,
       siteUrl: input.profile?.site,
-      avatarUrl: input.profile?.avatar || avatarFromEmail(email),
+      // **只存真正自定义的头像**（比如 GitHub 带回来的那张）。
+      // 按邮箱算出来的（Cravatar / QQ 头像）不落库 —— 每次读的时候现算，
+      // 这样 `avatarCustom` 才有意义，邮箱变了头像也跟着变。
+      avatarUrl: input.profile?.avatar,
     });
     created = true;
   }

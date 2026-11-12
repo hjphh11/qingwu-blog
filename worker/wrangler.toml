@@ -72,9 +72,10 @@ MAIL_FROM = "清吾 <noreply@qingwu.ink>"
 # ——— 统一身份（登录 / 绑定）———
 # 设计见 docs/方案-统一身份-登录与绑定.md，表结构见 migrations/0023_accounts.sql。
 #
-# 未登录能不能留言：on（默认）＝只能读，提交返回 401 login_required；
-# 想退回游客也能发，改成 "off" 重启即可，不用改代码。
-REQUIRE_LOGIN = "on"
+# 未登录能不能留言：**现在是 off** —— 三格老表单（站点名称 / 邮箱 / 网址）照旧，
+# 登录只是「帮你填好、能管自己的留言」的增强，不拦人。
+# 想收口成「必须登录才能发」就改成 "on"，代码不用动。
+REQUIRE_LOGIN = "off"
 # 过渡期：统一会话表里查不到管理员时回落旧 admin_sessions。
 # 后台迁移稳定后改成 "0"，旧的 0013 那三张表就可以只读留档了。
 AUTH_LEGACY_ADMIN = "1"
