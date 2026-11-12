@@ -100,6 +100,8 @@ export default function GalleryWall() {
 
   const layerRef = useRef<HTMLDivElement>(null);
   const surfaceRef = useRef<HTMLDivElement>(null);
+  const wallRef = useRef<HTMLDivElement>(null);
+  const dialogRef = useRef<HTMLDivElement>(null);
   const closeRef = useRef<HTMLButtonElement>(null);
 
   /** 累计位移（不做取模，取模只在绘制时做） */
@@ -386,7 +388,24 @@ export default function GalleryWall() {
   };
 
   const onImgError = (id: string, e: React.SyntheticEvent<HTMLImageElement>) => {
-    const tile = e.currentTarget.closest('.q-wall__tile');
+    const img = e.currentTarget;
+    const tile = img.closest('.q-wall__tile');
+
+    /* 第一次失败先**静默重试**一次：国内到 CF 的路由经常单张断流/超时，多半第二次就好，
+       而访客不该为一次抖动看到一块空位。
+       · 按**元素**记（img.dataset.retried），不按 id —— 同一张图在图案里出现 2~4 次，
+         一个副本失败不代表另一个也失败。
+       · 带 ?r=1 是为了绕开这次失败留在 HTTP 缓存里的否定结果；R2 上是 immutable，
+         同一 URL 重取大概率还是同一份坏响应。
+       · 只重试一次，别变成无限重连（第二次失败就走下面那条真失败分支）。 */
+    if (!img.dataset.retried) {
+      img.dataset.retried = '1';
+      window.setTimeout(() => {
+        if (img.isConnected) img.src = `${tileSrc(id)}?r=1`;
+      }, 600 + Math.random() * 400); // 抖开，别让一屏几十张同时回源
+      return; // 这一轮不判失败，也不记进 seen（否则会误触「图源全挂」）
+    }
+
     tile?.classList.add('is-failed');
     tile?.classList.remove('is-ready');
     failed.current.add(id);
@@ -430,6 +449,18 @@ export default function GalleryWall() {
           e.preventDefault();
           const step = e.key === 'ArrowRight' ? 1 : -1;
           setView((v) => (v === null ? v : (v + step + total) % total));
+        } else if (e.key === 'Tab') {
+          /* 焦点圈在弹层里：上一张 / 下一张 / 关闭 三个按钮环形轮转。
+             不做这一步，Tab 会穿到背后的导航 —— 键盘和读屏用户会「跳出」对话框，
+             再按几下才摸回来。 */
+          const list = Array.from(
+            dialogRef.current?.querySelectorAll<HTMLElement>('button') ?? [],
+          );
+          if (!list.length) return;
+          e.preventDefault();
+          const dir = e.shiftKey ? -1 : 1;
+          const i = list.indexOf(document.activeElement as HTMLElement);
+          list[i < 0 ? 0 : (i + dir + list.length) % list.length].focus();
         }
         return;
       }
@@ -453,14 +484,20 @@ export default function GalleryWall() {
     return () => window.removeEventListener('keydown', onKey);
   }, [view, items, paint, stopGlide]);
 
-  /* ── 灯箱开合时把焦点接上 ───────────────────────────────── */
+  /* ── 灯箱开合：焦点进出 + 背后整块失效 ───────────────────── */
   const wasOpen = useRef(false);
   useEffect(() => {
+    const wall = wallRef.current;
     if (view !== null) {
       wasOpen.current = true;
+      /* inert 让背后的墙对 Tab、读屏和点击一起失效 —— 比只做 focus trap 干净：
+         单纯拦 Tab 的话，读屏的虚拟光标照样能念到墙里的 140 个瓦片。 */
+      wall?.setAttribute('inert', '');
       closeRef.current?.focus();
     } else if (wasOpen.current) {
       wasOpen.current = false;
+      // 先解除 inert 再把焦点还给画布，否则 focus() 打在一个 inert 元素上会失效
+      wall?.removeAttribute('inert');
       surfaceRef.current?.focus();
     }
   }, [view]);
@@ -476,7 +513,7 @@ export default function GalleryWall() {
      * 所以在 body 这一层并列：墙 / 提示 / 灯箱，各用各的 z-index。
      */
     <>
-      <div className={`q-wall${dragging ? ' is-dragging' : ''}`}>
+      <div ref={wallRef} className={`q-wall${dragging ? ' is-dragging' : ''}`}>
         <div
           ref={surfaceRef}
           className="q-wall__surface"
@@ -555,6 +592,7 @@ export default function GalleryWall() {
 
       {/* 看大图 */}
       <div
+        ref={dialogRef}
         className={`q-wall-view${current ? ' is-open' : ''}`}
         role="dialog"
         aria-modal="true"

@@ -192,6 +192,43 @@ const countAfter = await page.evaluate(
 );
 verdict(countBefore !== countAfter, '方向键能翻下一张', `${countBefore} → ${countAfter}`);
 
+/* 焦点圈定：Tab / Shift+Tab 都不许穿到背后的导航 —— 键盘和读屏用户一旦「跳出」
+   对话框，得按十几下才摸得回来。判据：连按之后 activeElement 仍在弹层内。 */
+const focusIn = () =>
+  page.evaluate(() => {
+    const view = document.querySelector('.q-wall-view');
+    const a = document.activeElement;
+    return {
+      inside: !!view && !!a && view.contains(a),
+      label: a?.getAttribute('aria-label') || a?.tagName || '',
+    };
+  });
+const f0 = await focusIn();
+await page.keyboard.press('Tab');
+await sleep(120);
+const f1 = await focusIn();
+await page.keyboard.press('Tab');
+await page.keyboard.press('Tab');
+await page.keyboard.press('Tab');
+await sleep(120);
+const f2 = await focusIn();
+await page.keyboard.down('Shift');
+await page.keyboard.press('Tab');
+await page.keyboard.up('Shift');
+await sleep(120);
+const f3 = await focusIn();
+verdict(
+  f0.inside && f1.inside && f2.inside && f3.inside,
+  'Tab / Shift+Tab 被圈在灯箱里（不穿到导航后面）',
+  `${f0.label} → ${f1.label} → ${f2.label} → ${f3.label}`,
+);
+
+/* 背后的墙同时是 inert：光拦 Tab 不够，读屏的虚拟光标照样会念到 140 个瓦片 */
+const inerts = await page.evaluate(() => ({
+  wall: document.querySelector('.q-wall')?.hasAttribute('inert') ?? null,
+}));
+verdict(inerts.wall === true, '灯箱开着时背后的墙是 inert', String(inerts.wall));
+
 await page.keyboard.press('Escape');
 await sleep(500);
 const closed = await page.evaluate(() => {
@@ -200,7 +237,16 @@ const closed = await page.evaluate(() => {
 });
 verdict(!closed.open && closed.vis === 'hidden', 'ESC 关掉，且关掉后不再挡住墙', closed.vis);
 
-/* ── ⑤ 关掉之后还能继续拖 ─────────────────────────────── */
+/* ── ⑤ 关掉之后还要能继续拖（inert 没解除的话，墙会变成一块死板）── */
+const afterInert = await page.evaluate(() => ({
+  wall: document.querySelector('.q-wall')?.hasAttribute('inert') ?? null,
+  focus:
+    document.activeElement?.getAttribute('aria-label') ||
+    document.activeElement?.className ||
+    '',
+}));
+verdict(afterInert.wall === false, '关掉灯箱后 inert 解除了', String(afterInert.wall));
+
 await page.mouse.move(720, 450);
 await page.mouse.down();
 await page.mouse.move(600, 400);
@@ -377,6 +423,44 @@ verdict(errors.length === 0, '无 JS 运行时错误', errors.join(' | ') || '�
   }));
   verdict(broken.retry && broken.hintGone, '图源整体连不上时给「重试」而不是空墙');
   await p3.close();
+}
+
+/* ── ⑩ 单张失败会静默重试一次 ────────────────────────────
+   国内到 CF 经常单张断流。这里只 abort **第一枪**（不带 ?r=1 的那次），
+   放行重试请求，看墙最终是不是自己恢复了 —— 不留空位、也不误报「图源全挂」。 */
+{
+  const p4 = await browser.newPage();
+  await p4.setViewport({ width: 1200, height: 800 });
+  await p4.setRequestInterception(true);
+  let retried = 0;
+  let firstShot = 0;
+  p4.on('request', (r) => {
+    const u = r.url();
+    if (!u.includes('img.qingwu.ink')) return r.continue();
+    if (u.includes('?r=1')) {
+      retried++;
+      return r.continue(); // 重试放行
+    }
+    firstShot++;
+    return r.abort(); // 第一枪全打掉
+  });
+  await p4.goto(`${BASE}/gallery/`, { waitUntil: 'domcontentloaded', timeout: 60000 });
+  await sleep(6000);
+  const rec = await p4.evaluate(() => {
+    const tiles = [...document.querySelectorAll('.q-wall__tile')];
+    return {
+      ready: tiles.filter((t) => t.classList.contains('is-ready')).length,
+      failed: tiles.filter((t) => t.classList.contains('is-failed')).length,
+      broken: !!document.querySelector('.q-wall__retry'),
+    };
+  });
+  verdict(retried > 0, '失败之后发了带 ?r=1 的重试请求', `first=${firstShot} retry=${retried}`);
+  verdict(
+    rec.ready > 0 && rec.failed === 0 && !rec.broken,
+    '重试成功后自己恢复（不留空位、也不误报图源全挂）',
+    `ready=${rec.ready} failed=${rec.failed} broken=${rec.broken}`,
+  );
+  await p4.close();
 }
 
 console.log(`\n合计失败 ${failed} 项`);
