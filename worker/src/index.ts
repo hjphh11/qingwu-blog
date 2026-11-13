@@ -14,6 +14,7 @@
 // 第 3~5 步的路由（/comments、/likes、Cron）以后再加，别现在就把口子开着。
 
 import { getApply, patchApply, postApply } from './apply';
+import { handleAuth } from './auth/index';
 import { handleAdmin } from './admin/index';
 import { runBacklinkCheck } from './admin/friends';
 import { deleteFriendComment, getFriendsBoard, postFriendLike, postFriendReply, postFriendsBoard } from './friends-board';
@@ -36,6 +37,8 @@ function preflight(request: Request, env: Env): Response {
   const headers: Record<string, string> = { 'access-control-allow-methods': ALLOW_METHODS, 'access-control-allow-headers': ALLOW_HEADERS };
   if (originAllowed(origin || null, parseOrigins(env.ALLOWED_ORIGINS))) {
     headers['access-control-allow-origin'] = origin;
+    // 带 cookie 的跨源请求要求这一行，否则浏览器直接拦掉（同源 /api 用不到）
+    headers['access-control-allow-credentials'] = 'true';
     headers['access-control-max-age'] = '86400';
   }
   return new Response(null, { status: 204, headers });
@@ -75,6 +78,12 @@ export default {
     if (path === '/health') {
       return json({ ok: true, service: 'qingwu-api', time: new Date().toISOString() });
     }
+
+    // —— 统一身份（登录 / 绑定 / 我的留言）——
+    // 对外是 /api/auth/*；nginx 的 location /api/ 去前缀转发到这里，
+    // 且 /api/auth/ 不在 Basic Auth 的范围内 —— **nginx 零改动**。
+    // 设计见 docs/方案-统一身份-登录与绑定.md。
+    if (path.startsWith('/auth/')) return handleAuth(request, env, path);
 
     // —— 后台（对外 /api/admin/*，nginx 去前缀后到这里）——
     // 说明见 docs/方案-后台-admin.md；路由表在 src/admin/index.ts。

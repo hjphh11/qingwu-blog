@@ -514,12 +514,45 @@ interface JudgeOut extends Verdict {
   probs?: Record<string, number>;
 }
 
+/**
+ * 本地的判定替身。
+ *
+ * 为什么需要：本机没有 judge 的 key，`moderateComment` 会直接返回 null（未配置即放行），
+ * 于是「拦截 → 落 spam → 前台不展示 → 收件箱能复核」这条链路**根本没法验**。
+ * 买了 key 之前，至少让这条链路能跑通。
+ *
+ * ⚠️ 只有 `.dev.vars` 里配 `AI_JUDGE_MOCK=1` 才生效。**线上绝不要配** ——
+ * 配了就是所有留言按关键词表判，真模型一次都不会调。
+ */
+function mockJudgeOn(env: Env): boolean {
+  return (env.AI_JUDGE_MOCK || '').trim() === '1';
+}
+
+function mockJudge(ctx: CommentCtx, cats: VerdictKey[]): JudgeOut {
+  // 想验拦截就用这几个词（故意写得很土，免得真有人正常聊天时踩到）
+  const hit = cats.includes('spam') && /广告测试|加微信|代运营|刷单/.test(ctx.body);
+  return {
+    verdict: hit ? 'spam' : 'ok',
+    score: hit ? 96 : 0,
+    reasons: hit ? ['本地 mock：命中测试词'] : [],
+    note: '本地 mock 判定，未调用真模型',
+    model: 'mock',
+    ms: 1,
+    tokensIn: 0,
+    tokensOut: 0,
+    probs: {},
+  };
+}
+
 async function runJudge(
   env: Env,
   s: Settings,
   ctx: CommentCtx,
   cats: VerdictKey[] = [...VERDICTS],
 ): Promise<JudgeOut> {
+  // 本地替身优先：没配 key 也能把「命中 → spam」这条链路跑完
+  if (mockJudgeOn(env)) return mockJudge(ctx, cats);
+
   const target = judgeTargetOf(env, s);
   if (!target) throw new AiError('ai_unconfigured', '还没配 judge 通道的 key', 503);
 
@@ -609,7 +642,21 @@ export async function moderateComment(
 
   const cats = s.judge.categories;
   if (cats.length === 0) return null;
-  if (!judgeTargetOf(env, s)) return null;
+  // mock 不需要 key，所以「配好了没」这一关要给 mock 放行
+  if (!judgeTargetOf(env, s) && !mockJudgeOn(env)) return null;
+
+  /**
+   * 花费的硬闸：当天 judge 用满就不再调，直接放行（= 不判）。
+   *
+   * 访客路径不走 `quotaGate`（那是给后台接口返回 429 用的），但**总得有个上限** ——
+   * 留言板自身是 6 条/10 分钟/访客，多 IP 一起刷时这里才是最后一道。
+   * 超限后不再花钱，也不拦人：宁可少判几条，不能让留言板变哑。
+   */
+  const used = await usedToday(env, 'judge');
+  if (used !== null && used >= quotaOf(env)) {
+    console.warn(`[ai] judge 今日已用 ${used}/${quotaOf(env)}，超限后不再判定（放行）`);
+    return null;
+  }
 
   const v = await runJudge(env, s, ctx, cats);
   await recordUsage(env, 'judge', v.tokensIn, v.tokensOut);

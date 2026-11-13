@@ -7,6 +7,7 @@
 import '../styles/global.css';
 import ClientRouter from 'astro/components/ClientRouter.astro';
 import { SITE } from '../config';
+import { WORKER_BASE } from '../lib/workerBase';
 
 import Navbar from '../components/Navbar.tsx';
 import Footer from '../components/Footer.astro';
@@ -36,10 +37,9 @@ const {
 const pathname = Astro.url.pathname;
 const url = SITE.url.replace(/\/$/, '') + pathname;
 
-// 访问统计的打点地址。线上默认直连 Cloudflare Worker（写 D1）；
-// 局域网自建版把 PUBLIC_HIT_WORKER_URL 设成 `/api`，就变成同源上报（由本地服务收集）。
-const hitEndpoint =
-  (import.meta.env.PUBLIC_HIT_WORKER_URL || 'https://api.qingwu.ink').replace(/\/$/, '') + '/hit';
+// 访问统计的打点地址。线上同源 `/api/hit`（nginx 转给本地 Worker），
+// dev 下 astro 的 /api 代理同样转到 8799 —— 本地也能看到打点。
+const hitEndpoint = `${WORKER_BASE}/hit`;
 ---
 
 <!doctype html>

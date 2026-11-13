@@ -29,6 +29,8 @@
 @import "./layout.css";
 @import "./ui.css";
 @import "./prose.css";
+/* 留言正文（Markdown 子集 + 表情）—— 只作用于 .q-rich，不影响文章正文 */
+@import "./rich.css";
 @import "./effects.css";
 @import "./lightbox.css";
 @import "./gallery.css";

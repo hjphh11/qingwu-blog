@@ -102,9 +102,15 @@ export async function listComments(request: Request, env: Env, _admin: Admin): P
   const askedSize = Number.parseInt(url.searchParams.get('pageSize') || '', 10);
   const pageSize = (PAGE_SIZES as readonly number[]).includes(askedSize) ? askedSize : PAGE_SIZE;
 
-  // 只列顶层留言，回复数用子查询带出来 —— 收件箱要的是「一条待处理」，不是整个楼层
-  const where: string[] = ['c.parent_id IS NULL'];
+  /**
+   * 收件箱按「一条待处理」列，所以默认只列主楼。
+   * **但垃圾要连回复一起看** —— 回复现在也过审了，被判 spam 的回复
+   * 如果不出现在这里，就再没有任何地方能放行它（拦截记录只读）。
+   */
+  const where: string[] = [];
   const args: unknown[] = [];
+
+  if (status !== 'spam') where.push('c.parent_id IS NULL');
 
   if (VALID_STATUS.has(status)) {
     where.push('c.status = ?');
@@ -136,16 +142,27 @@ export async function listComments(request: Request, env: Env, _admin: Admin): P
     .bind(...args, pageSize, (safePage - 1) * pageSize)
     .all<CommentRow>();
 
-  // 各状态计数，给顶部 tab 上的角标用
+  /**
+   * 各状态计数，给顶部 tab 上的角标用。
+   *
+   * 口径必须和列表一致，否则「垃圾 3 条」点进去只有 1 条：
+   *   · all / 其它状态 = 只算主楼（列表默认只列主楼）
+   *   · spam = **连回复一起**（列表的垃圾 tab 也列回复）
+   */
   const counts = await env.DB.prepare(
     `SELECT status, COUNT(*) AS n FROM comments WHERE parent_id IS NULL GROUP BY status`,
   ).all<{ status: string; n: number }>();
+
+  const spamAll = await env.DB.prepare("SELECT COUNT(*) AS n FROM comments WHERE status = 'spam'")
+    .first<{ n: number }>()
+    .catch(() => null);
 
   const byStatus: Record<string, number> = { all: 0 };
   for (const r of counts.results ?? []) {
     byStatus[r.status] = r.n;
     if (r.status !== 'deleted') byStatus.all = (byStatus.all ?? 0) + r.n;
   }
+  if (spamAll) byStatus.spam = spamAll.n;
 
   return json({
     ok: true,

@@ -388,7 +388,13 @@ shown.forEach((f, i) => wallColumns[i % WALL_COLS]!.push({ f, i }));
      * 统计接口没上线（Worker 还没部署）时，fetch 会 404 —— 上面那条 catch 吞掉，
      * 卡片上那一格本来就是空的，看不出任何异常。
      */
-    const LINK_API = (import.meta.env.PUBLIC_HIT_WORKER_URL || 'https://api.qingwu.ink').replace(/\/$/, '');
+    // 与 src/lib/workerBase.ts 同一条规则（内联脚本里没法 import）：
+    // dev 走 /api（astro 代理转 8799），线上构建注入同源 /api。
+    const LINK_API = (
+      import.meta.env.DEV
+        ? '/api'
+        : import.meta.env.PUBLIC_HIT_WORKER_URL || 'https://api.qingwu.ink'
+    ).replace(/\/$/, '');
 
     /** 把 `2026-10-28` 说成人话：今天 / 昨天 / N 天前 / N 个月前 */
     function relativeUpdate(iso: string): string {
@@ -581,5 +587,24 @@ shown.forEach((f, i) => wallColumns[i % WALL_COLS]!.push({ f, i }));
     document.addEventListener('astro:page-load', initLinkStatus);
     if (document.readyState !== 'loading') initLinkStatus();
     else document.addEventListener('DOMContentLoaded', initLinkStatus, { once: true });
+  </script>
+
+  {/*
+    从 /account 点「定位」回来时地址带 `#c-12`。
+
+    留言条本身是 `client:visible` —— 不滚进视口就不水合，元素也就不存在，
+    浏览器自己的锚点跳转会落空（停在页面顶部，然后什么都不发生）。
+    所以这里先把评论区整体滚进视口触发水合；等 React 挂载后，
+    FriendsBoard 会读到 hash、精确滚到那一条并标亮（见它的 locateEntry）。
+  */}
+  <script is:inline>
+    (() => {
+      const jump = () => {
+        if (!/^#c-\d+$/.test(location.hash)) return;
+        document.getElementById('friends-comments')?.scrollIntoView({ block: 'center' });
+      };
+      jump();
+      document.addEventListener('astro:page-load', jump);
+    })();
   </script>
 </Layout>

@@ -49,6 +49,46 @@ export interface Env {
   /** 允许跨源调用 /hit 的站点，逗号分隔；`*` = 不限制 */
   ALLOWED_ORIGINS?: string;
 
+  // ————————————————————————————————————————————————
+  // 统一身份（accounts / 会话 / 邮箱验证码 / GitHub 绑定）
+  // 设计见 docs/方案-统一身份-登录与绑定.md
+  // ————————————————————————————————————————————————
+  /**
+   * 未登录还能不能留言。
+   *
+   * `on` / `1` / 不配 **都算开** —— 未登录只能读，提交时 401 `login_required`。
+   * 要退回「游客也能发」，把它设成 `off` / `0` / `false`。
+   *
+   * 为什么默认开：评论区是唯一有 UGC 的入口，按人限流、按人追溯审核，
+   * 前提是知道「这是谁」。老访客的留言在迁移时已按邮箱归并到账号，
+   * 没留邮箱的孤儿仍保留 `delete_token`，所以不是单向门。
+   */
+  REQUIRE_LOGIN?: string;
+
+  /**
+   * **过渡期开关**：统一会话表里查不到管理员时，是否回落旧 `admin_sessions`。
+   * 默认开；设成 `0` 即只认新表（确认迁移没问题后再关）。
+   *
+   * 为什么留这一手：后台是修错的地方，一次性切断如果哪里写错就再也进不去。
+   */
+  AUTH_LEGACY_ADMIN?: string;
+
+  /** GitHub OAuth App 的 client id。没配 = 前台不显示 GitHub 按钮 */
+  GITHUB_CLIENT_ID?: string;
+  /** GitHub OAuth App 的 client secret（secret，配在 .dev.vars / wrangler secret） */
+  GITHUB_CLIENT_SECRET?: string;
+
+  /**
+   * **仅本地 `wrangler dev`**：设为 `"1"` 时，邮箱验证码不发信，直接回给前端。
+   *
+   * 为什么需要：本机没有发信中继，验证码寄不出去，登录之后长什么样就永远看不到。
+   * 两道锁 —— 变量为 1 **且** 请求 host 是回环地址（127.0.0.1 / localhost / ::1）。
+   *
+   * **只写在 `worker/.dev.vars`（已 gitignore），线上绝对不要配**。
+   * 复核：`grep AUTH_DEV_CODE worker/wrangler.toml` 应无结果。
+   */
+  AUTH_DEV_CODE?: string;
+
   /**
    * **归档只读开关**：设为 `"1"` / `"true"` 时，除 GET/HEAD 外的请求一律 `410 Gone`，
    * cron 也直接跳过。
@@ -113,6 +153,14 @@ export interface Env {
   AI_JUDGE_BASE_URL?: string;
   /** 模型名。缺省 `jev-latest`（Jev 分支）或 `AI_MODEL`（OpenAI 分支） */
   AI_JUDGE_MODEL?: string;
+
+  /**
+   * 本地判定替身：`1` = 不走真模型，按关键词表判（见 admin/ai.ts 的 mockJudge）。
+   *
+   * 只写 `worker/.dev.vars`，用于在没买 judge key 时验证「拦截 → spam」整条链路。
+   * ⚠️ **线上绝不要配** —— 配了就是所有留言都按关键词判，真模型一次都不会调。
+   */
+  AI_JUDGE_MOCK?: string;
 
   /**
    * judge 走哪套协议：`openai`（默认）或 `jev`。

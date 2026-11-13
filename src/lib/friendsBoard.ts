@@ -1,4 +1,5 @@
 import { avatarFromEmail, emailHash as emailHashOf } from './avatar';
+import { WORKER_BASE as BASE } from './workerBase';
 
 /**
  * 友链评论区 · 数据层
@@ -42,6 +43,12 @@ export interface FriendEntry {
   replies?: FriendReply[];
   /** 邮箱的 MD5 —— 只用于「QQ 头像挂了就换 Cravatar」的兜底，不是邮箱本身 */
   emailHash?: string;
+  /** 提交时算好的头像哈希（和 emailHash 同源，留着给老代码用） */
+  avatarHash?: string;
+  /** 是不是自己发的 —— 登录态下服务端算得出来，未登录恒 false */
+  mine?: boolean;
+  /** 自己点过赞没有 —— 由服务端给，前台不用再猜 */
+  liked?: boolean;
 }
 
 /** 一条回复 */
@@ -52,8 +59,14 @@ export interface FriendReply {
   to?: string;
   /** 回复者头像。站长以「爱弥斯」身份回复时会带，普通访客回复没有 */
   avatar?: string;
+  /** 头像挂了用它换 Cravatar —— 回复也要有第二档，不能直接掉到首字 */
+  emailHash?: string;
+  /** 这条回复是在回哪一条（`c-12`）；空 = 回主楼 */
+  replyToId?: string;
   /** 回复者填的网址（选填，列表里暂不展示，但存下来备查） */
   url?: string;
+  /** 回复者填的邮箱 —— 只给提交用（通知收件人），列表里不会回传 */
+  email?: string;
   /**
    * 是否 @ 了主楼作者。
    * false = 访客主动取消了 @，服务端既不在列表里显示「@某某」，也不发通知邮件。
@@ -212,22 +225,64 @@ export function timeAgo(iso: string, now: number): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
 
-const WORKER_BASE = (import.meta.env.PUBLIC_HIT_WORKER_URL || 'https://api.qingwu.ink').replace(/\/$/, '');
+/**
+ * Worker 的地址 —— 与其他地方同一份（`src/lib/workerBase.ts`）：
+ * dev 恒走 `/api`（astro.config 的代理转到 8799），线上走同源。
+ */
+const WORKER_BASE = BASE;
 
 /** 读公开列表 */
-export async function loadFriendEntries(): Promise<FriendEntry[]> {
+/** 一页留言。`hasMore` 决定要不要显示「加载更多」，`nextBefore` 是下一页的游标 */
+export interface BoardPage {
+  items: FriendEntry[];
+  hasMore: boolean;
+  nextBefore: number;
+  /** 未登录能不能发 —— 服务端说了算，前端别自己猜 */
+  requireLogin: boolean;
+  signedIn: boolean;
+}
+
+/**
+ * 拉一页留言。
+ *
+ * 分页用**时间游标**（`before` = 上一页最旧那条的 ts），不用页码：
+ * 翻页时要是有人刚发了新留言，页码分页会让同一条重复出现两次，
+ * 按时间往前取则永远接着上一页。
+ *
+ * 不传参数 = 第一页（`limit` 20 条）。
+ */
+export async function loadFriendEntries(opts: { before?: number; limit?: number } = {}): Promise<BoardPage> {
   if (FRIENDS_BOARD_DEMO) {
     // 演示：假装请求了一次，顺便让加载态有真实的手感
     await new Promise((r) => setTimeout(r, 320));
-    return DEMO_ENTRIES;
+    return { items: DEMO_ENTRIES, hasMore: false, nextBefore: 0, requireLogin: false, signedIn: false };
   }
-  const res = await fetch(`${WORKER_BASE}/friends-board`, {
+
+  const qs = new URLSearchParams();
+  if (opts.limit) qs.set('limit', String(opts.limit));
+  if (opts.before) qs.set('before', String(opts.before));
+
+  const res = await fetch(`${WORKER_BASE}/friends-board${qs.size ? `?${qs}` : ''}`, {
     headers: { accept: 'application/json' },
+    credentials: 'include',
     signal: AbortSignal.timeout(8000),
   });
   if (!res.ok) throw new Error(`load ${res.status}`);
-  const data = (await res.json()) as { items?: FriendEntry[] };
-  return Array.isArray(data.items) ? data.items : [];
+
+  const data = (await res.json()) as {
+    items?: FriendEntry[];
+    hasMore?: boolean;
+    nextBefore?: number;
+    auth?: { requireLogin?: boolean; signedIn?: boolean };
+  };
+
+  return {
+    items: Array.isArray(data.items) ? data.items : [],
+    hasMore: Boolean(data.hasMore),
+    nextBefore: Number(data.nextBefore) || 0,
+    requireLogin: Boolean(data.auth?.requireLogin),
+    signedIn: Boolean(data.auth?.signedIn),
+  };
 }
 
 export interface SubmitInput {
@@ -242,7 +297,7 @@ export interface SubmitInput {
 
 export type SubmitResult =
   | { ok: true; entry: FriendEntry; deleteToken: string }
-  | { ok: false; reason: 'duplicate' | 'limited' | 'unavailable' | 'error'; message: string };
+  | { ok: false; reason: 'duplicate' | 'limited' | 'unavailable' | 'login' | 'error'; message: string };
 
 /** 提交一条申请 */
 export async function submitFriendEntry(input: SubmitInput): Promise<SubmitResult> {
@@ -284,6 +339,7 @@ export async function submitFriendEntry(input: SubmitInput): Promise<SubmitResul
         avatarHash: emailHashOf(input.email || ''),
         intro: input.intro.trim(),
       }),
+      credentials: 'include',
       signal: AbortSignal.timeout(12000),
     });
     const data = (await res.json().catch(() => ({}))) as {
@@ -300,6 +356,10 @@ export async function submitFriendEntry(input: SubmitInput): Promise<SubmitResul
     }
     if (res.status === 429) {
       return { ok: false, reason: 'limited', message: data.message || '提交得有点频繁，先歇一会儿 ~' };
+    }
+    if (res.status === 401) {
+      // 没登录 / 会话过期 —— 调用方据此把登录弹层打开
+      return { ok: false, reason: 'login', message: data.message || '先登录一下再来留言 ~' };
     }
     if (res.status === 503) {
       return { ok: false, reason: 'unavailable', message: data.message || '通道还没开放' };
@@ -357,6 +417,8 @@ export async function submitReply(
     avatar?: string;
     /** false = 取消 @，不发通知邮件 */
     notify?: boolean;
+    /** 在回哪一条回复（`c-12`）。不带 = 回主楼 */
+    replyTo?: string;
   },
 ): Promise<{ ok: true; reply: FriendReply } | { ok: false; message: string }> {
   if (FRIENDS_BOARD_DEMO) {
@@ -384,8 +446,11 @@ export async function submitReply(
         url: (input.url || '').trim(),
         avatar: input.avatar || '',
         notify: input.notify !== false,
+        // 只认 `c-12` 里的数字；服务端还要校验它是不是同一栋楼里的回复
+        replyTo: numericId(input.replyTo || '') || 0,
         intro: input.intro.trim(),
       }),
+      credentials: 'include',
       signal: AbortSignal.timeout(12000),
     });
     const data = (await res.json().catch(() => ({}))) as { reply?: FriendReply; message?: string };
@@ -408,6 +473,7 @@ export async function toggleLike(
   try {
     const res = await fetch(`${WORKER_BASE}/friends-board/${numericId(id)}/like`, {
       method: 'POST',
+      credentials: 'include',
       signal: AbortSignal.timeout(10000),
     });
     const data = (await res.json().catch(() => ({}))) as {
@@ -483,6 +549,7 @@ export async function deleteEntry(
       method: 'DELETE',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ token }),
+      credentials: 'include',
       signal: AbortSignal.timeout(10000),
     });
     if (res.ok) return { ok: true };
