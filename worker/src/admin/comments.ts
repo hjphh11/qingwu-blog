@@ -7,6 +7,7 @@
 
 import type { Env } from '../types';
 import { json } from '../util';
+import { boardMailText, sendMail } from '../mail';
 import type { Admin } from './auth';
 
 const PAGE_SIZE = 20;
@@ -218,9 +219,22 @@ export async function replyToComment(
     return json({ ok: false, reason: 'too_long', message: `回复最多 ${MAX_REPLY_LEN} 字` }, 400);
   }
 
-  const parent = await env.DB.prepare('SELECT id, post_slug FROM comments WHERE id = ?')
+  const parent = await env.DB.prepare(
+    `SELECT c.id, c.post_slug, c.author, c.email, c.account_id,
+            a.email AS acc_email, a.display_name AS acc_name
+       FROM comments c LEFT JOIN accounts a ON a.id = c.account_id
+      WHERE c.id = ?`,
+  )
     .bind(id)
-    .first<{ id: number; post_slug: string }>();
+    .first<{
+      id: number;
+      post_slug: string;
+      author: string;
+      email: string | null;
+      account_id: number | null;
+      acc_email: string | null;
+      acc_name: string | null;
+    }>();
   if (!parent) return json({ ok: false, reason: 'not_found' }, 404);
 
   const who = identityOf(env);
@@ -228,13 +242,50 @@ export async function replyToComment(
   // email 一律不填 —— 那是站长的邮箱，不该挂在 AI 的发言上（通知与 Gravatar 都会串）。
   const res = await env.DB.prepare(
     `INSERT INTO comments (post_slug, parent_id, author, author_url, avatar, body, status, ts, notify)
-     VALUES (?, ?, ?, ?, ?, ?, 'visible', ?, 0)`,
+     VALUES (?, ?, ?, ?, ?, ?, 'visible', ?, 1)`,
   )
     .bind(parent.post_slug, parent.id, who.author, who.url, who.avatar, bodyText, now)
     .run();
 
-  console.log(`[admin] ${admin.username} 以 ${who.author} 身份回复了 #${id}`);
-  return json({ ok: true, id: res.meta?.last_row_id ?? null, ts: now, author: who.author });
+  /**
+   * 通知被回复的人。
+   *
+   * 这里原来把 `notify` 写死成 0、一封信都不发 —— 于是「在后台认真回了一句，
+   * 对方永远不知道」。前台访客互相回复是会发信的，后台回复反而不会，说不通。
+   *
+   * 收件地址：登录过的从 `accounts.email` 取，老留言用当时填的那个。
+   * **同步 await**：后台是站长手动操作，等一两秒无所谓；发信失败会自动进 outbox 等补发，
+   * 但不能因为"等不及"就假装发过了。返回里带上 `notified` 让界面能说实话。
+   */
+  const notifyTo = parent.acc_email || parent.email || '';
+  let notified = false;
+  if (notifyTo) {
+    notified = await sendMail(env, {
+      to: notifyTo,
+      subject: `${who.author} 回复了你在友链评论区的留言`,
+      text: boardMailText({
+        kind: 'reply',
+        from: who.author,
+        // 通知的是「这条留言的作者」，他可能早就改过署名了，优先用账号的当前名字
+        toName: parent.acc_name || parent.author,
+        body: bodyText,
+        site: who.url,
+      }),
+    });
+    if (!notified) console.warn(`[admin] 回复 #${id} 的通知信没发出去（已入队待补发）`);
+  }
+
+  console.log(
+    `[admin] ${admin.username} 以 ${who.author} 身份回复了 #${id}${notified ? '（已通知对方）' : ''}`,
+  );
+  return json({
+    ok: true,
+    id: res.meta?.last_row_id ?? null,
+    ts: now,
+    author: who.author,
+    /** 对方到底有没有收到信 —— 后台可以据此显示「已通知」而不是想当然 */
+    notified,
+  });
 }
 
 // ——————————————————————————————————————————————————————————

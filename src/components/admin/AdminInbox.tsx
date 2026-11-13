@@ -125,6 +125,8 @@ export default function AdminInbox() {
   const [qInput, setQInput] = useState('');
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState('');
+  /** 中性提示（区别于 err 的红字）：「回复发出去了，通知发没发」这种 */
+  const [hint, setHint] = useState('');
 
   const [openId, setOpenId] = useState<number | null>(null);
   const [thread, setThread] = useState<Thread | null>(null);
@@ -266,12 +268,20 @@ export default function AdminInbox() {
     const id = openId;
     setSending(true);
     setErr('');
+    setHint('');
     try {
       // 后台出去的话一律是爱弥斯说的 —— 署名由 worker 决定，前端不传身份。
-      await api(`/comments/${id}/reply`, { method: 'POST', body: JSON.stringify({ body: text }) });
+      const r = await api<{ notified?: boolean }>(`/comments/${id}/reply`, {
+        method: 'POST',
+        body: JSON.stringify({ body: text }),
+      });
       window.localStorage.removeItem(DRAFT_KEY(id));
       setDraft('');
       setAiSug('');
+      // 说清楚对方到底收到信没有 —— 没邮箱的话就是真没通知，别让人以为发了
+      setHint(
+        r?.notified ? '回复已发出，通知信也寄出去了' : '回复已发出（对方没留邮箱，没有通知信）',
+      );
       const d = await api<Thread>(`/comments/${id}`);
       setThread(d);
       void load();
@@ -389,6 +399,7 @@ export default function AdminInbox() {
         </div>
 
         {err ? <p className="q-admin-error">{err}</p> : null}
+        {hint ? <p className="mb-2 text-xs text-muted">{hint}</p> : null}
 
         <section className="q-admin-panel">
           <div className="q-admin-filters">
