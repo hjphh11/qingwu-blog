@@ -1278,21 +1278,26 @@ function EntryRow({
             {entry.name}
           </span>
           {isAiAuthor(entry.name, entry.avatar) && <AiBadge />}
-          {entry.admin && <OwnerBadge />}
-          <span
-            className={`inline-flex shrink-0 items-center gap-1 rounded-full px-1.5 py-px text-[10.5px] leading-[18px] ${
-              inWall
-                ? 'bg-crimson/10 text-crimson'
-                : 'border border-amber/45 bg-amber/10 text-brown'
-            }`}
-          >
-            {inWall ? (
-              <MorphIcon icon={CircleCheck} size={9} color="currentColor" />
-            ) : (
-              <span className="h-1 w-1 rounded-full bg-amber" aria-hidden="true" />
-            )}
-            {inWall ? '已是友链' : '等我看看'}
-          </span>
+          {/* 「已是友链 / 等我看看」是给**访客**看的申请状态：站长自己的留言
+              既不需要被收录，也不该顶着一个「等我看看」——挂个站长标就够了 */}
+          {entry.admin ? (
+            <OwnerBadge />
+          ) : (
+            <span
+              className={`inline-flex shrink-0 items-center gap-1 rounded-full px-1.5 py-px text-[10.5px] leading-[18px] ${
+                inWall
+                  ? 'bg-crimson/10 text-crimson'
+                  : 'border border-amber/45 bg-amber/10 text-brown'
+              }`}
+            >
+              {inWall ? (
+                <MorphIcon icon={CircleCheck} size={9} color="currentColor" />
+              ) : (
+                <span className="h-1 w-1 rounded-full bg-amber" aria-hidden="true" />
+              )}
+              {inWall ? '已是友链' : '等我看看'}
+            </span>
+          )}
           <a
             href={entry.url}
             target="_blank"
