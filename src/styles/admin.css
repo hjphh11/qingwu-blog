@@ -34,6 +34,8 @@
   --qa-danger: #c62828;
   --qa-danger-bg: #fdecea;
   --qa-shadow: 0 1px 2px rgba(17, 17, 17, 0.04), 0 16px 40px -24px rgba(17, 17, 17, 0.22);
+  /* 选中文字。前台是绯红淡影，这里是工具台，墨黑更搭（红只留给危险） */
+  --qa-selection: rgba(17, 17, 17, 0.16);
   /* 顶栏高度。顶栏改 fixed 之后不再占文档流，正文得自己让出这么多 ——
      只在这里写一处，窄屏那条媒体查询覆盖它，页面容器统一 calc() 消费。 */
   --qa-top-h: 72px;
@@ -55,6 +57,13 @@
   background-image: radial-gradient(circle, var(--qa-dot) 1px, transparent 1px);
   background-size: 13px 13px;
   -webkit-font-smoothing: antialiased;
+}
+
+/* 选中文字：黑白工作台上用墨黑淡影，别让前台那层绯红渗进来。
+   裸规则（不带 @layer）—— 要盖住 base 层的 ::selection。 */
+.q-admin-body ::selection {
+  background-color: var(--qa-selection);
+  color: inherit;
 }
 
 /* 他那套画面里没有氛围光，只有点阵。节点留着（页面里还写着），彻底隐掉。 */

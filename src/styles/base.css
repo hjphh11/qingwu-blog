@@ -51,4 +51,19 @@
     outline: 2px solid var(--color-accent);
     outline-offset: 3px;
   }
+
+  /* 选中文字。默认是浏览器的蓝底白字，整页选一下像贴了张蓝色便签，和暖色系打架。
+     **color 必须显式写**：只设 background 的话，浏览器会保留它自己的高亮文字色（白），
+     在淡粉底上就成了白字压浅粉，比默认更糟。 */
+  ::selection {
+    background-color: var(--color-selection);
+    color: var(--color-ink);
+  }
+
+  /* 深色代码块上换 rose —— 18% 的绯红压在 #2b2320 上等于没选 */
+  pre ::selection,
+  code ::selection {
+    background-color: var(--color-selection-on-dark);
+    color: #f6f0ea;
+  }
 }

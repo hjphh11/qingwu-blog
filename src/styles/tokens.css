@@ -31,6 +31,13 @@
   --color-subtle: rgba(74, 55, 40, 0.75);  /* 三级文字 · 小字/元信息,实测 4.85:1 */
   --color-hairline: rgba(194, 58, 85, 0.16); /* 分隔线统一色 */
 
+  /* —— 选中文字 ——
+     Chrome 默认是蓝底白字，和这套暖色系完全不搭（整页选一下像贴了张蓝色便签）。
+     用绯红的淡影而不是实的粉：大面积 Ctrl+A 时不会刺眼，也不用改文字颜色。
+     深色代码块上换成 rose，否则 18% 的绯红压在 #2b2320 上等于没选。 */
+  --color-selection: rgba(194, 58, 85, 0.18);
+  --color-selection-on-dark: rgba(246, 165, 184, 0.32);
+
   /* —— 字体 —— */
   --font-display: "ZCOOL XiaoWei", "Noto Serif SC", "Songti SC", serif;
   --font-hand: "Ma Shan Zheng", "STKaiti", "KaiTi", cursive;
