@@ -1301,7 +1301,15 @@ async function logAuto(env: Env, rec: AutoLog): Promise<void> {
   }
 }
 
-type RootRow = { id: number; post_slug: string; author: string; ip_hash: string | null; parent_id: number | null };
+type RootRow = {
+  id: number;
+  post_slug: string;
+  author: string;
+  ip_hash: string | null;
+  parent_id: number | null;
+  /** 发这条的人如果是站长（accounts.role = 'admin'），小爱闭嘴 */
+  acc_role: string | null;
+};
 
 /**
  * 访客留言后让小爱回一句。
@@ -1326,8 +1334,9 @@ export async function autoReplyTo(env: Env, commentId: number): Promise<void> {
     // 不再限定 parent_id IS NULL —— 回复范围由设置决定，查出来再判，
     // 免得「楼中楼也回」这一档要写第二条 SQL
     root = await env.DB.prepare(
-      `SELECT id, post_slug, author, ip_hash, parent_id FROM comments
-        WHERE id = ? AND status != 'deleted'`,
+      `SELECT c.id, c.post_slug, c.author, c.ip_hash, c.parent_id, a.role AS acc_role
+         FROM comments c LEFT JOIN accounts a ON a.id = c.account_id
+        WHERE c.id = ? AND c.status != 'deleted'`,
     )
       .bind(commentId)
       .first<RootRow>();
@@ -1345,6 +1354,11 @@ export async function autoReplyTo(env: Env, commentId: number): Promise<void> {
 
   // 小爱自己说的话不触发（万一哪天她也从留言板发言）
   if (String(root.author ?? '').trim() === me.author) return;
+
+  // **站长本人说的话不触发** —— 他是在测试或自言自语，
+  // 每条都凑上去接一句，评论区长出一片「小爱回复了清吾」。
+  // 判据跟站长标同一个：accounts.role = 'admin'。
+  if ((root.acc_role ?? '') === 'admin') return;
 
   // 已经有小爱的回复 → 手回过的也算，不重复。这条幂等不依赖新表。
   try {
