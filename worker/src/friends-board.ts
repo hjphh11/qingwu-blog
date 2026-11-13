@@ -64,6 +64,8 @@ interface CommentRow {
    */
   acc_avatar?: string | null;
   acc_name?: string | null;
+  /** 账号身份（`admin` = 站长）。前台据此挂站长标 */
+  acc_role?: string | null;
 }
 
 // ——————————————————————————————————————————————————————————
@@ -229,12 +231,16 @@ function toEntry(
     return nameOf.get(r.reply_to_id) || mainName;
   };
 
+  const isOwner = (role?: string | null) => (role ?? '') === 'admin';
+
   return {
     id: `c-${row.id}`,
     // 账号有当前档案就优先用它 —— 改了署名/头像，历史留言跟着变
     name: row.acc_name || row.author,
     url: row.author_url ?? '',
     avatar: row.acc_avatar || row.avatar || '',
+    /** 站长本人的留言 —— 前台挂「站长」标（和 AI 标并列，两者可能同时出现） */
+    admin: isOwner(row.acc_role),
     intro: row.body,
     at: new Date(row.ts).toISOString(),
     // `visible` = 已经收录进友链墙，其余（pending）显示「等我看看」。
@@ -255,6 +261,8 @@ function toEntry(
       avatar: r.acc_avatar || r.avatar || '',
       // 回复头像同样要能退到 Cravatar（QQ 头像接口会 400），所以把哈希一起给出去
       emailHash: r.email_hash,
+      // 站长在自己的回复上也挂标 —— 回自己的楼和回别人的楼都得认得出
+      admin: isOwner(r.acc_role),
       intro: r.body,
       at: new Date(r.ts).toISOString(),
     })),
@@ -282,7 +290,7 @@ async function loadBoardRows(
 ): Promise<{ roots: CommentRow[]; reps: CommentRow[]; hasMore: boolean; nextBefore: number }> {
   const joined = `SELECT c.id, c.parent_id, c.author, c.author_url, c.avatar, c.body, c.status,
                           c.ts, c.email_hash, c.notify, c.account_id, c.reply_to_id,
-                          a.avatar_url AS acc_avatar, a.display_name AS acc_name
+                          a.avatar_url AS acc_avatar, a.display_name AS acc_name, a.role AS acc_role
                      FROM comments c LEFT JOIN accounts a ON a.id = c.account_id`;
   const plain = `SELECT id, parent_id, author, author_url, avatar, body, status,
                         ts, email_hash, notify, account_id
@@ -593,6 +601,8 @@ export async function postFriendsBoard(request: Request, env: Env, ctx: Executio
           name: author,
           url: site,
           avatar,
+          // 自己发的这条也要立刻挂上站长标，别等刷新
+          admin: account?.role === 'admin',
           intro: v.v.intro,
           at: new Date(now).toISOString(),
           status: 'pending',
@@ -800,6 +810,7 @@ export async function postFriendReply(
         reply: {
           id: `c-${Number(res.meta.last_row_id)}`,
           name: author,
+          admin: account?.role === 'admin',
           // @ 的是「被回复的那条」的作者；回主楼时就是主楼作者
           to: notify ? targetName : '',
           replyToId: target ? `c-${replyToId}` : '',

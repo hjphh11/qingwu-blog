@@ -47,6 +47,8 @@ export interface FriendEntry {
   avatarHash?: string;
   /** 是不是自己发的 —— 登录态下服务端算得出来，未登录恒 false */
   mine?: boolean;
+  /** 站长本人的留言 —— 名字旁挂「站长」标 */
+  admin?: boolean;
   /** 自己点过赞没有 —— 由服务端给，前台不用再猜 */
   liked?: boolean;
 }
@@ -61,6 +63,8 @@ export interface FriendReply {
   avatar?: string;
   /** 头像挂了用它换 Cravatar —— 回复也要有第二档，不能直接掉到首字 */
   emailHash?: string;
+  /** 站长本人的回复 —— 挂「站长」标 */
+  admin?: boolean;
   /** 这条回复是在回哪一条（`c-12`）；空 = 回主楼 */
   replyToId?: string;
   /** 回复者填的网址（选填，列表里暂不展示，但存下来备查） */

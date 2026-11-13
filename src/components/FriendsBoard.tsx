@@ -10,6 +10,7 @@ import {
   Globe,
   ClipboardList,
   Sparkles,
+  BadgeCheck,
   ArrowDownWideNarrow,
   ArrowUpWideNarrow,
   Heart,
@@ -97,6 +98,24 @@ function AiBadge() {
     >
       <MorphIcon icon={Sparkles} size={9} color="currentColor" />
       AI
+    </span>
+  );
+}
+
+/**
+ * 站长标。
+ *
+ * 和 AI 标并排但**分量不同**：AI 是淡底细字（助手），站长是实心绯红（真人）。
+ * 一眼能看出「这句是站长本人说的」，而不是又一个自动回复。
+ */
+function OwnerBadge() {
+  return (
+    <span
+      title="站长本人"
+      className="inline-flex shrink-0 items-center gap-0.5 rounded-full bg-crimson px-1.5 text-[10px] leading-[15px] text-white"
+    >
+      <MorphIcon icon={BadgeCheck} size={9} color="currentColor" />
+      站长
     </span>
   );
 }
@@ -1259,6 +1278,7 @@ function EntryRow({
             {entry.name}
           </span>
           {isAiAuthor(entry.name, entry.avatar) && <AiBadge />}
+          {entry.admin && <OwnerBadge />}
           <span
             className={`inline-flex shrink-0 items-center gap-1 rounded-full px-1.5 py-px text-[10.5px] leading-[18px] ${
               inWall
@@ -1534,6 +1554,7 @@ function EntryRow({
                   <div className="flex flex-wrap items-center gap-1.5">
                     <span className="text-[12px] font-medium text-ink">{r.name}</span>
                     {isAiAuthor(r.name, r.avatar) && <AiBadge />}
+                    {r.admin && <OwnerBadge />}
                     <time dateTime={r.at} className="text-[10.5px] tabular-nums text-subtle">
                       {now ? timeAgo(r.at, now) : '\u00A0'}
                     </time>
