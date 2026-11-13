@@ -24,6 +24,7 @@ import {
 import GithubMark from './auth/GithubMark';
 import EmojiPicker from './EmojiPicker';
 import { renderRich } from '../lib/richText';
+import { isFriendSite } from '../lib/friendSites';
 import {
   COMMENT_TEMPLATE,
   FRIENDS_BOARD_DEMO,
@@ -1103,7 +1104,14 @@ function EntryRow({
   /** 删除要按两下：第一下变成「确认删除？」，3.5 秒没再点就复位 */
   const [confirming, setConfirming] = useState(false);
   const [deleting, setDeleting] = useState(false);
-  const approved = entry.status === 'approved';
+  /**
+   * 徽章看的是「这个站点在不在友链里」，不是「这条留言处理没处理」。
+   *
+   * 原来用 `entry.status === 'approved'`，而新留言一律 pending ——
+   * 于是早就在友链里的人留句话，头上也挂着「等我看看」，像站长没搭理他。
+   * 真正的依据是 `links.json`（见 lib/friendSites）。
+   */
+  const inWall = isFriendSite(entry.url);
   const host = hostOf(entry.url);
   const initial = (entry.name || '·').trim().slice(0, 1);
   /**
@@ -1253,17 +1261,17 @@ function EntryRow({
           {isAiAuthor(entry.name, entry.avatar) && <AiBadge />}
           <span
             className={`inline-flex shrink-0 items-center gap-1 rounded-full px-1.5 py-px text-[10.5px] leading-[18px] ${
-              approved
+              inWall
                 ? 'bg-crimson/10 text-crimson'
                 : 'border border-amber/45 bg-amber/10 text-brown'
             }`}
           >
-            {approved ? (
+            {inWall ? (
               <MorphIcon icon={CircleCheck} size={9} color="currentColor" />
             ) : (
               <span className="h-1 w-1 rounded-full bg-amber" aria-hidden="true" />
             )}
-            {approved ? '已是友链' : '等我看看'}
+            {inWall ? '已是友链' : '等我看看'}
           </span>
           <a
             href={entry.url}
