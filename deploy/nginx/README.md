@@ -41,8 +41,11 @@ ssh -i ~/.ssh/qingwu_admin root@103.79.185.65 'nginx -t && systemctl reload ngin
 - ⚠️ **`add_header` 不叠加**：某个 location 里只要写了一条 `add_header`，父级的全部失效。
   所以 `/_astro/` `/fonts/` `/images/` 三个静态目录各自 include 一次
   `snippets/security-headers.conf` —— 加新 location 时也别忘了。
-- ⚠️ `ssl_reject_handshake on`（2026-11-14 新增的默认 443 兜底）要求 **nginx ≥ 1.19.4**。
-  先 `nginx -v` 确认；低版本会直接 `nginx -t` 失败。
+- ⚠️ **别再另起 443 的 `default_server` 块**。2026-11-14 第一版那么写过，nginx 1.22 直接报
+  `duplicate listen options for [::]:443` 拒绝启动（同一地址端口的 listen 参数必须完全一致，
+  连 `ipv6only=on` 都不能在第二个块里重复声明）。现在改成在**同一个 server 块顶部**用
+  `if ($host !~* ^(qingwu\.ink|www\.qingwu\.ink)$) { return 444; }` 拦未知 Host —— 效果一样，
+  且不动 listen 一个字节。`ssl_reject_handshake` 在这个部署形态里用不上。
 - 凭据不在这里：Basic Auth 用 `/etc/nginx/.htpasswd-admin`（640，不进 git）；
   改密码只用 `openssl passwd -apr1`（机器没装 htpasswd）。
 
@@ -56,5 +59,6 @@ ssh -i ~/.ssh/qingwu_admin root@103.79.185.65 'nginx -t && systemctl reload ngin
 | `00-limits.conf` | 新增 `admin_login` zone（12r/m） | 同上 |
 | 原 `Content-Security-Policy-Report-Only` | 改强制 `Content-Security-Policy`，加 `report-uri`/`Report-To` | 违规 POST 到 `/api/csp-report`（只记日志） |
 | `snippets/security-headers.conf` | HSTS 加 `includeSubDomains`；补 `X-XSS-Protection: 0` | 子域也进 HSTS |
-| 新增默认 443 / 默认 80 两个 server 块 | 未知 Host 一律拒握手 / 断开 | `curl -k https://103.79.185.65/` 不再返回主站 |
+| 443 server 块顶部 | 新增 `$host` 白名单（非 `qingwu.ink`/`www.qingwu.ink` → 444） | `curl -k https://IP/ -H 'Host: evil.example'` 连接被断，不再返回主站 |
+| 80 server 块顶部 | 同上，未知 Host 不再 301 到主站 | 裸 IP 的 http 访问直接断开 |
 | server 级 | 新增 `server_tokens off`、`client_max_body_size 1m` | `Server: nginx` 不带版本 |
