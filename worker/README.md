@@ -221,3 +221,45 @@ worker/
    不再是 GitHub 仓库路径 —— 形状没变，只是文案变了。
 5. 后台统计页顶部仍写着「每 6 小时汇总一次」（那是 `admin/web/src/pages/Stats.jsx` 里的固定文案）。
    **第 1 步按要求没有动前端**，这行字以后可以顺手改成「实时」。
+
+---
+
+## 2026-11-14 安全加固（改了什么、上线要注意什么）
+
+审计报告：`audit/安全评估-2026-11-14.md`。这里只记**运维视角**必须知道的变更。
+
+### 新增环境变量
+
+| 变量 | 放哪 | 作用 | 不配会怎样 |
+|---|---|---|---|
+| `ENVIRONMENT` | 只在本地 `.dev.vars` 写 `"dev"`；**生产不写** | dev 旁路（`AUTH_DEV_CODE`、`ADMIN_DEV_LOGIN`）的唯一前提 | 生产不配 → dev 门户自然关闭（这是期望行为）；本地不写 → 验证码/直登在本地也不可用 |
+| `OTP_PEPPER` | 生产与本地都可配（`wrangler secret put OTP_PEPPER`） | 验证码改存 `HMAC-SHA256(pepper, purpose\|email\|code)`，库被读走也推不回 6 位码 | 退回旧口径（盐与哈希同表，可穷举）；老码仍可验证，只是不强 |
+
+> 生产机 `worker/.dev.vars` 里**不要**出现 `ENVIRONMENT`、`AUTH_DEV_CODE`、`ADMIN_DEV_LOGIN`、`DEV_SKIP_TURNSTILE`。
+> 复核：`ssh … 'grep -E "ENVIRONMENT|AUTH_DEV_CODE|ADMIN_DEV_LOGIN|DEV_SKIP" /data/qingwu/worker/.dev.vars'` 应当无输出。
+
+### 行为变更（会被人发现的那种）
+
+1. **`server_tokens off`**：`/api/health` 不再回 `service` 字段，nginx `Server` 头也不再带版本。
+2. **`/stats` 变成 fail-closed**：`ADMIN_STATS_TOKEN` 没配时返回 503，不再「无口令全开放」。
+   后台统计页若突然 503，先看这个变量。
+3. **`/link-click` 只认白名单**：`links-refresh.ts` 的 `SEED_HOSTS` 之外的主机一律不计数。
+   **加新友链时必须同步这份数组**，否则新站的点击不会进榜（也不会再被抓取）。
+4. **回复通知只发给「登录账号」**：匿名留言填的邮箱不再作为收件人（防被当作发信通道滥用）。
+5. **会话绑设备**：后台会话换 UA 即失效；前台会话按 UA 前 60 字符比对，换浏览器/设备要重新登录。
+6. **CSP 转强制**：若某个内联脚本被挡，`deploy/nginx/qingwu.conf` 里把那行换回
+   `Content-Security-Policy-Report-Only` 并删掉 `Report-To`，reload 即回观察模式。
+   违规会 POST 到 `/api/csp-report`，只写日志不落库。
+7. **`CF-Connecting-IP` 被 nginx 清空**：Worker 侧只认 `x-real-ip`。
+   自己写脚本调 `/api/hit` 时**别再指望用这个头伪造 IP**（以前能，现在不行）。
+
+### 数据库清理（审计期间留下的测试行）
+
+```sql
+-- 打点测试行（路径都是审计用的占位）
+DELETE FROM hits WHERE path IN ('/probe-test','/rl-test','/fuzz-a2','/inflation-demo','/origin-test','/xff-dedupe-test','/c2','/c3','/d1','/d2','/d4','/t3','/t4') OR path LIKE '/o%';
+-- SSRF 演示行（link-click 注入的域名）
+DELETE FROM link_clicks WHERE url LIKE '%qingwu-audit.test%';
+-- 验证码测试（.invalid 域名，未发出）
+DELETE FROM auth_codes WHERE email LIKE '%qingwu-audit.invalid';
+```

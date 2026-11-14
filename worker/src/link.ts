@@ -13,7 +13,7 @@
 //   友链点击是「有多少人点过这个站」，同一个 IP 十分钟内连点三次本来就该算三次
 //   （他可能真的回去看了三趟）。代价是可能被刷，个人站量级不值得为此加一张去重表。
 import type { Env } from './types';
-import { maybeRefreshFeeds } from './links-refresh';
+import { isFriendHost, maybeRefreshFeeds } from './links-refresh';
 import { json, originAllowed, parseOrigins } from './util';
 
 /** 上报结果统一回 200，原因只给排障用 */
@@ -51,6 +51,16 @@ function toHostKey(raw: string): string {
 export async function postLinkClick(request: Request, env: Env): Promise<Response> {
   const headers = withCors(request, env);
 
+  /**
+   * 只收本站发来的上报（浏览器一定会带 Origin；服务端脚本不带也得过白名单校验）。
+   * 这一层挡的是「别站页面拿访客浏览器刷你的点击榜」，但**挡不住 curl** ——
+   * 真正的边界在下面那条主机白名单上。
+   */
+  const origin = request.headers.get('origin');
+  if (origin && !originAllowed(origin, parseOrigins(env.ALLOWED_ORIGINS))) {
+    return json({ ok: false, reason: 'bad_request' } satisfies ClickResult, 200, headers);
+  }
+
   let body: { url?: unknown };
   try {
     body = (await request.json()) as { url?: unknown };
@@ -67,6 +77,18 @@ export async function postLinkClick(request: Request, env: Env): Promise<Respons
   try {
     key = toHostKey(raw);
   } catch {
+    return json({ ok: false, reason: 'bad_request' } satisfies ClickResult, 200, headers);
+  }
+
+  /**
+   * ⚠️ **只统计友链白名单里的主机**。
+   *
+   * 以前这里接受任意主机名并写进 `link_clicks`，而 `links-refresh` 会把这些
+   * host 当成抓取目标 —— 于是「点一下」等于「给服务器加一个 SSRF 目标」，
+   * 而且能在 `/link-stats` 里把结果读回来（2026-11-14 实测可注入任意域名）。
+   * 现在白名单以外的直接丢，点击表只剩计数作用。
+   */
+  if (!isFriendHost(key)) {
     return json({ ok: false, reason: 'bad_request' } satisfies ClickResult, 200, headers);
   }
 

@@ -62,7 +62,9 @@ async function rows<T>(
     return r.results ?? [];
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
-    warnings.push(`${label}：${msg.slice(0, 100)}`);
+    // 异常原文只进服务端日志（可能带 SQL/列名），前端只留一句人话
+    console.error(`[admin/stats] ${label} 查询失败:`, msg.slice(0, 200));
+    warnings.push(`${label} 暂时读不到`);
     return null;
   }
 }

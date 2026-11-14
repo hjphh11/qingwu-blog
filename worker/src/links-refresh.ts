@@ -26,6 +26,13 @@ const PROBE_PATHS = [
 ];
 
 /**
+ * 单轮最多抓几个站。
+ * 白名单本身只有十几个，这个上限是防止「哪天有人把白名单改成从数据库读」时
+ * 又变成一次几百个出站请求的放大器。
+ */
+const MAX_HOSTS = 40;
+
+/**
  * 初始宿主名单。
  *
  * Worker 读不到仓库里的 `src/data/links.json`，所以这里必须有一份种子。
@@ -57,6 +64,116 @@ const SEED_HOSTS = [
   'detached.online',
   'blog.mibase.top',
 ];
+
+/**
+ * 抓取白名单 —— **唯一可信来源**。
+ *
+ * 2026-11-14 加固：以前抓取对象是「种子 ∪ `link_clicks` 里出现过的 host」，
+ * 而 `POST /link-click` 是无鉴权的，任何人塞一个主机名进来，第二天的 cron
+ * 就会按 `https://<那个 host>/...` 去抓（盲/非盲 SSRF），塞几百条还能把出站
+ * 请求放大成一个小型压测机。现在抓取只认这份硬编码白名单；
+ * `link_clicks` 退化成纯计数表。
+ */
+export const FRIEND_HOSTS: readonly string[] = SEED_HOSTS;
+
+/** 是否在友链白名单里（去 www、转小写后比较） */
+export function isFriendHost(host: string): boolean {
+  const h = String(host || '').replace(/^www\./i, '').toLowerCase();
+  return SEED_HOSTS.includes(h);
+}
+
+/**
+ * 私网 / 回环 / 链路本地地址判定。
+ * 不用 DNS 解析（Workers 里拿不到解析结果做重绑保护），所以这只是第一道；
+ * 真正兜底的是上面那份白名单 —— 白名单外的 host 根本不会被抓。
+ */
+function isPrivateHostname(hostname: string): boolean {
+  const h = hostname.toLowerCase().replace(/^\[|\]$/g, '');
+  if (!h) return true;
+  if (h === 'localhost' || h.endsWith('.localhost') || h.endsWith('.local') || h.endsWith('.internal')) return true;
+  if (h === '::1' || h === '::' || /^fe80:/.test(h) || /^f[cd][0-9a-f]{2}:/.test(h)) return true;
+  if (/^\d{1,3}(\.\d{1,3}){3}$/.test(h)) {
+    const p = h.split('.').map(Number);
+    const [a, b] = [p[0]!, p[1]!];
+    if (a === 0 || a === 10 || a === 127) return true;
+    if (a === 169 && b === 254) return true;
+    if (a === 192 && b === 168) return true;
+    if (a === 172 && b >= 16 && b <= 31) return true;
+    if (a === 100 && b >= 64 && b <= 127) return true;
+  }
+  return false;
+}
+
+/**
+ * 出站抓取的唯一入口：https + 公网 + 只跟一跳同站重定向。
+ *
+ * `redirect: 'manual'` 是关键 —— 以前是 `'follow'`，攻击者只要让自己的站
+ * 302 到 `http://127.0.0.1:8787/...`，抓取器就会跟到明文内网去。
+ */
+async function safeFetch(url: string, timeoutMs = 6000): Promise<Response | null> {
+  const ua = 'Mozilla/5.0 (compatible; qingwu-links/1.0; +https://qingwu.ink)';
+  const one = async (target: URL): Promise<Response | null> => {
+    if (target.protocol !== 'https:' || isPrivateHostname(target.hostname)) return null;
+    const res = await fetch(target.toString(), {
+      headers: { 'user-agent': ua },
+      redirect: 'manual',
+      signal: AbortSignal.timeout(timeoutMs),
+    });
+    return res;
+  };
+
+  try {
+    const start = new URL(url);
+    const first = await one(start);
+    if (!first) return null;
+    if (first.status < 300 || first.status >= 400) return first;
+
+    const loc = first.headers.get('location');
+    if (!loc) return null;
+    const next = new URL(loc, start);
+    // 不跨站、不降级到 http、不进内网
+    if (next.hostname !== start.hostname) return null;
+    return await one(next);
+  } catch {
+    return null;
+  }
+}
+
+/** 读响应体但**真的**截断在 cap 字节（原来 `(await res.text()).slice()` 是全量读进内存再切） */
+async function readTextCapped(res: Response, cap = 200_000): Promise<string> {
+  const declared = Number(res.headers.get('content-length') || 0);
+  if (declared > cap * 8) return '';
+  const reader = res.body?.getReader();
+  if (!reader) return (await res.text()).slice(0, cap);
+
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  try {
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      if (!value) continue;
+      chunks.push(value);
+      total += value.byteLength;
+      if (total >= cap) {
+        await reader.cancel().catch(() => undefined);
+        break;
+      }
+    }
+  } catch {
+    /* 读一半断了也把已读到的用上 */
+  }
+
+  const out = new Uint8Array(Math.min(total, cap));
+  let off = 0;
+  for (const c of chunks) {
+    const n = Math.min(c.byteLength, cap - off);
+    out.set(c.subarray(0, n), off);
+    off += n;
+    if (off >= cap) break;
+  }
+  return new TextDecoder().decode(out);
+}
 
 /** 从一段 XML 里挑最大的合法日期。只认 YYYY-MM-DD 字面量。 */
 function pickLatestDate(text: string): string | null {
@@ -178,15 +295,11 @@ interface ProbeResult {
 async function probeHost(host: string): Promise<ProbeResult> {
   for (const path of PROBE_PATHS) {
     try {
-      const res = await fetch(`https://${host}${path}`, {
-        headers: { 'user-agent': 'Mozilla/5.0 (compatible; qingwu-links/1.0; +https://qingwu.ink)' },
-        signal: AbortSignal.timeout(6000),
-        redirect: 'follow',
-      });
-      if (!res.ok) continue;
+      const res = await safeFetch(`https://${host}${path}`);
+      if (!res || !res.ok) continue;
 
-      // 只读前 200KB：有的 sitemap 能到几 MB，读全了纯浪费
-      const text = (await res.text()).slice(0, 200_000);
+      // 真截断：流式读到 200KB 就停（见 readTextCapped）
+      const text = await readTextCapped(res);
       const date = pickLatestDate(text);
       // 抓到日期就说明这是一份能读的 feed —— 同一次请求里顺手把条目也解析了，
       // 不额外多发出站请求（免费版每天 50 次出站的上限要省着用）
@@ -205,31 +318,24 @@ async function probeHost(host: string): Promise<ProbeResult> {
  */
 async function probeOgImage(host: string): Promise<string | null> {
   try {
-    const res = await fetch(`https://${host}/`, {
-      headers: { 'user-agent': 'Mozilla/5.0 (compatible; qingwu-links/1.0; +https://qingwu.ink)' },
-      signal: AbortSignal.timeout(6000),
-      redirect: 'follow',
-    });
-    if (!res.ok) return null;
-    const html = (await res.text()).slice(0, 200_000);
+    const res = await safeFetch(`https://${host}/`);
+    if (!res || !res.ok) return null;
+    const html = await readTextCapped(res);
     return pickOgImage(html, `https://${host}/`);
   } catch {
     return null;
   }
 }
 
-/** 取「种子 + 点过」的并集，去掉 www. */
-async function collectHosts(env: Env): Promise<string[]> {
-  const set = new Set(SEED_HOSTS);
-  try {
-    const rows = await env.DB.prepare(`SELECT DISTINCT url FROM link_clicks`).all<{ url: string }>();
-    for (const r of rows.results ?? []) {
-      if (r.url) set.add(r.url.replace(/^www\./i, '').toLowerCase());
-    }
-  } catch {
-    // 表还没建 / 查询失败都不影响种子那批
-  }
-  return [...set];
+/**
+ * 抓取名单 = **只有白名单**。
+ *
+ * 以前这里会并上 `link_clicks` 里出现过的所有 host —— 而 `/link-click` 无鉴权，
+ * 等于「公开的抓取目标列表」。2026-11-14 起点击表只用于计数，不再影响出站。
+ * 加新友链时记得同步 `SEED_HOSTS`。
+ */
+async function collectHosts(_env: Env): Promise<string[]> {
+  return SEED_HOSTS.slice(0, MAX_HOSTS);
 }
 
 export interface RefreshSummary {

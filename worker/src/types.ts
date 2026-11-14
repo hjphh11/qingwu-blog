@@ -82,12 +82,32 @@ export interface Env {
    * **仅本地 `wrangler dev`**：设为 `"1"` 时，邮箱验证码不发信，直接回给前端。
    *
    * 为什么需要：本机没有发信中继，验证码寄不出去，登录之后长什么样就永远看不到。
-   * 两道锁 —— 变量为 1 **且** 请求 host 是回环地址（127.0.0.1 / localhost / ::1）。
    *
-   * **只写在 `worker/.dev.vars`（已 gitignore），线上绝对不要配**。
+   * ⚠️ 判据已改为 `ENVIRONMENT === 'dev'` **且** 本变量为 `"1"`。
+   * 以前靠「请求 host 是不是回环地址」兜底，而 nginx 的 `proxy_set_header Host $host`
+   * 原样透传客户端 Host —— 一个 `Host: 127.0.0.1` 就能骗过它（2026-11-14 复核）。
+   * 生产不配 ENVIRONMENT，这条分支永不成立。
    * 复核：`grep AUTH_DEV_CODE worker/wrangler.toml` 应无结果。
    */
   AUTH_DEV_CODE?: string;
+
+  /**
+   * 运行环境标记。**生产不要配**（或配成 `prod`）。
+   *
+   * 所有 dev 旁路（`AUTH_DEV_CODE`、`ADMIN_DEV_LOGIN`）都以 `ENVIRONMENT === 'dev'`
+   * 为前提 —— 不再拿请求里的 Host 当判据（Host 是客户端可控的）。
+   */
+  ENVIRONMENT?: string;
+
+  /**
+   * 验证码的 HMAC 密钥（`wrangler secret put OTP_PEPPER`，建议配）。
+   *
+   * 配了之后验证码哈希变成 `HMAC-SHA256(pepper, purpose|email|code)`：
+   * 数据库被整表读走（备份 / D1 dump）也推不回 6 位码。
+   * 不配则退回旧的 `SHA-256(code|salt)` —— 盐与哈希同表，10^6 空间可穷举。
+   * 换掉它 = 所有「已发出但没用」的验证码立刻失效（影响很小，5 分钟 TTL）。
+   */
+  OTP_PEPPER?: string;
 
   /**
    * **归档只读开关**：设为 `"1"` / `"true"` 时，除 GET/HEAD 外的请求一律 `410 Gone`，

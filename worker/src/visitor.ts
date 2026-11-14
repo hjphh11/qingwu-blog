@@ -8,13 +8,21 @@
 
 import type { Env } from './types';
 
-/** 客户端 IP。GeoIP 的 `x-q-country` 与本文件无关，别搞混 */
+/**
+ * 客户端 IP。GeoIP 的 `x-q-country` 与本文件无关，别搞混。
+ *
+ * ⚠️ **只信 `x-real-ip`** —— 这一个头由 nginx 用 `$remote_addr` 覆盖写（见
+ * deploy/nginx/qingwu.conf 的 `proxy_set_header X-Real-IP $remote_addr;`），
+ * 客户端自带的同名头会被 nginx 顶掉。
+ *
+ * `cf-connecting-ip` / `x-forwarded-for` 都是**客户端能自带**的头：
+ * 站点 2026-11-10 搬离 Cloudflare 之后，边缘不再写 cf-connecting-ip，
+ * 谁都能伪造一个 → 去重、限流、锁定全部失效（实测可无限刷 /hit）。
+ * nginx 侧另有 `proxy_set_header CF-Connecting-IP "";` 兜底。
+ */
 export function clientIp(request: Request): string {
-  return (
-    request.headers.get('cf-connecting-ip') ||
-    request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ||
-    'unknown'
-  );
+  const real = (request.headers.get('x-real-ip') || '').trim();
+  return real || '0.0.0.0';
 }
 
 /**

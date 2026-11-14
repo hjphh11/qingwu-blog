@@ -43,8 +43,9 @@ async function rows<T>(env: Env, warnings: string[], sql: string, ...binds: unkn
     return r.results ?? [];
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
-    // 只留一句可读的，别把整条 SQL 贴给前端
-    warnings.push(`${sql.replace(/\s+/g, ' ').trim().slice(0, 48)}… → ${msg.slice(0, 90)}`);
+    // 原文只进日志：SQL 片段 + 错误串不该出现在浏览器的「状态」页里
+    console.error(`[admin/status] ${sql.replace(/\s+/g, ' ').trim().slice(0, 120)} 查询失败:`, msg.slice(0, 200));
+    warnings.push('有一组统计暂时读不到（看服务端日志）');
     return [];
   }
 }
@@ -356,6 +357,7 @@ export async function getAutoReplyLog(request: Request, env: Env, _admin: Admin)
     });
   } catch (e) {
     // 表还不存在（迁移没跑）：当成「没有记录」，而不是 500
+    console.warn('[admin/status] auto_reply_log 读取失败:', e instanceof Error ? e.message.slice(0, 200) : e);
     return json({
       ok: true,
       total: 0,
@@ -363,7 +365,7 @@ export async function getAutoReplyLog(request: Request, env: Env, _admin: Admin)
       pages: 1,
       pageSize,
       items: [],
-      warning: e instanceof Error ? e.message.slice(0, 100) : 'auto_reply_log 不可读',
+      warning: '自动回复记录暂时读不到（看服务端日志）',
     });
   }
 }

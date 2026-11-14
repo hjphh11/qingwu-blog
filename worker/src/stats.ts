@@ -253,8 +253,18 @@ export async function getStats(request: Request, env: Env): Promise<Response> {
   // 后台是服务端调用（带口令），不会走 CORS；这里只是给将来浏览器直连留个口子
   if (origin && originAllowed(origin, origins)) cors['access-control-allow-origin'] = origin;
 
-  // 配了口令就必须要（后台服务器会带上）；没配则视为「不设口令」并在 README 里明确警告
-  if (env.ADMIN_STATS_TOKEN) {
+  /**
+   * **fail-closed**：没配口令 = 503，不是「不设口令」。
+   *
+   * 以前是 `if (env.ADMIN_STATS_TOKEN) { 鉴权 }` —— 生产漏配一次，任何人
+   * `GET /api/stats` 就能拿到全站 PV/UV、所有页面路径、referrer 榜（顺带暴露
+   * 后台与内部链接）。配了才放行，且用定长比较、401 不回显任何内部信息。
+   */
+  if (!env.ADMIN_STATS_TOKEN) {
+    console.warn('[stats] ADMIN_STATS_TOKEN 未配置，统计接口按不可用处理');
+    return json({ enabled: false, empty: true, reason: '统计接口未配置口令，暂不可用' }, 503, cors);
+  }
+  {
     const auth = request.headers.get('authorization') || '';
     const token = auth.toLowerCase().startsWith('bearer ') ? auth.slice(7).trim() : '';
     if (!token || !(await secretEqual(token, env.ADMIN_STATS_TOKEN))) {

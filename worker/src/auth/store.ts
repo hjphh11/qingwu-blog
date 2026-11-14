@@ -125,7 +125,15 @@ export async function createSession(
   return token;
 }
 
-/** 读当前会话；无效/过期返回 null。**每个需要身份的接口都先过这里。** */
+/**
+ * 读当前会话；无效/过期返回 null。**每个需要身份的接口都先过这里。**
+ *
+ * 会话与设备绑定（2026-11-14 加固）：
+ *   · `kind='admin'` —— 后台会话要求 UA **完全一致**，不一致直接作废（并删行）；
+ *   · `kind='visitor'` —— 只比 UA 的「平台段」（前 60 字符）。浏览器升级版本号
+ *     不该把人踢下线，但换设备/换浏览器会立刻失效。
+ * 以前 `ip_hash`/`ua` 写了却从不比对，cookie 一泄露就能异地重放 30 天。
+ */
 export async function sessionUser(request: Request, env: Env): Promise<SessionUser | null> {
   const token = readCookie(request, SESSION_COOKIE);
   if (!token || token.length < 32) return null;
@@ -135,12 +143,12 @@ export async function sessionUser(request: Request, env: Env): Promise<SessionUs
     `SELECT a.id AS id, a.email AS email, a.email_hash AS email_hash, a.display_name AS display_name,
             a.site_url AS site_url, a.avatar_url AS avatar_url, a.role AS role, a.status AS status,
             a.created_at AS created_at, a.last_seen_at AS last_seen_at,
-            s.kind AS s_kind, s.expires_at AS s_exp
+            s.kind AS s_kind, s.expires_at AS s_exp, s.ua AS s_ua
        FROM auth_sessions s JOIN accounts a ON a.id = s.account_id
       WHERE s.token_hash = ?`,
   )
     .bind(tokenHash)
-    .first<AccountRow & { s_kind: string; s_exp: number }>();
+    .first<AccountRow & { s_kind: string; s_exp: number; s_ua: string | null }>();
 
   if (!row) return null;
   if (row.s_exp < Date.now()) {
@@ -154,6 +162,23 @@ export async function sessionUser(request: Request, env: Env): Promise<SessionUs
     // 封禁/禁言：会话留着也没用，直接当作未登录（前台会看到只读态）
     return null;
   }
+
+  // —— 设备绑定校验 ——
+  const nowUa = (request.headers.get('user-agent') || '').slice(0, 200);
+  const boundUa = row.s_ua || '';
+  if (boundUa) {
+    const isAdmin = row.s_kind === 'admin';
+    const mismatch = isAdmin ? boundUa !== nowUa : boundUa.slice(0, 60) !== nowUa.slice(0, 60);
+    if (mismatch) {
+      await env.DB.prepare('DELETE FROM auth_sessions WHERE token_hash = ?')
+        .bind(tokenHash)
+        .run()
+        .catch(() => undefined);
+      console.warn('[auth] 会话与设备 UA 不符，已作废:', isAdmin ? 'admin' : 'visitor');
+      return null;
+    }
+  }
+
   return { account: row, kind: row.s_kind === 'admin' ? 'admin' : 'visitor' };
 }
 

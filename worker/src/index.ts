@@ -76,7 +76,26 @@ export default {
     }
 
     if (path === '/health') {
-      return json({ ok: true, service: 'qingwu-api', time: new Date().toISOString() });
+      // 只回「活着」。以前带 `service: 'qingwu-api'`，等于给扫描器一个免费指纹
+      return json({ ok: true });
+    }
+
+    /**
+     * CSP 违规上报口（`report-uri /api/csp-report` + `Report-To: csp`）。
+     *
+     * 收下就回 204，不落库、不回显 —— 上报体里带完整 URL，可能含查询串，
+     * 存下来反而是新的隐私面。只想在日志里看到「哪条规则在打架」时够用了。
+     * 没有这条路由时，浏览器每页都会打一次 404，日志会被刷满。
+     */
+    if (path === '/csp-report') {
+      if (request.method !== 'POST') return new Response(null, { status: 204 });
+      try {
+        const raw = await request.text();
+        if (raw && raw.length < 8_000) console.warn('[csp] 违规上报:', raw.slice(0, 1_500));
+      } catch {
+        /* 读不出来也无所谓：上报不该影响任何东西 */
+      }
+      return new Response(null, { status: 204 });
     }
 
     // —— 统一身份（登录 / 绑定 / 我的留言）——

@@ -11,9 +11,11 @@
 //    失败也只说「没发出去」，绝不暗示「这个邮箱没注册过」。
 
 import type { Env } from '../types';
+import { secretEqual } from '../util';
 import { sendMail } from '../mail';
 import {
   clientIp,
+  hexOf,
   ipHash,
   isEmail,
   normalizeEmail,
@@ -46,15 +48,46 @@ export type SendResult =
  * 本机没有发信中继（`.dev.vars` 里没有 RESEND_KEY），验证码根本寄不出去，
  * 「登录后是什么样」就永远看不到。开着它时**不发信**，直接把码回给前端。
  *
- * 两道锁：`AUTH_DEV_CODE=1` **且** 请求落在回环地址。
- * 变量只写在 `worker/.dev.vars`（已 gitignore），线上没有；
- * 即使误配，nginx 转过来的 Host 是真实域名，hostname 不可能是 127.0.0.1。
+ * ⚠️ 判据是 **`ENVIRONMENT === 'dev'`**，不是「host 是不是回环」。
+ * 原来判 `new URL(request.url).hostname`，而 nginx 的 `proxy_set_header Host $host`
+ * 原样透传客户端 Host —— 任何人发 `Host: 127.0.0.1` 都能让 Worker 以为请求来自本机，
+ * 配合 `AUTH_DEV_CODE=1` 就能拿到任意邮箱的验证码（2026-11-14 复核）。
+ * 生产不配 ENVIRONMENT，这条分支永不成立。
  * 复核：`grep AUTH_DEV_CODE worker/wrangler.toml` 应无结果。
  */
-function devCodeAllowed(request: Request, env: Env): boolean {
-  if (env.AUTH_DEV_CODE !== '1') return false;
-  const host = new URL(request.url).hostname;
-  return host === '127.0.0.1' || host === 'localhost' || host === '::1' || host === '[::1]';
+function devCodeAllowed(_request: Request, env: Env): boolean {
+  return env.ENVIRONMENT === 'dev' && env.AUTH_DEV_CODE === '1';
+}
+
+/**
+ * 验证码哈希。
+ *
+ * 配了 `OTP_PEPPER` 就用 `HMAC-SHA256(pepper, purpose|email|code)`：库被整表读走
+ * （备份、D1 dump、蜜罐镜像）也推不回 6 位码 —— 密钥不在库里。
+ * 以前是 `SHA-256(code|salt)` 而盐就存在同一行，10^6 空间秒级可穷举，
+ * 表注释里「库被读走也推不回」那句在密码学上不成立。
+ *
+ * 没配 pepper 时退回旧口径，保证升级前写入的老行仍能验证；新码统一带 `hmac1:` 前缀，
+ * 两种口径可共存（前缀不同，不会撞）。
+ */
+async function codeHashOf(
+  env: Env,
+  purpose: string,
+  email: string,
+  code: string,
+  salt: string,
+): Promise<string> {
+  if (!env.OTP_PEPPER) return sha256Hex(`${code}|${salt}`);
+  const enc = new TextEncoder();
+  const key = await crypto.subtle.importKey(
+    'raw',
+    enc.encode(env.OTP_PEPPER),
+    { name: 'HMAC', hash: 'SHA-256' },
+    false,
+    ['sign'],
+  );
+  const sig = await crypto.subtle.sign('HMAC', key, enc.encode(`${purpose}|${email}|${code}`));
+  return `hmac1:${hexOf(sig)}`;
 }
 
 async function lockRemain(env: Env, iph: string): Promise<number> {
@@ -136,7 +169,7 @@ export async function sendLoginCode(
 
   const code = randomCode();
   const salt = randomToken(16);
-  const codeHash = await sha256Hex(`${code}|${salt}`);
+  const codeHash = await codeHashOf(env, purpose, email, code, salt);
 
   const account = await env.DB.prepare('SELECT id FROM accounts WHERE email = ?')
     .bind(email)
@@ -219,8 +252,9 @@ export async function verifyLoginCode(
     return { ok: false, reason: 'bad_code', message: '这条码试错太多次了，重新发一封吧', left: 0 };
   }
 
-  const given = await sha256Hex(`${code}|${row.salt ?? ''}`);
-  if (given !== row.code_hash) {
+  // 定长比较：同一套哈希口径算出来的两个 hex 串，用 secretEqual 走同一条路径
+  const given = await codeHashOf(env, purpose, email, code, row.salt ?? '');
+  if (!(await secretEqual(given, row.code_hash))) {
     await env.DB.prepare('UPDATE auth_codes SET tries = tries + 1 WHERE id = ?')
       .bind(row.id)
       .run()

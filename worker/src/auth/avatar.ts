@@ -16,3 +16,14 @@ export function avatarFromEmail(email: string, size = 96): string {
   if (qq) return `https://q.qlogo.cn/headimg_dl?dst_uin=${qq[1]}&spec=${size}`;
   return `https://cravatar.cn/avatar/${emailHashOf(e)}?d=mp&s=${size}`;
 }
+
+/**
+ * 只拿哈希拼头像 —— 匿名留言存的就是 32 位 hex，没有明文邮箱可反推。
+ *
+ * 用途：列表接口不再把 `emailHash` 原样回给所有人（那是「邮箱在不在本站」的
+ * 枚举 oracle），改成服务端直接把头像 URL 算好放进 `avatar` 字段，
+ * 前端不用再自己拼，展示效果和以前一模一样。
+ */
+export function avatarFromHash(hash: string, size = 96): string {
+  return /^[a-f0-9]{32}$/i.test(hash || '') ? `https://cravatar.cn/avatar/${hash}?d=mp&s=${size}` : '';
+}

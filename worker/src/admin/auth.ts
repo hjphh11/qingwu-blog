@@ -67,15 +67,16 @@ function randomCode(): string {
   return String(buf[0]! % 1_000_000).padStart(6, '0');
 }
 
-/** 取客户端 IP：nginx 会传 X-Forwarded-For / X-Real-IP，云上还有 CF 头 */
+/**
+ * 取客户端 IP —— **只信 `x-real-ip`**（nginx 用 `$remote_addr` 覆盖写的那一行）。
+ *
+ * 以前这里优先读 `cf-connecting-ip`。站点搬离 Cloudflare 后没有边缘写它，
+ * 客户端自带一个就能让 `ipHash` 每请求都不同 → `lockRemain` 恒 0，
+ * `admin_attempts` 只剩垃圾行，后台口令变成可无限次猜（2026-11-14 实测）。
+ */
 function clientIp(request: Request): string {
-  const h = request.headers;
-  return (
-    h.get('cf-connecting-ip') ||
-    h.get('x-real-ip') ||
-    (h.get('x-forwarded-for') || '').split(',')[0]?.trim() ||
-    '0.0.0.0'
-  );
+  const real = (request.headers.get('x-real-ip') || '').trim();
+  return real || '0.0.0.0';
 }
 
 async function ipHash(request: Request, env: Env): Promise<string> {
@@ -94,11 +95,15 @@ function readCookies(request: Request): Record<string, string> {
 
 /**
  * 组 Set-Cookie。
- * `Secure` 只在 https 下加 —— 否则本地 http 调试时浏览器直接丢弃这个 cookie，
- * 表现为「登录成功但立刻又回到登录页」，很难查。
+ *
+ * `Secure` 判据先看 `x-forwarded-proto`：生产是 nginx → `http://127.0.0.1:8787` 反代，
+ * Worker 看到的 scheme 恒为 http，只按 URL 判断的话线上后台 cookie 永远没有 Secure。
+ * nginx 侧已补 `proxy_set_header X-Forwarded-Proto $scheme;`。
  */
 function sessionCookie(request: Request, token: string, maxAgeSec: number): string {
-  const secure = new URL(request.url).protocol === 'https:' ? '; Secure' : '';
+  const forwarded = (request.headers.get('x-forwarded-proto') || '').split(',')[0]!.trim().toLowerCase();
+  const proto = forwarded || new URL(request.url).protocol.replace(':', '');
+  const secure = proto === 'https' ? '; Secure' : '';
   return `${COOKIE_NAME}=${token}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${maxAgeSec}${secure}`;
 }
 
@@ -548,10 +553,16 @@ async function destroyUnifiedSession(request: Request, env: Env): Promise<void> 
 export async function getDevLogin(request: Request, env: Env): Promise<Response> {
   const secret = env.ADMIN_DEV_LOGIN;
   const url = new URL(request.url);
-  const host = url.hostname;
-  const loopback = host === '127.0.0.1' || host === 'localhost' || host === '::1' || host === '[::1]';
-  if (!secret || !loopback) return json({ ok: false, reason: 'not_found' }, 404);
-  if (url.searchParams.get('token') !== secret) return json({ ok: false, reason: 'bad_token' }, 403);
+  /**
+   * ⚠️ 判据是 **`ENVIRONMENT === 'dev'`**，不是「host 是不是回环」。
+   *
+   * 原来靠 `url.hostname` 判 127.0.0.1，但 nginx 的 `proxy_set_header Host $host`
+   * 原样透传客户端 Host —— 任何人发 `Host: 127.0.0.1` 都能让 Worker 以为请求来自本机。
+   * 生产不配 ENVIRONMENT，这条路由就永远 404；口令再走一次定长比较。
+   */
+  if (!secret || env.ENVIRONMENT !== 'dev') return json({ ok: false, reason: 'not_found' }, 404);
+  const given = url.searchParams.get('token') || '';
+  if (!given || !(await secretEqual(given, secret))) return json({ ok: false, reason: 'bad_token' }, 403);
 
   const user = await env.DB.prepare('SELECT id, username FROM admin_users ORDER BY id LIMIT 1').first<{
     id: number;

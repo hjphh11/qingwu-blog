@@ -22,7 +22,7 @@ import type { ModerationResult } from './admin/ai';
 import { recordModeration } from './admin/moderation';
 // 统一身份：谁在说话由 auth 模块决定；**能不能说话**由这里决定（REQUIRE_LOGIN）
 import { isOn } from './auth/common';
-import { avatarFromEmail } from './auth/avatar';
+import { avatarFromEmail, avatarFromHash } from './auth/avatar';
 import { sessionUser, type AccountRow } from './auth/store';
 import { loginRequiredMessage } from './auth/index';
 import { visitorKey } from './visitor';
@@ -238,7 +238,12 @@ function toEntry(
     // 账号有当前档案就优先用它 —— 改了署名/头像，历史留言跟着变
     name: row.acc_name || row.author,
     url: row.author_url ?? '',
-    avatar: row.acc_avatar || row.avatar || '',
+    /**
+     * 头像三档兜底：账号档案 → 留言时存下的 URL → 由邮箱哈希现拼。
+     * 以前第三档交给前端（前端拿 `emailHash` 自己拼），等于把「无盐 md5(邮箱)」
+     * 回给每个访客；现在服务端拼好，`emailHash` 不再外发（见下面的字段说明）。
+     */
+    avatar: row.acc_avatar || row.avatar || avatarFromHash(row.email_hash || ''),
     /** 站长本人的留言 —— 前台挂「站长」标（和 AI 标并列，两者可能同时出现） */
     admin: isOwner(row.acc_role),
     intro: row.body,
@@ -247,7 +252,14 @@ function toEntry(
     // 这两个状态都会返回给前端 —— 评论区是公开的，只是徽章不一样。
     // **spam 在上面那条 SQL 里就被排除了**：审核判成垃圾的不上前台，这是拦截唯一的落点。
     status: row.status === 'visible' ? ('approved' as const) : ('pending' as const),
-    emailHash: row.email_hash ?? '',
+    /**
+     * 2026-11-14 起**不再下发**这个字段。
+     *
+     * 它等于 `md5(lower(email))`，公开回发就是一个「这个邮箱在不在本站」的
+     * 枚举 oracle（对任意候选邮箱算一次 md5 比对即可）。头像已经由 `avatar`
+     * 兜住了，前端不需要它。保留字段名（空串）是为了兼容还没更新的旧前端缓存。
+     */
+    emailHash: '',
     likes,
     /** 是不是自己发的（登录态才算得出来；未登录恒 false） */
     mine: Boolean(opts.mine),
@@ -258,9 +270,8 @@ function toEntry(
       name: r.acc_name || r.author,
       // notify = 0 表示访客主动取消了 @：不给 to，前端就不显示「@某某」
       to: toOf(r),
-      avatar: r.acc_avatar || r.avatar || '',
-      // 回复头像同样要能退到 Cravatar（QQ 头像接口会 400），所以把哈希一起给出去
-      emailHash: r.email_hash,
+      avatar: r.acc_avatar || r.avatar || avatarFromHash(r.email_hash || ''),
+      emailHash: '',
       // 站长在自己的回复上也挂标 —— 回自己的楼和回别人的楼都得认得出
       admin: isOwner(r.acc_role),
       intro: r.body,
@@ -670,12 +681,12 @@ export async function postFriendReply(
   // 只允许回复主楼（不做无限嵌套），并且要能拿到被回复者的邮箱用于通知。
   // 登录后留言不再存明文邮箱，所以从账号那边取 —— 这也是「邮箱只在一个地方」的好处。
   const parent = await env.DB.prepare(
-    `SELECT c.id AS id, c.author AS author, c.email AS email, a.email AS acc_email
+    `SELECT c.id AS id, c.author AS author, c.email AS email, a.email AS acc_email, c.account_id AS acc_id
        FROM comments c LEFT JOIN accounts a ON a.id = c.account_id
       WHERE c.id = ? AND c.post_slug = ? AND c.parent_id IS NULL AND c.status != 'deleted'`,
   )
     .bind(parentId, SLUG)
-    .first<{ id: number; author: string; email: string | null; acc_email: string | null }>();
+    .first<{ id: number; author: string; email: string | null; acc_email: string | null; acc_id: number | null }>();
 
   if (!parent) {
     return json({ ok: false, error: 'not_found', message: '这条留言已经不在了' }, 404, headers);
@@ -690,17 +701,39 @@ export async function postFriendReply(
   const replyToId = Number(body.replyTo ?? 0) || 0;
   const target = replyToId
     ? await env.DB.prepare(
-        `SELECT c.author AS author, c.email AS email, a.email AS acc_email, a.display_name AS acc_name
+        `SELECT c.author AS author, c.email AS email, a.email AS acc_email, a.display_name AS acc_name,
+                c.account_id AS acc_id
            FROM comments c LEFT JOIN accounts a ON a.id = c.account_id
           WHERE c.id = ? AND c.parent_id = ? AND c.post_slug = ? AND c.status != 'deleted'`,
       )
         .bind(replyToId, parentId, SLUG)
-        .first<{ author: string; email: string | null; acc_email: string | null; acc_name: string | null }>()
+        .first<{
+          author: string;
+          email: string | null;
+          acc_email: string | null;
+          acc_name: string | null;
+          acc_id: number | null;
+        }>()
     : null;
 
   /** 被回复的人（名字用于 @ 显示，邮箱用于发信）；没有二级目标就是主楼作者 */
   const targetName = target ? target.acc_name || target.author : parent.author;
-  const targetEmail = target ? target.acc_email || target.email : parent.acc_email || parent.email;
+
+  /**
+   * 通知收件人 —— **只给「登录账号」的邮箱发信**。
+   *
+   * 2026-11-14 加固：匿名留言的 `email` 是访客随手填的、从未验证过，
+   * 以前拿它当收件人 = 任何人填上受害者邮箱留一条言、再自己回一条，
+   * 就能用 `noreply@qingwu.ink` 把攻击者写的正文投递到受害者信箱
+   * （骚扰 + 消耗发信域名信誉）。现在只有 `account_id` 非空（邮箱经 OTP 验过）才发。
+   */
+  const targetEmail = target
+    ? target.acc_id
+      ? target.acc_email || null
+      : null
+    : parent.acc_id
+      ? parent.acc_email || null
+      : null;
 
   try {
     // 默认 @ 对方（发信）；访客手动取消就是 false
@@ -844,6 +877,20 @@ export async function postFriendLike(
   if (!Number.isInteger(commentId) || commentId <= 0) {
     return json({ ok: false, error: 'bad_request' }, 400, headers);
   }
+
+  /**
+   * 先确认这条留言真的在。
+   *
+   * 以前不查就写 `friend_likes` —— 任何 id 都能点出一行「赞」，
+   * 表可以被无意义地撑大（`SELECT COUNT(*) WHERE comment_id=?` 还会跟着变慢），
+   * 而且回给前端一个并不属于任何留言的计数。
+   */
+  const exists = await env.DB.prepare(
+    `SELECT 1 AS one FROM comments WHERE id = ? AND post_slug = ? AND status != 'deleted'`,
+  )
+    .bind(commentId, SLUG)
+    .first<{ one: number }>();
+  if (!exists) return json({ ok: false, error: 'not_found' }, 404, headers);
 
   // 登录后按账号去重（换设备也算同一个人的赞）；未登录仍按 IP|UA 哈希
   const account = await currentAccount(request, env);

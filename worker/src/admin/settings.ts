@@ -461,6 +461,8 @@ export async function patchSettings(request: Request, env: Env, admin: Admin): P
         503,
       );
     }
-    return json({ ok: false, reason: 'db_error', message: msg.slice(0, 200) }, 500);
+    // 异常原文只进服务端日志：里面可能带 SQL 片段、列名甚至绑定值
+    console.error('[admin] 保存设置失败:', msg.slice(0, 300));
+    return json({ ok: false, reason: 'db_error', message: '保存失败，看看服务端日志' }, 500);
   }
 }

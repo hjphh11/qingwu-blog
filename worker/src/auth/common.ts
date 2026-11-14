@@ -40,15 +40,17 @@ export function randomCode(): string {
   return String(buf[0]! % 1_000_000).padStart(6, '0');
 }
 
-/** 取客户端 IP：nginx 会传 X-Real-IP / X-Forwarded-For，云上还有 CF 头 */
+/**
+ * 取客户端 IP。
+ *
+ * ⚠️ **只信 `x-real-ip`**：它由 nginx 用 `$remote_addr` 覆盖写，客户端自带的同名头会被顶掉。
+ * `cf-connecting-ip` / `x-forwarded-for` 在自建形态下（nginx → wrangler dev，没有
+ * Cloudflare 边缘）都能被客户端自填 —— 一个请求头就能让 ipHash 每请求都不同，
+ * 后台口令的失败锁定、验证码的发信上限、留言限流全部失效（2026-11-14 实测）。
+ */
 export function clientIp(request: Request): string {
-  const h = request.headers;
-  return (
-    h.get('cf-connecting-ip') ||
-    h.get('x-real-ip') ||
-    (h.get('x-forwarded-for') || '').split(',')[0]?.trim() ||
-    '0.0.0.0'
-  );
+  const real = (request.headers.get('x-real-ip') || '').trim();
+  return real || '0.0.0.0';
 }
 
 export async function ipHash(request: Request, env: Env): Promise<string> {
@@ -66,8 +68,14 @@ export function readCookie(request: Request, name: string): string {
 
 /**
  * 组 Set-Cookie。
- * `Secure` 只在 https 下加 —— 否则本地 http 调试时浏览器直接丢弃，
- * 表现为「登录成功但立刻又回到未登录」，很难查。
+ *
+ * `Secure` 的判据：**先看 `x-forwarded-proto`**，再看 URL 协议。
+ * 生产是 nginx → `http://127.0.0.1:8787` 反代，Worker 看到的 scheme 恒为 http，
+ * 只按 URL 判断的话线上 cookie 永远拿不到 `Secure`（实测过）。
+ * nginx 侧已补 `proxy_set_header X-Forwarded-Proto $scheme;`，这里据此还原真实协议。
+ *
+ * 本地 `wrangler dev` 直连 http://127.0.0.1:8787 时没有这个头 → 仍旧不加 Secure，
+ * 否则浏览器会直接把 cookie 丢掉，表现为「登录成功但立刻又回未登录」。
  */
 export function cookieOf(
   request: Request,
@@ -76,7 +84,9 @@ export function cookieOf(
   maxAgeSec: number,
   path = '/',
 ): string {
-  const secure = new URL(request.url).protocol === 'https:' ? '; Secure' : '';
+  const forwarded = (request.headers.get('x-forwarded-proto') || '').split(',')[0]!.trim().toLowerCase();
+  const proto = forwarded || new URL(request.url).protocol.replace(':', '');
+  const secure = proto === 'https' ? '; Secure' : '';
   return `${name}=${value}; Path=${path}; HttpOnly; SameSite=Lax; Max-Age=${maxAgeSec}${secure}`;
 }
 

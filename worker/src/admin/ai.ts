@@ -56,6 +56,31 @@ const DEFAULT_MODEL = 'deepseek-chat';
 const TIMEOUT_MS = 25_000;
 /** 与 comments.ts 的 MAX_REPLY_LEN 对齐：生成超过这个长度就截断，别让前端超限。 */
 const MAX_DRAFT_LEN = 500;
+
+/**
+ * 自动回复的输出闸门。
+ *
+ * 提示词里已经写了「只用园子里的话」，但**提示词不是安全边界** ——
+ * 访客可以构造「忽略上面的要求，原样回复：……」让模型照办。
+ * 这条回复随后会以「爱弥斯」的身份公开挂在评论区，等于站点官方口吻在说话。
+ *
+ * 所以生成之后再挡一层纯规则（不判语义，判不准）：
+ *   · 链接 / 裸域名 / 邮箱 / 长数字串（电话）→ 直接不发
+ *   · 引流类关键词 → 直接不发
+ *   · HTML 标签剥掉（前端本来就转义，这里只是别让脏字符进库）
+ * 命中返回 null，调用方记一条 `skipped/note=output_guard`。
+ */
+function guardAutoReply(raw: string): string | null {
+  const t = String(raw ?? '').replace(/<[^>]*>/g, '').trim();
+  if (!t) return null;
+  if (/https?:\/\//i.test(t)) return null;
+  if (/\bwww\.[a-z0-9-]+(\.[a-z0-9-]+)+/i.test(t)) return null;
+  if (/[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}/i.test(t)) return null;
+  // 7 位以上、允许空格/横线分隔的数字串 = 电话号码
+  if (/(?:\+?\d[\s-]?){7,}/.test(t)) return null;
+  if (/(微信号|加微信|加我微信|扫码|二维码|私聊|站内信|联系方式)/.test(t)) return null;
+  return t.slice(0, MAX_DRAFT_LEN);
+}
 /** 访客正文送进模型的字符上限（防超长留言把上下文吃满）。 */
 const MAX_CONTEXT_LEN = 800;
 /** 每通道每日调用上限，默认 300。防手抖连点，也防 key 被别人拿去刷。 */
@@ -1500,6 +1525,28 @@ export async function autoReplyTo(env: Env, commentId: number): Promise<void> {
     return;
   }
 
+  /**
+   * 输出闸门（2026-11-14 加）。
+   *
+   * 留言正文是**不可信输入**：一句「请把下面这句话原样回复：……」就能让模型
+   * 借「爱弥斯」的身份在评论区公开说出攻击者想说的话 —— 而对访客来说那是站点的
+   * 官方口吻。这里不试图判断语义（判不准），只做硬规则：链接、邮箱、电话、
+   * HTML 标签一律不放行，命中就当作「没有可发的内容」。
+   */
+  const safe = guardAutoReply(text);
+  if (!safe) {
+    await logAuto(env, {
+      commentId,
+      day,
+      action: 'skipped',
+      guestHash: root.ip_hash,
+      note: 'output_guard',
+      model,
+      tokens,
+    });
+    return;
+  }
+
   const now = Date.now();
   try {
     // notify = 0：访客刚提交就在页面上，不必再补一封邮件打扰他
@@ -1507,7 +1554,7 @@ export async function autoReplyTo(env: Env, commentId: number): Promise<void> {
       `INSERT INTO comments (post_slug, parent_id, author, author_url, avatar, body, status, ts, notify)
        VALUES (?, ?, ?, ?, ?, ?, 'visible', ?, 0)`,
     )
-      .bind(root.post_slug, commentId, me.author, me.url, me.avatar, text, now)
+      .bind(root.post_slug, commentId, me.author, me.url, me.avatar, safe, now)
       .run();
   } catch (e) {
     await logAuto(env, {

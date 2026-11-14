@@ -69,6 +69,19 @@ export const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeou
  * 打一次发信接口。**不重试、不入队**，只如实回答「成没成、值不值得再试」。
  * 抽出来是为了让 `sendMail`（新信）和 `flushOutbox`（补发）用同一套判定。
  */
+/**
+ * 邮件头净化。
+ *
+ * `Subject` 里出现 `\r\n` 就是标准的头注入（SMTP 层能凭空加一个 `Bcc:`）。
+ * 现在走 Resend 的 JSON 接口、自建中继也用 EmailMessage(policy=SMTP) 兜了一层，
+ * 但那是**下游**替我们挡的 —— 换一个裸 SMTP 实现就漏了。入口先剥干净。
+ * 收件人同样只保留安全字符。
+ */
+function headerSafe(raw: unknown, maxLen: number): string {
+  const s = String(raw ?? '').replace(/[\r\n\t\u0000]+/g, ' ').trim();
+  return maxLen === 254 ? s.replace(/[\s<>",;]+/g, '') : s.slice(0, maxLen);
+}
+
 async function attemptOnce(env: Env, msg: MailInput): Promise<AttemptResult> {
   const key = env.RESEND_KEY;
   if (!key) return { ok: false, failure: 'config', reason: 'no_key' };
@@ -88,7 +101,7 @@ async function attemptOnce(env: Env, msg: MailInput): Promise<AttemptResult> {
       body: JSON.stringify({
         from,
         to: [msg.to],
-        subject: msg.subject.slice(0, 120),
+        subject: headerSafe(msg.subject, 120),
         text: msg.text.slice(0, 8000),
       }),
       signal: AbortSignal.timeout(6000),
@@ -158,12 +171,14 @@ async function enqueue(env: Env, msg: MailInput, reason: string): Promise<void> 
 
 /** 发一封纯文本信。没配 RESEND_KEY / 没给收件人 → 直接 false，不打网络 */
 export async function sendMail(env: Env, input: MailInput): Promise<boolean> {
-  const to = (input.to || '').trim();
+  const to = headerSafe(input.to, 254);
   if (!env.RESEND_KEY || !to) return false;
+  // 收件人必须是「长得像邮箱」的一串：防止把奇怪的东西塞进 To
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(to)) return false;
 
   const msg: MailInput = {
     to,
-    subject: input.subject.slice(0, 120),
+    subject: headerSafe(input.subject, 120),
     text: input.text.slice(0, 8000),
   };
 

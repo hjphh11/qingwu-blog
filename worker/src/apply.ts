@@ -19,6 +19,7 @@
 
 import type { Env } from './types';
 import { json, secretEqual } from './util';
+import { clientIp } from './visitor';
 
 /** 同一邮箱/网站在这个窗口内重复提交会被判定为重复（与旧 `applyStore.ts` 一致） */
 const COOLDOWN_MS = 24 * 60 * 60 * 1000;
@@ -127,14 +128,11 @@ function toApi(row: AppRow): ApiApplication {
   };
 }
 
-/** 取真实访客 IP（Cloudflare 注入，比 Vercel 的 clientAddress 更可信） */
-function clientIp(request: Request): string {
-  return (
-    request.headers.get('cf-connecting-ip') ||
-    request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ||
-    'unknown'
-  );
-}
+/**
+ * 取真实访客 IP —— 统一走 visitor.ts 的那一份（只信 nginx 覆盖写的 `x-real-ip`）。
+ * 以前这里优先读 `cf-connecting-ip`，站点搬离 Cloudflare 后那个头成了客户端可伪造值，
+ * 频控与去重会被一个请求头绕过。
+ */
 
 /** 匿名 IP 标识，只用于计数与去重，不落明文 */
 async function ipKey(ip: string, salt: string): Promise<string> {

@@ -26,11 +26,21 @@ import {
   refHost,
   visitorHash,
 } from './util';
+import { clientIp } from './visitor';
 
 /** 同一访客同一页在这个窗口内只记一次访问（刷新不会把数字刷上去）—— 与旧 `DEDUPE_SECONDS` 一致 */
 const DEDUPE_SECONDS = 1800;
 /** 同一访客两次访问的最小间隔（秒）：比上面短，用来挡「刷页面」式的脚本 */
 const RATE_WINDOW_SECONDS = 60;
+/**
+ * 单个访客标识 24 小时内的写入硬上限。
+ *
+ * 去重与频控都按 `visitor = SHA-256(salt|IP|UA)` 算，而 UA 本身可以变 ——
+ * 光靠去重挡不住「每请求换一个 UA」的脚本。加一个按 visitor 的日上限，
+ * 让最坏情况下的 D1 写入量有明确天花板（防账单，也防看板被写放大拖死）。
+ * 正常访客一天绝不会超过这个数：一个页面一次会话，几十次顶天。
+ */
+const DAILY_MAX_PER_VISITOR = 200;
 /** D1 里保留多少天的明细（超过就靠清理任务删掉，避免无限涨） */
 const RETAIN_DAYS = 400;
 /** 多久顺手清一次旧数据（按请求数做概率触发，个人站量级完全够） */
@@ -46,16 +56,14 @@ interface HitResult {
 
 const ok = (body: HitResult, headers: Record<string, string> = {}) => json(body, 200, headers);
 
-/** 取访客 IP。Cloudflare 上 `CF-Connecting-IP` 由边缘写入，客户端伪造不了。 */
-function clientIp(request: Request): string {
-  return (
-    request.headers.get('cf-connecting-ip') ||
-    // 本地 `wrangler dev` / 站点转发过来时用这两个
-    request.headers.get('x-real-ip') ||
-    (request.headers.get('x-forwarded-for') || '').split(',')[0]!.trim() ||
-    'unknown'
-  );
-}
+/**
+ * 取访客 IP —— **统一走 visitor.ts 的那一份**。
+ *
+ * 以前这里优先读 `cf-connecting-ip`，注释写着「Cloudflare 上客户端伪造不了」，
+ * 但站点已经搬到自建香港机（nginx → wrangler dev），没有边缘写这个头：
+ * 客户端自带一个就能让 visitor 哈希每请求都不同，去重与限流全部失效。
+ * 现在只信 nginx 覆盖写的 `x-real-ip`（见 visitor.ts 的说明）。
+ */
 
 /**
  * 取国家/地区代码。三个来源按可信度排：
@@ -74,12 +82,20 @@ function countryOfRequest(request: Request, cf: IncomingRequestCfProperties | un
   return countryOf(request.headers.get('x-vercel-ip-country') || request.headers.get('x-country'));
 }
 
-/** 防刷 ①：同一访客在 RATE_WINDOW_SECONDS 内已经记过任何一次访问 → 直接丢。 */
+/**
+ * 防刷 ①：同一访客在 RATE_WINDOW_SECONDS 内已经记过任何一次 → 直接丢；
+ * 同时用同一次查询拿到「24 小时内的写入数」，超过 DAILY_MAX_PER_VISITOR 也丢。
+ * 合成一条 SQL 是为了不给每请求多加一次 D1 往返。
+ */
 async function rateLimited(env: Env, visitor: string, nowSec: number): Promise<boolean> {
-  const row = await env.DB.prepare('SELECT ts FROM hits WHERE visitor = ?1 ORDER BY ts DESC LIMIT 1')
-    .bind(visitor)
-    .first<{ ts: number }>();
-  return Boolean(row && nowSec - Number(row.ts) < RATE_WINDOW_SECONDS);
+  const row = await env.DB.prepare(
+    'SELECT MAX(ts) AS last, COUNT(*) AS n FROM hits WHERE visitor = ?1 AND ts > ?2',
+  )
+    .bind(visitor, nowSec - 86_400)
+    .first<{ last: number | null; n: number }>();
+  if (!row) return false;
+  if (row.last !== null && nowSec - Number(row.last) < RATE_WINDOW_SECONDS) return true;
+  return (row.n ?? 0) >= DAILY_MAX_PER_VISITOR;
 }
 
 /** 防刷 ②：同一访客同一页在 DEDUPE_SECONDS 内已经记过 → 不重复计 PV（旧代码的同一条规则）。 */
