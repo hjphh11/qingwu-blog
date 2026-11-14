@@ -89,11 +89,19 @@ v() { # $1 说明  $2 期望子串  $3 实际字符串
 }
 
 # ① CSP 已经是强制头，不再是 Report-Only
-H=$(curl -sSI --max-time 8 https://www.qingwu.ink/ 2>/dev/null)
+H=$(curl -sSI --max-time 8 https://www.qingwu.ink/ 2>/dev/null | tr -d '\r')
 v "CSP 强制" "content-security-policy:" "$H"
 if printf '%s' "$H" | grep -qi "content-security-policy-report-only"; then bad "仍存在 Report-Only 头，检查是否被旧配置覆盖"; else ok "没有 Report-Only 残留"; fi
 v "HSTS 带 includeSubDomains" "includeSubDomains" "$H"
-v "Server 头不带版本" "^server: nginx$" "$H"
+if printf '%s' "$H" | grep -qiE '^server: nginx$'; then ok "Server 头不带版本"; else bad "Server 头异常：$(printf '%s' "$H" | grep -i '^server:')"; fi
+
+# ①b 未知 Host 必须被断（以前任意 Host 都能拿到整站）
+UH=$(curl -s -k -o /dev/null -w '%{http_code}' --max-time 8 https://www.qingwu.ink/ -H 'Host: evil.example')
+[ "$UH" = "000" ] && ok "未知 Host 被断开（444）" || bad "未知 Host 期望连接被断(000)，实际 $UH"
+
+# ①c 生产 .dev.vars 不该留着 dev 旁路开关
+DEVS=$(grep -cE '^(ENVIRONMENT|AUTH_DEV_CODE|ADMIN_DEV_LOGIN|DEV_SKIP_TURNSTILE)=' /data/qingwu/worker/.dev.vars 2>/dev/null || echo 0)
+[ "$DEVS" = "0" ] && ok "生产 .dev.vars 无 dev 旁路开关" || bad "生产 .dev.vars 还有 $DEVS 个 dev 开关，删掉再重启 Worker"
 
 # ② /health 不再泄露 service 指纹
 B=$(curl -sS --max-time 8 https://www.qingwu.ink/api/health)

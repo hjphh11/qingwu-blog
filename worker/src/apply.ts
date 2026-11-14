@@ -211,8 +211,13 @@ export async function postApply(request: Request, env: Env): Promise<Response> {
 
   const ip = clientIp(request);
   // 本地 wrangler dev 的出网受限（workerd 到不了 challenges.cloudflare.com），
-  // 联调时用 DEV_SKIP_TURNSTILE 跳过网络校验。**只在 .dev.vars 里配，线上没有这个变量。**
-  const devSkip = env.DEV_SKIP_TURNSTILE === '1';
+  // 联调时用 DEV_SKIP_TURNSTILE 跳过网络校验。
+  //
+  // ⚠️ 2026-11-14 加固：**必须同时满足 `ENVIRONMENT=dev`**。
+  // 生产机上真的躺着一个 `DEV_SKIP_TURNSTILE=1`（审计时发现），只是因为没配
+  // `TURNSTILE_SECRET`（入口 503）才没炸。哪天把申请表打开，这个开关就等于
+  // 「谁都不用过人机验证」—— 现在加 ENVIRONMENT 这道前提，光有这个变量不够。
+  const devSkip = env.ENVIRONMENT === 'dev' && env.DEV_SKIP_TURNSTILE === '1';
   if (!devSkip && !(await verifyTurnstile(env.TURNSTILE_SECRET, token, ip))) {
     return json({ error: 'turnstile', message: '人机验证没通过，请刷新后重试' }, 403);
   }

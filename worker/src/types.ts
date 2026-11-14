@@ -27,9 +27,10 @@ export interface Env {
    * 为什么需要它：workerd 的网络栈在 Windows 上访问不到 `challenges.cloudflare.com`，
    * 本地联调时提交必然被判 403，整条链路测不了。
    *
-   * **它只写在 `worker/.dev.vars`（已 gitignore），线上绝对不要配** ——
-   * 线上没有这个变量，`postApply` 走的仍是完整的 `verifyTurnstile`。
-   * 想复核这一点：`grep DEV_SKIP_TURNSTILE worker/wrangler.toml` 应无结果。
+   * ⚠️ 2026-11-14 起还需要 `ENVIRONMENT === 'dev'` 才生效 ——
+   * 审计发现生产机的 `.dev.vars` 里真的留着这个变量（因为没配 `TURNSTILE_SECRET`，
+   * 入口一直是 503 才没造成后果）。只靠「线上不要配」的口头约定不够，加一道环境门。
+   * 想复核：`grep DEV_SKIP_TURNSTILE worker/wrangler.toml` 应无结果。
    */
   DEV_SKIP_TURNSTILE?: string;
 
