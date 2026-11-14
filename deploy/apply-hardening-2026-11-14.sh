@@ -38,6 +38,21 @@ cp -a "$NGINX_SNIPPET"   "$BAK/security-headers.conf"  2>/dev/null || true
 tar -C "$REPO" -czf "$BAK/worker-src.tar.gz" worker/src 2>/dev/null || true
 ok "已备份（含 worker/src、三个 nginx 文件）"
 
+# 静态站要重建（这次的 changelog 与前端改动都得进 dist/client）。
+# 不重建的话页面还是旧的，只有 Worker 与 nginx 变新 —— 很容易误判「改了没用」。
+if [ "${SKIP_BUILD:-0}" = "1" ]; then
+  say "1.5 跳过构建（SKIP_BUILD=1）"
+else
+  say "1.5 重建静态站（约 50s，机器 2G 内存，别和别的构建抢）"
+  if ( cd "$REPO" && PUBLIC_HIT_WORKER_URL=/api PUBLIC_TURNSTILE_SITE_KEY= npm run build >/tmp/qingwu-build.log 2>&1 ); then
+    ok "构建完成（日志 /tmp/qingwu-build.log）"
+  else
+    bad "构建失败，未做任何变更。末尾日志："
+    tail -20 /tmp/qingwu-build.log
+    exit 1
+  fi
+fi
+
 say "2. 安装 nginx 配置"
 cp -f "$REPO/deploy/nginx/qingwu.conf"                    "$NGINX_SITE"
 cp -f "$REPO/deploy/nginx/00-limits.conf"                 "$NGINX_LIMITS"
@@ -83,24 +98,36 @@ v "health 精简" '^{"ok":true}$' "$B"
 
 # ③ /stats 仍然要口令（fail-closed）
 S=$(curl -s -o /dev/null -w '%{http_code}' --max-time 8 https://www.qingwu.ink/api/stats)
-[ "$S" = "401" ] && ok "/stats 需要口令（401）" || bad "/stats 期望 401，实际 $S（未配 token 时会是 503，这也算对）"
+case "$S" in
+  401) ok "/stats 需要口令（401）" ;;
+  503) ok "/stats 未配口令 → 503（fail-closed，符合预期）" ;;
+  *)   bad "/stats 期望 401/503，实际 $S" ;;
+esac
 
 # ④ CF-Connecting-IP 伪造不再能刷计数：两次同路径应一次 counted、一次 seen
+#    注意要带浏览器的 UA（Worker 的 isBot 会把 curl/ 判成爬虫直接丢，那样看不出区别）
+UA='Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0 Safari/537.36'
+ORI='Origin: https://www.qingwu.ink'
 r1=$(curl -sS --max-time 8 -X POST https://www.qingwu.ink/api/hit \
-      -H 'content-type: application/json' -H 'cf-connecting-ip: 9.9.9.9' \
+      -A "$UA" -H 'content-type: application/json' -H "$ORI" -H 'cf-connecting-ip: 9.9.9.9' \
       -d '{"path":"/deploy-check","referrer":""}')
 r2=$(curl -sS --max-time 8 -X POST https://www.qingwu.ink/api/hit \
-      -H 'content-type: application/json' -H 'cf-connecting-ip: 8.8.8.8' \
+      -A "$UA" -H 'content-type: application/json' -H "$ORI" -H 'cf-connecting-ip: 8.8.8.8' \
       -d '{"path":"/deploy-check-2","referrer":""}')
 case "$r1$r2" in
   *seen*) ok "伪造 CF-Connecting-IP 已失效（出现 seen）" ;;
   *) bad "两条都可能是 counted —— 确认 nginx 是否真的清了 CF-Connecting-IP：$r1 $r2" ;;
 esac
 
-# ⑤ /link-click 只认友链白名单
+# ⑤ /link-click 只认友链白名单（也要带 Origin，否则先被同源校验挡掉）
 L=$(curl -sS --max-time 8 -X POST https://www.qingwu.ink/api/link-click \
-      -H 'content-type: application/json' -d '{"url":"https://evil.example/x"}')
+      -A "$UA" -H 'content-type: application/json' -H "$ORI" -d '{"url":"https://evil.example/x"}')
 v "link-click 拒绝白名单外主机" 'ok":false' "$L"
+
+# ⑤b 白名单内的应当放行（证明收口没把正常功能一起关掉）
+L2=$(curl -sS --max-time 8 -X POST https://www.qingwu.ink/api/link-click \
+       -A "$UA" -H 'content-type: application/json' -H "$ORI" -d '{"url":"https://rainzt.cn"}')
+v "link-click 放行友链" 'ok":true' "$L2"
 
 # ⑥ CSP 上报口存在
 C=$(curl -s -o /dev/null -w '%{http_code}' --max-time 8 -X POST https://www.qingwu.ink/api/csp-report \
