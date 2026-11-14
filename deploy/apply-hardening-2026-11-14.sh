@@ -57,7 +57,10 @@ say "2. 安装 nginx 配置"
 cp -f "$REPO/deploy/nginx/qingwu.conf"                    "$NGINX_SITE"
 cp -f "$REPO/deploy/nginx/00-limits.conf"                 "$NGINX_LIMITS"
 install -D -m 644 "$REPO/deploy/nginx/snippets/security-headers.conf" "$NGINX_SNIPPET"
-if nginx -t 2>&1 | tee /tmp/nginx-t.log | grep -q "syntax is ok"; then
+# ⚠️ 用 nginx 自己的退出码判断，不要 `nginx -t | grep -q`：
+#    grep -q 命中即退出 → 上游 nginx 被 SIGPIPE 打断 → 配合 `set -o pipefail`
+#    会让「其实通过」的检查变成失败（2026-11-14 踩过，白回滚一次）。
+if nginx -t >/tmp/nginx-t.log 2>&1; then
   systemctl reload nginx
   ok "nginx -t 通过并已 reload"
 else
@@ -65,7 +68,7 @@ else
   cp -f "$BAK/qingwu.conf"   "$NGINX_SITE"   2>/dev/null || true
   cp -f "$BAK/00-limits.conf" "$NGINX_LIMITS" 2>/dev/null || true
   cp -f "$BAK/security-headers.conf" "$NGINX_SNIPPET" 2>/dev/null || true
-  nginx -t && systemctl reload nginx
+  nginx -t >/dev/null 2>&1 && systemctl reload nginx
   echo "已还原。原因："; cat /tmp/nginx-t.log
   exit 1
 fi
