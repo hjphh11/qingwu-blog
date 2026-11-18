@@ -62,3 +62,25 @@ ssh -i ~/.ssh/qingwu_admin root@103.79.185.65 'nginx -t && systemctl reload ngin
 | 443 server 块顶部 | 新增 `$host` 白名单（非 `qingwu.ink`/`www.qingwu.ink` → 444） | `curl -k https://IP/ -H 'Host: evil.example'` 连接被断，不再返回主站 |
 | 80 server 块顶部 | 同上，未知 Host 不再 301 到主站 | 裸 IP 的 http 访问直接断开 |
 | server 级 | 新增 `server_tokens off`、`client_max_body_size 1m` | `Server: nginx` 不带版本 |
+
+## 2026-11-18 这次改了什么（一次误封事故的回滚式修正）
+
+11-14 那版把 `admin_login`（12r/m）**同时**挂到了 `location ^~ /admin` 和 `location /api/admin/`。
+后台一页要并发 5~6 个接口，秒撞 429 → `error.log` 落 5 条 `limiting requests` →
+jail `nginx-limit-req`(maxretry 5 / bantime **2h**) 直接封 IP → **全站 80/443 被 DROP**，
+前端只显示「网络异常，请检查连接后重试」，而 ping / SSH 都正常，极易误判成机器宕了。
+
+| 位置 | 变更 |
+|---|---|
+| `location = /api/admin/login`（新增，精确匹配） | 唯一保留 `zone=admin_login burst=3` 的地方 |
+| `location /api/admin/` | `admin_login` → `admin_api burst=30`（zone 额度 3r/s → **10r/s**） |
+| `location ^~ /admin` | `admin_login` → 新 zone `admin_page`（**120r/m** burst 20） |
+| `/etc/fail2ban/jail.local` | `nginx-limit-req`：`bantime 2h→20m`、`maxretry 5→10` |
+
+- 验证口径：并发 12 个 `/api/admin/session` 应全 `401`（**不该出现 429**）；
+  `POST /api/admin/login` 连打 6 次应在第 5 次开始 `429`。
+- ⚠️ **备份不要写在 `sites-enabled/` 里**：`include sites-enabled/*` 会把 `qingwu.bak-*`
+  一起加载，当场 `duplicate listen options for [::]:443` 让 `nginx -t` 失败。
+  备份统一丢 `/root/nginx-backup/`（或 `/data/backup/`）。
+- 排查口诀：**443 超时但 22/ping 通 ⇒ 先跑 `fail2ban-client status nginx-limit-req`**，
+  别先怀疑 nginx 或 workerd。
