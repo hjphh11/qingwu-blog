@@ -12,6 +12,8 @@
 //
 // ⚠️ 抓取一律带超时：这段跑在 `ctx.waitUntil` 里，拖死的是 Worker 实例本身。
 
+import type { Env } from '../types';
+
 const UA = 'qingwu-bot/1.0 (+https://www.qingwu.ink)';
 /** 单页 6s —— 与 admin/friends.ts 同口径，别在这里调大（最坏 4 页 × 6s） */
 const PAGE_TIMEOUT_MS = 6_000;
@@ -87,6 +89,57 @@ export function parseApplyBody(body: string): ParsedApply | null {
 
   if (!name) return null;
   return { name, url, avatar, intro };
+}
+
+/**
+ * 正则认不出来、但 judge 说「这是友链申请」时的兜底抽取。
+ *
+ * 有人不按格式写（「我想和你换个友链，我站叫小石屋 blog.xxx.com」），
+ * 结构化字段一个都没有，可 judge 判得出来 —— 那就把能拿到的先拿到：
+ * 留言时填的「站点」优先，其次是正文里第一个 http(s) 地址；名字用留言昵称。
+ *
+ * 拿不到任何地址就返回 null —— `applications.url` 是 NOT NULL + UNIQUE，
+ * 硬塞一个空串只会污染去重。
+ */
+export function fallbackApply(body: string, author: string, site = ''): ParsedApply | null {
+  const text = (body || '').trim();
+  const fromBody = (text.match(URL_RE)?.[0] ?? '').replace(/[.,;，。；、]+$/, '');
+  const url = (site || '').trim() || fromBody;
+  if (!/^https?:\/\/[^\s]+\.[^\s]+/i.test(url)) return null;
+
+  const name = (author || '').trim().slice(0, 30) || '未署名站点';
+  // 简介：把地址从正文里抹掉，剩下的前半段 —— 比留空有用。
+  // 顺带清掉「地址是 ，」这种抹完 URL 留下的空档，否则后台列表里一行脏字
+  const intro = text
+    .replace(url, ' ')
+    .replace(/(?:网址|地址|链接)\s*(?:是|为|[:：])?\s*[，,、。；;\s]*/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 60);
+  const avatar = text.match(/https?:\/\/[^\s"'）)】]+\.(?:png|jpe?g|webp|gif|svg|ico)/i)?.[0] ?? '';
+  return { name, url, avatar, intro };
+}
+
+/**
+ * 往「友链审核」补一条待审记录。
+ *
+ * **幂等**：`applications.url` 上有 UNIQUE，用 `INSERT OR IGNORE` 吞掉重复，
+ * 同一个人重复留言不会堆出一串同样的待审。
+ * 写不进去只 warn —— 访客的留言已经落库了，这一步失败不该有任何副作用。
+ */
+export async function saveApply(env: Env, a: ParsedApply, email?: string | null): Promise<boolean> {
+  try {
+    await env.DB.prepare(
+      `INSERT OR IGNORE INTO applications (name, url, avatar, intro, shot, email, status, created_at, ip_key)
+       VALUES (?, ?, ?, ?, '', ?, 'pending', ?, NULL)`,
+    )
+      .bind(a.name, a.url, a.avatar, a.intro, (email ?? '').trim() || null, Date.now())
+      .run();
+    return true;
+  } catch (e) {
+    console.warn('[recon] 补录友链申请失败：', e instanceof Error ? e.message : e);
+    return false;
+  }
 }
 
 // ——————————————————————————————————————————————————————————

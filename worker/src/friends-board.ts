@@ -19,6 +19,7 @@ import { json, originAllowed, parseOrigins, plainOf, secretEqual } from './util'
 import { boardMailText, flushOutbox, sendMail } from './mail';
 import { autoReplyTo, moderateComment } from './admin/ai';
 import type { ModerationResult } from './admin/ai';
+import { fallbackApply, parseApplyBody, saveApply } from './admin/recon';
 import { recordModeration } from './admin/moderation';
 // 统一身份：谁在说话由 auth 模块决定；**能不能说话**由这里决定（REQUIRE_LOGIN）
 import { isOn } from './auth/common';
@@ -578,6 +579,29 @@ export async function postFriendsBoard(request: Request, env: Env, ctx: Executio
           ms: mod.ms,
         }),
       );
+    }
+
+    /**
+     * 判成友链申请的，补一条「友链审核」待审记录。
+     *
+     * **留言板和友链申请表是两条队列**：留言落 `comments`，友链审核读 `applications`，
+     * 两者之间原本没有任何桥 —— 有人按「站点名称 / 地址 / 头像 / 简介」留言申请，
+     * 后台「友链审核」那页就永远是 0 条（2026-11-18 站长的原话：「为什么没有申请」）。
+     *
+     * 判据两个来源，任一命中都补录：
+     *   · judge 同一次调用里顺手判出来的 `friendApply`（能认出不按格式写的）
+     *   · 结构化字段正则（judge 没配、超配额、或漏判时的兜底）
+     *
+     * ⚠️ 只识别、不拦截：这条路径和留言收不收完全无关，被判 spam 的也绝不进待审。
+     */
+    if (status !== 'spam') {
+      const plain = plainOf(v.v.intro);
+      const structured = parseApplyBody(plain);
+      if (structured || mod?.friendApply?.yes) {
+        const apply = structured ?? fallbackApply(plain, author, site);
+        // 邮箱一起带上 —— 审核通过后要联系对方，这里不填就只剩一条孤儿记录
+        if (apply) ctx.waitUntil(saveApply(env, apply, emailPlain));
+      }
     }
 
     /**

@@ -38,7 +38,7 @@ import { dayKey, json } from '../util';
 import type { Admin } from './auth';
 import { identityOf, pathOf } from './comments';
 import { runProbe } from './friends';
-import { parseApplyBody, reconBlock, reconSite, type ReconInfo } from './recon';
+import { fallbackApply, parseApplyBody, reconBlock, reconSite, saveApply, type ReconInfo } from './recon';
 import {
   VERDICTS,
   VERDICT_DESC,
@@ -314,7 +314,12 @@ ${GUARD}
 违法的一律拦，不良的按下面这张表判。正常交流、提问、合理批评、调侃都算 ok。
 
 输出一个 JSON 对象（不要 markdown 代码块，不要任何额外文字）：
-{"verdict":"ok|${on.join('|')}","score":0-100,"reasons":["…"],"note":"一句中文说明"}
+{"verdict":"ok|${on.join('|')}","score":0-100,"reasons":["…"],"note":"一句中文说明","friendApply":false}
+
+friendApply 是要不要往友链审核里补一条的**识别**结果，与 verdict 无关：
+${APPLY_Q_INSTRUCTIONS}
+判据：yes = ${APPLY_Q_CRITERIA.yes}；no = ${APPLY_Q_CRITERIA.no}。
+它不影响这条留言收不收 —— 拿不准就填 false。
 
 口径：
 - score = 判定为「应当拦截」的把握，0~100。
@@ -333,6 +338,32 @@ ${(['ok', ...on] as (keyof typeof VERDICT_DESC)[])
 // ——————————————————————————————————————————————————————————
 const VALID_VERDICT = new Set<string>(['ok', ...VERDICTS]);
 
+/**
+ * 「是不是友链申请」这一问的措辞。**两条 judge 通道共用同一份** ——
+ * Jev 走 questions.criteria，OpenAI 兼容走 JSON 字段，说法不一样就会判出两套结果。
+ */
+const APPLY_Q_INSTRUCTIONS =
+  '这条留言是不是在申请友链 —— 对方希望把自己的站点收进本站友链，或提出互换链接？' +
+  '看有没有说到自己的站点、域名、博客名，或明确表达「换个友链 / 加个友链 / 收录一下」。' +
+  '只是夸赞、提问、自我介绍、打招呼但没提自己站点的，算 no。';
+
+const APPLY_Q_CRITERIA = {
+  no: '不是在申请友链：普通留言、闲聊、提问、夸赞、广告',
+  yes: '在申请友链：想被收录或与本站交换链接，通常带着自己的站点名或地址',
+};
+
+/**
+ * 两条通道的返回统一成 `{ yes, conf }`：
+ * Jev 回 `choice: 'yes' | 'no'`，OpenAI 兼容那条回 JSON 里的 `friendApply: true | false`。
+ * 缺省一律当「不是」—— 识别不出来最多是少一条待审，不该反过来制造脏数据。
+ */
+function friendApplyOf(choice: unknown, conf: unknown): FriendApplyGuess {
+  const c = String(choice ?? '').trim().toLowerCase();
+  const yes = c === 'yes' || c === 'true' || c === '1' || c === '是';
+  const n = Number(conf);
+  return { yes, conf: Number.isFinite(n) ? Math.max(0, Math.min(1, n)) : yes ? 0.6 : 0.5 };
+}
+
 interface Verdict {
   verdict: 'ok' | VerdictKey;
   score: number;
@@ -340,13 +371,28 @@ interface Verdict {
   note: string;
 }
 
+/**
+ * 「这条留言是不是一条友链申请」—— 跟风险判定**同一次调用**里顺手问出来，
+ * 不额外花一次请求（Jev 的 questions 本来就是一组，OpenAI 通道也是同一个 JSON）。
+ *
+ * 2026-11-18 站长提的：留言板提交时反正已经过 Jev 了，与其再用正则去匹配
+ * 「站点名称：xxx」那种格式，不如让它顺手判一下 —— 有人写「我想和你换个友链，
+ * 我站叫 XX」也能认出来。
+ *
+ * ⚠️ 这只是**识别**，不是判罚：永远不影响留言本身收不收，只决定要不要往
+ * 「友链审核」里补一条待审记录。判错了最坏是后台多一条可以标垃圾的记录。
+ */
+export interface FriendApplyGuess {
+  yes: boolean;
+  /** 0~1 的把握 */
+  conf: number;
+}
+
 async function callJev(
   t: { base: string; key: string; model: string },
   ctx: CommentCtx,
   cats: VerdictKey[] = [...VERDICTS],
-): Promise<
-  Verdict & { ms: number; model: string; tokensIn: number; tokensOut: number; probs: Record<string, number> }
-> {
+): Promise<JudgeOut & { probs: Record<string, number> }> {
   const started = Date.now();
   const ctl = new AbortController();
   const timer = setTimeout(() => ctl.abort(), TIMEOUT_MS);
@@ -384,6 +430,13 @@ async function callJev(
               ...VERDICTS.filter((k) => cats.includes(k)).map((k) => [k, VERDICT_DESC[k]]),
             ]),
           },
+          // 顺手判「是不是友链申请」：同一组 questions，不额外花钱。
+          // 判罚和识别是两件事 —— 后者永远不改 verdict，只落一条待审记录。
+          friendApply: {
+            type: 'choice',
+            instructions: APPLY_Q_INSTRUCTIONS,
+            criteria: APPLY_Q_CRITERIA,
+          },
         },
       }),
       signal: ctl.signal,
@@ -403,6 +456,11 @@ async function callJev(
           choice?: string;
           confidence?: number;
           probabilities?: Record<string, number>;
+        };
+        friendApply?: {
+          type?: string;
+          choice?: string;
+          confidence?: number;
         };
       };
       usage?: { input_tokens?: number; output_tokens?: number };
@@ -443,6 +501,9 @@ async function callJev(
     return {
       verdict,
       score,
+      // 上游没给这一问（老版本端点 / 只配了一个 question）时，按「不是申请」处理：
+      // 识别失败不该让提交路径多写一条脏记录
+      friendApply: friendApplyOf(data.answers?.friendApply?.choice, data.answers?.friendApply?.confidence),
       reasons: Object.entries(probs)
         .filter(([k]) => k !== verdict && (probs[k] ?? 0) >= 0.15)
         .sort((x, y) => (probs[y[0]] ?? 0) - (probs[x[0]] ?? 0))
@@ -540,6 +601,8 @@ interface JudgeOut extends Verdict {
   tokensOut: number;
   /** 各类别的概率（0~100）。Jev 原生给；OpenAI 兼容通道由 score 折算 */
   probs?: Record<string, number>;
+  /** 顺手判出来「这条是不是友链申请」（不参与判罚） */
+  friendApply?: FriendApplyGuess;
 }
 
 /**
@@ -569,6 +632,8 @@ function mockJudge(ctx: CommentCtx, cats: VerdictKey[]): JudgeOut {
     tokensIn: 0,
     tokensOut: 0,
     probs: {},
+    // 本地也能验「申请识别 → 补进待审」这条链路，不用等真模型
+    friendApply: friendApplyOf(/友链|交换链接|换个链接|收录一下|加个链接/.test(ctx.body) ? 'yes' : 'no', 0.7),
   };
 }
 
@@ -598,7 +663,7 @@ async function runJudge(
     jsonMode: true,
   });
 
-  let raw: { verdict?: string; score?: number; reasons?: string[]; note?: string } = {};
+  let raw: { verdict?: string; score?: number; reasons?: string[]; note?: string; friendApply?: unknown } = {};
   try {
     // 上游偶尔会裹 ```json，先剥掉再解析
     const text = r.text.replace(/^```(?:json)?\s*/i, '').replace(/```$/i, '').trim();
@@ -624,6 +689,8 @@ async function runJudge(
     ms: r.ms,
     tokensIn: r.tokensIn,
     tokensOut: r.tokensOut,
+    // 这条通道是模型自己吐的布尔值，没有单独的置信度，给个中性值
+    friendApply: friendApplyOf(raw.friendApply, 0.7),
   };
 }
 
@@ -650,6 +717,11 @@ export interface ModerationResult {
   /** 这次判定用的阈值，写进日志方便对账 */
   threshold: number;
   categories: VerdictKey[];
+  /**
+   * 顺手判出来的「是不是友链申请」。**只用于识别，不参与判罚** ——
+   * 调用方拿它决定要不要往「友链审核」补一条待审，它永远不会改变 status。
+   */
+  friendApply?: FriendApplyGuess;
 }
 
 /**
@@ -701,6 +773,7 @@ export async function moderateComment(
     probs: v.probs ?? {},
     threshold: s.judge.threshold,
     categories: cats,
+    friendApply: v.friendApply,
   };
 }
 
@@ -1468,9 +1541,14 @@ export async function autoReplyTo(env: Env, commentId: number): Promise<void> {
   // —— 闸门 ④：先判垃圾 ——
   // 判断不出来就不回。误判一条广告的成本，远低于在小爱嘴里复述一条垃圾。
   // 与提交时的审核用同一份规则（类别 + 阈值），改规则时两处一起变。
+  //
+  // 同一次调用里还会顺手判「是不是友链申请」—— 那是**识别**不是判罚，
+  // 下面决定要不要去对方站上核查时用得到。
+  let judgeSaysApply = false;
   if (judgeTargetOf(env, settings)) {
     try {
       const v = await moderateComment(env, ctx, { settings });
+      judgeSaysApply = Boolean(v?.friendApply?.yes);
       if (v && v.hit) {
         await logAuto(env, {
           commentId,
@@ -1502,9 +1580,13 @@ export async function autoReplyTo(env: Env, commentId: number): Promise<void> {
   // 现在起草之前做两件事：
   //   ① 实地核查：抓对方站点，查回链（首页 + 友链页候选）、取标题/自述/站点类型
   //   ② 补一条待审申请：留言板不是申请表，不补这一条后台「友链审核」永远是空的
+  //
+  // 「是不是申请」有两个来源：结构化字段正则（快、准）优先，judge 的顺手判定兜底
+  // （有人写成「我想和你换个友链，我站叫 XX」也能接住）。
   // 全程 try/catch —— 核查炸了顶多少几条事实，不能把回复本身弄挂。
   let extra = '';
-  const apply = parseApplyBody(ctx.body);
+  const apply =
+    parseApplyBody(ctx.body) ?? (judgeSaysApply ? fallbackApply(ctx.body, ctx.author) : null);
   if (apply) {
     let recon: ReconInfo | null = null;
     try {
@@ -1517,16 +1599,7 @@ export async function autoReplyTo(env: Env, commentId: number): Promise<void> {
       : '【友链申请 · 系统实地核查】\n- 这次核查没做成（抓取异常）。别猜对方的站，' +
         '直接说「我这边没打开你的站，等站长看」。';
 
-    try {
-      await env.DB.prepare(
-        `INSERT OR IGNORE INTO applications (name, url, avatar, intro, shot, email, status, created_at, ip_key)
-         VALUES (?, ?, ?, ?, '', NULL, 'pending', ?, NULL)`,
-      )
-        .bind(apply.name, apply.url, apply.avatar, apply.intro, Date.now())
-        .run();
-    } catch (e) {
-      console.warn('[ai] 补录友链申请失败：', e instanceof Error ? e.message : e);
-    }
+    await saveApply(env, apply);
   }
 
   // —— 起草 ——
