@@ -38,6 +38,7 @@ import { dayKey, json } from '../util';
 import type { Admin } from './auth';
 import { identityOf, pathOf } from './comments';
 import { runProbe } from './friends';
+import { parseApplyBody, reconBlock, reconSite, type ReconInfo } from './recon';
 import {
   VERDICTS,
   VERDICT_DESC,
@@ -482,12 +483,14 @@ function clip(s: string, n = MAX_CONTEXT_LEN): string {
   return s.length > n ? `${s.slice(0, n)}…（后略）` : s;
 }
 
-function ctxBlock(c: CommentCtx): string {
+function ctxBlock(c: CommentCtx, extra = ''): string {
   const lines = [`【页面】${c.path}`, `【访客昵称】${c.author}`, '【访客留言】', '<<<', clip(c.body), '>>>'];
   if (c.replies.length) {
     lines.push('【本楼层已有的回复（由新到旧）】');
     for (const r of c.replies.slice(0, 4)) lines.push(`- ${r.author}：${clip(r.body, 200)}`);
   }
+  // 实地核查结果（只有友链申请才有）放最后 —— 模型对末尾更敏感，也方便它先读留言再看现场
+  if (extra) lines.push('', extra);
   return lines.join('\n');
 }
 
@@ -1277,7 +1280,20 @@ const AUTO_ADDON = `
 所以再收一道：
 - 拿不准的绕开，别猜；没有的东西别编。
 - 如果这条留言实在没什么可回的（纯广告、纯链接、你根本读不懂在说什么），
-  只输出 ${AUTO_SKIP} 四个字符。系统会当作「这次不说话」，没有人会看到这四个字。`;
+  只输出 ${AUTO_SKIP} 四个字符。系统会当作「这次不说话」，没有人会看到这四个字。
+
+**如果上下文里出现了【友链申请 · 系统实地核查】**（说明这是友链申请，而且系统刚刚
+替你去对方站点看过一圈）：
+1. **先讲核查结论**：回链到底有没有、你点开了哪几页去找。这是站长要你先做的事。
+2. **再说一句你实际看到的东西**：页面标题、站点自述、是什么类型的站（个人博客 /
+   前端渲染的站 / 打不开）。只能说你真看到了的，一个字都别补。
+3. **最后告诉他下一步**：申请已经进待审队列，站长会走一遍再收录。
+- ⚠️ 绝对不要说「链接我已经加上了 / 已经放进友链墙了」—— 收录要站长亲自过一道，
+  你手上没有这个权限，说了就是骗人。
+- ⚠️ 抓不到、或者对方是前端渲染的站（源码里看不到内容）时，照实说「我这边看不到，
+  可能抓不到动态渲染的内容」，**不要**顺势替对方下结论说「你没加链接」。
+- 回链确实没找到时，语气放软：先做事（看站、夸一句真看到的），再提这一点，
+  可以顺带说一句加了回链之后招呼我一声、我再复查。`;
 
 type AutoAction = 'replied' | 'skipped' | 'blocked' | 'failed';
 
@@ -1479,6 +1495,40 @@ export async function autoReplyTo(env: Env, commentId: number): Promise<void> {
     }
   }
 
+  // —— 友链申请：先自己去对方站上核一遍，再开口 ——
+  //
+  // 2026-11-18 之前小爱只看到「站点名称 / 地址 / 头像 / 简介」那四行字，
+  // 就回「申请收到了，链接我加上」—— 她既没看过对方站，手上也没有加链接的权限。
+  // 现在起草之前做两件事：
+  //   ① 实地核查：抓对方站点，查回链（首页 + 友链页候选）、取标题/自述/站点类型
+  //   ② 补一条待审申请：留言板不是申请表，不补这一条后台「友链审核」永远是空的
+  // 全程 try/catch —— 核查炸了顶多少几条事实，不能把回复本身弄挂。
+  let extra = '';
+  const apply = parseApplyBody(ctx.body);
+  if (apply) {
+    let recon: ReconInfo | null = null;
+    try {
+      recon = await reconSite(apply.url);
+    } catch (e) {
+      console.warn('[ai] 友链实地核查失败：', e instanceof Error ? e.message : e);
+    }
+    extra = recon
+      ? reconBlock(recon)
+      : '【友链申请 · 系统实地核查】\n- 这次核查没做成（抓取异常）。别猜对方的站，' +
+        '直接说「我这边没打开你的站，等站长看」。';
+
+    try {
+      await env.DB.prepare(
+        `INSERT OR IGNORE INTO applications (name, url, avatar, intro, shot, email, status, created_at, ip_key)
+         VALUES (?, ?, ?, ?, '', NULL, 'pending', ?, NULL)`,
+      )
+        .bind(apply.name, apply.url, apply.avatar, apply.intro, Date.now())
+        .run();
+    } catch (e) {
+      console.warn('[ai] 补录友链申请失败：', e instanceof Error ? e.message : e);
+    }
+  }
+
   // —— 起草 ——
   const started = Date.now();
   let text = '';
@@ -1487,7 +1537,7 @@ export async function autoReplyTo(env: Env, commentId: number): Promise<void> {
   try {
     const r = await chat(writer, {
       system: WRITER_SYSTEM + AUTO_ADDON,
-      user: ctxBlock(ctx),
+      user: ctxBlock(ctx, extra),
       // 比后台手起草再放开一点：没人看着，太保守就会句句都是「欢迎欢迎」
       temperature: 0.85,
       maxTokens: 320,

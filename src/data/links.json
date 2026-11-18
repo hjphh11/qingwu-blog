@@ -132,6 +132,14 @@
       "url": "https://blog.mibase.top",
       "visible": true,
       "addedAt": "2026-11-10"
+    },
+    {
+      "name": "云年",
+      "avatar": "https://blog.xiaoshiho.com/logo.png",
+      "intro": "记录生活、分享作品，也收集每一次有趣的相遇。",
+      "url": "https://blog.xiaoshiho.com",
+      "visible": true,
+      "addedAt": "2026-11-18"
     }
   ]
 }
