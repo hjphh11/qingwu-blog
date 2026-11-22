@@ -176,6 +176,10 @@ export interface MyComment {
   likes: number;
   /** 非空 = 这是一条回复。定位要跳到主楼（回复在页面上默认是折叠的） */
   parentId?: string;
+  /** 落在哪儿：'friends' = 友链留言板；'post' = 某篇文章下面 */
+  where?: 'friends' | 'post';
+  /** 文章评论的页面路径（`/blog/<slug>`）。留言板为空 */
+  path?: string;
 }
 
 /**

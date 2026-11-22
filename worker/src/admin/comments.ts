@@ -55,7 +55,13 @@ export function identityOf(env: Env): Identity {
   };
 }
 
-/** post_slug → 前台路径。目前只有留言板在用这张表，文章评论接进来后这里要补分支。 */
+/**
+ * post_slug → 前台路径。
+ *
+ * 留言板是 `friends`；文章评论从 2026-11-22 起存的就是 `/blog/<slug>`（带斜杠），
+ * 所以「以 / 开头就原样当地址」这一条正好接得住。剩下那个分支是更早的
+ * `post_slug = '<slug>'` 老数据（没有前导斜杠），别删。
+ */
 export function pathOf(slug: string): string {
   if (slug === 'friends') return '/friends/';
   if (slug === 'guestbook') return '/guestbook/';

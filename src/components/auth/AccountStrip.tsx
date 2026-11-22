@@ -51,8 +51,11 @@ export default function AccountStrip({
   onLogout: () => void;
   /** 在「我的留言」里删掉一条之后，让列表刷新 */
   onDeleted: (id: string) => void;
-  /** 在抽屉里点「定位」：把这页滚到那条留言并高亮 */
-  onLocate: (id: string) => void;
+  /**
+   * 在抽屉里点「定位」：把这页滚到那条留言并高亮。
+   * `path` 为空 = 留言板；非空 = 那篇文章（不在当前页就由调用方跳过去）
+   */
+  onLocate: (id: string, path: string) => void;
 }) {
   const [editing, setEditing] = useState(false);
   const [mineOpen, setMineOpen] = useState(false);
@@ -407,9 +410,9 @@ export default function AccountStrip({
       <MyCommentsDrawer
         open={mineOpen}
         onClose={() => setMineOpen(false)}
-        onLocate={(id) => {
+        onLocate={(id, path) => {
           setMineOpen(false);
-          onLocate(id);
+          onLocate(id, path);
         }}
         onDeleted={(id) => {
           onDeleted(id);
@@ -430,7 +433,8 @@ function MyCommentsDrawer({
   open: boolean;
   onClose: () => void;
   onDeleted: (id: string) => void;
-  onLocate: (id: string) => void;
+  /** `path` 为空 = 留言板；非空 = 那篇文章（不在当前页就由调用方跳过去） */
+  onLocate: (id: string, path: string) => void;
 }) {
   const [items, setItems] = useState<MyComment[] | null>(null);
   const [busyId, setBusyId] = useState('');

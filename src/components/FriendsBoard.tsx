@@ -691,7 +691,11 @@ export default function FriendsBoard() {
                   setNotice({ kind: 'warn', text: '退出了。下次留言还要重新登录 ~' });
                 }}
                 onDeleted={(id) => setEntries((prev) => prev.filter((e) => e.id !== id))}
-                onLocate={locateEntry}
+                onLocate={(id, path) => {
+                  // 「我的留言」里现在也有文章评论 —— 别的页面就跳过去，本页才就地滚
+                  if (path) window.location.href = `${path}#${id}`;
+                  else locateEntry(id);
+                }}
               />
             </div>
           )}

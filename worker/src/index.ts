@@ -6,6 +6,7 @@
 //   GET    /stats        后台统计查询（需 Bearer 口令）
 //   GET    /post-views   单篇阅读量（文章页头部，只认 /blog/ 开头）
 //   GET    /link-status  友链展示状态（失联缓冲 / 违规整改 / 到期下架）
+//   GET    /post-comments?path=/blog/<slug>   文章评论列表（写口见下方同名路由）
 //   GET    /health       健康检查
 //   POST   /apply        友链申请提交（第 2 步）
 //   GET    /apply        无口令 = 能力探测；带口令 = 后台读列表
@@ -18,6 +19,7 @@ import { handleAuth } from './auth/index';
 import { handleAdmin } from './admin/index';
 import { runBacklinkCheck } from './admin/friends';
 import { deleteFriendComment, getFriendsBoard, postFriendLike, postFriendReply, postFriendsBoard } from './friends-board';
+import { deletePostComment, getPostComments, postPostComment, postPostLike, postPostReply } from './post-comments';
 import { getLinkPosts, getLinkStats, getLinkStatus, postLinkClick } from './link';
 import { refreshAllFeeds } from './links-refresh';
 import { flushOutbox } from './mail';
@@ -166,6 +168,26 @@ export default {
       return fb[2] === 'reply'
         ? postFriendReply(request, env, ctx, fb[1])
         : postFriendLike(request, env, fb[1]);
+    }
+
+    // —— 文章评论（每篇文章下面，post_slug = '/blog/<slug>'）——
+    // 和友链评论区共用 comments 表与实现（worker/src/comments.ts），只是分区不同：
+    // 登录 / 限流 / 审核 / 点赞 / 删除全是一套，没有第二套账号体系。
+    if (path === '/post-comments') {
+      if (request.method === 'GET') return getPostComments(request, env);
+      if (request.method === 'POST') return postPostComment(request, env, ctx);
+      return json({ ok: false, reason: 'method_not_allowed' }, 405);
+    }
+    const pcDel = path.match(/^\/post-comments\/(\d+)$/);
+    if (pcDel && request.method === 'DELETE') {
+      return deletePostComment(request, env, pcDel[1]);
+    }
+    const pc = path.match(/^\/post-comments\/(\d+)\/(reply|like)$/);
+    if (pc) {
+      if (request.method !== 'POST') return json({ ok: false, reason: 'method_not_allowed' }, 405);
+      return pc[2] === 'reply'
+        ? postPostReply(request, env, ctx, pc[1])
+        : postPostLike(request, env, pc[1]);
     }
 
     // —— 单篇阅读量（文章页头部那个数字）——

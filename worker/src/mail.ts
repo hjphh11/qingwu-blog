@@ -285,26 +285,36 @@ export async function flushOutbox(env: Env, limit = 5): Promise<{ sent: number; 
   return { sent, left };
 }
 
-/** 评论区统一的邮件正文 —— 别把 HTML 拼进来，纯文本最不容易进垃圾箱 */
+/**
+ * 评论区统一的邮件正文 —— 别把 HTML 拼进来，纯文本最不容易进垃圾箱。
+ *
+ * `where` / `link` 是给文章评论留的口子：留言板是「友链评论区」+ `/links/`，
+ * 文章下面得落在那一篇的锚点上。不传就是原来的留言板文案。
+ */
 export function boardMailText(lines: {
   kind: 'comment' | 'reply';
   from: string;
   site?: string;
   body: string;
   toName?: string;
+  /** 这是哪个评论区（「友链评论区」/「文章评论」）；不传按留言板算 */
+  where?: string;
+  /** 回链；不传按留言板算 */
+  link?: string;
 }): string {
+  const where = lines.where || '友链评论区';
   const head =
     lines.kind === 'reply'
-      ? `${lines.from} 回复了 ${lines.toName || '你的留言'}：`
-      : `${lines.from} 在友链评论区留了言：`;
+      ? `${lines.from} 在${where}回复了 ${lines.toName || '你的留言'}：`
+      : `${lines.from} 在${where}留了言：`;
   return [
     head,
     '',
     lines.body,
     '',
     lines.site ? `站点：${lines.site}` : '',
-    '—— 清吾 · 友链评论区',
-    'https://www.qingwu.ink/links/#friends-comments',
+    `—— 清吾 · ${where}`,
+    lines.link || 'https://www.qingwu.ink/links/#friends-comments',
   ]
     .filter((l) => l !== '')
     .join('\n');

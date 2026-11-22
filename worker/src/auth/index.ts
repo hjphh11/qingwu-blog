@@ -215,12 +215,16 @@ async function getMyComments(request: Request, env: Env): Promise<Response> {
    * 之前那句 SQL 带 `parent_id IS NULL`，于是在某条留言下面说过的话永远不出现 ——
    * 「我的留言」里看不到、也删不掉自己的回复，只能翻到那一楼去删。
    * 现在连回复一起列，带 `parentId`，前端据此标注「回复」并退回主楼定位。
+   *
+   * 2026-11-22：文章评论也进这张列表（原来只看 `post_slug='friends'`）——
+   * 不然在文章下面说过的话，登录之后反而哪儿都找不到、也删不掉。
+   * 所以连 `post_slug` 一起取：前端靠它认出「这是哪一篇」，并能跳回那一页定位。
    */
   const rows = await env.DB.prepare(
-    `SELECT c.id, c.body, c.status, c.ts, c.parent_id,
+    `SELECT c.id, c.body, c.status, c.ts, c.parent_id, c.post_slug,
             (SELECT COUNT(*) FROM friend_likes l WHERE l.comment_id = c.id) AS likes
        FROM comments c
-      WHERE c.post_slug = 'friends' AND c.account_id = ? AND c.status != 'deleted'
+      WHERE c.account_id = ? AND c.status != 'deleted'
       ORDER BY c.ts DESC LIMIT 50`,
   )
     .bind(me.account.id)
@@ -230,6 +234,7 @@ async function getMyComments(request: Request, env: Env): Promise<Response> {
       status: string;
       ts: number;
       parent_id: number | null;
+      post_slug: string;
       likes: number;
     }>();
 
@@ -244,6 +249,10 @@ async function getMyComments(request: Request, env: Env): Promise<Response> {
         likes: r.likes,
         /** 非空 = 这是一条回复；定位要跳到它所在的主楼（回复默认是折着的） */
         parentId: r.parent_id ? `c-${r.parent_id}` : '',
+        /** 这条落在哪儿：'friends' = 留言板；'/blog/<slug>' = 某篇文章 */
+        where: r.post_slug === 'friends' ? 'friends' : 'post',
+        /** 文章评论的页面路径（定位用）。留言板留空，前端自己拼 /links/ */
+        path: r.post_slug === 'friends' ? '' : r.post_slug,
       })),
     },
     200,

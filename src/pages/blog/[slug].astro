@@ -3,6 +3,7 @@ import Layout from '../../layouts/Layout.astro';
 import ReadingProgress from '../../components/ReadingProgress.tsx';
 import EmisCompanion from '../../components/emis/EmisCompanion.tsx';
 import ContactExpand from '../../components/ContactExpand.tsx';
+import PostComments from '../../components/PostComments.tsx';
 import MorphIcon from 'morphicons/astro';
 import { List, ArrowLeft } from '../../lib/icons';
 import { getCollection, render } from 'astro:content';
@@ -93,6 +94,10 @@ const toc = headings.filter((h) => h.depth === 2 || h.depth === 3);
             email={SITE.email}
           />
         </div>
+
+        {/* 评论：和友链留言板共用一套统一身份与后端（见 worker/src/comments.ts）。
+            client:visible —— 读完正文才滚到这里，没必要在首屏就水合一个评论区。 */}
+        <PostComments client:visible path={`/blog/${post.id}`} />
       </article>
 
       {/* 右侧目录 */}
@@ -353,6 +358,26 @@ const toc = headings.filter((h) => h.depth === 2 || h.depth === 3);
 
     fill();
     document.addEventListener('astro:page-load', fill);
+  })();
+</script>
+
+<script is:inline>
+  /*
+   * 从 /account 的「我的留言」点「定位」回来时，地址带 `#c-12`。
+   *
+   * 评论区是 `client:visible` —— 不滚进视口就不水合，元素也就不存在，
+   * 浏览器自己的锚点跳转会落空。所以先把评论区整体滚进视口触发水合；
+   * 等 React 挂载后 PostComments 会读到 hash、精确滚到那一条并标亮。
+   * 和 /links/ 末尾那段是同一个套路（两页各自管各自的，不共享状态）。
+   */
+  (function () {
+    var jump = function () {
+      if (!/^#c-\d+$/.test(location.hash)) return;
+      var box = document.getElementById('comments');
+      if (box) box.scrollIntoView({ block: 'center' });
+    };
+    jump();
+    document.addEventListener('astro:page-load', jump);
   })();
 </script>
 
