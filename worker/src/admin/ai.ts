@@ -1370,7 +1370,7 @@ export async function postFriendReply(request: Request, env: Env, _admin: Admin)
 //   ③ 跳过关键词             正文命中就不回（比如「抽奖」「加我微信」）
 //   ④ 回复范围               top 只回顶层；all 连楼中楼也回
 //   ⑤ 单访客每天             默认 1；总花费硬闸仍是 AI_DAILY_LIMIT（防 key 被刷）
-//   ⑥ judge 先判             命中启用类别且过阈值就不回
+//   ⑥ 垃圾判定               复用提交时那一次 judge 的结果，不重判（省一半调用）
 //   ⑦ 输出审核               她自己写的那段也要过同一个 judge（2026-11-22 加）
 //   ⑧ 错误文本闸             上游把「接口调用失败 / 429」当正文返回时不许落库
 //
@@ -1471,8 +1471,16 @@ type RootRow = {
  *
  * **永远不要 await 在请求路径上** —— 调用方一律 `ctx.waitUntil(autoReplyTo(...))`。
  * 这个函数不抛错，也不返回有意义的值，结果全落在 comments 与 auto_reply_log 里。
+ *
+ * `opts.verdict` 是**提交时那一次判定的结果**（同一个请求里已经算出来了）：
+ * 传进来就复用，不再对同一条留言重判一遍 —— 一次自动回复因此只花 2 次 judge
+ * （提交 1 + 输出 1），而不是 3 次。传 `null` 也算「判过了、但那次没判出结果」。
  */
-export async function autoReplyTo(env: Env, commentId: number): Promise<void> {
+export async function autoReplyTo(
+  env: Env,
+  commentId: number,
+  opts: { verdict?: ModerationResult | null } = {},
+): Promise<void> {
   // 设置每轮现读：后台刚把它关了，下一条留言就该不说话
   const settings = await loadSettings(env);
   const ar = settings.autoReply;
@@ -1579,14 +1587,20 @@ export async function autoReplyTo(env: Env, commentId: number): Promise<void> {
     return;
   }
 
-  // —— 闸门 ④：先判垃圾 ——
-  // 判断不出来就不回。误判一条广告的成本，远低于在小爱嘴里复述一条垃圾。
-  // 与提交时的审核用同一份规则（类别 + 阈值），改规则时两处一起变。
+  // —— 闸门 ④：垃圾判定（**复用提交时那一次**，不重判）——
   //
-  // 同一次调用里还会顺手判「是不是友链申请」—— 那是**识别**不是判罚，
-  // 下面决定要不要去对方站上核查时用得到。
+  // 2026-11-22 之前的做法是这里再调一次 moderateComment —— 同一条留言判两遍。
+  // 但判定结果就在同一个请求里刚算出来：调用方把 `opts.verdict` 递进来，
+  // 直接借它的 `friendApply` 就够（判罚部分不用看了 —— 命中 spam 的留言
+  // 压根不会走到这里，上游在 status 上就拦掉了）。
+  //
+  // 没传才自己判（老调用方 / 直接调这个函数）。传了 `null` = 判过了但那次没出结果
+  // （judge 没配上 / 额度用尽 / 上游报错），这时也不再补判：补了大概率还是同一个结果，
+  // 只是多花一次钱。
   let judgeSaysApply = false;
-  if (judgeTargetOf(env, settings)) {
+  if (opts.verdict !== undefined) {
+    judgeSaysApply = Boolean(opts.verdict?.friendApply?.yes);
+  } else if (judgeTargetOf(env, settings)) {
     try {
       const v = await moderateComment(env, ctx, { settings });
       judgeSaysApply = Boolean(v?.friendApply?.yes);

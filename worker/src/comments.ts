@@ -642,12 +642,15 @@ export async function postComment(
      * （见 admin/ai.ts 的 autoReplyTo：只回顶层、路径闸、关键词、单访客额度、
      *   幂等、站长本人不触发、先过 judge 再起草）。
      *
-     * **必须走 waitUntil**：它要做 judge 判定 + 起草两次模型调用（1~3 秒），
+     * 把 `mod` 递进去：同一条留言刚刚已经判过一次，她那边直接复用结论，
+     * 不再重判（省一次 judge 调用）。`mod` 为 null 也照传 —— 表示「判过、没结果」。
+     *
+     * **必须走 waitUntil**：它要做判定 + 起草两次模型调用（1~3 秒），
      * await 在请求路径上会让访客盯着"提交中"发呆。
      * 失败也只是少一条回复 —— autoReplyTo 内部全 try/catch，不抛错。
      * 被判成垃圾的就不叫小爱来接话了 —— 别在她嘴里复述一条广告。
      */
-    if (status !== 'spam') ctx.waitUntil(autoReplyTo(env, id));
+    if (status !== 'spam') ctx.waitUntil(autoReplyTo(env, id, { verdict: mod }));
 
     // 通知站长（配了 RESEND_KEY + MAIL_TO 才发）
     if (env.MAIL_TO) {
