@@ -516,7 +516,7 @@ export default function AdminSettings() {
               </header>
 
               <div className="q-admin-settings">
-                <Row title="自动回复" desc="关掉后访客留言照常收，只是她不接话。手动回复不受影响。">
+                <Row title="自动回复" desc="关掉后访客留言和文章评论照常收，只是她不接话。手动回复不受影响。">
                   <Switch on={ar.on} label="自动回复" onChange={(v) => setAr({ ...ar, on: v })} />
                 </Row>
 
@@ -553,7 +553,7 @@ export default function AdminSettings() {
                       id="ar-allow"
                       value={allowText}
                       onChange={(e) => setAllowText(e.target.value)}
-                      placeholder="/friends/, /guestbook/"
+                      placeholder="/blog/, /links/"
                     />
                   </div>
                   <div className="q-admin-field">
@@ -584,6 +584,10 @@ export default function AdminSettings() {
                   <b>不再按天卡总量：</b>
                   回多少条由「单访客额度」和 judge 判断决定，没有每日总上限、也没有夜间闭嘴时段。
                   真被刷时先撑住的是 AI 每日配额（每通道 300 次），额度用满会自动停手。
+                  <br />
+                  <b>她说的话也过 judge：</b>
+                  起草完还要按同一套规则判一遍，命中就不发；上游把报错当正文返回时也不会落库。
+                  judge 没配上或配额用尽时照发，流水里会标「unjudged」。
                 </div>
               </div>
             </section>

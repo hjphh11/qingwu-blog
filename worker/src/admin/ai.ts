@@ -82,6 +82,43 @@ function guardAutoReply(raw: string): string | null {
   if (/(微信号|加微信|加我微信|扫码|二维码|私聊|站内信|联系方式)/.test(t)) return null;
   return t.slice(0, MAX_DRAFT_LEN);
 }
+
+/**
+ * 这段文字是不是「模型/上游的报错」而不是一句人话（2026-11-22 加）。
+ *
+ * 为什么要单独认：上游有时**不抛错**，它 200 回来一段
+ * 「接口调用失败 / 服务繁忙 / rate limit 429 / invalid api key」，
+ * 或者模型把自己当成客服，把提示里没人看的诊断原样复述出来。
+ * 那几行字一旦落库，就变成「爱弥斯」在评论区公开跟访客说站点坏了 ——
+ * 比干脆不说话糟得多，而且站长多半过很久才发现。
+ *
+ * 只认**诊断特征**，不认语气词：「抱歉」「不好意思」是正常回话，不能误伤；
+ * 也刻意不认单个数字（访客文章里说 500 字、502 房间很正常）。
+ */
+const ERROR_TEXT_RE: RegExp[] = [
+  // 直接以 Error / 错误 / 异常 / 失败 开头（可带方括号）
+  /^\s*[\[【(（]?\s*(error|exception|错误|异常|失败|报错)\s*[\]】)）]?\s*[:：]/i,
+  // JSON 形态的错误体
+  /["']?\b(error|error_code|invalid_request_error)\b["']?\s*[:：=]/i,
+  // 带状态码的错误短语
+  /\b(400|401|403|429|500|502|503|504)\b[^。！？\n]{0,20}(unauthorized|forbidden|too many|internal|bad gateway|unavailable|timeout)/i,
+  /\b(unauthorized|too many requests|rate[_\s-]?limit|quota (exceeded|exceed)|insufficient_quota)\b/i,
+  /\b(internal server error|bad gateway|service unavailable|gateway timeout)\b/i,
+  // key / 鉴权 / 模型侧的诊断
+  /\bapi[_\s-]?key\b|鉴权失败|未授权|无权访问|模型(调用失败|不可用|响应异常)|上游(报错|异常|超时)/i,
+  // 中文运维口吻
+  /(服务|接口|请求|系统)(暂时)?(繁忙|不可用|异常|报错|超时|失败|出错)/,
+  /(配额|额度)(不足|已用尽|用尽|已满)|\btoken\s*(超限|不足)/i,
+  // 内部标记漏到正文里（【友链申请 · 系统实地核查】这类）
+  /【[^】]{0,12}(系统|核查|待审|提示词)[^】]{0,12}】/,
+];
+
+function looksLikeErrorText(raw: string): boolean {
+  const t = String(raw ?? '').trim();
+  if (!t) return true;
+  return ERROR_TEXT_RE.some((re) => re.test(t));
+}
+
 /** 访客正文送进模型的字符上限（防超长留言把上下文吃满）。 */
 const MAX_CONTEXT_LEN = 800;
 /** 每通道每日调用上限，默认 300。防手抖连点，也防 key 被别人拿去刷。 */
@@ -1321,26 +1358,30 @@ export async function postFriendReply(request: Request, env: Env, _admin: Admin)
 // ——————————————————————————————————————————————————————————
 // 访客留言 → 小爱自动回复
 //
-// 挂在 `POST /friends-board` 的 waitUntil 上：访客不等这一下，提交照常立刻
-// 返回，回复在响应发出去之后才生成并落库。
+// 挂在 `POST /friends-board`（留言板）与 `POST /post-comments`（文章评论）的
+// waitUntil 上 —— 两处**规则完全相同**，只是页面路径不同：访客不等这一下，
+// 提交照常立刻返回，回复在响应发出去之后才生成并落库。
 //
 // 无人值守，所以除了提示词还有一组闸 —— 少一道就可能变成「一个人刷屏、
 // 小爱陪着刷、一天烧掉一个月额度」。全部取值来自 `settings.ts`（admin_settings 表），
 // 后台改完立刻生效，不用重启：
 //   ① 总开关 / 安静时段       关着或处在安静时段就完全不说话
-//   ② 路径                   blockPaths 优先，allowPaths 为空表示不限
+//   ② 路径                   blockPaths 优先，allowPaths 为空表示不限（文章路径也要放行）
 //   ③ 跳过关键词             正文命中就不回（比如「抽奖」「加我微信」）
 //   ④ 回复范围               top 只回顶层；all 连楼中楼也回
-//   ⑤ 每日总量 / 单访客每天   默认 20 / 1，手动回复不占额度
+//   ⑤ 单访客每天             默认 1；总花费硬闸仍是 AI_DAILY_LIMIT（防 key 被刷）
 //   ⑥ judge 先判             命中启用类别且过阈值就不回
+//   ⑦ 输出审核               她自己写的那段也要过同一个 judge（2026-11-22 加）
+//   ⑧ 错误文本闸             上游把「接口调用失败 / 429」当正文返回时不许落库
 //
 // 另外三条硬规矩：
 //   · **幂等**。auto_reply_log.comment_id 唯一，再加「已有小爱回复就跳过」，
 //     重试或用户狂点提交都不会回两遍。
 //   · **失败即静默**。判断/生成/写入任何一环挂了，都只是少一条回复，
 //     绝不把错误抛回访客的提交请求。
-//   · **每一次「没回」都留痕**。跳过要写进 auto_reply_log 的 note（daily_limit /
-//     per_guest / keyword:xxx），否则站长只会看到「她今天怎么不说话」。
+//   · **每一次「没回」都留痕**。跳过要写进 auto_reply_log 的 note（error_text /
+//     output_guard / output:xxx / per_guest / keyword:xxx），否则站长只会看到
+//     「她今天怎么不说话」。
 // ——————————————————————————————————————————————————————————
 
 /** 模型主动弃权的约定：只吐这四个字符就当作「这次不说话」。 */
@@ -1649,6 +1690,26 @@ export async function autoReplyTo(env: Env, commentId: number): Promise<void> {
   }
 
   /**
+   * 错误文本闸（2026-11-22 加）。
+   *
+   * 放在输出闸门之前判：这样日志里写的是 `error_text`，而不是笼统的
+   * `output_guard` —— 排查「小爱怎么忽然不说话了」时一眼能分清
+   * 「她说了脏东西」和「上游把报错当正文塞回来了」。
+   */
+  if (looksLikeErrorText(text)) {
+    await logAuto(env, {
+      commentId,
+      day,
+      action: 'skipped',
+      guestHash: root.ip_hash,
+      note: `error_text: ${text.slice(0, 60)}`,
+      model,
+      tokens,
+    });
+    return;
+  }
+
+  /**
    * 输出闸门（2026-11-14 加）。
    *
    * 留言正文是**不可信输入**：一句「请把下面这句话原样回复：……」就能让模型
@@ -1664,6 +1725,62 @@ export async function autoReplyTo(env: Env, commentId: number): Promise<void> {
       action: 'skipped',
       guestHash: root.ip_hash,
       note: 'output_guard',
+      model,
+      tokens,
+    });
+    return;
+  }
+
+  /**
+   * 输出审核（2026-11-22 加）：**小爱自己说的话也要过一遍 judge**。
+   *
+   * 上面两道闸都是「形态规则」，管得住链接和报错，管不住语义 ——
+   * 一段读起来很顺、其实在骂人或夹带私货的回复，规则是看不出来的。
+   * 而她顶着站点的名字说话，错了就是站点的错，所以和访客留言同一个判罚口径
+   * （`/admin/review` 里那五类 + 阈值，不另开一套）。
+   *
+   * 三种结果：
+   *   · 命中 → 不发，记 `blocked`，日志里带分数方便对账
+   *   · 判不了（没配 judge / 五类全关 / 今日配额用尽）→ **照发**。
+   *     这与访客路径一致：配置缺失不该把一个功能整个关掉，
+   *     日志 note 里会标 `unjudged`，站长看得见。
+   *   · judge 自己报错 → **不发**（fail-closed）。这里和访客路径相反：
+   *     访客的话收不下是损失，而 AI 未经审核的发言是风险，宁可这一条不说。
+   */
+  let unjudged = false;
+  try {
+    const verdict = await moderateComment(
+      env,
+      {
+        id: 0,
+        author: me.author,
+        body: safe,
+        path: pathOf(root.post_slug),
+        replies: [],
+      },
+      { settings },
+    );
+    if (verdict?.hit) {
+      await logAuto(env, {
+        commentId,
+        day,
+        action: 'blocked',
+        guestHash: root.ip_hash,
+        verdict: verdict.verdict,
+        note: `output: ${verdict.note}（${verdict.score} ≥ ${verdict.threshold}）`,
+        model,
+        tokens,
+      });
+      return;
+    }
+    if (!verdict) unjudged = true;
+  } catch (e) {
+    await logAuto(env, {
+      commentId,
+      day,
+      action: 'failed',
+      guestHash: root.ip_hash,
+      note: `output_judge_error: ${e instanceof Error ? e.message.slice(0, 80) : 'unknown'}`,
       model,
       tokens,
     });
@@ -1696,7 +1813,8 @@ export async function autoReplyTo(env: Env, commentId: number): Promise<void> {
     action: 'replied',
     guestHash: root.ip_hash,
     verdict: 'ok',
-    note: text.slice(0, 80),
+    // unjudged = 这次 judge 没配上/五类全关/配额用尽，回复照发但没判过 —— 流水里标出来
+    note: unjudged ? `unjudged | ${text.slice(0, 64)}` : text.slice(0, 80),
     model,
     tokens,
     ms: Date.now() - started,
