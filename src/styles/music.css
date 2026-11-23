@@ -220,7 +220,8 @@
     height: 3.5rem;
     background: var(--color-crimson);
     color: #fff;
-    box-shadow: 0 10px 24px rgba(194, 58, 85, 0.32);
+    /* 不加投影：控制条要能收到 0 高度，收起时的 overflow 会把这层投影切出硬边。
+       参考里那颗按钮本身也是纯色块，靠颜色立住就够了。 */
   }
   .q-mp-ctl--main:hover {
     background: var(--color-accent-soft);
