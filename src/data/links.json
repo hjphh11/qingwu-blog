@@ -140,6 +140,15 @@
       "url": "https://blog.xiaoshiho.com",
       "visible": true,
       "addedAt": "2026-11-18"
+    },
+    {
+      "name": "冷汐的杂货铺",
+      "avatar": "https://lengxiqwq.com/avatar.jpg",
+      "intro": "你好谢谢小笼包再见",
+      "url": "https://lengxiqwq.com",
+      "visible": true,
+      "addedAt": "2026-11-23",
+      "shot": "https://lengxiqwq.com/screenshot.jpg"
     }
   ]
 }
