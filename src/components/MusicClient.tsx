@@ -54,6 +54,8 @@ export default function MusicClient() {
   const [queueOpen, setQueueOpen] = useState(false);
   const [view, setView] = useState<'grid' | 'list'>('grid');
   const [query, setQuery] = useState('');
+  /** 静置一会儿就把控制条收起来，只留封面、歌名和歌词。 */
+  const [idle, setIdle] = useState(false);
 
   useEffect(() => {
     initMusic();
@@ -77,6 +79,40 @@ export default function MusicClient() {
     queuePos,
     lrcLines,
   } = state;
+
+  /* 静置收起：播放中、且没开待播清单时，4.5 秒没有任何输入就把控制条收掉。
+     暂停不收 —— 那会儿用户正要找播放键。
+
+     动手（指针/键盘/触摸）立刻展开；只滚轮的话只续命、不展开：
+     滚动时会收起/展开会让整个曲库上下跳 130px，很晕。 */
+  useEffect(() => {
+    if (!isPlaying || queueOpen) {
+      setIdle(false);
+      return;
+    }
+    let timer = 0;
+    const bump = (expand: boolean) => {
+      if (expand) setIdle(false);
+      window.clearTimeout(timer);
+      timer = window.setTimeout(() => setIdle(true), 4500);
+    };
+    const expand = () => bump(true);
+    const keepAwake = () => bump(false);
+
+    bump(false);
+    const binding: Array<[string, () => void]> = [
+      ['pointermove', expand],
+      ['pointerdown', expand],
+      ['touchstart', expand],
+      ['keydown', expand],
+      ['wheel', keepAwake],
+    ];
+    binding.forEach(([e, fn]) => window.addEventListener(e, fn, { passive: true }));
+    return () => {
+      binding.forEach(([e, fn]) => window.removeEventListener(e, fn));
+      window.clearTimeout(timer);
+    };
+  }, [isPlaying, queueOpen]);
 
   const pct = duration ? Math.min(100, (currentTime / duration) * 100) : 0;
 
@@ -305,7 +341,7 @@ export default function MusicClient() {
       {/* ── 正在播放（沉浸式）─────────────────────────────────────
           参考桌面播放页：左边大方形封面 + 信息 + 控制，右边整片歌词。
           队列收进控制条左边的列表按钮，不再占一排 tab。 */}
-      <section className="q-mp-stage">
+      <section className="q-mp-stage" data-idle={idle ? '1' : '0'}>
         <div
           className="q-mp-stage__bg"
           style={currentSong ? { backgroundImage: `url(${currentSong.cover})` } : undefined}

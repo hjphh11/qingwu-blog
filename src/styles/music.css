@@ -234,6 +234,49 @@
     gap: 0.5rem;
     margin-top: auto;
     padding-top: 1.5rem;
+    /* 收起 / 展开：高度收到 0 而不是只做淡出 —— 不然中间会留一大块空白。
+       过渡写在常驻规则上，收起后展开才有动画。 */
+    max-height: 8rem;
+    /* overflow:clip + clip-margin：收起要裁，但播放键的投影不能被齐刷刷切掉 */
+    overflow: clip;
+    overflow-clip-margin: 1.75rem;
+    transition:
+      max-height var(--dur-state) var(--ease-soft),
+      opacity var(--dur-state) var(--ease-soft),
+      padding-top var(--dur-state) var(--ease-soft),
+      margin-top var(--dur-state) var(--ease-soft);
+  }
+
+  /* ── 静置收起 ────────────────────────────────────────────────
+     播放中且久无输入时，控制条、音量、时间一起收掉，
+     只留封面、歌名、进度线和歌词。动一下就回来。 */
+  .q-mp-controls {
+    max-height: 6rem;
+    overflow: clip;
+    overflow-clip-margin: 1.75rem;
+    transition:
+      max-height var(--dur-state) var(--ease-soft),
+      opacity var(--dur-state) var(--ease-soft),
+      margin-top var(--dur-state) var(--ease-soft);
+  }
+  .q-mp-times {
+    transition: opacity var(--dur-state) var(--ease-soft);
+  }
+  .q-mp-stage[data-idle='1'] .q-mp-controls {
+    max-height: 0;
+    margin-top: 0;
+    opacity: 0;
+    pointer-events: none;
+  }
+  .q-mp-stage[data-idle='1'] .q-mp-volume {
+    max-height: 0;
+    margin-top: 0;
+    padding-top: 0;
+    opacity: 0;
+    pointer-events: none;
+  }
+  .q-mp-stage[data-idle='1'] .q-mp-times {
+    opacity: 0;
   }
 
   /* ── 右栏：歌词 / 待播清单 ───────────────────────────────── */
@@ -476,7 +519,10 @@
   .q-ly-track,
   .q-ly,
   .q-mp-knob,
-  .q-ly-tilt {
+  .q-ly-tilt,
+  .q-mp-controls,
+  .q-mp-volume,
+  .q-mp-times {
     transition: none;
   }
   /* 减动效时把 3D 倾斜也撤掉：倾斜本身是氛围，不是信息 */

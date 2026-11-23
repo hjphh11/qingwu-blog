@@ -204,6 +204,30 @@ export default function Lyrics({ lines, currentTime, duration, isPlaying, onSeek
     return () => window.removeEventListener('resize', measure);
   }, [measure]);
 
+  /** 最新一版 measure，给 ResizeObserver 用（不想每次换行都重建 observer）。 */
+  const measureRef = useRef(measure);
+  useEffect(() => {
+    measureRef.current = measure;
+  }, [measure]);
+
+  /* 容器高度会变 —— 静置收起控制条时整个舞台要矮 130px。
+     用尾部防抖：过渡那 340ms 里每帧都重量的话，位移过渡会被不停打断（看着像卡住），
+     所以等尺寸稳定下来再量一次。 */
+  useEffect(() => {
+    const box = boxRef.current;
+    if (!box || typeof ResizeObserver === 'undefined') return;
+    let t = 0;
+    const ro = new ResizeObserver(() => {
+      window.clearTimeout(t);
+      t = window.setTimeout(() => measureRef.current(), 120);
+    });
+    ro.observe(box);
+    return () => {
+      ro.disconnect();
+      window.clearTimeout(t);
+    };
+  }, []);
+
   /* 换歌：接管状态归零，重新跟着新歌走 */
   useEffect(() => {
     setUserShift(null);
