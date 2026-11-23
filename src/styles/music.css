@@ -190,11 +190,39 @@
   /* ── 控制条 ──────────────────────────────────────────────────
      左列表（待播清单）、中上一首/播放/下一首、右播放模式 —— 与参考一致。 */
   .q-mp-controls {
+    position: relative;
     display: flex;
     align-items: center;
     justify-content: space-between;
     gap: 0.5rem;
     margin-top: 1.125rem;
+  }
+
+  /* 播放模式切换后的浮层提示：只换图标等于没反馈 */
+  @keyframes q-tip-in {
+    from {
+      opacity: 0;
+      transform: translateY(4px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+  .q-mp-mode-tip {
+    position: absolute;
+    right: 0;
+    bottom: calc(100% + 0.375rem);
+    padding: 0.25rem 0.625rem;
+    border-radius: 999px;
+    background: rgba(253, 246, 240, 0.96);
+    box-shadow: 0 4px 14px rgba(74, 55, 40, 0.14);
+    color: var(--color-crimson);
+    font-size: 0.6875rem;
+    line-height: 1.5;
+    white-space: nowrap;
+    pointer-events: none;
+    animation: q-tip-in var(--dur-micro) var(--ease-out-expo);
   }
   .q-mp-ctl {
     display: grid;
