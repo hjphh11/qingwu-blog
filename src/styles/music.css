@@ -1,47 +1,263 @@
-/* 音乐馆 v2 —— 「正在播放 + 曲库」两段式。
+/* 音乐馆 v2 —— 沉浸式「正在播放」+ 曲库。
    只在 .q-mp- / .q-ly- 前缀上写规则，不碰正文与其它页。
 
-   ⚠️ 歌词轨的两个决定写在这里，改之前先读：
-     ① 位移用 transform，不用 scrollTop / scrollIntoView —— 前者只动合成层，
+   ⚠️ 三件事写在这里，改之前先读：
+     ① 歌词轨位移用 transform，不用 scrollTop / scrollIntoView —— 前者只动合成层，
         也不会连带滚动整页（`scrollIntoView` 会滚动所有可滚动祖先）。
-     ② 行高必须固定。活跃行只做 scale，不放大占位，否则每换一行 offsetTop
-        全变，居中会抖。 */
+     ② 歌词行高必须固定。活跃行只做 scale，不放大占位，否则每换一行 offsetTop
+        全变，居中会抖。
+     ③ 右栏（歌词/待播清单）里的东西全部 absolute。歌词轨自然高度上千像素，
+        按常规流参与布局会把整个舞台撑高；绝对定位后它对内在高度贡献为 0，
+        行高由左边封面列决定。 */
 
 @layer components {
-  /* ── 封面氛围底 ──────────────────────────────────────────────
-     整屏一层模糊封面。滤镜给足，切歌才换一次图，平时不重绘。 */
-  .q-mp-ambient {
-    position: fixed;
-    inset: 0;
-    z-index: -10;
+  /* ── 舞台 ────────────────────────────────────────────────────
+     横向顶到版心两边（手机直接顶到屏幕边），圆角只在 md 以上给。 */
+  .q-mp-stage {
+    position: relative;
+    isolation: isolate;
+    margin-inline: calc(var(--shell-gutter) * -1);
+    padding: clamp(1.375rem, 1rem + 1.6vw, 2.5rem);
     overflow: hidden;
-    pointer-events: none;
+    background: var(--color-cream);
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.65),
+      0 22px 54px rgba(74, 55, 40, 0.09);
   }
-  .q-mp-ambient img {
-    width: 100%;
-    height: 100%;
-    object-fit: cover;
-    transform: scale(1.18);
-    filter: blur(56px) saturate(1.12);
-    opacity: 0.24;
+  @media (min-width: 768px) {
+    .q-mp-stage {
+      border-radius: var(--radius-card);
+    }
   }
-  .q-mp-ambient::after {
+
+  /* 封面模糊底。滤镜给足：这一层只在换歌时重绘一次。 */
+  .q-mp-stage__bg {
+    position: absolute;
+    inset: 0;
+    z-index: 0;
+    background-position: center;
+    background-size: cover;
+    filter: blur(80px) saturate(1.35);
+    transform: scale(1.3);
+    opacity: 0.38;
+  }
+  /* 奶油蒙层：暖色站不能做暗场，靠它把文字对比度拉回来 */
+  .q-mp-stage__veil {
+    position: absolute;
+    inset: 0;
+    z-index: 0;
+    background: linear-gradient(
+      180deg,
+      rgba(253, 246, 240, 0.74) 0%,
+      rgba(253, 246, 240, 0.86) 55%,
+      rgba(253, 246, 240, 0.93) 100%
+    );
+  }
+  /* 玫瑰暖光：封面是黑胶（《鸣潮》那几张几乎全黑），光靠它取色会整块发灰。
+     这层与封面无关，保证无论听哪首，舞台都还是这个站的颜色。 */
+  .q-mp-stage::after {
     content: '';
     position: absolute;
     inset: 0;
-    background: linear-gradient(
-      180deg,
-      rgba(253, 246, 240, 0.6) 0%,
-      rgba(253, 246, 240, 0.84) 45%,
-      var(--color-cream) 88%
-    );
+    z-index: 0;
+    background:
+      radial-gradient(120% 90% at 12% 0%, rgba(246, 165, 184, 0.34), transparent 62%),
+      radial-gradient(90% 80% at 100% 100%, rgba(232, 176, 75, 0.16), transparent 60%);
+    pointer-events: none;
+  }
+
+  .q-mp-stage__inner {
+    position: relative;
+    z-index: 1;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 2rem;
+  }
+  @media (min-width: 768px) {
+    .q-mp-stage__inner {
+      grid-template-columns: minmax(0, 20rem) minmax(0, 1fr);
+      gap: 2.5rem;
+    }
+  }
+  @media (min-width: 1024px) {
+    .q-mp-stage__inner {
+      grid-template-columns: minmax(0, 22rem) minmax(0, 1fr);
+    }
+  }
+
+  .q-mp-left {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+  }
+
+  /* ── 方形封面 ────────────────────────────────────────────── */
+  .q-mp-cover {
+    position: relative;
+    width: 100%;
+    max-width: 22rem;
+    aspect-ratio: 1;
+    overflow: hidden;
+    border-radius: 0.875rem;
+    background: linear-gradient(135deg, var(--color-rose), var(--color-amber));
+    box-shadow: 0 16px 36px rgba(74, 55, 40, 0.22);
+  }
+  .q-mp-cover img {
+    display: block;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  }
+  /* 缓冲中：别加转圈，压暗一点 + 时间位写「缓冲中…」就够了 */
+  .q-mp-cover img.is-buffering {
+    opacity: 0.72;
+    filter: saturate(0.85);
+  }
+
+  .q-mp-title {
+    margin-top: 1rem;
+    overflow: hidden;
+    font-family: var(--font-display);
+    font-size: 1.375rem;
+    line-height: 1.3;
+    color: var(--color-ink);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .q-mp-meta {
+    margin-top: 0.375rem;
+    overflow: hidden;
+    font-size: 0.8125rem;
+    line-height: 1.5;
+    color: var(--color-subtle);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .q-mp-meta__sep {
+    margin-inline: 0.35em;
+    color: var(--color-hairline);
+  }
+
+  /* ── 进度 ────────────────────────────────────────────────────
+     视觉上 3px 细线，点击区靠 ::after 撑到 21px —— 细线好看但按不准。 */
+  .q-mp-track {
+    position: relative;
+    height: 3px;
+    border-radius: 999px;
+    background: rgba(74, 55, 40, 0.14);
+    cursor: pointer;
+  }
+  .q-mp-track::after {
+    content: '';
+    position: absolute;
+    inset: -9px 0;
+  }
+  .q-mp-track:focus-visible {
+    outline: 2px solid var(--color-crimson);
+    outline-offset: 5px;
+  }
+  .q-mp-fill {
+    position: relative;
+    height: 100%;
+    border-radius: 999px;
+    background: var(--color-crimson);
+  }
+  .q-mp-knob {
+    position: absolute;
+    right: -5px;
+    top: 50%;
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: var(--color-crimson);
+    opacity: 0;
+    transform: translateY(-50%);
+    transition: opacity var(--dur-micro) var(--ease-soft);
+  }
+  .q-mp-track:hover .q-mp-knob,
+  .q-mp-track:focus-visible .q-mp-knob {
+    opacity: 1;
+  }
+  .q-mp-times {
+    display: flex;
+    justify-content: space-between;
+    margin-top: 0.4375rem;
+    font-size: 0.6875rem;
+    font-variant-numeric: tabular-nums;
+    color: var(--color-subtle);
+  }
+
+  /* ── 控制条 ──────────────────────────────────────────────────
+     左列表（待播清单）、中上一首/播放/下一首、右播放模式 —— 与参考一致。 */
+  .q-mp-controls {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+    margin-top: 1.125rem;
+  }
+  .q-mp-ctl {
+    display: grid;
+    place-items: center;
+    width: 2.5rem;
+    height: 2.5rem;
+    border-radius: 999px;
+    color: var(--color-muted);
+    transition:
+      color var(--dur-micro) var(--ease-soft),
+      background-color var(--dur-micro) var(--ease-soft),
+      transform var(--dur-press) var(--ease-press);
+  }
+  .q-mp-ctl:hover {
+    background: rgba(246, 165, 184, 0.28);
+    color: var(--color-crimson);
+  }
+  .q-mp-ctl[aria-pressed='true'] {
+    color: var(--color-crimson);
+  }
+  .q-mp-ctl--main {
+    width: 3.5rem;
+    height: 3.5rem;
+    background: var(--color-crimson);
+    color: #fff;
+    box-shadow: 0 10px 24px rgba(194, 58, 85, 0.32);
+  }
+  .q-mp-ctl--main:hover {
+    background: var(--color-accent-soft);
+    color: #fff;
+    transform: scale(1.05);
+  }
+
+  .q-mp-volume {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-top: auto;
+    padding-top: 1.5rem;
   }
 
   /* ── 歌词轨 ────────────────────────────────────────────────── */
-  /* ⚠️ 必须 absolute。歌词轨自然高度是一千多像素，一旦按常规流参与布局，
-     整个「正在播放」卡片会被它撑到 1800px 高，左侧唱片底下全是空白。
-     绝对定位之后它对父级的内在高度贡献为 0，行高由左侧唱片区决定，
-     这里再 inset:0 填满即可。 */
+  .q-mp-right {
+    position: relative;
+    min-height: 20rem;
+  }
+  @media (min-width: 768px) {
+    .q-mp-right {
+      min-height: 0;
+    }
+  }
+
+  /* 手机上封面占满整屏太奢侈 —— 缩到 17rem 居中，把高度让给歌词 */
+  @media (max-width: 767px) {
+    .q-mp-left {
+      text-align: center;
+    }
+    .q-mp-cover {
+      max-width: 17rem;
+      margin-inline: auto;
+    }
+  }
+
   .q-ly-box {
     position: absolute;
     inset: 0;
@@ -49,7 +265,7 @@
     overscroll-behavior: contain;
     /* 上下淡出用 mask：比压两条渐变色块干净，而且不吃点击。
        不写 -webkit- 前缀 —— 由 Lightning CSS 按目标浏览器自动补。 */
-    mask-image: linear-gradient(180deg, transparent 0, #000 15%, #000 85%, transparent 100%);
+    mask-image: linear-gradient(180deg, transparent 0, #000 13%, #000 87%, transparent 100%);
   }
 
   .q-ly-track {
@@ -58,8 +274,6 @@
     padding-block: 7.5rem;
     transition: transform var(--dur-move) var(--ease-out-expo);
   }
-
-  /* 手机上歌词框只有 18rem 高，7.5rem 的首尾留白会吃掉一半可视区 */
   @media (max-width: 767px) {
     .q-ly-track {
       padding-block: 4.5rem;
@@ -70,19 +284,20 @@
     position: relative;
     display: block;
     width: 100%;
-    padding: 0.5rem 0.75rem;
+    padding: 0.6875rem 0.75rem;
     border-radius: 0.75rem;
     text-align: center;
     font-size: 0.9375rem;
-    line-height: 1.7;
+    line-height: 1.65;
     color: var(--color-subtle);
     cursor: pointer;
     transition:
       color var(--dur-micro) var(--ease-soft),
-      transform 460ms var(--ease-out-expo);
+      transform var(--dur-state) var(--ease-out-expo);
   }
   .q-ly[data-near='1'] {
     color: var(--color-muted);
+    transform: scale(1.06);
   }
   .q-ly:hover {
     color: var(--color-ink);
@@ -91,11 +306,18 @@
     outline: 2px solid var(--color-crimson);
     outline-offset: -2px;
   }
+  /* 大屏歌词是主角：字号与间距都放大，活跃行只 scale 不改占位 */
+  @media (min-width: 768px) {
+    .q-ly {
+      padding: 0.8125rem 0.75rem;
+      font-size: 1.0625rem;
+    }
+  }
   .q-ly[data-on='1'] {
     /* 未擦到的部分是淡绯红，不是灰 —— 整行都该是「这首歌的颜色」 */
-    color: rgba(194, 58, 85, 0.32);
+    color: rgba(194, 58, 85, 0.34);
     font-weight: 500;
-    transform: scale(1.05);
+    transform: scale(1.28);
   }
 
   .q-ly__base {
@@ -114,11 +336,6 @@
     clip-path: inset(0 100% 0 0);
   }
 
-  /* ── 播放器唱片 ────────────────────────────────────────────── */
-  .q-mp-disc {
-    box-shadow: 0 12px 34px rgba(246, 165, 184, 0.32);
-  }
-
   /* 曲库卡片的播放遮罩：只在悬停/键盘聚焦时出现，不做常驻蒙层 */
   .q-mp-veil {
     opacity: 0;
@@ -132,10 +349,12 @@
 
 @media (prefers-reduced-motion: reduce) {
   .q-ly-track,
-  .q-ly {
+  .q-ly,
+  .q-mp-knob {
     transition: none;
   }
-  .q-ly[data-on='1'] {
+  .q-ly[data-on='1'],
+  .q-ly[data-near='1'] {
     transform: none;
   }
 }

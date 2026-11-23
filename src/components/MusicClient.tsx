@@ -19,7 +19,6 @@ import {
   Music2,
 } from '../lib/icons';
 import { initMusic, subscribe, getMusicState, getPristineState, music } from '../lib/musicStore';
-import Spectrum from './music/Spectrum';
 import Lyrics from './music/Lyrics';
 
 function fmt(sec: number) {
@@ -52,7 +51,7 @@ export default function MusicClient() {
      React 报 hydration mismatch 且**不会修补**（用户上次听的歌就不显示）。
      真实状态在下面的 effect 里同步。 */
   const [state, setState] = useState(getPristineState);
-  const [tab, setTab] = useState<'lrc' | 'queue'>('lrc');
+  const [queueOpen, setQueueOpen] = useState(false);
   const [view, setView] = useState<'grid' | 'list'>('grid');
   const [query, setQuery] = useState('');
 
@@ -234,7 +233,7 @@ export default function MusicClient() {
   const queueList = useMemo(() => {
     if (!queue.length) return <p className="py-8 text-center text-sm text-subtle">队列是空的</p>;
     return (
-      <div className="no-scrollbar h-full space-y-1 overflow-y-auto pr-1">
+      <div className="no-scrollbar min-h-0 flex-1 space-y-1 overflow-y-auto pr-1">
         {queue.map((idx, pos) => {
           const s = playlist[idx];
           if (!s) return null;
@@ -299,18 +298,8 @@ export default function MusicClient() {
     );
   }
 
-  const btn =
-    'grid h-11 w-11 place-items-center rounded-full text-ink transition-transform hover:scale-110 q-press';
-
   return (
     <div className="flex flex-col gap-10">
-      {currentSong && (
-        <div className="q-mp-ambient" aria-hidden="true">
-          {/* key 让它随歌重建：换封面时才重绘一次模糊，平时这层不动 */}
-          <img key={currentSong.cover} src={currentSong.cover} alt="" loading="lazy" decoding="async" />
-        </div>
-      )}
-
       <header className="flex flex-wrap items-end justify-between gap-x-6 gap-y-2">
         <div>
           <h1 className="font-hand text-[length:var(--text-section)] leading-none text-crimson">
@@ -323,166 +312,173 @@ export default function MusicClient() {
         </p>
       </header>
 
-      {/* ── 正在播放 ───────────────────────────────────────────── */}
-      <section className="glass-card grid gap-7 p-6 md:grid-cols-[minmax(0,0.88fr)_minmax(0,1.12fr)] md:gap-8 md:p-7">
-        <div className="flex flex-col items-center justify-center gap-4">
-          <div className="relative grid place-items-center">
-            <div
-              className="absolute h-56 w-56 rounded-full bg-rose/25 blur-2xl md:h-64 md:w-64"
-              aria-hidden="true"
-            />
-            {/* q-media = 占位底 + 加载完淡入,同时充当缓冲环的定位父级。
-                suppressHydrationWarning：`is-loaded` 由 Layout 里的内联脚本在
-                水合之前就加上了，React 会以为 className 不匹配而报一条警告
-                （属性本身没坏，只是时序问题）。 */}
-            <span
-              className="q-media grid h-44 w-44 place-items-center rounded-full md:h-52 md:w-52"
-              suppressHydrationWarning
-            >
+      {/* ── 正在播放（沉浸式）─────────────────────────────────────
+          参考桌面播放页：左边大方形封面 + 信息 + 控制，右边整片歌词。
+          队列收进控制条左边的列表按钮，不再占一排 tab。 */}
+      <section className="q-mp-stage">
+        <div
+          className="q-mp-stage__bg"
+          style={currentSong ? { backgroundImage: `url(${currentSong.cover})` } : undefined}
+          aria-hidden="true"
+        />
+        <div className="q-mp-stage__veil" aria-hidden="true" />
+
+        <div className="q-mp-stage__inner">
+          {/* 左：封面 / 信息 / 进度 / 控制 / 音量 */}
+          <div className="q-mp-left">
+            <div className="q-mp-cover">
               <img
                 src={currentSong?.cover ?? '/music/covers/cover-1.svg'}
                 alt={currentSong?.title ?? '封面'}
-                width={280}
-                height={280}
+                width={480}
+                height={480}
                 decoding="async"
-                className={`disc q-mp-disc relative h-full w-full object-cover ${
-                  isPlaying ? 'playing' : ''
-                } ${isBuffering ? 'is-buffering' : ''}`}
+                className={isBuffering ? 'is-buffering' : undefined}
               />
-              <span className={`q-buf-ring ${isBuffering ? 'is-on' : ''}`} aria-hidden="true" />
-            </span>
-            <div className="absolute h-12 w-12 rounded-full border-4 border-white/80 bg-cream/90 md:h-14 md:w-14" />
-            <Spectrum playing={isPlaying} />
-          </div>
+            </div>
 
-          <div className="min-w-0 text-center">
             {/* 歌名:切歌时柔和模糊浮现(借鉴 MotionVault blur-fade-in,MIT) */}
-            <motion.p
+            <motion.h2
               key={currentSong?.title ?? 'empty'}
-              initial={{ opacity: 0, y: 8, filter: 'blur(6px)' }}
+              initial={{ opacity: 0, y: 6, filter: 'blur(5px)' }}
               animate={{ opacity: 1, y: 0, filter: 'blur(0px)' }}
-              transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
-              className="truncate font-display text-[1.375rem] text-ink"
+              transition={{ duration: 0.45, ease: [0.16, 1, 0.3, 1] }}
+              className="q-mp-title"
             >
               {currentSong?.title ?? '未选择歌曲'}
-            </motion.p>
-            <p className="mt-1 truncate text-sm text-subtle">{currentSong?.artist ?? ''}</p>
-            {currentSong?.note && (
-              <p className="mt-1.5 truncate text-xs text-subtle">{currentSong.note}</p>
-            )}
-          </div>
+            </motion.h2>
+            <p className="q-mp-meta">
+              <span>{currentSong?.artist ?? ''}</span>
+              {currentSong?.note && (
+                <>
+                  <span className="q-mp-meta__sep">—</span>
+                  <span>{currentSong.note}</span>
+                </>
+              )}
+            </p>
 
-          <div className="w-full max-w-[22rem]">
-            <div
-              className="group h-2 w-full cursor-pointer rounded-full bg-rose/20"
-              onClick={seek}
-              onKeyDown={(e) => {
-                if (!duration) return;
-                if (e.key === 'ArrowRight') music.handleSeek(Math.min(duration, currentTime + 5));
-                if (e.key === 'ArrowLeft') music.handleSeek(Math.max(0, currentTime - 5));
-              }}
-              role="slider"
-              tabIndex={0}
-              aria-label="播放进度"
-              aria-valuemin={0}
-              aria-valuemax={Math.round(duration)}
-              aria-valuenow={Math.round(currentTime)}
-              aria-valuetext={`${fmt(currentTime)} / ${fmt(duration)}`}
-            >
+            <div className="mt-4 w-full">
               <div
-                data-q-progress
-                className="relative h-2 rounded-full bg-crimson"
-                style={{ width: `${pct}%` }}
+                className="q-mp-track"
+                onClick={seek}
+                onKeyDown={(e) => {
+                  if (!duration) return;
+                  if (e.key === 'ArrowRight') music.handleSeek(Math.min(duration, currentTime + 5));
+                  if (e.key === 'ArrowLeft') music.handleSeek(Math.max(0, currentTime - 5));
+                }}
+                role="slider"
+                tabIndex={0}
+                aria-label="播放进度"
+                aria-valuemin={0}
+                aria-valuemax={Math.round(duration)}
+                aria-valuenow={Math.round(currentTime)}
+                aria-valuetext={`${fmt(currentTime)} / ${fmt(duration)}`}
               >
-                <span className="absolute -right-1.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 rounded-full bg-crimson opacity-0 shadow-[0_2px_8px_rgba(194,58,85,0.4)] transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100" />
+                <div className="q-mp-fill" style={{ width: `${pct}%` }}>
+                  <span className="q-mp-knob" />
+                </div>
+              </div>
+              <div className="q-mp-times">
+                <span>{fmt(currentTime)}</span>
+                <span>{isBuffering ? '缓冲中…' : `-${fmt(Math.max(0, duration - currentTime))}`}</span>
               </div>
             </div>
-            <div className="mt-1.5 flex justify-between text-xs tabular-nums text-subtle">
-              <span>{fmt(currentTime)}</span>
-              <span>{fmt(duration)}</span>
+
+            <div className="q-mp-controls">
+              <button
+                type="button"
+                className="q-mp-ctl"
+                aria-label="待播清单"
+                aria-pressed={queueOpen}
+                title="待播清单"
+                onClick={() => setQueueOpen((v) => !v)}
+              >
+                <MorphIcon icon={List} size={18} color="currentColor" />
+              </button>
+
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => music.prevSong()}
+                  className="q-mp-ctl"
+                  aria-label="上一首"
+                >
+                  <MorphIcon icon={SkipBack} size={20} color="currentColor" />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => music.togglePlay()}
+                  className="q-mp-ctl q-mp-ctl--main q-press"
+                  aria-label={isPlaying ? '暂停' : '播放'}
+                >
+                  <MorphIcon icon={isPlaying ? Pause : Play} size={22} color="#fff" />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => music.nextSong()}
+                  className="q-mp-ctl"
+                  aria-label="下一首"
+                >
+                  <MorphIcon icon={SkipForward} size={20} color="currentColor" />
+                </button>
+              </div>
+
+              <button
+                type="button"
+                className="q-mp-ctl"
+                onClick={() => music.togglePlayMode()}
+                title={modeText[playMode]}
+                aria-label={`播放模式：${modeText[playMode]}`}
+              >
+                <MorphIcon icon={modeIcon[playMode]} size={18} color="currentColor" />
+              </button>
+            </div>
+
+            <div className="q-mp-volume">
+              <button
+                type="button"
+                onClick={() => music.setMuted(!isMuted)}
+                className="grid h-8 w-8 shrink-0 place-items-center rounded-full text-muted transition-colors hover:text-crimson"
+                aria-label={isMuted ? '取消静音' : '静音'}
+              >
+                <MorphIcon
+                  icon={isMuted || volume === 0 ? VolumeX : Volume2}
+                  size={17}
+                  color="currentColor"
+                />
+              </button>
+              <input
+                type="range"
+                min={0}
+                max={100}
+                value={Math.round(volume * 100)}
+                onChange={(e) => music.setVolume(Number(e.target.value) / 100)}
+                className="h-1 w-full cursor-pointer accent-crimson"
+                aria-label="音量"
+              />
             </div>
           </div>
 
-          <div className="flex items-center gap-3">
-            <button type="button" onClick={() => music.prevSong()} className={btn} aria-label="上一首">
-              <MorphIcon icon={SkipBack} size={20} color="currentColor" />
-            </button>
-            <button
-              type="button"
-              onClick={() => music.togglePlay()}
-              className="grid h-14 w-14 place-items-center rounded-full bg-crimson text-white shadow-lg transition-transform hover:scale-110 q-press"
-              aria-label={isPlaying ? '暂停' : '播放'}
-            >
-              <MorphIcon icon={isPlaying ? Pause : Play} size={22} color="#fff" />
-            </button>
-            <button type="button" onClick={() => music.nextSong()} className={btn} aria-label="下一首">
-              <MorphIcon icon={SkipForward} size={20} color="currentColor" />
-            </button>
-          </div>
-
-          <div className="flex w-full max-w-[22rem] items-center gap-3">
-            <button
-              type="button"
-              onClick={() => music.setMuted(!isMuted)}
-              className="grid h-10 w-10 shrink-0 place-items-center rounded-full text-muted transition-colors hover:text-crimson"
-              aria-label={isMuted ? '取消静音' : '静音'}
-            >
-              <MorphIcon
-                icon={isMuted || volume === 0 ? VolumeX : Volume2}
-                size={19}
-                color="currentColor"
-              />
-            </button>
-            <input
-              type="range"
-              min={0}
-              max={100}
-              value={Math.round(volume * 100)}
-              onChange={(e) => music.setVolume(Number(e.target.value) / 100)}
-              className="h-1.5 w-full cursor-pointer accent-crimson"
-              aria-label="音量"
-            />
-            <button
-              type="button"
-              onClick={() => music.togglePlayMode()}
-              className="grid h-9 w-9 shrink-0 place-items-center rounded-full border border-rose/30 text-muted transition-colors hover:border-rose/60 hover:text-crimson"
-              title={`播放模式：${modeText[playMode]}`}
-              aria-label={`播放模式：${modeText[playMode]}`}
-            >
-              <MorphIcon icon={modeIcon[playMode]} size={17} color="currentColor" />
-            </button>
-          </div>
-        </div>
-
-        {/* 右：歌词常驻 / 队列。高度交给左栏决定 —— 里面的歌词轨是绝对定位，
-            不参与内在高度，所以行高天然等于左边唱片区。 */}
-        <div className="flex h-[21rem] min-h-0 flex-col md:h-auto">
-          <div className="flex shrink-0 items-center gap-2">
-            {(
-              [
-                ['lrc', '歌词', lrcLines.length ? null : '暂无'],
-                ['queue', '队列', String(queue.length)],
-              ] as const
-            ).map(([key, label, hint]) => (
-              <button
-                key={key}
-                type="button"
-                onClick={() => setTab(key)}
-                aria-pressed={tab === key}
-                className={`min-h-9 rounded-full px-4 text-sm transition-colors duration-200 ${
-                  tab === key
-                    ? 'bg-rose/30 font-medium text-crimson'
-                    : 'text-muted hover:bg-rose/10 hover:text-crimson'
-                }`}
-              >
-                {label}
-                {hint && <span className="ml-1.5 text-xs text-subtle">{hint}</span>}
-              </button>
-            ))}
-          </div>
-
-          <div className="relative mt-3 min-h-0 flex-1">
-            {tab === 'lrc' ? (
+          {/* 右：歌词常驻；列表按钮切换成待播清单 */}
+          <div className="q-mp-right">
+            {queueOpen ? (
+              <div className="absolute inset-0 flex flex-col">
+                <div className="flex shrink-0 items-center justify-between pb-1">
+                  <p className="text-sm text-ink">
+                    待播清单 <span className="ml-1 text-xs text-subtle">{queue.length} 首</span>
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => setQueueOpen(false)}
+                    className="grid h-8 w-8 place-items-center rounded-full text-subtle transition-colors hover:bg-rose/25 hover:text-crimson"
+                    aria-label="回到歌词"
+                  >
+                    <MorphIcon icon={X} size={16} color="currentColor" />
+                  </button>
+                </div>
+                {queueList}
+              </div>
+            ) : (
               <Lyrics
                 lines={lrcLines}
                 currentTime={currentTime}
@@ -490,8 +486,6 @@ export default function MusicClient() {
                 isPlaying={isPlaying}
                 onSeek={music.handleSeek}
               />
-            ) : (
-              <div className="absolute inset-0 flex flex-col">{queueList}</div>
             )}
           </div>
         </div>
