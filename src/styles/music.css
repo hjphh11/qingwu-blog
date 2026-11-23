@@ -1,0 +1,141 @@
+/* 音乐馆 v2 —— 「正在播放 + 曲库」两段式。
+   只在 .q-mp- / .q-ly- 前缀上写规则，不碰正文与其它页。
+
+   ⚠️ 歌词轨的两个决定写在这里，改之前先读：
+     ① 位移用 transform，不用 scrollTop / scrollIntoView —— 前者只动合成层，
+        也不会连带滚动整页（`scrollIntoView` 会滚动所有可滚动祖先）。
+     ② 行高必须固定。活跃行只做 scale，不放大占位，否则每换一行 offsetTop
+        全变，居中会抖。 */
+
+@layer components {
+  /* ── 封面氛围底 ──────────────────────────────────────────────
+     整屏一层模糊封面。滤镜给足，切歌才换一次图，平时不重绘。 */
+  .q-mp-ambient {
+    position: fixed;
+    inset: 0;
+    z-index: -10;
+    overflow: hidden;
+    pointer-events: none;
+  }
+  .q-mp-ambient img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    transform: scale(1.18);
+    filter: blur(56px) saturate(1.12);
+    opacity: 0.24;
+  }
+  .q-mp-ambient::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(
+      180deg,
+      rgba(253, 246, 240, 0.6) 0%,
+      rgba(253, 246, 240, 0.84) 45%,
+      var(--color-cream) 88%
+    );
+  }
+
+  /* ── 歌词轨 ────────────────────────────────────────────────── */
+  /* ⚠️ 必须 absolute。歌词轨自然高度是一千多像素，一旦按常规流参与布局，
+     整个「正在播放」卡片会被它撑到 1800px 高，左侧唱片底下全是空白。
+     绝对定位之后它对父级的内在高度贡献为 0，行高由左侧唱片区决定，
+     这里再 inset:0 填满即可。 */
+  .q-ly-box {
+    position: absolute;
+    inset: 0;
+    overflow: hidden;
+    overscroll-behavior: contain;
+    /* 上下淡出用 mask：比压两条渐变色块干净，而且不吃点击。
+       不写 -webkit- 前缀 —— 由 Lightning CSS 按目标浏览器自动补。 */
+    mask-image: linear-gradient(180deg, transparent 0, #000 15%, #000 85%, transparent 100%);
+  }
+
+  .q-ly-track {
+    position: relative;
+    /* 首末行也要能滚到正中，否则第一句永远贴在最上面 */
+    padding-block: 7.5rem;
+    transition: transform var(--dur-move) var(--ease-out-expo);
+  }
+
+  /* 手机上歌词框只有 18rem 高，7.5rem 的首尾留白会吃掉一半可视区 */
+  @media (max-width: 767px) {
+    .q-ly-track {
+      padding-block: 4.5rem;
+    }
+  }
+
+  .q-ly {
+    position: relative;
+    display: block;
+    width: 100%;
+    padding: 0.5rem 0.75rem;
+    border-radius: 0.75rem;
+    text-align: center;
+    font-size: 0.9375rem;
+    line-height: 1.7;
+    color: var(--color-subtle);
+    cursor: pointer;
+    transition:
+      color var(--dur-micro) var(--ease-soft),
+      transform 460ms var(--ease-out-expo);
+  }
+  .q-ly[data-near='1'] {
+    color: var(--color-muted);
+  }
+  .q-ly:hover {
+    color: var(--color-ink);
+  }
+  .q-ly:focus-visible {
+    outline: 2px solid var(--color-crimson);
+    outline-offset: -2px;
+  }
+  .q-ly[data-on='1'] {
+    /* 未擦到的部分是淡绯红，不是灰 —— 整行都该是「这首歌的颜色」 */
+    color: rgba(194, 58, 85, 0.32);
+    font-weight: 500;
+    transform: scale(1.05);
+  }
+
+  .q-ly__base {
+    display: block;
+  }
+  /* 擦色层：绝对铺满、再补一份同样的 padding ——
+     绝对定位的包含块是父级 padding box，不加回来会左移一个 padding。 */
+  .q-ly__fill {
+    position: absolute;
+    inset: 0;
+    display: block;
+    padding: inherit;
+    text-align: center;
+    color: var(--color-crimson);
+    pointer-events: none;
+    clip-path: inset(0 100% 0 0);
+  }
+
+  /* ── 播放器唱片 ────────────────────────────────────────────── */
+  .q-mp-disc {
+    box-shadow: 0 12px 34px rgba(246, 165, 184, 0.32);
+  }
+
+  /* 曲库卡片的播放遮罩：只在悬停/键盘聚焦时出现，不做常驻蒙层 */
+  .q-mp-veil {
+    opacity: 0;
+    transition: opacity var(--dur-micro) var(--ease-soft);
+  }
+  .q-mp-card:hover .q-mp-veil,
+  .q-mp-card:focus-within .q-mp-veil {
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .q-ly-track,
+  .q-ly {
+    transition: none;
+  }
+  .q-ly[data-on='1'] {
+    transform: none;
+  }
+}

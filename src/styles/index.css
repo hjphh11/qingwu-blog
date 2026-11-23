@@ -34,6 +34,8 @@
 @import "./effects.css";
 @import "./lightbox.css";
 @import "./gallery.css";
+/* 音乐馆（正在播放 + 曲库）—— 只作用于 .q-mp- / .q-ly- 前缀 */
+@import "./music.css";
 @import "./emis.css";
 @import "./cursor.css";
 @import "./motion.css";

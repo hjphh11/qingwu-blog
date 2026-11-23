@@ -68,6 +68,11 @@ export {
   KeyRound,
   Pencil,
   Trash2,
+  // 音乐馆（v2）：搜索曲库 / 队列 / 网格视图 / 下一首播放
+  Search,
+  ListMusic,
+  LayoutGrid,
+  ListPlus,
   // 表情面板
   Smile,
   // 账号页（上传头像 / 定位留言 / 站长徽章）

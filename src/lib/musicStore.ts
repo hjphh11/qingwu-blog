@@ -11,6 +11,8 @@ const S = {
   volume: 'qingwu:volume',
   muted: 'qingwu:muted',
   mode: 'qingwu:mode',
+  queue: 'qingwu:queue',
+  qpos: 'qingwu:qpos',
 };
 
 let currentIndex = 0;
@@ -39,6 +41,20 @@ const metaDuration = () => Math.max(0, Math.round(playlist[currentIndex]?.durati
 let volume = 0.8;
 let isMuted = false;
 let playMode: PlayMode = 'order';
+
+/* ── 播放队列 ──────────────────────────────────────────────────────────
+   原来只有 currentIndex 一个指针，「随机」是每次 Math.random() 抽一首 ——
+   既可能连抽同一首，也让「上一首」无法回到真的上一首。
+   现在队列存的是 **playlist 下标**，顺序即播放顺序：
+     · 顺序 / 单曲 → 顺着 queue 走（列表循环）
+     · 随机      → 进入时打乱「当前之后」的部分，退出时用快照还原
+   queue 与 playlist 长度不一致也安全：restore() 会把新歌补到队尾。 */
+let queue: number[] = playlist.map((_, i) => i);
+/** 当前曲目在 queue 里的位置（不是 playlist 下标）。 */
+let queuePos = 0;
+/** 进随机模式前的原顺序快照；退出随机时用它还原，避免把「顺序」永久洗掉。 */
+let orderBackup: number[] | null = null;
+
 let audio: HTMLAudioElement | null = null;
 let loadedIndex: number | null = null;
 let initialized = false; // 整页加载只恢复一次;客户端路由跨页不重复恢复
@@ -46,15 +62,101 @@ const listeners = new Set<Listener>();
 
 const currentSong = () => playlist[currentIndex] || null;
 
-function parseLRC(lrc = ''): { time: number; text: string }[] {
-  return lrc
+type Line = { time: number; text: string };
+/** 没有歌词时的稳定空数组 —— 每次返回新 [] 会让歌词组件的 effect 反复重启。 */
+const NO_LINES: Line[] = [];
+/** 按 lrc 原文缓存解析结果：timeupdate 每秒四次，不缓存就是每秒四次全量正则。 */
+const lrcCache = new Map<string, Line[]>();
+
+function parseLRC(lrc = ''): Line[] {
+  const cached = lrcCache.get(lrc);
+  if (cached) return cached;
+  const lines = lrc
     .split('\n')
     .map((line) => {
       const m = line.match(/\[(\d+):(\d+(?:\.\d+)?)\](.*)/);
       if (!m) return null;
       return { time: Number(m[1]) * 60 + Number(m[2]), text: (m[3] || '').trim() };
     })
-    .filter(Boolean) as { time: number; text: string }[];
+    .filter(Boolean) as Line[];
+  lrcCache.set(lrc, lines);
+  return lines;
+}
+
+/* ── 系统媒体控制（锁屏 / 耳机线控 / 媒体键） ──────────────────────────
+   零依赖，但一直没人做：网页播放器锁屏后完全失控，耳机按一下也没反应。
+   处理器只注册一次；metadata 在换歌与播放状态变化时同步。 */
+function mediaSession(): MediaSession | null {
+  if (typeof navigator === 'undefined' || !('mediaSession' in navigator)) return null;
+  return navigator.mediaSession;
+}
+
+function syncMetadata() {
+  const s = mediaSession();
+  if (!s) return;
+  const song = currentSong();
+  if (!song) return;
+  try {
+    s.metadata = new MediaMetadata({
+      title: song.title,
+      artist: song.artist,
+      album: '清吾 · 音乐馆',
+      artwork: [{ src: song.cover, sizes: '512x512', type: 'image/webp' }],
+    });
+  } catch {
+    /* 老浏览器没有 MediaMetadata 构造器：忽略即可 */
+  }
+}
+
+function syncPlaybackState() {
+  const s = mediaSession();
+  if (s) s.playbackState = isPlaying ? 'playing' : 'paused';
+}
+
+/** 锁屏进度条。position 必须 ≤ duration，否则 setPositionState 会抛。 */
+function syncPosition() {
+  const s = mediaSession();
+  const a = audio;
+  if (!s || !a || !s.setPositionState) return;
+  const total = Number.isFinite(a.duration) && a.duration > 0 ? a.duration : duration;
+  if (!total) return;
+  try {
+    s.setPositionState({
+      duration: total,
+      position: Math.min(a.currentTime || 0, total),
+      playbackRate: a.playbackRate || 1,
+    });
+  } catch {
+    /* 元数据还没到位时忽略这一帧 */
+  }
+}
+
+function setupMediaSession() {
+  const s = mediaSession();
+  if (!s) return;
+  const act = (action: MediaSessionAction, fn: MediaSessionActionHandler) => {
+    try {
+      s.setActionHandler(action, fn);
+    } catch {
+      /* 该浏览器不支持这个 action */
+    }
+  };
+  act('play', () => {
+    if (!isPlaying) togglePlay();
+  });
+  act('pause', () => {
+    if (isPlaying) togglePlay();
+  });
+  act('previoustrack', () => prevSong());
+  act('nexttrack', () => nextSong());
+  act('seekbackward', (d) => handleSeek(Math.max(0, currentTime - (d.seekOffset || 10))));
+  act('seekforward', (d) => handleSeek(Math.min(duration, currentTime + (d.seekOffset || 10))));
+  act('seekto', (d) => {
+    if (typeof d.seekTime === 'number') handleSeek(d.seekTime);
+  });
+  act('stop', () => {
+    if (isPlaying) togglePlay();
+  });
 }
 
 function getAudio(): HTMLAudioElement {
@@ -64,14 +166,22 @@ function getAudio(): HTMLAudioElement {
     // Web Audio 的输出会被规范要求静音 → 声音正常但频谱永远全 0（见 lib/audioAnalyser.ts）。
     // 对象存储回的是 `Access-Control-Allow-Origin: *`，所以这里安全；换托管商要重新确认。
     audio.crossOrigin = 'anonymous';
+    let lastPosSync = 0;
     audio.addEventListener('timeupdate', () => {
       if (audio) currentTime = audio.currentTime;
+      // 锁屏进度条一秒一次就够；每秒四次只会白算。
+      const now = Date.now();
+      if (now - lastPosSync > 1000) {
+        lastPosSync = now;
+        syncPosition();
+      }
       emit();
     });
     audio.addEventListener('loadedmetadata', () => {
       // ⚠️ 用 `||` 而不是直接赋值：元数据刚解析出来那一次 duration 仍可能是 0/NaN，
       // 直接写会把数据里预置的时长（以及已经在显示的 3:19）清成 0:00。
       if (audio) duration = Math.round(audio.duration) || metaDuration();
+      syncPosition();
       emit();
     });
     audio.addEventListener('ended', onEnded);
@@ -89,6 +199,8 @@ function getAudio(): HTMLAudioElement {
     audio.addEventListener('canplay', () => setBuffering(false));
     // 暂停 / 换源之后不该还挂着缓冲环
     audio.addEventListener('pause', () => setBuffering(false));
+
+    setupMediaSession();
   }
   return audio;
 }
@@ -116,9 +228,30 @@ function persist() {
     localStorage.setItem(S.volume, String(volume));
     localStorage.setItem(S.muted, isMuted ? '1' : '0');
     localStorage.setItem(S.mode, playMode);
+    localStorage.setItem(S.queue, JSON.stringify(queue));
+    localStorage.setItem(S.qpos, String(queuePos));
   } catch {
     /* ignore */
   }
+}
+
+/** 把队列里不合法的下标剔掉，再把 playlist 新增的歌补到队尾。 */
+function sanitizeQueue(raw: unknown): number[] | null {
+  if (!Array.isArray(raw)) return null;
+  const seen = new Set<number>();
+  const out: number[] = [];
+  for (const n of raw) {
+    if (!Number.isInteger(n) || n < 0 || n >= playlist.length || seen.has(n)) continue;
+    seen.add(n);
+    out.push(n as number);
+  }
+  playlist.forEach((_, i) => {
+    if (!seen.has(i)) {
+      seen.add(i);
+      out.push(i);
+    }
+  });
+  return out.length ? out : null;
 }
 
 function restore() {
@@ -131,6 +264,23 @@ function restore() {
     const mode = localStorage.getItem(S.mode);
     playMode = mode === 'one' || mode === 'random' ? mode : 'order';
     isPlaying = false; // 自动播放限制,恢复时默认暂停
+
+    // ⚠️ 队列单独 try：localStorage 里要是存了半截 JSON，
+    // 不该连带把「上次听到哪首」一起丢掉。
+    let savedRaw: unknown = null;
+    try {
+      savedRaw = JSON.parse(localStorage.getItem(S.queue) || 'null');
+    } catch {
+      savedRaw = null;
+    }
+    const saved = sanitizeQueue(savedRaw);
+    if (saved) queue = saved;
+    else queue = playlist.map((_, idx) => idx);
+    const at = queue.indexOf(currentIndex);
+    queuePos = at >= 0 ? at : 0;
+    // 随机态退出后不该「接着上次的洗牌」——启动一律按队列原样走
+    orderBackup = null;
+
     // 还原出来的歌也要立刻有总时长（restore 发生在 any ensure 之前）
     duration = metaDuration();
     if (currentTime > duration) currentTime = 0;
@@ -149,10 +299,12 @@ function ensure(index: number) {
     duration = Math.max(0, Math.round(playlist[index]?.duration ?? 0));
     // 换源相当于重新开始等数据,先把这个状态清掉(新源真的卡住时会再触发 waiting)
     isBuffering = false;
+    syncMetadata();
   }
 }
 
-function playSong(index: number) {
+/** 真正把某一首放起来（不动队列）。 */
+function startSong(index: number) {
   if (index < 0 || index >= playlist.length) return;
   if (index !== currentIndex) {
     currentIndex = index;
@@ -169,14 +321,44 @@ function playSong(index: number) {
   a.play()
     .then(() => {
       isPlaying = true;
+      syncPlaybackState();
       emit();
     })
     .catch(() => {
       isPlaying = false;
+      syncPlaybackState();
       emit();
     });
   persist();
   emit();
+}
+
+/**
+ * 用户从曲库 / 队列里点某一首。
+ * 已在队列里 → 把游标移过去；不在 → 插到当前之后（连播这首再回到原顺序）。
+ */
+function playSong(index: number) {
+  if (index < 0 || index >= playlist.length) return;
+  const at = queue.indexOf(index);
+  if (at >= 0) {
+    queuePos = at;
+  } else {
+    queue.splice(queuePos + 1, 0, index);
+    queuePos += 1;
+  }
+  // 点同一首 = 从头再来（这是播放器的常识，别静默不响应）
+  if (index === currentIndex) {
+    currentTime = 0;
+    if (loadedIndex === index && audio) audio.currentTime = 0;
+  }
+  startSong(index);
+}
+
+/** 队列内前后走一步（列表循环）。 */
+function step(dir: 1 | -1) {
+  if (!queue.length) return;
+  queuePos = (queuePos + dir + queue.length) % queue.length;
+  startSong(queue[queuePos]);
 }
 
 function togglePlay() {
@@ -187,6 +369,7 @@ function togglePlay() {
   if (isPlaying) {
     a.pause();
     isPlaying = false;
+    syncPlaybackState();
   } else {
     hookAnalyser(a);
     if (loadedIndex === currentIndex && currentTime > 0 && a.currentTime !== currentTime) {
@@ -195,10 +378,13 @@ function togglePlay() {
     a.play()
       .then(() => {
         isPlaying = true;
+        syncPlaybackState();
+        syncPosition();
         emit();
       })
       .catch(() => {
         isPlaying = false;
+        syncPlaybackState();
         emit();
       });
   }
@@ -213,24 +399,46 @@ function onEnded() {
     a.play().catch(() => {});
     return;
   }
-  nextSong();
+  step(1);
 }
 
 function nextSong() {
-  let ni: number;
-  if (playMode === 'random') ni = Math.floor(Math.random() * playlist.length);
-  else ni = (currentIndex + 1) % playlist.length;
-  playSong(ni);
+  step(1);
 }
 
 function prevSong() {
-  playSong((currentIndex - 1 + playlist.length) % playlist.length);
+  step(-1);
+}
+
+/** 「下一首播放」：插到当前之后；原本已在队列里就先摘出来，避免重复。 */
+function playNext(index: number) {
+  if (index < 0 || index >= playlist.length || index === currentIndex) return;
+  const at = queue.indexOf(index);
+  if (at >= 0) {
+    queue.splice(at, 1);
+    if (at < queuePos) queuePos -= 1;
+  }
+  queue.splice(queuePos + 1, 0, index);
+  persist();
+  emit();
+}
+
+/** 从队列里移除一条（当前正在播的那条不能删，得先切走）。 */
+function removeFromQueue(pos: number) {
+  if (pos < 0 || pos >= queue.length) return;
+  if (pos === queuePos || queue.length <= 1) return;
+  queue.splice(pos, 1);
+  if (pos < queuePos) queuePos -= 1;
+  persist();
+  emit();
 }
 
 function handleSeek(t: number) {
   const a = getAudio();
-  a.currentTime = t;
-  currentTime = t;
+  const target = Math.max(0, Math.min(duration || a.duration || 0, t));
+  a.currentTime = target;
+  currentTime = target;
+  syncPosition();
   emit();
 }
 
@@ -248,13 +456,36 @@ function setMuted(m: boolean) {
   emit();
 }
 
+/** 洗牌：只打乱「当前之后」的部分，已经听过的顺序保持不动。 */
+function shuffleTail() {
+  const tail = queue.slice(queuePos + 1);
+  for (let i = tail.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [tail[i], tail[j]] = [tail[j], tail[i]];
+  }
+  queue = queue.slice(0, queuePos + 1).concat(tail);
+}
+
 function togglePlayMode() {
-  playMode = playMode === 'order' ? 'one' : playMode === 'one' ? 'random' : 'order';
+  const next: PlayMode = playMode === 'order' ? 'one' : playMode === 'one' ? 'random' : 'order';
+  if (next === 'random') {
+    orderBackup = queue.slice();
+    shuffleTail();
+  } else if (playMode === 'random') {
+    // 退出随机会把顺序还原 —— 否则「顺序播放」其实是刚才那副洗过的牌
+    if (orderBackup) {
+      queue = orderBackup;
+      const at = queue.indexOf(currentIndex);
+      queuePos = at >= 0 ? at : 0;
+      orderBackup = null;
+    }
+  }
+  playMode = next;
   persist();
   emit();
 }
 
-function getCurrentLyric(): { text: string; lines: { time: number; text: string }[] } | null {
+function getCurrentLyric(): { text: string; lines: Line[] } | null {
   const s = currentSong();
   if (!s?.lrc) return null;
   const lines = parseLRC(s.lrc);
@@ -279,7 +510,9 @@ function getState() {
     volume,
     isMuted,
     playMode,
-    lrcLines: lyric?.lines ?? [],
+    queue: queue.slice(),
+    queuePos,
+    lrcLines: lyric?.lines ?? NO_LINES,
     currentLyric: lyric?.text ?? '',
   };
 }
@@ -338,4 +571,6 @@ export const music = {
   setVolume,
   setMuted,
   togglePlayMode,
+  playNext,
+  removeFromQueue,
 };
