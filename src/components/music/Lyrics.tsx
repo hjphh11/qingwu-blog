@@ -37,7 +37,7 @@ function progressAt(lines: LyricLine[], i: number, t: number, total: number) {
 }
 
 /** 手动滑开后，停手多久回到当前句（毫秒）。 */
-const HOLD_MS = 4000;
+const HOLD_MS = 6000;
 
 type Props = {
   lines: LyricLine[];
@@ -76,6 +76,8 @@ export default function Lyrics({ lines, currentTime, duration, isPlaying, onSeek
 
   /** 当前实际渲染的位移（接管中就用接管值）。滚轮/拖动要读它，所以另存一份 ref。 */
   const shift = userShift ?? autoShift;
+  /** 手动接管中：整片景深关掉，否则翻到远处时每行都是虚的。 */
+  const pinned = userShift !== null;
   const shiftRef = useRef(0);
   /** wheel 监听器只挂一次，闭包里的 userShift 会过期，所以也存一份。 */
   const userShiftRef = useRef<number | null>(null);
@@ -229,14 +231,19 @@ export default function Lyrics({ lines, currentTime, duration, isPlaying, onSeek
   }
 
   return (
-    <div
-      ref={boxRef}
-      className="q-ly-box"
-      onPointerDown={onPointerDown}
-      onPointerMove={onPointerMove}
-      onPointerUp={onPointerUp}
-      onPointerCancel={onPointerUp}
-    >
+    <>
+      <div
+        ref={boxRef}
+        className="q-ly-box"
+        /* 手动滑开时挂 data-pinned：CSS 会把景深整片关掉。
+           否则每行都按「离当前唱到的那句多远」去虚化 —— 你翻到远处的段落时，
+           眼前每一行都是 far 级模糊 + 0.2 透明度，等于什么都看不见。 */
+        data-pinned={pinned ? '1' : '0'}
+        onPointerDown={onPointerDown}
+        onPointerMove={onPointerMove}
+        onPointerUp={onPointerUp}
+        onPointerCancel={onPointerUp}
+      >
       {/* 3D 倾斜挂在这层：轨自己要 translateY，两个 transform 写一处会互相覆盖 */}
       <div className="q-ly-tilt">
         <div ref={trackRef} className="q-ly-track" style={{ transform: `translateY(${-shift}px)` }}>
@@ -288,6 +295,23 @@ export default function Lyrics({ lines, currentTime, duration, isPlaying, onSeek
           })}
         </div>
       </div>
-    </div>
+      </div>
+
+      {/* 挂在遮罩外面（否则贴底这颗按钮会被 mask 一起淡掉）。
+          手动滑开时给个明确的出口，不用干等 6 秒。 */}
+      {pinned && (
+        <>
+          <p className="q-ly-hint">点任意一句，从那里开始播</p>
+          <button
+            type="button"
+            className="q-ly-back"
+            onPointerDown={(e) => e.stopPropagation()}
+            onClick={() => setUserShift(null)}
+          >
+            回到当前句
+          </button>
+        </>
+      )}
+    </>
   );
 }

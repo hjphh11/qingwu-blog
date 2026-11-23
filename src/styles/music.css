@@ -399,6 +399,55 @@
     }
   }
 
+  /* 手动接管期间：整片取消虚化。
+     景深是按「离音频唱到的那句多远」算的，一旦翻到远处段落，
+     眼前每一行都会是 far 级（blur 5.5px + 0.2 透明度）＝ 什么都看不见。
+     接管时焦点应该是你眼前这一段，不是喇叭里那一句。 */
+  .q-ly-box[data-pinned='1'] .q-ly {
+    filter: blur(0);
+    opacity: 0.82;
+    transform: none;
+  }
+  .q-ly-box[data-pinned='1'] .q-ly[data-on='1'] {
+    opacity: 1;
+  }
+
+  /* 「回到当前句」——挂在遮罩外面，贴右下角。
+     歌词左对齐、多数行都短，右下角通常是最空的。 */
+  .q-ly-back {
+    position: absolute;
+    right: 0;
+    bottom: 0.5rem;
+    z-index: 2;
+    padding: 0.4375rem 0.875rem;
+    border: 1px solid rgba(246, 165, 184, 0.55);
+    border-radius: 999px;
+    background: rgba(253, 246, 240, 0.94);
+    box-shadow: 0 6px 18px rgba(74, 55, 40, 0.12);
+    color: var(--color-crimson);
+    font-size: 0.75rem;
+    line-height: 1.2;
+    white-space: nowrap;
+    transition:
+      background-color var(--dur-micro) var(--ease-soft),
+      opacity var(--dur-state) var(--ease-soft);
+  }
+  .q-ly-back:hover {
+    background: #fff;
+  }
+
+  /* 接管期间的操作提示：不写这一行，没人知道歌词可以点 */
+  .q-ly-hint {
+    position: absolute;
+    top: 0.25rem;
+    left: 0;
+    z-index: 2;
+    font-size: 0.6875rem;
+    line-height: 1.4;
+    color: var(--color-subtle);
+    pointer-events: none;
+  }
+
   /* 当前行：清晰、加粗、绯红点亮 + 外发光 */
   .q-ly[data-on='1'] {
     color: rgba(194, 58, 85, 0.32);
