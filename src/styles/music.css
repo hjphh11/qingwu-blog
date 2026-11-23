@@ -236,10 +236,10 @@
     padding-top: 1.5rem;
   }
 
-  /* ── 歌词轨 ────────────────────────────────────────────────── */
+  /* ── 右栏：歌词 / 待播清单 ───────────────────────────────── */
   .q-mp-right {
     position: relative;
-    min-height: 20rem;
+    min-height: 18rem;
   }
   @media (min-width: 768px) {
     .q-mp-right {
@@ -256,6 +256,28 @@
       max-width: 17rem;
       margin-inline: auto;
     }
+    /* 手机上两栏之间那 2rem + 歌词首行留白会连成一整块空白 */
+    .q-mp-stage__inner {
+      gap: 0.75rem;
+    }
+  }
+
+  /* ── 歌词轨：类 Apple Music 的景深滚动 ─────────────────────
+     ① 距离越远高斯模糊越重、透明度越低 —— 模拟镜头虚化；
+     ② 当前行逐字填充（clip-path 裁切），并带一圈柔和外发光；
+     ③ 整块轻微 3D 倾斜（perspective + rotateX/rotateZ），给纵深；
+     ④ 左对齐、粗体、行距宽松。
+     行高仍然固定、活跃行只做 scale —— 否则 offsetTop 会跳。 */
+  .q-ly-tilt {
+    height: 100%;
+    transform: perspective(1100px) rotateX(5deg) rotateZ(-1.2deg);
+    transform-origin: 50% 42%;
+  }
+  @media (max-width: 767px) {
+    /* 手机上倾斜会把字压小、还容易切边，直接关掉 */
+    .q-ly-tilt {
+      transform: none;
+    }
   }
 
   .q-ly-box {
@@ -265,7 +287,7 @@
     overscroll-behavior: contain;
     /* 上下淡出用 mask：比压两条渐变色块干净，而且不吃点击。
        不写 -webkit- 前缀 —— 由 Lightning CSS 按目标浏览器自动补。 */
-    mask-image: linear-gradient(180deg, transparent 0, #000 13%, #000 87%, transparent 100%);
+    mask-image: linear-gradient(180deg, transparent 0, #000 16%, #000 84%, transparent 100%);
   }
 
   .q-ly-track {
@@ -276,7 +298,7 @@
   }
   @media (max-width: 767px) {
     .q-ly-track {
-      padding-block: 4.5rem;
+      padding-block: 2rem;
     }
   }
 
@@ -284,55 +306,118 @@
     position: relative;
     display: block;
     width: 100%;
-    padding: 0.6875rem 0.75rem;
-    border-radius: 0.75rem;
-    text-align: center;
-    font-size: 0.9375rem;
-    line-height: 1.65;
-    color: var(--color-subtle);
+    padding: 0.5625rem 0.25rem;
+    text-align: left;
+    font-size: 1rem;
+    font-weight: 500;
+    line-height: 1.55;
+    color: var(--color-ink);
     cursor: pointer;
+    transform-origin: left center;
     transition:
-      color var(--dur-micro) var(--ease-soft),
+      filter var(--dur-state) var(--ease-soft),
+      opacity var(--dur-state) var(--ease-soft),
+      color var(--dur-state) var(--ease-soft),
       transform var(--dur-state) var(--ease-out-expo);
   }
-  .q-ly[data-near='1'] {
-    color: var(--color-muted);
-    transform: scale(1.06);
+  @media (min-width: 768px) {
+    .q-ly {
+      padding: 0.9rem 0.375rem;
+      font-size: 1.625rem;
+      line-height: 1.42;
+    }
   }
   .q-ly:hover {
-    color: var(--color-ink);
+    color: var(--color-muted);
   }
   .q-ly:focus-visible {
     outline: 2px solid var(--color-crimson);
-    outline-offset: -2px;
+    outline-offset: 2px;
+    border-radius: 0.375rem;
   }
-  /* 大屏歌词是主角：字号与间距都放大，活跃行只 scale 不改占位 */
-  @media (min-width: 768px) {
+
+  /* 景深：距离当前行越远，越虚、越淡、越小 */
+  .q-ly[data-dist='1'] {
+    filter: blur(1.2px);
+    opacity: 0.68;
+    transform: scale(0.975);
+  }
+  .q-ly[data-dist='2'] {
+    filter: blur(2.6px);
+    opacity: 0.48;
+    transform: scale(0.95);
+  }
+  .q-ly[data-dist='3'] {
+    filter: blur(4px);
+    opacity: 0.32;
+    transform: scale(0.925);
+  }
+  .q-ly[data-dist='far'] {
+    filter: blur(5.5px);
+    opacity: 0.2;
+    transform: scale(0.9);
+    /* 远处那几十行不参与过渡：39 个元素同时动 filter 会掉帧，
+       反正它们在遮罩边缘，肉眼也看不出「跳」 */
+    transition: none;
+  }
+
+  /* 手机上歌词区只有 20rem，同一套 blur 会把后几行直接糊没 —— 整体减半 */
+  @media (max-width: 767px) {
     .q-ly {
-      padding: 0.8125rem 0.75rem;
       font-size: 1.0625rem;
     }
+    .q-ly[data-dist='1'] {
+      filter: blur(0.7px);
+      opacity: 0.8;
+    }
+    .q-ly[data-dist='2'] {
+      filter: blur(1.6px);
+      opacity: 0.62;
+    }
+    .q-ly[data-dist='3'] {
+      filter: blur(2.4px);
+      opacity: 0.45;
+    }
+    .q-ly[data-dist='far'] {
+      filter: blur(3.2px);
+      opacity: 0.3;
+    }
   }
+
+  /* 当前行：清晰、加粗、绯红点亮 + 外发光 */
   .q-ly[data-on='1'] {
-    /* 未擦到的部分是淡绯红，不是灰 —— 整行都该是「这首歌的颜色」 */
-    color: rgba(194, 58, 85, 0.34);
-    font-weight: 500;
-    transform: scale(1.28);
+    color: rgba(194, 58, 85, 0.32);
+    font-weight: 600;
+    filter: blur(0);
+    opacity: 1;
+    transform: none;
+  }
+  /* 发光挂在未裁切的底层上：裁切层（已唱部分）盖在上面，
+     这样整行都有一圈柔光，而不是在擦色边界上切出一道硬边。 */
+  .q-ly[data-on='1'] .q-ly__base {
+    text-shadow:
+      0 0 22px rgba(194, 58, 85, 0.42),
+      0 0 5px rgba(194, 58, 85, 0.22);
   }
 
   .q-ly__base {
     display: block;
   }
   /* 擦色层：绝对铺满、再补一份同样的 padding ——
-     绝对定位的包含块是父级 padding box，不加回来会左移一个 padding。 */
+     绝对定位的包含块是父级 padding box，不加回来会左移一个 padding。
+     `--p`（0~1）由 rAF 每帧写在元素上，clip 由 CSS 算：
+     这样非当前行只要被 [data-on='0'] 强制收起，就不会留着上一次的进度。 */
   .q-ly__fill {
     position: absolute;
     inset: 0;
     display: block;
     padding: inherit;
-    text-align: center;
+    text-align: left;
     color: var(--color-crimson);
     pointer-events: none;
+    clip-path: inset(0 calc((1 - var(--p, 0)) * 100%) 0 0);
+  }
+  .q-ly[data-on='0'] .q-ly__fill {
     clip-path: inset(0 100% 0 0);
   }
 
@@ -350,11 +435,18 @@
 @media (prefers-reduced-motion: reduce) {
   .q-ly-track,
   .q-ly,
-  .q-mp-knob {
+  .q-mp-knob,
+  .q-ly-tilt {
     transition: none;
   }
-  .q-ly[data-on='1'],
-  .q-ly[data-near='1'] {
+  /* 减动效时把 3D 倾斜也撤掉：倾斜本身是氛围，不是信息 */
+  .q-ly-tilt {
+    transform: none;
+  }
+  .q-ly[data-dist='1'],
+  .q-ly[data-dist='2'],
+  .q-ly[data-dist='3'],
+  .q-ly[data-dist='far'] {
     transform: none;
   }
 }

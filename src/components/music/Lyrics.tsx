@@ -65,14 +65,15 @@ export default function Lyrics({ lines, currentTime, duration, isPlaying, onSeek
   const [active, setActive] = useState(-1);
   const [shift, setShift] = useState(0);
 
-  /** 只描当前行的擦色；其余行停在 0 或 1，不动。 */
+  /** 只描当前行的擦色；其余行由 CSS 的 [data-on='0'] 强制收起。
+      写的是自定义属性 `--p` 而不是 clip-path 本身 —— 行离开「当前」之后
+      内联的 clip-path 不会自己复位，会留在上一行的进度上（旧行永远红着）。 */
   const paint = useCallback(
     (i: number, t: number) => {
       if (i < 0 || i >= lines.length) return;
       const el = fillRefs.current[i];
       if (!el) return;
-      const pct = progressAt(lines, i, t, duration) * 100;
-      el.style.clipPath = `inset(0 ${(100 - pct).toFixed(2)}% 0 0)`;
+      el.style.setProperty('--p', progressAt(lines, i, t, duration).toFixed(4));
     },
     [lines, duration],
   );
@@ -141,41 +142,47 @@ export default function Lyrics({ lines, currentTime, duration, isPlaying, onSeek
 
   return (
     <div ref={boxRef} className="q-ly-box">
-      <div ref={trackRef} className="q-ly-track" style={{ transform: `translateY(${-shift}px)` }}>
-        {lines.map((ln, i) => {
-          const on = i === active;
-          const near = Math.abs(i - active) === 1;
-          return (
-            <div
-              key={`${ln.time}-${i}`}
-              className="q-ly"
-              data-i={i}
-              data-on={on ? '1' : '0'}
-              data-near={near ? '1' : '0'}
-              role="button"
-              tabIndex={0}
-              aria-current={on ? 'true' : undefined}
-              onClick={() => onSeek(ln.time)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' || e.key === ' ') {
-                  e.preventDefault();
-                  onSeek(ln.time);
-                }
-              }}
-            >
-              <span className="q-ly__base">{ln.text || '\u00A0'}</span>
-              <span
-                ref={(el) => {
-                  fillRefs.current[i] = el;
+      {/* 3D 倾斜挂在这层：轨自己要 translateY，两个 transform 写一处会互相覆盖 */}
+      <div className="q-ly-tilt">
+        <div ref={trackRef} className="q-ly-track" style={{ transform: `translateY(${-shift}px)` }}>
+          {lines.map((ln, i) => {
+            const on = i === active;
+            /* 还没唱到第一句时 active = -1：把「离第一行的距离 + 1」当进度用，
+               前奏期间从上往下逐行变虚，并且第一行也算「下一句」——
+               它不该以清晰的全黑字冒充当前行。 */
+            const dist = active < 0 ? i + 1 : Math.abs(i - active);
+            return (
+              <div
+                key={`${ln.time}-${i}`}
+                className="q-ly"
+                data-i={i}
+                data-on={on ? '1' : '0'}
+                data-dist={dist > 3 ? 'far' : String(dist)}
+                role="button"
+                tabIndex={0}
+                aria-current={on ? 'true' : undefined}
+                onClick={() => onSeek(ln.time)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    onSeek(ln.time);
+                  }
                 }}
-                className="q-ly__fill"
-                aria-hidden="true"
               >
-                {ln.text || '\u00A0'}
-              </span>
-            </div>
-          );
-        })}
+                <span className="q-ly__base">{ln.text || '\u00A0'}</span>
+                <span
+                  ref={(el) => {
+                    fillRefs.current[i] = el;
+                  }}
+                  className="q-ly__fill"
+                  aria-hidden="true"
+                >
+                  {ln.text || '\u00A0'}
+                </span>
+              </div>
+            );
+          })}
+        </div>
       </div>
     </div>
   );
