@@ -270,8 +270,11 @@
      行高仍然固定、活跃行只做 scale —— 否则 offsetTop 会跳。 */
   .q-ly-tilt {
     height: 100%;
-    transform: perspective(1100px) rotateX(5deg) rotateZ(-1.2deg);
-    transform-origin: 50% 42%;
+    /* 以左缘为轴把整片歌词「往右转」：左边那侧是空的、不参与转动，
+       右边往画面深处退 —— 纵深感来自这一下，不是靠 scale 假装。
+       轴钉在 left center，左对齐的起始边就不会跟着漂。 */
+    transform: perspective(900px) rotateY(12deg) rotateX(2deg) rotateZ(-1.2deg);
+    transform-origin: left center;
   }
   @media (max-width: 767px) {
     /* 手机上倾斜会把字压小、还容易切边，直接关掉 */
@@ -305,7 +308,11 @@
   .q-ly {
     position: relative;
     display: block;
-    width: 100%;
+    /* ⚠️ 必须是 fit-content：擦色的百分比是按「元素宽度」算的，
+       以前 width:100% 时容器 775px、文字只有 330px —— 进度到 42% 整句就填满了。
+       收紧到文字宽度后，--p 才真的等于「唱到第几个字」。 */
+    width: fit-content;
+    max-width: 100%;
     padding: 0.5625rem 0.25rem;
     text-align: left;
     font-size: 1rem;
