@@ -270,10 +270,10 @@
      行高仍然固定、活跃行只做 scale —— 否则 offsetTop 会跳。 */
   .q-ly-tilt {
     height: 100%;
-    /* 以左缘为轴把整片歌词「往右转」：左边那侧是空的、不参与转动，
-       右边往画面深处退 —— 纵深感来自这一下，不是靠 scale 假装。
-       轴钉在 left center，左对齐的起始边就不会跟着漂。 */
-    transform: perspective(900px) rotateY(12deg) rotateX(2deg) rotateZ(-1.2deg);
+    /* 轴钉在左缘：左边（每句开头）保持原位，右边往镜头前方转 —— 越大越近。
+       ⚠️ 轴只能钉左边：钉右边时长句会被透视推到面板左侧以外，被遮罩切掉。
+       透视值给到 700px，光是 900 时这点宽度差看不出纵深。 */
+    transform: perspective(700px) rotateY(-12deg) rotateX(2deg) rotateZ(1.2deg);
     transform-origin: left center;
   }
   @media (max-width: 767px) {
