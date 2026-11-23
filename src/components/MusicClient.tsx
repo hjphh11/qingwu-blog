@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { motion } from 'motion/react';
 import { MorphIcon } from 'morphicons/react';
 import {
@@ -54,9 +54,6 @@ export default function MusicClient() {
   const [queueOpen, setQueueOpen] = useState(false);
   const [view, setView] = useState<'grid' | 'list'>('grid');
   const [query, setQuery] = useState('');
-  /** 播放模式切换后的短暂提示；首帧不显示（那是恢复出来的状态，不是用户点的）。 */
-  const [modeTip, setModeTip] = useState<string | null>(null);
-  const modeSeen = useRef(false);
 
   useEffect(() => {
     initMusic();
@@ -81,23 +78,7 @@ export default function MusicClient() {
     lrcLines,
   } = state;
 
-  /* 播放模式切换的短暂提示。首次挂载不弹 —— 那是从 localStorage 恢复的状态。 */
-  useEffect(() => {
-    if (!modeSeen.current) {
-      modeSeen.current = true;
-      return;
-    }
-    setModeTip(modeText[playMode]);
-    const t = window.setTimeout(() => setModeTip(null), 1600);
-    return () => window.clearTimeout(t);
-  }, [playMode]);
-
   const pct = duration ? Math.min(100, (currentTime / duration) * 100) : 0;
-
-  const totalMin = useMemo(
-    () => Math.round(playlist.reduce((acc, s) => acc + (s.duration ?? 0), 0) / 60),
-    [playlist],
-  );
 
   const filtered = useMemo(() => {
     const q = query.trim();
@@ -314,16 +295,11 @@ export default function MusicClient() {
 
   return (
     <div className="flex flex-col gap-10">
-      <header className="flex flex-wrap items-end justify-between gap-x-6 gap-y-2">
-        <div>
-          <h1 className="font-hand text-[length:var(--text-section)] leading-none text-crimson">
-            音乐馆
-          </h1>
-          <p className="mt-3 text-sm text-muted">在旋律里，找到片刻安静 ~</p>
-        </div>
-        <p className="text-xs tabular-nums text-subtle">
-          {playlist.length} 首 · 约 {totalMin} 分钟
-        </p>
+      <header>
+        <h1 className="font-hand text-[length:var(--text-section)] leading-none text-crimson">
+          音乐馆
+        </h1>
+        <p className="mt-3 text-sm text-muted">在旋律里，找到片刻安静 ~</p>
       </header>
 
       {/* ── 正在播放（沉浸式）─────────────────────────────────────
@@ -446,13 +422,6 @@ export default function MusicClient() {
               >
                 <MorphIcon icon={modeIcon[playMode]} size={18} color="currentColor" />
               </button>
-
-              {/* 只换图标没人知道点成功了 —— 切换后在按钮上方浮一下当前模式 */}
-              {modeTip && (
-                <span className="q-mp-mode-tip" role="status">
-                  {modeTip}
-                </span>
-              )}
             </div>
 
             <div className="q-mp-volume">
