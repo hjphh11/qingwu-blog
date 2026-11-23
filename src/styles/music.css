@@ -297,11 +297,15 @@
     position: relative;
     /* 首末行也要能滚到正中，否则第一句永远贴在最上面 */
     padding-block: 7.5rem;
+    /* 左侧留一条空白：每句开头不要顶着封面，
+       那块空是构图的一部分（右侧本来就有大量留白，左边顶死会显得挤） */
+    padding-inline-start: 7rem;
     transition: transform var(--dur-move) var(--ease-out-expo);
   }
   @media (max-width: 767px) {
     .q-ly-track {
       padding-block: 2rem;
+      padding-inline-start: 0.75rem;
     }
   }
 
