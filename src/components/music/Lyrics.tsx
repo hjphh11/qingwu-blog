@@ -73,6 +73,14 @@ export default function Lyrics({ lines, currentTime, duration, isPlaying, onSeek
   const [autoShift, setAutoShift] = useState(0);
   /** 手动接管时的位移；null = 跟随当前句。 */
   const [userShift, setUserShift] = useState<number | null>(null);
+  /**
+   * 接管期间「视觉焦点」落在哪一行。
+   *
+   * 景深不能按音频那一句算 —— 翻到远处时眼前全是虚的；也不能整个关掉，
+   * 那就没有纵深了。所以接管时改用**视口中心**那一行当焦点：
+   * 中间的清楚，上下照样渐隐渐糊。
+   */
+  const [focus, setFocus] = useState(-1);
 
   /** 当前实际渲染的位移（接管中就用接管值）。滚轮/拖动要读它，所以另存一份 ref。 */
   const shift = userShift ?? autoShift;
@@ -169,6 +177,28 @@ export default function Lyrics({ lines, currentTime, duration, isPlaying, onSeek
     measure();
   }, [measure, lines]);
 
+  /* 接管期间：算出视口正中是哪一行，景深跟着它走。
+     滚轮一次事件就会跑一遍，几十个节点取 offsetTop 而已，不值得再 memo。 */
+  useLayoutEffect(() => {
+    if (userShift === null) return;
+    const box = boxRef.current;
+    const track = trackRef.current;
+    if (!box || !track) return;
+    const center = shift + box.clientHeight / 2;
+    let best = -1;
+    let bestD = Infinity;
+    const kids = track.children;
+    for (let i = 0; i < kids.length; i++) {
+      const el = kids[i] as HTMLElement;
+      const d = Math.abs(el.offsetTop + el.offsetHeight / 2 - center);
+      if (d < bestD) {
+        bestD = d;
+        best = i;
+      }
+    }
+    setFocus(best);
+  }, [userShift, shift, lines]);
+
   useEffect(() => {
     window.addEventListener('resize', measure);
     return () => window.removeEventListener('resize', measure);
@@ -181,6 +211,14 @@ export default function Lyrics({ lines, currentTime, duration, isPlaying, onSeek
     dragRef.current = null;
     window.clearTimeout(holdTimer.current);
   }, [lines]);
+
+  /* 按下播放 / 从暂停恢复：立刻回到当前句。
+     浏览歌词时按播放，意图就是「从这儿接着听」，别再停在刚才翻到的地方。 */
+  useEffect(() => {
+    if (!isPlaying) return;
+    window.clearTimeout(holdTimer.current);
+    setUserShift(null);
+  }, [isPlaying]);
 
   /* 滚轮：必须用原生监听（React 的 onWheel 是 passive 的，preventDefault 无效），
      否则滚歌词会连带把整页滚下去。 */
@@ -203,14 +241,20 @@ export default function Lyrics({ lines, currentTime, duration, isPlaying, onSeek
     dragRef.current = { y: e.clientY, base: shiftRef.current };
     draggedRef.current = false;
     setUserShift(shiftRef.current);
-    e.currentTarget.setPointerCapture?.(e.pointerId);
+    /* ⚠️ 这里**不能** setPointerCapture：一旦捕获，后续 pointerup 会被重定向到
+       容器，浏览器随之把 click 也派发给容器 —— 行上的 onClick 永远收不到，
+       表现就是「点歌词没反应」。只有真的开始拖了才捕获。 */
   };
 
   const onPointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
     const d = dragRef.current;
     if (!d) return;
     const dy = d.y - e.clientY;
-    if (!draggedRef.current && Math.abs(dy) > 6) draggedRef.current = true;
+    if (!draggedRef.current && Math.abs(dy) > 6) {
+      draggedRef.current = true;
+      // 拖起来了才捕获，保证手指/鼠标移出面板也继续跟手
+      e.currentTarget.setPointerCapture?.(e.pointerId);
+    }
     if (!draggedRef.current) return;
     setUserShift(clampShift(d.base + dy));
   };
@@ -218,7 +262,9 @@ export default function Lyrics({ lines, currentTime, duration, isPlaying, onSeek
   const onPointerUp = (e: React.PointerEvent<HTMLDivElement>) => {
     if (!dragRef.current) return;
     dragRef.current = null;
-    e.currentTarget.releasePointerCapture?.(e.pointerId);
+    if (e.currentTarget.hasPointerCapture?.(e.pointerId)) {
+      e.currentTarget.releasePointerCapture(e.pointerId);
+    }
     hold();
   };
 
@@ -249,10 +295,12 @@ export default function Lyrics({ lines, currentTime, duration, isPlaying, onSeek
         <div ref={trackRef} className="q-ly-track" style={{ transform: `translateY(${-shift}px)` }}>
           {lines.map((ln, i) => {
             const on = i === active;
-            /* 还没唱到第一句时 active = -1：把「离第一行的距离 + 1」当进度用，
-               前奏期间从上往下逐行变虚，并且第一行也算「下一句」——
-               它不该以清晰的全黑字冒充当前行。 */
-            const dist = active < 0 ? i + 1 : Math.abs(i - active);
+            /* 焦点的来源：自动跟随时是「当前唱到的那句」；手动接管时是
+               「视口正中那一行」—— 这样就既保住了纵深，又保证眼前能看清。
+               还没唱到第一句（active = -1）时退化成「离第一行的距离 + 1」，
+               第一行算「下一句」，不该以清晰全黑的字冒充当前行。 */
+            const anchor = pinned && focus >= 0 ? focus : active;
+            const dist = anchor < 0 ? i + 1 : Math.abs(i - anchor);
             return (
               <div
                 key={`${ln.time}-${i}`}
@@ -298,19 +346,16 @@ export default function Lyrics({ lines, currentTime, duration, isPlaying, onSeek
       </div>
 
       {/* 挂在遮罩外面（否则贴底这颗按钮会被 mask 一起淡掉）。
-          手动滑开时给个明确的出口，不用干等 6 秒。 */}
+          手动滑开时给个明确的出口，不用干等自动回位。 */}
       {pinned && (
-        <>
-          <p className="q-ly-hint">点任意一句，从那里开始播</p>
-          <button
-            type="button"
-            className="q-ly-back"
-            onPointerDown={(e) => e.stopPropagation()}
-            onClick={() => setUserShift(null)}
-          >
-            回到当前句
-          </button>
-        </>
+        <button
+          type="button"
+          className="q-ly-back"
+          onPointerDown={(e) => e.stopPropagation()}
+          onClick={() => setUserShift(null)}
+        >
+          回到当前句
+        </button>
       )}
     </>
   );
