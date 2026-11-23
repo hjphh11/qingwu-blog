@@ -3,7 +3,7 @@ import { audioElement } from '../../lib/musicStore';
 
 export type LyricLine = { time: number; text: string };
 
-/** 二分查找当前行。几百行线性扫也够，但每帧都要跑，二分更稳。 */
+/** 二分查找当前行。每帧都要跑，线性扫几百行不划算。 */
 function indexAt(lines: LyricLine[], t: number) {
   let lo = 0;
   let hi = lines.length - 1;
@@ -36,6 +36,9 @@ function progressAt(lines: LyricLine[], i: number, t: number, total: number) {
   return Math.min(1, Math.max(0, (t - start) / span));
 }
 
+/** 手动滑开后，停手多久回到当前句（毫秒）。 */
+const HOLD_MS = 4000;
+
 type Props = {
   lines: LyricLine[];
   currentTime: number;
@@ -47,14 +50,16 @@ type Props = {
 /**
  * 歌词轨。
  *
- * 三个和旧实现不同的决定：
- * ① **不用 `scrollIntoView`**。它会连带滚动所有可滚动祖先（整页会被带着跳），
- *    也没法做缓动。这里改成给内层轨 `translateY`，父级 `overflow:hidden` ——
- *    位移只发生在轨自己身上，外面稳如泰山，还能上 spring 曲线。
- * ② **擦色走 rAF 直写 DOM**。store 的 timeupdate 一秒才四次，直接读它描边会
- *    「一格一格」跳。播放时每帧读一次 `audio.currentTime`，只改当前行的
- *    `clip-path`，不触发 React 重渲染（只有换行时才 setState）。
- * ③ **行高固定**。活跃行只做 `transform: scale`，不放大占位 —— 否则每换一行
+ * 几个和「普通滚动容器」不同的决定：
+ * ① **不用 `scrollIntoView` / `scrollTop`**。前者会连带滚动所有可滚动祖先（整页会被
+ *    带着跳），后者的滚动位置没法做缓动。这里用内层轨的 `translateY`，
+ *    父级 `overflow:hidden` —— 位移只发生在轨自己身上，外面稳如泰山。
+ * ② **支持手动滑动**：滚轮 / 拖动会接管位置（`pinned`），停手 4 秒后自己回到当前句；
+ *    点任意一句则立即跳转并结束接管。接管期间高亮和擦色照常跟着音频走，只是视角没跟着。
+ * ③ **擦色走 rAF 直写 CSS 变量**。store 的 timeupdate 一秒才四次，直接读它描边会
+ *    「一格一格」跳。播放时每帧读一次 `audio.currentTime`，只改当前行的 `--p`，
+ *    不触发 React 重渲染（只有换行时才 setState）。
+ * ④ **行高固定**。当前行只做 `transform: scale`，不改字号占位 —— 否则每换一行
  *    轨道高度就变，`offsetTop` 全乱，居中会抖。
  */
 export default function Lyrics({ lines, currentTime, duration, isPlaying, onSeek }: Props) {
@@ -62,8 +67,43 @@ export default function Lyrics({ lines, currentTime, duration, isPlaying, onSeek
   const trackRef = useRef<HTMLDivElement>(null);
   const fillRefs = useRef<Array<HTMLSpanElement | null>>([]);
   const activeRef = useRef(-1);
+
   const [active, setActive] = useState(-1);
-  const [shift, setShift] = useState(0);
+  /** 自动跟随算出来的位移。 */
+  const [autoShift, setAutoShift] = useState(0);
+  /** 手动接管时的位移；null = 跟随当前句。 */
+  const [userShift, setUserShift] = useState<number | null>(null);
+
+  /** 当前实际渲染的位移（接管中就用接管值）。滚轮/拖动要读它，所以另存一份 ref。 */
+  const shift = userShift ?? autoShift;
+  const shiftRef = useRef(0);
+  /** wheel 监听器只挂一次，闭包里的 userShift 会过期，所以也存一份。 */
+  const userShiftRef = useRef<number | null>(null);
+  const dragRef = useRef<{ y: number; base: number } | null>(null);
+  /** 这次按下之后有没有真的拖动过 —— 拖完松手不该顺便触发「点歌词跳转」。 */
+  const draggedRef = useRef(false);
+  const holdTimer = useRef(0);
+
+  useLayoutEffect(() => {
+    shiftRef.current = shift;
+    userShiftRef.current = userShift;
+  }, [shift, userShift]);
+
+  /** 把位移夹在「第一行顶到上沿」和「最后一行贴到底」之间。 */
+  const clampShift = useCallback((v: number) => {
+    const box = boxRef.current;
+    const track = trackRef.current;
+    if (!box || !track) return Math.max(0, v);
+    const max = Math.max(0, track.scrollHeight - box.clientHeight);
+    return Math.min(max, Math.max(0, v));
+  }, []);
+
+  const hold = useCallback(() => {
+    window.clearTimeout(holdTimer.current);
+    holdTimer.current = window.setTimeout(() => setUserShift(null), HOLD_MS);
+  }, []);
+
+  useEffect(() => () => window.clearTimeout(holdTimer.current), []);
 
   /** 只描当前行的擦色；其余行由 CSS 的 [data-on='0'] 强制收起。
       写的是自定义属性 `--p` 而不是 clip-path 本身 —— 行离开「当前」之后
@@ -112,15 +152,15 @@ export default function Lyrics({ lines, currentTime, duration, isPlaying, onSeek
     // 还没唱到第一句（前奏常常十几秒）：从头显示即可。
     // 别去居中第一行 —— 那会把它推进上方遮罩的淡出区，看起来像缺了首句。
     if (active < 0) {
-      setShift(0);
+      setAutoShift(0);
       return;
     }
     const el = track.querySelector(`[data-i="${active}"]`) as HTMLElement | null;
     if (!el) {
-      setShift(0);
+      setAutoShift(0);
       return;
     }
-    setShift(el.offsetTop + el.offsetHeight / 2 - box.clientHeight / 2);
+    setAutoShift(el.offsetTop + el.offsetHeight / 2 - box.clientHeight / 2);
   }, [active]);
 
   useLayoutEffect(() => {
@@ -132,6 +172,54 @@ export default function Lyrics({ lines, currentTime, duration, isPlaying, onSeek
     return () => window.removeEventListener('resize', measure);
   }, [measure]);
 
+  /* 换歌：接管状态归零，重新跟着新歌走 */
+  useEffect(() => {
+    setUserShift(null);
+    draggedRef.current = false;
+    dragRef.current = null;
+    window.clearTimeout(holdTimer.current);
+  }, [lines]);
+
+  /* 滚轮：必须用原生监听（React 的 onWheel 是 passive 的，preventDefault 无效），
+     否则滚歌词会连带把整页滚下去。 */
+  useEffect(() => {
+    const el = boxRef.current;
+    if (!el || !lines.length) return;
+    const onWheel = (e: WheelEvent) => {
+      if (Math.abs(e.deltaY) <= Math.abs(e.deltaX)) return;
+      e.preventDefault();
+      const next = clampShift((userShiftRef.current ?? shiftRef.current) + e.deltaY);
+      setUserShift(next);
+      hold();
+    };
+    el.addEventListener('wheel', onWheel, { passive: false });
+    return () => el.removeEventListener('wheel', onWheel);
+  }, [lines.length, clampShift, hold]);
+
+  const onPointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (e.pointerType === 'mouse' && e.button !== 0) return;
+    dragRef.current = { y: e.clientY, base: shiftRef.current };
+    draggedRef.current = false;
+    setUserShift(shiftRef.current);
+    e.currentTarget.setPointerCapture?.(e.pointerId);
+  };
+
+  const onPointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
+    const d = dragRef.current;
+    if (!d) return;
+    const dy = d.y - e.clientY;
+    if (!draggedRef.current && Math.abs(dy) > 6) draggedRef.current = true;
+    if (!draggedRef.current) return;
+    setUserShift(clampShift(d.base + dy));
+  };
+
+  const onPointerUp = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (!dragRef.current) return;
+    dragRef.current = null;
+    e.currentTarget.releasePointerCapture?.(e.pointerId);
+    hold();
+  };
+
   if (!lines.length) {
     return (
       <div className="grid h-full place-items-center text-sm text-subtle">
@@ -141,7 +229,14 @@ export default function Lyrics({ lines, currentTime, duration, isPlaying, onSeek
   }
 
   return (
-    <div ref={boxRef} className="q-ly-box">
+    <div
+      ref={boxRef}
+      className="q-ly-box"
+      onPointerDown={onPointerDown}
+      onPointerMove={onPointerMove}
+      onPointerUp={onPointerUp}
+      onPointerCancel={onPointerUp}
+    >
       {/* 3D 倾斜挂在这层：轨自己要 translateY，两个 transform 写一处会互相覆盖 */}
       <div className="q-ly-tilt">
         <div ref={trackRef} className="q-ly-track" style={{ transform: `translateY(${-shift}px)` }}>
@@ -161,10 +256,19 @@ export default function Lyrics({ lines, currentTime, duration, isPlaying, onSeek
                 role="button"
                 tabIndex={0}
                 aria-current={on ? 'true' : undefined}
-                onClick={() => onSeek(ln.time)}
+                onClick={() => {
+                  // 刚才是拖动，不是点击 —— 别顺手跳转
+                  if (draggedRef.current) {
+                    draggedRef.current = false;
+                    return;
+                  }
+                  setUserShift(null);
+                  onSeek(ln.time);
+                }}
                 onKeyDown={(e) => {
                   if (e.key === 'Enter' || e.key === ' ') {
                     e.preventDefault();
+                    setUserShift(null);
                     onSeek(ln.time);
                   }
                 }}

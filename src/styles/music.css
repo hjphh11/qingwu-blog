@@ -273,7 +273,7 @@
     /* 轴钉在左缘：左边（每句开头）保持原位，右边往镜头前方转 —— 越大越近。
        ⚠️ 轴只能钉左边：钉右边时长句会被透视推到面板左侧以外，被遮罩切掉。
        透视值给到 700px，光是 900 时这点宽度差看不出纵深。 */
-    transform: perspective(700px) rotateY(-12deg) rotateX(2deg) rotateZ(1.2deg);
+    transform: perspective(660px) rotateY(-18deg) rotateX(3deg) rotateZ(2.2deg);
     transform-origin: left center;
   }
   @media (max-width: 767px) {
@@ -288,6 +288,10 @@
     inset: 0;
     overflow: hidden;
     overscroll-behavior: contain;
+    /* 歌词可以手动滑：touch-action 必须交出来，否则手机上竖滑会被页面滚动手势抢走。
+       代价是在这块区域里不能滑页面 —— 播放器区域让给歌词，页面从别处滚。 */
+    touch-action: none;
+    user-select: none;
     /* 上下淡出用 mask：比压两条渐变色块干净，而且不吃点击。
        不写 -webkit- 前缀 —— 由 Lightning CSS 按目标浏览器自动补。 */
     mask-image: linear-gradient(180deg, transparent 0, #000 16%, #000 84%, transparent 100%);
