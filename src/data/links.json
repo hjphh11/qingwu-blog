@@ -30,7 +30,7 @@
     {
       "name": "冷月笙寒的小窝",
       "avatar": "https://lygalaxy.cn/uploads/20260128_200240_6979fae094c7b.jpg",
-      "intro": " 发现巷子里的那颗星星(技术与生活分享)",
+      "intro": "发现巷子里的那颗星星(技术与生活分享)",
       "url": "https://lygalaxy.cn/",
       "visible": true,
       "addedAt": "2026-10-15",
@@ -149,6 +149,14 @@
       "visible": true,
       "addedAt": "2026-11-23",
       "shot": "https://lengxiqwq.com/screenshot.jpg"
+    },
+    {
+      "name": "JustPureH2O 的博客",
+      "avatar": "",
+      "intro": "穷方圆平直之情，尽规矩准绳之用",
+      "url": "https://justpureh2o.cn",
+      "visible": true,
+      "addedAt": "2026-11-24"
     }
   ]
 }
