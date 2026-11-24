@@ -75,9 +75,10 @@ export {
   ListPlus,
   // 表情面板
   Smile,
-  // 长亭（提醒 / 编辑 / 举报 / 置顶 / 文件）
+  // 长亭（提醒 / 编辑 / 举报 / 置顶 / 文件 / 消息操作入口）
   Bell,
   BellRing,
+  Ellipsis,
   Flag,
   Pin,
   Download,

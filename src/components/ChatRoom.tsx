@@ -6,6 +6,7 @@ import {
   BellRing,
   ChevronDown,
   Download,
+  Ellipsis,
   FileText,
   Pencil,
   Pin,
@@ -154,6 +155,15 @@ function useDialogFocus(open: boolean, onClose: () => void) {
 }
 
 const DRAFT_KEY = 'qingwu:chat-draft';
+
+/**
+ * 「轻点消息可以…」那条提示只出现一次。
+ *
+ * 紧凑形态下操作条默认收着，入口（点一下消息）本身没有任何可见标记 ——
+ * 老用户知道，第一次来的人不知道。一次性提示比常驻的小图标省地方，
+ * 也不至于让每行都挂一个「…」。
+ */
+const TAP_HINT_KEY = 'qingwu:chat-tap-hint';
 
 /** 图片上传前压到长边这么多 */
 const IMAGE_MAX_SIDE = 1600;
@@ -412,6 +422,39 @@ export default function ChatRoom() {
   const [openActs, setOpenActs] = useState(0);
   /** 举报弹层的焦点契约（Esc / Tab 循环 / 关闭后归位） */
   const reportBoxRef = useDialogFocus(Boolean(reporting), () => setReporting(null));
+
+  /** 是否紧凑形态（窄屏 / 触屏）—— 决定要不要出「轻点消息…」那条一次性提示 */
+  const [compact, setCompact] = useState(false);
+  const [tapHint, setTapHint] = useState(false);
+
+  useEffect(() => {
+    const mq = window.matchMedia('(max-width: 768px), (hover: none)');
+    const sync = () => setCompact(mq.matches);
+    sync();
+    mq.addEventListener('change', sync);
+    return () => mq.removeEventListener('change', sync);
+  }, []);
+
+  useEffect(() => {
+    if (!compact) return;
+    try {
+      if (window.localStorage.getItem(TAP_HINT_KEY)) return;
+    } catch {
+      // 隐私模式读不到 localStorage：那就每次都提一次，不影响功能
+    }
+    setTapHint(true);
+  }, [compact]);
+
+  // 第一次真的展开某条，就说明「学会了」—— 立刻收回提示并记下来
+  useEffect(() => {
+    if (!openActs) return;
+    setTapHint(false);
+    try {
+      window.localStorage.setItem(TAP_HINT_KEY, '1');
+    } catch {
+      /* 存不下也无所谓：下次进来再提一次 */
+    }
+  }, [openActs]);
 
   /**
    * 拖文件进来时的投放态。
@@ -1285,6 +1328,16 @@ export default function ChatRoom() {
           </div>
         </div>
 
+        {/* 一次性操作提示。放在顶栏下面而不是消息流里：
+            消息流是 `role="log" aria-live`，塞进去会被读屏当成一条新消息念出来。
+            ⚠️ 访客别说「可以回复、回应或举报」—— 这三件事都要登录，
+               写了就是空头支票，点上去只会弹登录框。 */}
+        {tapHint && messages.length > 0 && (
+          <p className="q-chat__taphint">
+            {signedIn ? '轻点一条消息，可以回复、回应或举报' : '登录之后才能回复、回应或举报'}
+          </p>
+        )}
+
         {link === 'down' && (
           <p className="q-chat__offline" role="status">
             <i aria-hidden="true" />
@@ -1786,17 +1839,37 @@ function MessageRow({
         fresh ? ' is-fresh' : ''
       }${actsOpen ? ' is-acts-open' : ''}`}
       /**
-       * 触屏上点消息 = 展开/收起操作条。
+       * 点消息 = 展开/收起操作条。
+       *
+       * **不限 hover:none**：带触摸屏的笔记本主指针是鼠标，`(hover: none)` 不匹配，
+       * 但用户照样会用手指点 —— 只按媒体查询放行的话那类设备上手指永远打不开操作条。
+       * 桌面上这个状态没有视觉后果（操作条本来就在悬停时出现），所以放行是安全的。
        *
        * 用 click 而不是 pointerdown：滚动结束浏览器不派发 click，
-       * 用户划列表时不会一路把每条消息都点开。
+       * 顺着列表划不会一路把每条都点开。
        * 点在按钮/图/视频上不算（那是在操作，不是在「选这条消息」）。
        */
       onClick={(e) => {
-        if (!window.matchMedia('(hover: none)').matches) return;
         const t = e.target as Element | null;
         if (t?.closest('button, a, img, video, input, textarea')) return;
         onToggleActs();
+      }}
+      /**
+       * Esc 收起挂在**整行**上，不挂在那个「…」按钮上。
+       *
+       * 焦点已经 Tab 进操作条（比如停在「回复」上）时，用户按 Esc 是想收起这一排；
+       * 只绑在入口按钮上的话，这一步毫无反应 —— 实测「回复」上按 Esc，操作条仍在。
+       * 行级监听能同时覆盖「在入口上」和「在展开的按钮里」两种位置。
+       */
+      onKeyDown={(e) => {
+        if (e.key === 'Escape' && actsOpen) {
+          e.stopPropagation();
+          onToggleActs();
+          // 收起后把焦点还给入口：让它消失又不还焦点，等于把键盘用户丢在原地
+          (e.currentTarget as HTMLElement)
+            .querySelector<HTMLButtonElement>('.q-chat__actstoggle')
+            ?.focus();
+        }
       }}
     >
       {!mine && (
@@ -1866,7 +1939,22 @@ function MessageRow({
                  能 Esc 关、能翻组里的下一张 */
               <div className={`q-chat__media is-${m.media.kind}`} data-zoomable>
                 {m.media.kind === 'image' ? (
-                  <img src={mediaSrc(m.media)} alt="图片" loading="lazy" decoding="async" />
+                  /**
+                   * 图片本身可聚焦、可用 Enter 打开。
+                   *
+                   * 原来点图能放大，但键盘没有任何入口 —— 鼠标能做、键盘不能做，
+                   * 等于把「看原图」这件事从键盘用户那里删掉了。
+                   * 打开/关闭仍归 ImageZoom 管，这里只提供可聚焦与一个语义标签。
+                   */
+                  <img
+                    src={mediaSrc(m.media)}
+                    alt="图片"
+                    loading="lazy"
+                    decoding="async"
+                    tabIndex={0}
+                    role="button"
+                    aria-label="查看大图"
+                  />
                 ) : (
                   <video src={mediaSrc(m.media)} controls playsInline preload="metadata" />
                 )}
@@ -1910,6 +1998,51 @@ function MessageRow({
               ))}
             </div>
           )}
+
+          {/*
+            紧凑形态（窄屏 / 触屏）下操作条默认 `display: none`，这个按钮是键盘的入口：
+            平时完全透明、`pointer-events: none`（手指点它的时候事件会穿过去命中气泡，
+            走的是整行 toggle，不会双触发）；一旦键盘聚焦或已展开就现形。
+            可见尺寸 28px —— 低于 WCAG 2.5.8 的 24 会点不中，也低于自己定的 30px 基准。
+
+            **DOM 顺序必须排在 `.q-chat__acts` 之前**：Tab 顺序跟 DOM 走，
+            排在后面的话从它按 Tab 会直接跳到下一条消息，进不去刚展开的那排按钮。
+          */}
+          <button
+            type="button"
+            className="q-chat__actstoggle"
+            aria-label="这条消息的操作"
+            aria-expanded={actsOpen}
+            onClick={(e) => {
+              e.stopPropagation();
+              // detail === 0 说明这次 click 来自键盘（Enter / 空格），不是手指或鼠标
+              const byKeyboard = e.detail === 0;
+              const wasOpen = actsOpen;
+              onToggleActs();
+              /**
+               * 展开后入口会让位（`[aria-expanded=true]` 时 opacity 0），
+               * 所以键盘触发时必须把焦点交接给操作条的第一个按钮 ——
+               * 否则焦点停在一个刚变透明的元素上，等于消失。
+               */
+              if (byKeyboard && !wasOpen) {
+                const row = (e.currentTarget as HTMLElement).closest('.q-chat__row');
+                requestAnimationFrame(() => {
+                  row
+                    ?.querySelector<HTMLButtonElement>('.q-chat__acts button')
+                    ?.focus({ preventScroll: true });
+                });
+              }
+            }}
+            onKeyDown={(e) => {
+              // Esc 收起；焦点留在这个按钮上，不会掉到 body
+              if (e.key === 'Escape' && actsOpen) {
+                e.stopPropagation();
+                onToggleActs();
+              }
+            }}
+          >
+            <MorphIcon icon={Ellipsis} size={14} color="currentColor" />
+          </button>
 
           {/* 操作条：贴在气泡右侧同一水平带（自己的消息镜像到左侧）。
               位置、尺寸和「为什么不做悬停下方的窄条」见 chat.css 里 .q-chat__acts 的注释 */}

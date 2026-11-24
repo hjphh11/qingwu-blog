@@ -329,7 +329,9 @@ export default function Navbar({ pathname = '/' }: Props) {
                   aria-haspopup={item.children ? 'true' : undefined}
                   aria-expanded={item.children ? openNow : undefined}
                   className={`relative z-10 flex items-center gap-0.5 rounded-full px-3.5 py-1.5 text-base font-medium transition-colors duration-200 q-press ${
-                    active ? 'text-crimson' : 'text-muted hover:text-crimson'
+                    /* 激活态压在玫瑰粉底上，crimson 只有 4.37:1（AA 要 4.5）——
+                       换更暗一档的 accent-soft；未激活仍是 muted，悬停不变 */
+                    active ? 'text-accent-soft' : 'text-muted hover:text-crimson'
                   }`}
                 >
                   {item.label}
@@ -376,7 +378,7 @@ export default function Navbar({ pathname = '/' }: Props) {
                             onClick={() => setOpenGroup(null)}
                             className={`block rounded-xl px-3 py-2 text-sm transition-colors ${
                               isActive(c.href) && pathname === c.href
-                                ? 'bg-rose/25 text-crimson'
+                                ? 'bg-rose/25 text-accent-soft'
                                 : 'text-muted hover:bg-rose/15 hover:text-crimson'
                             }`}
                           >
@@ -463,7 +465,7 @@ export default function Navbar({ pathname = '/' }: Props) {
                 onClick={() => setOpen(false)}
                 className={`rounded-xl px-4 py-2.5 text-base font-medium transition q-press ${
                   isActive(item.href)
-                    ? 'bg-rose/25 text-crimson'
+                    ? 'bg-rose/25 text-accent-soft'
                     : 'text-muted hover:bg-rose/15'
                 }`}
               >

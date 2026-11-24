@@ -628,7 +628,8 @@
   }
 
   .q-chat__site {
-    font-size: 0.65rem;
+    /* 10.4px 的极小字：跟着 meta 一起提到 0.7rem，不再单独留一档更小的 */
+    font-size: 0.7rem;
     color: var(--color-accent-soft);
   }
 
@@ -730,13 +731,20 @@
    * 所以取中：点一下展开，再点一下收起。
    */
   @media (hover: none) {
+    /**
+     * ⚠️ 用 `display: none` 而不是 `opacity: 0`。
+     *
+     * 窄屏下操作条是 `position: static`（进正常流），只把 opacity 归零的话
+     * **它仍然占着 36px 高度** —— 23 条消息就是 828px 的空白带，每条消息之间
+     * 都空出一截，看起来像布局坏了（实测截图确认）。
+     * 隐藏态必须整块不占位；展开时再回到 flex。
+     */
     .q-chat__acts {
-      opacity: 0;
-      pointer-events: none;
+      display: none;
     }
 
-    .q-chat__row.is-acts-open .q-chat__acts,
-    .q-chat__acts:focus-within {
+    .q-chat__row.is-acts-open .q-chat__acts {
+      display: flex;
       opacity: 1;
       pointer-events: auto;
     }
@@ -1375,14 +1383,17 @@
   .q-chat__reads {
     align-self: flex-end;
     margin-top: 0.12rem;
-    font-size: 0.62rem;
-    color: var(--color-subtle);
+    /* 0.62rem(9.9px) + 75% 墨实测 4.7:1，在气泡的粉色底上会掉到 4.2 ——
+       擦线的都是极小字，干脆一起提上去 */
+    font-size: 0.7rem;
+    color: var(--color-muted);
   }
 
   /* @了你 的小标：比「站长」更显眼一点，但别做成红色警告 */
   .q-chat__tag--at {
     background: color-mix(in srgb, var(--color-crimson) 15%, transparent);
-    color: var(--color-crimson);
+    /* crimson 压在这层 15% 绯红底上是 4.37:1，不够 —— 用小字专用的更暗一档 */
+    color: var(--color-accent-soft);
   }
 
   /* 从搜索结果跳过来时闪一下；纯视觉提示，2.2 秒后自己消失 */
@@ -2094,6 +2105,122 @@
     outline: 2px solid color-mix(in srgb, var(--color-crimson) 50%, transparent);
     outline-offset: -2px;
     border-radius: 0.5rem;
+  }
+
+  /* 图片消息本身可聚焦（键盘能打开灯箱），所以也要有可见焦点环 */
+  .q-chat__media img:focus-visible {
+    outline: 2px solid var(--color-crimson);
+    outline-offset: 2px;
+    border-radius: 0.5rem;
+  }
+
+  /**
+   * 紧凑形态下的键盘入口。
+   *
+   * 平时 `opacity: 0` + `pointer-events: none`：不占位、不影响手指点气泡
+   * （事件穿过去命中气泡，走整行 toggle，不会双触发）；
+   * 键盘聚焦或已展开时现形 —— 28px，看得见也点得中。
+   *
+   * ⚠️ 不写 `visibility: hidden` / `display: none`：那两个会把元素从 Tab 序里摘掉，
+   * 入口就形同不存在（这正是上一轮 `display: none` 弄丢 70 个可聚焦点的原因）。
+   */
+  .q-chat__actstoggle {
+    display: none;
+  }
+
+  @media (max-width: 768px), (hover: none) {
+    .q-chat__actstoggle {
+      display: grid;
+      place-items: center;
+      position: absolute;
+      /* 挂在气泡右上角外侧 6px：落在气泡盒内，不会把滚动容器撑出横向溢出 */
+      top: -0.4rem;
+      right: -0.4rem;
+      z-index: 6;
+      width: 1.75rem;
+      height: 1.75rem;
+      border-radius: 9999px;
+      border: 1px solid var(--color-hairline);
+      background: #fffdfb;
+      color: var(--color-subtle);
+      opacity: 0;
+      pointer-events: none;
+      /**
+       * ⚠️ transition 里**不能带 opacity**。
+       *
+       * 键盘 Tab 到它的那一帧，opacity 从 0 渐入 180ms；而 opacity:0 时连描边
+       * （全局 focus-visible 的 outline）也一起透明，实测有 2 帧（约 36ms）
+       * 屏幕上是「什么都没有」—— 焦点看起来消失了。显隐由键盘动作直接决定，
+       * 不需要渐入；color / border 的过渡留着就够。
+       */
+      transition: color var(--dur-micro) ease, border-color var(--dur-micro) ease;
+    }
+
+    .q-chat__row.is-mine .q-chat__actstoggle {
+      right: auto;
+      left: -0.4rem;
+    }
+
+    /**
+     * 用 `:focus` 而不是只 `:focus-visible`。
+     *
+     * 它是「聚焦才现形」的控件，任何来源的焦点都该让它显形 ——
+     * 实测在触摸环境里 Tab 到它时 `:focus-visible` 不命中，opacity 停在 0，
+     * 等于给了一个看不见的焦点目标（WCAG 2.4.7）。
+     * 鼠标点不到它（隐藏态 pointer-events: none），所以放宽不会有副作用。
+     */
+    .q-chat__actstoggle:focus {
+      opacity: 1;
+      pointer-events: auto;
+      /**
+       * 可见态必须自己「立」起来。
+       *
+       * 实测：圆面 #fffdfb 对气泡白只有 **1.00:1**，描边 16% 绯红对白 **1.25:1** ——
+       * 整个控件在视觉上不存在，用户只看见三个点浮在气泡角上（WCAG 1.4.11 要 3:1）。
+       * 描边直接上实色绯红（对白 ≈5.4:1），再加一层带偏移的柔和投影把它从气泡上抬起来。
+       */
+      border-color: var(--color-crimson);
+      box-shadow: 0 2px 8px color-mix(in srgb, var(--color-ink) 18%, transparent);
+    }
+
+    /**
+     * 展开后入口让位。
+     *
+     * 它挂在气泡右上角外侧，展开时若继续显形，28px 的圆会啃掉 meta 行末尾
+     * （实测把「…就进来了」的末字压住，而那一行正是「这是谁说的」）。
+     * 焦点此时已经交给操作条里的第一个按钮（见 ChatRoom 的 onClick），
+     * 所以这里藏起来不会丢焦点。
+     */
+    .q-chat__actstoggle[aria-expanded='true'] {
+      opacity: 0;
+      pointer-events: none;
+    }
+
+    .q-chat__actstoggle:hover {
+      color: var(--color-crimson);
+      /* 和聚焦态同一个描边强度：34% 只有 1.9:1，撑不起 3:1 的非文本对比度 */
+      border-color: var(--color-crimson);
+    }
+  }
+
+  /**
+   * 「轻点一条消息，可以回复、回应或举报」—— 一次性提示。
+   *
+   * 紧凑形态下操作条默认收着，入口本身没有任何可见标记；
+   * 这条提示补上「怎么用」，第一次展开后就不再出现（存 localStorage）。
+   * 它刻意**放在 role="log" 之外**：放进消息流里会被读屏当成一条新消息播报。
+   */
+  .q-chat__taphint {
+    flex: none;
+    align-self: center;
+    margin: 0.4rem 0 0;
+    padding: 0.3rem 0.8rem;
+    border-radius: var(--radius-pill);
+    background: color-mix(in srgb, var(--color-rose) 18%, #fffdfb);
+    font-size: 0.72rem;
+    line-height: 1.6;
+    color: var(--color-muted);
+    text-align: center;
   }
 
   /**

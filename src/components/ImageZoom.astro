@@ -179,7 +179,24 @@
 
     document.addEventListener('keydown', function (e) {
       var b = box();
-      if (!b || b.hidden) return;
+
+      /* 灯箱没开时：焦点在「可放大的图」上按 Enter / 空格 = 打开。
+         长亭的图片消息给 img 挂了 tabindex=0 + role=button，
+         没有这一条的话键盘能聚焦过去却打不开，比不能聚焦更让人困惑。 */
+      if (!b || b.hidden) {
+        if (e.key !== 'Enter' && e.key !== ' ') return;
+        var t = e.target;
+        if (!(t instanceof Element)) return;
+        var im = t.closest('[data-zoomable] img, .prose img');
+        if (!(im instanceof HTMLImageElement)) return;
+        if (im.closest('a') || (im.width && im.width < MIN_SIDE)) return;
+        var list = collect(im);
+        if (!list.length) return;
+        e.preventDefault();
+        open(list, Math.max(0, list.indexOf(im)));
+        return;
+      }
+
       if (e.key === 'Escape') {
         e.preventDefault();
         close();
@@ -192,12 +209,22 @@
       } else if (e.key === 'Tab') {
         /* 焦点循环在遮罩内部。
            不锁的话 Tab 会走到背后页面的链接上，而视觉上还盖着全屏遮罩 ——
-           用户以为页面卡死，实际是焦点跑到了看不见的地方。 */
-        var f = b.querySelectorAll('button:not([disabled])');
+           用户以为页面卡死，实际是焦点跑到了看不见的地方。
+           ⚠️ 必须按**可见性**过滤：只有一张图时 data-single=1 会把「上一张/下一张」
+           设成 display:none，但它们仍在 querySelectorAll 的结果里 ——
+           拿末尾那个不可见的按钮当「最后一个」，陷阱永远不会触发（实测 Tab 一步就逃）。 */
+        var all = b.querySelectorAll('button:not([disabled])');
+        var f = [];
+        for (var i = 0; i < all.length; i++) {
+          if (all[i].offsetParent !== null) f.push(all[i]);
+        }
         if (!f.length) return;
         var first = f[0];
         var last = f[f.length - 1];
-        if (e.shiftKey && document.activeElement === first) {
+        if (first === last) {
+          e.preventDefault();
+          first.focus();
+        } else if (e.shiftKey && document.activeElement === first) {
           e.preventDefault();
           last.focus();
         } else if (!e.shiftKey && document.activeElement === last) {
