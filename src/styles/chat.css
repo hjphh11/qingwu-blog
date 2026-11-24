@@ -3,12 +3,42 @@
    自己靠右、别人靠左，和 IM 的肌肉记忆一致；不做冷蓝灰那套。 */
 
 @layer components {
+  /* ——— 页面级：页头压薄、整体上移 ———
+     这一页的正文就是聊天区，标题只负责交代「这是哪儿」，不该占掉首屏五分之一的呼吸。
+
+     ⚠️ 这些规则原来写在 `chat/index.astro` 的 `<style>` 里，**实测一条都没生效**：
+        dev 下页面只有 4 个内联 <style>，没有一条包含 `.q-chat-page`，
+        于是页头一直挂着 `--space-section`(3.5rem) 的下边距、标题也还是文章页字号。
+        挪进全局样式表 —— 顺序在 layout.css 之后，同权重也能盖住；
+        `.q-chat-page.page-shell` 用双类名，免得分层顺序哪天变了又被顶掉。 */
+  .q-chat-page.page-shell {
+    /* 导航 68px + 一点呼吸。比全站的 clamp(6rem, 5rem + 3vw, 7.5rem) 矮 24px */
+    padding-top: clamp(5.25rem, 4.4rem + 2.2vw, 6rem);
+  }
+
+  .q-chat-page .page-head {
+    margin-bottom: 0.9rem;
+  }
+
+  /* --text-page 是给文章页那种大标题的，这里降一档 */
+  .q-chat-page .page-head__title {
+    font-size: clamp(1.5rem, 2.2vw, 1.75rem);
+  }
+
+  .q-chat-page .page-head__sub {
+    margin-top: 0.1rem;
+    font-size: 0.875rem;
+    line-height: 1.5;
+  }
+
   /* ——— 整页布局：左栏 + 聊天 ——— */
   .q-chat-layout {
     display: grid;
-    /* 17.5rem 是「够放昵称 + 站点名、又不至于挤掉聊天区」的实测宽度 */
-    grid-template-columns: 17.5rem minmax(0, 1fr);
-    gap: 1.25rem;
+    /* 14rem：够放「昵称 + 来自某站」两行，又不从聊天区手里抢宽度。
+       原来 17.5rem 是按「有称号、有进度条」设计的，那套已经删掉了（见 §15.2），
+       侧栏只剩头像和名字，280px 是浪费 —— 让给聊天区。 */
+    grid-template-columns: 14rem minmax(0, 1fr);
+    gap: 1rem;
     align-items: start;
   }
 
@@ -353,11 +383,11 @@
     position: relative;
     display: flex;
     flex-direction: column;
-    /* 小屏 26rem 兜底、大屏最多 44rem —— 不写死 100vh，页头页脚要留位置 */
-    /* 高度：页头压薄之后（见 chat/index.astro 的 .page-head 覆盖），
-       这块可以往上顶 —— 站长原话「这里再做高点」。
-       上下限都放宽了一档，短屏仍然保留 30rem 兜底。 */
-    height: clamp(30rem, calc(100svh - 16rem), 56rem);
+    /* 高度：页头压到 ~62px、整页上移 24px 之后，这块可以再往上顶一档。
+       站长原话「高度做大点，让人一眼是看聊天记录」——
+       所以上限放宽到 58rem、下限留 28rem 给矮屏，中间按视口算（减 13rem
+       是「导航 + 页头 + 一点页脚呼吸」的实测值，不是拍的）。 */
+    height: clamp(28rem, calc(100svh - 13rem), 58rem);
     border: 1px solid var(--color-hairline);
     border-radius: var(--radius-card);
     background: #fffdfb;

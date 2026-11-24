@@ -32,21 +32,11 @@ import ChatRoom from '../../components/ChatRoom.tsx';
 </Layout>
 
 <style>
-  /* 页头压薄。
-     这一页的重点是聊天区，标题只为交代一句「这是哪儿」——
-     用和其他页一样的呼吸空间，等于把首屏让给了一个标题。
-     ⚠️ 必须 :global()：.page-head 是 layout.css 里的全局类，
-        组件级 scoped 选择器加不上 data-astro-cid，规则不会命中。 */
-  .q-chat-page :global(.page-head) {
-    margin-bottom: 1rem;
-  }
+  /* 页头压缩、整页上移的规则**不在这里**，在 src/styles/chat.css 的
+     `.q-chat-page` 那一段。
 
-  .q-chat-page :global(.page-head__title) {
-    /* --text-page 是给文章页那种大标题的，这里降一档 */
-    font-size: clamp(1.6rem, 2.6vw, 2rem);
-  }
-
-  .q-chat-page :global(.page-head__sub) {
-    margin-top: 0.15rem;
-  }
+     原因：这一页的 `<style>` 实测根本没被加载 —— dev 下页面只有 4 个内联
+     `<style>`，没有一条包含 `.q-chat-page`，于是「页头压薄」那套一直是死代码，
+     页头实际还是 --space-section 的下边距。写进全局样式表之后才真正生效。
+     以后这一页的样式都放进 chat.css，别再往这里写。 */
 </style>
