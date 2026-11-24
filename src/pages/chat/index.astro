@@ -27,7 +27,19 @@ import ChatRoom from '../../components/ChatRoom.tsx';
       </div>
     </header>
 
-    <ChatRoom client:only="react" />
+    {/*
+      占位容器：给岛预留高度。
+
+      `client:only` 意味着服务端不产出任何标记 —— 水合之前这一块高度是 0，
+      页脚就被顶在上面；岛一挂载（实测 226ms）聊天卡 732px 长出来，页脚被推下去，
+      **这一下贡献了整页 CLS 的 97%（0.1826）**。外面这层把高度先占住，
+      页脚从第一帧起就在最终位置。
+
+      数值必须和 .q-chat 的 height 一致（chat.css 里那个 clamp）。
+    */}
+    <div class="q-chat-slot">
+      <ChatRoom client:only="react" />
+    </div>
   </div>
 </Layout>
 

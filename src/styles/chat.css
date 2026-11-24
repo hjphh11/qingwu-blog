@@ -31,6 +31,17 @@
     line-height: 1.5;
   }
 
+  /**
+   * 岛的占位高度（见 pages/chat/index.astro 的注释）。
+   *
+   * 必须和 `.q-chat` 的 height 用**同一个 clamp**，否则占位本身又成了新的跳动源。
+   * 桌面：这个高度就是网格的高度（聊天卡比侧栏高），页脚位置分毫不动。
+   * 窄屏：聊天下方还会接侧栏，但那时页脚已经在视口外，增长不计入 CLS。
+   */
+  .q-chat-slot {
+    min-height: clamp(28rem, calc(100svh - 13rem), 58rem);
+  }
+
   /* ——— 整页布局：左栏 + 聊天 ——— */
   .q-chat-layout {
     display: grid;
@@ -56,6 +67,18 @@
 
     .q-chat-layout > .q-aside {
       order: 2;
+    }
+
+    /**
+     * 窄屏放开滚动链。
+     *
+     * 桌面用 `overscroll-behavior: contain` 是对的（在聊天区滚到底不该把整页带跑），
+     * 但窄屏侧栏就在聊天卡**下面**：手势在聊天卡上滑动时，滚到边界就被 contain 吃掉，
+     * 手指在卡片区域里再也划不到「长亭的话」——而聊天卡占了大半屏。
+     * 手机上「划到底继续划，页面跟着动」才是肌肉记忆。
+     */
+    .q-chat__scroll {
+      overscroll-behavior-y: auto;
     }
   }
 
@@ -487,12 +510,15 @@
     padding: 0.25rem 0 0.75rem;
   }
 
-  /* ——— 时间与分割线 ——— */
+  /* ——— 时间与分割线 ———
+     时间和时刻用 `--color-muted`（90% 墨）而不是 `--color-subtle`（75%）：
+     这两个都是 11~12px 的极小字，subtle 在暖白底上实测只有 4.34:1，够不到
+     正文 4.5:1 的底线 —— 一行时间看不清，就等于整条时间线失效。 */
   .q-chat__time {
     margin: 0.9rem 0 0.5rem;
     text-align: center;
-    font-size: 0.7rem;
-    color: var(--color-subtle);
+    font-size: 0.75rem;
+    color: var(--color-muted);
   }
 
   .q-chat__readmark {
@@ -575,8 +601,10 @@
     align-items: baseline;
     gap: 0.4rem;
     margin-bottom: 0.2rem;
-    font-size: 0.72rem;
-    color: var(--color-subtle);
+    /* 0.72rem(11.5px) 在暖白底上只有 4.2~4.8:1，正卡在 AA 线上；
+       提到 0.75rem 后每个字号都过线，行高不变 */
+    font-size: 0.75rem;
+    color: var(--color-muted);
   }
 
   .q-chat__row.is-mine .q-chat__meta {
@@ -584,7 +612,9 @@
   }
 
   .q-chat__name {
-    color: var(--color-brown);
+    /* 棕色 #8b5a3c 落在带粉的气泡底上实测只有 4.26:1 —— 昵称是「这句谁说的」，
+       看不清等于整条消息失去归属。改用 90% 墨并保留 500 权重做层级 */
+    color: var(--color-muted);
     font-weight: 500;
   }
 
@@ -603,8 +633,10 @@
   }
 
   .q-chat__clock {
-    font-size: 0.68rem;
-    opacity: 0.8;
+    font-size: 0.75rem;
+    /* 之前是 0.68rem + opacity 0.8：叠在 75% 墨上实际只剩 ≈3.6:1（实测 4.47 是没算
+       opacity 的读数）。现在字号提到 12px、去掉 opacity、颜色用 90% 墨，≈6.2:1 */
+    color: var(--color-muted);
   }
 
   /* ——— 气泡 ——— */
@@ -676,19 +708,43 @@
    *
    * 进流之后「提前预留 35px」这件事反而变成了优点：这块空白属于行盒子内部，
    * 鼠标悬停它同样算悬停在行上，于是显隐依然可靠，而布局不会因为 hover 而跳动。
+   *
+   * ⚠️ 断点从 640 提到 768：逐档实测横溢只发生在 **641–729**（641→29.4px、
+   *    700→17px、728→2.4px、730→0）。根因是「气泡 70% 上限 + 30px 按钮 + 间距」
+   *    塞不进滚动容器。取 768 而不是 730，是给字号/字体换行留 38px 余量；
+   *    730–1023 这段侧放其实是够的，不该被一起改掉（多一行按钮 = 每条消息高 35px）。
    */
-  @media (max-width: 640px), (hover: none) {
+  @media (max-width: 768px), (hover: none) {
     .q-chat__acts {
       position: static;
       margin-top: 0.35rem;
     }
   }
 
-  /* 触屏没有 hover：直接常显，不然根本点不到 */
+  /**
+   * 触屏没有 hover：默认收起，**点一下这条消息再展开**。
+   *
+   * 之前是「常显」——实测 23 条消息就是 69 个按钮平铺在屏幕上（390px 宽下
+   * 一屏只有 5 条消息，却压着 15 个按钮），比藏起来更糟：读消息时视线被
+   * 一排排「回复 / 举报 / +」切开。但完全藏起来又等于「撤回和编辑在手机上不存在」，
+   * 所以取中：点一下展开，再点一下收起。
+   */
   @media (hover: none) {
     .q-chat__acts {
+      opacity: 0;
+      pointer-events: none;
+    }
+
+    .q-chat__row.is-acts-open .q-chat__acts,
+    .q-chat__acts:focus-within {
       opacity: 1;
       pointer-events: auto;
+    }
+
+    /* 展开态需要一个可见的锚点：不然用户不知道按钮为什么冒出来 */
+    .q-chat__row.is-acts-open .q-chat__bubble,
+    .q-chat__row.is-acts-open .q-chat__file {
+      border-color: color-mix(in srgb, var(--color-crimson) 30%, transparent);
     }
   }
 
@@ -926,12 +982,15 @@
     display: inline-flex;
     align-items: center;
     gap: 0.2rem;
-    padding: 0.1rem 0.42rem 0.1rem 0.26rem;
+    /* 实测原来只有 37.6×21.5 —— 高度差 2.5px 够不到 24 的底线，
+       而这一排回应小标本来就挨得很近，低了就只能靠运气点中 */
+    min-height: 1.5rem;
+    padding: 0.16rem 0.5rem 0.16rem 0.3rem;
     border-radius: var(--radius-pill);
     border: 1px solid var(--color-hairline);
     background: #fff;
-    font-size: 0.68rem;
-    color: var(--color-subtle);
+    font-size: 0.72rem;
+    color: var(--color-muted);
     transition: border-color var(--dur-micro) ease, background-color var(--dur-micro) ease;
   }
 
@@ -1146,10 +1205,13 @@
     display: inline-flex;
     align-items: center;
     gap: 0.28rem;
-    padding: 0.14rem 0.55rem;
+    /* 原来只有 21px 高、11.2px 字 —— 低于 WCAG 2.2 SC 2.5.8（AA）的 24×24，
+       而且它和「提醒」并排，两个小目标挨在一起最容易点错。 */
+    min-height: 1.75rem;
+    padding: 0.25rem 0.7rem;
     border-radius: var(--radius-pill);
-    font-size: 0.7rem;
-    color: var(--color-subtle);
+    font-size: 0.75rem;
+    color: var(--color-muted);
     transition: background-color var(--dur-micro) ease, color var(--dur-micro) ease;
   }
 
@@ -1630,9 +1692,10 @@
     gap: 0.6rem;
     margin: 1rem 0 0.55rem;
     text-align: center;
-    font-size: 0.68rem;
+    font-size: 0.75rem;
     letter-spacing: 0.02em;
-    color: var(--color-subtle);
+    /* 与上面那条规则同步：极小字不能用 75% 墨（4.34:1 不过线） */
+    color: var(--color-muted);
   }
 
   .q-chat__time::before,
@@ -1640,7 +1703,9 @@
     content: '';
     flex: 1;
     height: 1px;
-    background: color-mix(in srgb, var(--color-brown) 13%, transparent);
+    /* 13% 的棕在暖白底上等于不存在（实测 417px 长的线，肉眼在 2× 截图里都看不出）——
+       细线的意义是「把这段时间切开」，看不见就等于没切。提到 22%。 */
+    background: color-mix(in srgb, var(--color-brown) 22%, transparent);
   }
 
   /* ——— ④ 数字对齐 ———
@@ -1824,9 +1889,10 @@
   /* ——— 「已编辑」———
      不做成徽章：它属于「这条的元信息」，和时刻同级，压重了反而抢眼。 */
   .q-chat__edited {
-    font-size: 0.62rem;
-    color: var(--color-subtle);
-    opacity: 0.9;
+    /* 0.62rem（9.9px）在任何屏上都读不出来，而「已编辑」恰恰是必须被看见的
+       诚实信息 —— 提到 0.7rem 并把颜色从 75% 墨换成柔化强调色（更暗一档）。 */
+    font-size: 0.7rem;
+    color: var(--color-accent-soft);
   }
 
   /* ——— 文件卡片 ———
@@ -1992,9 +2058,106 @@
     color: var(--color-brown);
   }
 
+  /* ═══════════════════════════════════════════════════════════════════
+     2026-11-24 · impeccable 评审后的修正（对比度 / 命中区 / iOS 缩放 / 焦点）
+     ═══════════════════════════════════════════════════════════════════ */
+
+  /**
+   * 移动端输入框字号必须 ≥16px。
+   *
+   * 0.9rem = 14.4px，iOS Safari 在聚焦时会**自动放大整页**（用户点一下输入框，
+   * 页面「嗡」地一缩），而且放大之后不会自己缩回来。这是移动端聊天最容易被
+   * 一句话劝退的细节。桌面维持 14.4px 不变。
+   */
+  @media (max-width: 768px) {
+    .q-chat__input {
+      font-size: 16px;
+    }
+  }
+
+  /* 光标和选区跟着配色走，而不是浏览器默认的黑竖线 / 蓝底 ——
+     这是最便宜、也最常被跳过的一处「这页是被人搭过的」信号 */
+  .q-chat__input {
+    caret-color: var(--color-crimson);
+  }
+
+  .q-chat__scroll::selection,
+  .q-chat__bubble::selection {
+    background: color-mix(in srgb, var(--color-rose) 42%, transparent);
+  }
+
+  /**
+   * 可滚动区域要能被键盘聚焦（`tabIndex=0`）。
+   * 聚焦后必须看得见 —— 否则键盘用户不知道自己现在控制的是聊天记录还是输入框。
+   */
+  .q-chat__scroll:focus-visible {
+    outline: 2px solid color-mix(in srgb, var(--color-crimson) 50%, transparent);
+    outline-offset: -2px;
+    border-radius: 0.5rem;
+  }
+
+  /**
+   * 在线名单给一个最小高度。
+   *
+   * 侧栏在加载完成那一刻会从「正在看看谁在…」变成 2~3 行名单，卡片一长，
+   * 下面的公告卡和页脚就整体下移 —— 实测这一处贡献了首屏 CLS 的 53%。
+   * 三行的高度先占住，人数少时不至于空，人数多时本来就会长。
+   */
+  .q-aside-list,
+  .q-aside-empty {
+    min-height: 5.4rem;
+  }
+
+  /**
+   * 身份还没拿到时的「我的卡」占位。
+   *
+   * 原来加载态直接落进「还没进门 / 坐下聊聊」的访客卡（170px 高），
+   * 登录身份一到又缩成 60px 的我的卡 —— 侧栏抖一下、页脚跟着跳。
+   * 现在同高占位：读到同一个账号时直接换成真卡，高度不变。
+   */
+  .q-aside-me__ghost {
+    width: 2.8rem;
+    height: 2.8rem;
+    border-radius: 9999px;
+    flex: none;
+    background: color-mix(in srgb, var(--color-brown) 10%, #fffdfb);
+    animation: q-skel-breathe 1.8s ease-in-out infinite alternate;
+  }
+
+  .q-aside-me__ghost-line {
+    display: block;
+    height: 0.7rem;
+    border-radius: 9999px;
+    background: color-mix(in srgb, var(--color-brown) 9%, #fffdfb);
+    animation: q-skel-breathe 1.8s ease-in-out infinite alternate;
+  }
+
+  .q-aside-me__ghost-line.short {
+    width: 3.5rem;
+    height: 0.55rem;
+  }
+
+  /* 触屏：操作按钮抬到 36px 高。
+     WCAG 2.2 AA 只要求 24×24，但手机上这一排是常显的，30px 高、5px 间距
+     的相邻目标仍然容易点错（拇指指腹接触面积约 11mm ≈ 42px）。 */
+  @media (hover: none) {
+    .q-chat__acts .q-chat__recall {
+      min-height: 2.25rem;
+      padding: 0 0.6rem;
+      font-size: 0.75rem;
+    }
+
+    .q-chat__plus {
+      width: 2.25rem;
+      height: 2.25rem;
+    }
+  }
+
   @media (prefers-reduced-motion: reduce) {
     .q-skel-av,
-    .q-skel-line {
+    .q-skel-line,
+    .q-aside-me__ghost,
+    .q-aside-me__ghost-line {
       animation: none;
       opacity: 0.85;
     }

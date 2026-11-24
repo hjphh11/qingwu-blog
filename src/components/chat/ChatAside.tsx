@@ -45,11 +45,14 @@ export default function ChatAside({
   account,
   members,
   online,
+  identityPending,
   onLogin,
 }: {
   account: SessionAccount | null;
   members: ChatMember[];
   online: number;
+  /** 身份还没确认：画同高占位，别急着说「还没进门」 */
+  identityPending: boolean;
   onLogin: () => void;
 }) {
   const [expanded, setExpanded] = useState(false);
@@ -76,7 +79,24 @@ export default function ChatAside({
   return (
     <aside className="q-aside" aria-label="长亭侧栏">
       {/* ——— ① 我 ——— */}
-      {account ? (
+      {identityPending ? (
+        /**
+         * 身份未知时画同高占位，而不是先给访客卡。
+         *
+         * 之前加载态一律落进「还没进门 / 坐下聊聊」（170px），登录身份一到又缩成
+         * 60px 的我的卡 —— 侧栏抖一下、页脚跟着跳（实测这一处占首屏 CLS 的一半以上）。
+         * 更糟的是语义：一个已登录的人第一眼看到「还没进门」，会怀疑自己掉登录了。
+         */
+        <section className="q-aside-card q-aside-me" aria-hidden="true">
+          <div className="q-aside-me__top">
+            <span className="q-aside-me__ghost" />
+            <div className="q-aside-me__id">
+              <i className="q-aside-me__ghost-line" style={{ width: '5.5rem' }} />
+              <i className="q-aside-me__ghost-line short" style={{ marginTop: '0.4rem' }} />
+            </div>
+          </div>
+        </section>
+      ) : account ? (
         <section className="q-aside-card q-aside-me">
           <div className="q-aside-me__top">
             <span

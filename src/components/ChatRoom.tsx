@@ -94,6 +94,65 @@ const GROUP_GAP_MS = 5 * 60 * 1000;
 /** 离底部多近算「在底部」 */
 const BOTTOM_SLACK = 80;
 
+/**
+ * 模态弹层（举报 / 搜索）的焦点契约。
+ *
+ * 三条缺一条，就是「能用鼠标、用不了键盘」：
+ *   ① 打开时焦点进弹层 —— 否则第一个 Tab 从页面顶端重新开始
+ *   ② Tab 在弹层内部循环 —— 实测举报弹层 Tab 8 步就能跑到弹层外（焦点落到背后的链接上，
+ *      而视觉上还盖着遮罩，用户以为卡死了）
+ *   ③ 关闭后焦点回到触发它的按钮 —— 否则焦点掉到 body，键盘用户得从头 Tab 一遍
+ *
+ * `onClose` 用 ref 存着：父组件每次渲染都会传一个新函数，
+ * 直接放进依赖会让 effect 反复重跑、焦点被反复抢回第一个按钮。
+ */
+function useDialogFocus(open: boolean, onClose: () => void) {
+  const boxRef = useRef<HTMLDivElement | null>(null);
+  const backRef = useRef<HTMLElement | null>(null);
+  const closeRef = useRef(onClose);
+  closeRef.current = onClose;
+
+  useEffect(() => {
+    if (!open) return;
+    backRef.current = document.activeElement as HTMLElement | null;
+
+    const SEL =
+      'button:not([disabled]), [href], input, textarea, select, [tabindex]:not([tabindex="-1"])';
+    const box = boxRef.current;
+    box?.querySelector<HTMLElement>(SEL)?.focus({ preventScroll: true });
+
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        closeRef.current();
+        return;
+      }
+      if (e.key !== 'Tab' || !box) return;
+      const items = Array.from(box.querySelectorAll<HTMLElement>(SEL)).filter(
+        (el) => el.offsetParent !== null,
+      );
+      if (!items.length) return;
+      const first = items[0]!;
+      const last = items[items.length - 1]!;
+      if (e.shiftKey && document.activeElement === first) {
+        e.preventDefault();
+        last.focus();
+      } else if (!e.shiftKey && document.activeElement === last) {
+        e.preventDefault();
+        first.focus();
+      }
+    };
+
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('keydown', onKey);
+      backRef.current?.focus?.({ preventScroll: true });
+    };
+  }, [open]);
+
+  return boxRef;
+}
+
 const DRAFT_KEY = 'qingwu:chat-draft';
 
 /** 图片上传前压到长边这么多 */
@@ -238,6 +297,14 @@ interface Snapshot {
   at: number;
   /** 写快照时的账号 id。换人登录时靠它判断「这份不是我看到的」 */
   accountId: number | null;
+  /**
+   * 写快照时的身份（昵称 / 头像 / 站点）。
+   *
+   * 带上它是为了侧栏第一帧就画对：之前加载态一律落进「还没进门」的访客卡，
+   * 登录身份一到又换成 60px 的我的卡 —— 侧栏和页脚一起抖。
+   * 这点数据约 200 字节，换来的是首屏不再出现「我明明是登录的，却让我登录」。
+   */
+  account: SessionAccount | null;
   hasMore: boolean;
   lastId: number;
   lastRead: number;
@@ -288,7 +355,9 @@ export default function ChatRoom() {
   const [loginOpen, setLoginOpen] = useState(false);
 
   /** 侧栏数据：在线的人（「我是谁」直接用会话里的 account，服务端不再算一遍） */
-  const [account, setAccount] = useState<SessionAccount | null>(null);
+  const [account, setAccount] = useState<SessionAccount | null>(boot?.account ?? null);
+  /** 身份是否已经确认。false = 还不知道登录没登录，侧栏先画同高占位，别急着说「还没进门」 */
+  const [identityReady, setIdentityReady] = useState(Boolean(boot));
   const [members, setMembers] = useState<ChatMember[]>([]);
 
   /** 是否停在底部 —— 控制「回到最新 / N 条新消息」浮标的显隐 */
@@ -334,6 +403,15 @@ export default function ChatRoom() {
   /** 举报弹层的目标消息 */
   const [reporting, setReporting] = useState<ChatMessage | null>(null);
   const [reportBusy, setReportBusy] = useState(false);
+  /**
+   * 触屏上展开操作条的是哪一条（0 = 都没展开）。
+   *
+   * 放在这里而不是每条消息自己管：自己管的话可以同时点开好几条，
+   * 屏幕上就变成「一半消息挂着按钮」；互斥才是「我正在看这一条」。
+   */
+  const [openActs, setOpenActs] = useState(0);
+  /** 举报弹层的焦点契约（Esc / Tab 循环 / 关闭后归位） */
+  const reportBoxRef = useDialogFocus(Boolean(reporting), () => setReporting(null));
 
   /**
    * 拖文件进来时的投放态。
@@ -422,6 +500,7 @@ export default function ChatRoom() {
         setSignedIn(page.signedIn);
         setConfig(who.config);
         setAccount(who.account);
+        setIdentityReady(true);
         setMembers(list);
         setPinState(page.pin);
         lastIdRef.current = page.messages.reduce((max, m) => Math.max(max, m.id), 0);
@@ -430,6 +509,7 @@ export default function ChatRoom() {
         if (firstMaxRef.current < 0) firstMaxRef.current = lastIdRef.current;
         writeSnapshot({
           accountId: who.account?.id ?? null,
+          account: who.account ?? null,
           hasMore: page.hasMore,
           lastId: lastIdRef.current,
           lastRead: page.lastRead,
@@ -447,6 +527,8 @@ export default function ChatRoom() {
         else setFailed(true);
       } finally {
         setLoading(false);
+        // 失败也要落地，否则侧栏永远停在「占位」，用户看不到登录入口
+        setIdentityReady(true);
       }
     },
     [scrollToBottom],
@@ -557,6 +639,7 @@ export default function ChatRoom() {
     snapAtRef.current = now;
     writeSnapshot({
       accountId: account?.id ?? null,
+      account,
       hasMore,
       lastId: lastIdRef.current,
       lastRead: readMarkRef.current,
@@ -1063,6 +1146,7 @@ export default function ChatRoom() {
       account={account}
       members={members}
       online={loading ? -1 : online}
+      identityPending={!identityReady}
       onLogin={() => setLoginOpen(true)}
     />
   );
@@ -1168,7 +1252,9 @@ export default function ChatRoom() {
         <div className="q-chat__bar">
           <span className="q-chat__live">
             <i aria-hidden="true" />
-            {online > 0 ? `${online} 人在长亭` : '还没有人在'}
+            {/* 「还没有人在」缺了宾语 —— 在长亭里，「在」的宾语就是长亭，
+                写全了才不像半句话 */}
+            {online > 0 ? `${online} 人在长亭` : '还没有人在长亭'}
           </span>
           <div className="q-chat__barbtns">
             <button
@@ -1229,10 +1315,16 @@ export default function ChatRoom() {
         </div>
       )}
 
+      {/* tabIndex=0：可滚动区域必须能被键盘聚焦，否则键盘 / 读屏用户
+          既读不到历史，也没法用方向键往下翻（WCAG 2.1.1）。
+          只加在滚动容器上，不落到每条消息里 —— 否则 Tab 会被消息淹没。 */}
       <div
         className={`q-chat__scroll${messages.length === 0 ? ' is-empty' : ''}`}
         ref={scrollRef}
         onScroll={onScroll}
+        tabIndex={0}
+        role="region"
+        aria-label="聊天记录，可用方向键滚动"
       >
         {/* role=log + aria-live：新消息进来读屏会念出来。
             只声明 additions —— 撤回、已读这些状态变化不该抢话。 */}
@@ -1298,6 +1390,11 @@ export default function ChatRoom() {
                   m={m}
                   grouped={grouped}
                   fresh={fresh}
+                  /* 上面刚画过时间线就不再重复时刻：同一条消息上出现两个相同的时间，
+                     读者要花一秒确认「这俩是一个时间吗」，而这一秒正是看聊天时最贵的 */
+                  showClock={!splitTime}
+                  actsOpen={openActs === m.id}
+                  onToggleActs={() => setOpenActs((v) => (v === m.id ? 0 : m.id))}
                   canRecall={m.mine && m.status === 'visible' && Date.now() - ts < 2 * 60 * 1000}
                   /* 和服务端同一个 5 分钟窗口：按钮显示条件不一致会出现「按钮在、点了报错」 */
                   canEdit={m.mine && m.status === 'visible' && Date.now() - ts < 5 * 60 * 1000}
@@ -1567,7 +1664,7 @@ export default function ChatRoom() {
               aria-label="关掉"
               onClick={() => setReporting(null)}
             />
-            <div className="q-report__box">
+            <div className="q-report__box" ref={reportBoxRef}>
               <p className="q-report__t">举报给站长</p>
               <p className="q-report__s">
                 {reporting.name} 的这条会标出来给站长看。不会自动删 ——
@@ -1602,6 +1699,9 @@ function MessageRow({
   m,
   grouped,
   fresh,
+  showClock,
+  actsOpen,
+  onToggleActs,
   canRecall,
   canEdit,
   canPin,
@@ -1617,6 +1717,11 @@ function MessageRow({
   m: ChatMessage;
   grouped: boolean;
   fresh: boolean;
+  /** 上面是否已经画过时间线（画过就不再重复时刻） */
+  showClock: boolean;
+  /** 触屏上这条的操作条是否展开（同一时刻只有一条展开，状态在 ChatRoom 里） */
+  actsOpen: boolean;
+  onToggleActs: () => void;
   canRecall: boolean;
   /** 自己的、可见的、5 分钟内 */
   canEdit: boolean;
@@ -1636,6 +1741,35 @@ function MessageRow({
   // ⚠️ hook 必须在下面那个「撤回消息直接 return」之前 —— 否则两种状态的 hook
   //    数量不同，React 会报 "Rendered fewer hooks than expected"。
   const [pickOpen, setPickOpen] = useState(false);
+  const reactWrapRef = useRef<HTMLSpanElement | null>(null);
+
+  /**
+   * 表情弹层的两个「出去的路」。
+   *
+   * 之前只有再点一次「+」能关：点开之后按 Esc 没反应、点到别处也不关 ——
+   * 一个浮层如果没有通用的关闭手势，用户只能去猜「再点一次那个加号」。
+   * Esc / 点外面关闭是所有浮层的肌肉记忆，必须给。
+   */
+  useEffect(() => {
+    if (!pickOpen) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        e.stopPropagation();
+        setPickOpen(false);
+      }
+    };
+    const onDown = (e: PointerEvent) => {
+      const t = e.target as Node | null;
+      if (t && reactWrapRef.current && !reactWrapRef.current.contains(t)) setPickOpen(false);
+    };
+    document.addEventListener('keydown', onKey);
+    // pointerdown 而不是 click：后面的按钮会 stopPropagation，click 传不到 document
+    document.addEventListener('pointerdown', onDown, true);
+    return () => {
+      document.removeEventListener('keydown', onKey);
+      document.removeEventListener('pointerdown', onDown, true);
+    };
+  }, [pickOpen]);
 
   if (m.status === 'recalled') {
     return (
@@ -1650,7 +1784,20 @@ function MessageRow({
     <div
       className={`q-chat__row${mine ? ' is-mine' : ''}${grouped ? ' is-grouped' : ''}${
         fresh ? ' is-fresh' : ''
-      }`}
+      }${actsOpen ? ' is-acts-open' : ''}`}
+      /**
+       * 触屏上点消息 = 展开/收起操作条。
+       *
+       * 用 click 而不是 pointerdown：滚动结束浏览器不派发 click，
+       * 用户划列表时不会一路把每条消息都点开。
+       * 点在按钮/图/视频上不算（那是在操作，不是在「选这条消息」）。
+       */
+      onClick={(e) => {
+        if (!window.matchMedia('(hover: none)').matches) return;
+        const t = e.target as Element | null;
+        if (t?.closest('button, a, img, video, input, textarea')) return;
+        onToggleActs();
+      }}
     >
       {!mine && (
         /**
@@ -1682,9 +1829,11 @@ function MessageRow({
                 已编辑
               </span>
             )}
-            <time className="q-chat__clock" dateTime={m.at}>
-              {clockOf(m.at)}
-            </time>
+            {showClock && (
+              <time className="q-chat__clock" dateTime={m.at}>
+                {clockOf(m.at)}
+              </time>
+            )}
           </div>
         )}
 
@@ -1794,7 +1943,7 @@ function MessageRow({
               </button>
             )}
             {m.status === 'visible' && (
-              <span className="q-chat__addreact">
+              <span className="q-chat__addreact" ref={reactWrapRef}>
                 <button
                   type="button"
                   className="q-chat__plus"
