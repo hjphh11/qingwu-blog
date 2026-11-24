@@ -180,11 +180,71 @@ function mergeMessages(
   return [...map.values()].sort((a, b) => a.id - b.id);
 }
 
+/**
+ * 首屏快照。
+ *
+ * 为什么需要：`ChatRoom` 是 `client:only` 岛，Astro 的 ClientRouter 每次从别的页
+ * 切回 `/chat/` 都会**重建整个岛** —— 重新拉 30 条、重新算 who，中间 250~350ms 是白屏。
+ * 把上一次的首屏存进 sessionStorage，回来时先按快照铺满，再整份替换校正。
+ *
+ * 三条边界，写清楚免得以后被当成「数据缓存」用歪：
+ *   · sessionStorage 是**本标签页**的，关掉标签就没了 —— 不做跨会话的历史缓存
+ *   · TTL 90 秒。聊天内容变得快，旧快照的价值衰减得比加载耗时掉得还快
+ *   · 只加速**渲染**，不改数据来源：`init()` 回来永远是整份 `setMessages` 覆盖，
+ *     撤回、审核状态、已读线都由它校正。快照最多让旧内容多存在一帧
+ */
+const SNAP_KEY = 'qingwu:chat-snap';
+const SNAP_TTL = 90 * 1000;
+const SNAP_MAX = 30;
+
+interface Snapshot {
+  v: 1;
+  at: number;
+  /** 写快照时的账号 id。换人登录时靠它判断「这份不是我看到的」 */
+  accountId: number | null;
+  hasMore: boolean;
+  lastId: number;
+  lastRead: number;
+  messages: ChatMessage[];
+}
+
+function readSnapshot(): Snapshot | null {
+  try {
+    const raw = window.sessionStorage.getItem(SNAP_KEY);
+    if (!raw) return null;
+    const s = JSON.parse(raw) as Snapshot;
+    if (s?.v !== 1 || !Array.isArray(s.messages) || s.messages.length === 0) return null;
+    if (!Number.isFinite(s.at) || Date.now() - s.at > SNAP_TTL) return null;
+    return s;
+  } catch {
+    return null;
+  }
+}
+
+function writeSnapshot(s: Omit<Snapshot, 'v' | 'at'>): void {
+  try {
+    window.sessionStorage.setItem(
+      SNAP_KEY,
+      JSON.stringify({ v: 1, at: Date.now(), ...s, messages: s.messages.slice(-SNAP_MAX) }),
+    );
+  } catch {
+    /* 隐私模式 / 配额满：加速失效而已，功能不受影响 */
+  }
+}
+
 export default function ChatRoom() {
-  const [messages, setMessages] = useState<ChatMessage[]>([]);
-  const [loading, setLoading] = useState(true);
+  /**
+   * 读快照。`client:only` 保证了这里不会在服务端跑，可以直接碰 window。
+   * 用 ref 只读一次 —— 每次 render 都读 sessionStorage 是没必要的 IO。
+   */
+  const bootRef = useRef<Snapshot | null | undefined>(undefined);
+  if (bootRef.current === undefined) bootRef.current = readSnapshot();
+  const boot = bootRef.current;
+
+  const [messages, setMessages] = useState<ChatMessage[]>(boot?.messages ?? []);
+  const [loading, setLoading] = useState(!boot);
   const [failed, setFailed] = useState(false);
-  const [hasMore, setHasMore] = useState(false);
+  const [hasMore, setHasMore] = useState(boot?.hasMore ?? false);
   const [loadingMore, setLoadingMore] = useState(false);
   const [online, setOnline] = useState(0);
   const [signedIn, setSignedIn] = useState(false);
@@ -228,10 +288,10 @@ export default function ChatRoom() {
   const [uploading, setUploading] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
 
-  /** 已见过的最新 id —— poll 的游标 */
-  const lastIdRef = useRef(0);
+  /** 已见过的最新 id —— poll 的游标（有快照就从快照续上，第一条 poll 才不会重复拉） */
+  const lastIdRef = useRef(boot?.lastId ?? 0);
   /** 「上次看到这里」只画一次：记录读进来时的 lastRead */
-  const readMarkRef = useRef(0);
+  const readMarkRef = useRef(boot?.lastRead ?? 0);
   /** 用户不在底部时，攒下来的新消息条数 */
   const [pendingNew, setPendingNew] = useState(0);
   /** 页面在后台时攒的新消息数 —— 只用来改页签标题 */
@@ -255,37 +315,80 @@ export default function ChatRoom() {
     setMembers(await fetchWho());
   }, []);
 
-  /** 首屏：翻历史 + 认身份 + 侧栏 */
-  const init = useCallback(async () => {
-    setLoading(true);
-    setFailed(false);
-    try {
-      const [page, who, list] = await Promise.all([
-        loadHistory({ limit: 30 }),
-        fetchMe(),
-        fetchWho(),
-      ]);
-      setMessages(page.messages);
-      setHasMore(page.hasMore);
-      setOnline(page.online);
-      setSignedIn(page.signedIn);
-      setConfig(who.config);
-      setAccount(who.account);
-      setMembers(list);
-      lastIdRef.current = page.messages.reduce((max, m) => Math.max(max, m.id), 0);
-      readMarkRef.current = page.lastRead;
-      // 首屏一定在底部：进来要看的是最新的
-      requestAnimationFrame(() => scrollToBottom());
-    } catch {
-      setFailed(true);
-    } finally {
-      setLoading(false);
-    }
-  }, [scrollToBottom]);
+  /**
+   * 首屏：翻历史 + 认身份 + 侧栏
+   *
+   * `quiet` = 已经有快照铺在屏幕上，这一趟是「悄悄校正」，不该再翻白屏。
+   */
+  const init = useCallback(
+    async ({ quiet = false }: { quiet?: boolean } = {}) => {
+      if (!quiet) setLoading(true);
+      setFailed(false);
+      try {
+        const [page, who, list] = await Promise.all([
+          loadHistory({ limit: 30 }),
+          fetchMe(),
+          fetchWho(),
+        ]);
+        // 整份覆盖（不是合并）—— 快照里的旧状态在这一步被彻底校正
+        setMessages(page.messages);
+        setHasMore(page.hasMore);
+        setOnline(page.online);
+        setSignedIn(page.signedIn);
+        setConfig(who.config);
+        setAccount(who.account);
+        setMembers(list);
+        lastIdRef.current = page.messages.reduce((max, m) => Math.max(max, m.id), 0);
+        readMarkRef.current = page.lastRead;
+        writeSnapshot({
+          accountId: who.account?.id ?? null,
+          hasMore: page.hasMore,
+          lastId: lastIdRef.current,
+          lastRead: page.lastRead,
+          messages: page.messages,
+        });
+        // 首屏一定在底部：进来要看的是最新的
+        requestAnimationFrame(() => scrollToBottom());
+      } catch {
+        /**
+         * 有快照的时候**不切到整屏错误页**：屏幕上已经有内容了，
+         * 把它换成一个「推不开门」会比什么都不做更糟。留一行小字说明它是旧的，
+         * 轮询和下次进入会自己恢复正常。
+         */
+        if (quiet) setTip({ kind: 'warn', text: '这会儿没连上，先给你看上次的内容' });
+        else setFailed(true);
+      } finally {
+        setLoading(false);
+      }
+    },
+    [scrollToBottom],
+  );
 
   useEffect(() => {
-    void init();
-  }, [init]);
+    void init({ quiet: Boolean(boot) });
+  }, [init, boot]);
+
+  /**
+   * 快照保鲜：收到新消息 / 自己发完，把快照重写一次，3 秒节流。
+   *
+   * 不写的话会出现一个很怪的现象：刚收到的话，切页回来瞬间「消失」，
+   * 三百毫秒后又冒出来 —— 因为快照还停在进入页面那一刻。
+   * mergeMessages 在没有新内容时返回原数组，所以这个 effect 只在真有变化时触发。
+   */
+  const snapAtRef = useRef(boot?.at ?? 0);
+  useEffect(() => {
+    if (!messages.length) return;
+    const now = Date.now();
+    if (now - snapAtRef.current < 3000) return;
+    snapAtRef.current = now;
+    writeSnapshot({
+      accountId: account?.id ?? null,
+      hasMore,
+      lastId: lastIdRef.current,
+      lastRead: readMarkRef.current,
+      messages,
+    });
+  }, [messages, hasMore, account]);
 
   /** 轮询：setTimeout 递归，页面不可见时暂停 */
   useEffect(() => {
