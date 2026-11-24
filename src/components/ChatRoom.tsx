@@ -4,12 +4,15 @@ import {
   ChevronDown,
   CircleAlert,
   LoaderCircle,
+  Search,
   Send,
   Smile,
+  X,
 } from '../lib/icons';
 import EmojiPicker from './EmojiPicker';
 import LoginDialog from './auth/LoginDialog';
 import ChatAside from './chat/ChatAside';
+import ChatSearch from './chat/ChatSearch';
 import { renderRich } from '../lib/richText';
 import { EMOJI_MAP } from '../lib/emojis';
 import { fetchMe, type AuthConfig, type SessionAccount } from '../lib/auth';
@@ -21,8 +24,10 @@ import {
   react,
   recall,
   send,
+  typing,
   type ChatMember,
   type ChatMessage,
+  type SearchHit,
 } from '../lib/chat';
 
 /**
@@ -132,6 +137,26 @@ export default function ChatRoom() {
   /** 是否停在底部 —— 控制「回到最新 / N 条新消息」浮标的显隐 */
   const [atBottom, setAtBottom] = useState(true);
 
+  /** 正在回哪一条（引用） */
+  const [replyTo, setReplyTo] = useState<ChatMessage | null>(null);
+  /** 这条消息里已经 @ 了谁（发出去时一并提交） */
+  const [mentionIds, setMentionIds] = useState<number[]>([]);
+  /** 输入框里正在打的那个 @（null = 没在选人） */
+  const [mention, setMention] = useState<{ at: number; q: string } | null>(null);
+
+  /** 别人正在打字 */
+  const [typingNames, setTypingNames] = useState<string[]>([]);
+  /** 我最新那条被读了几次 */
+  const [reads, setReads] = useState<{ id: number; n: number } | null>(null);
+
+  /** 搜索面板 */
+  const [searchOpen, setSearchOpen] = useState(false);
+  /** 从搜索结果跳过去之后，临时高亮的那条 */
+  const [highlightId, setHighlightId] = useState(0);
+
+  /** 「正在输入」上报节流 */
+  const lastTypingRef = useRef(0);
+
   const [draft, setDraft] = useState('');
   const [sending, setSending] = useState(false);
   const [tip, setTip] = useState<{ kind: 'warn' | 'ok'; text: string } | null>(null);
@@ -210,6 +235,8 @@ export default function ChatRoom() {
 
           setOnline(r.online);
           setSignedIn(r.signedIn);
+          setTypingNames(r.typing);
+          setReads(r.reads);
 
           if (r.messages.length || r.recalled.length) {
             const incoming = r.messages;
@@ -356,11 +383,15 @@ export default function ChatRoom() {
     if (!text || sending) return;
     setSending(true);
     setTip(null);
-    const res = await send(text);
+    const res = await send(text, { replyTo: replyTo?.id ?? 0, mentions: mentionIds });
     setSending(false);
 
     if (res.ok) {
       setDraft('');
+      // 发出去之后引用和 @ 都该清掉 —— 留着会让下一条莫名其妙也带上
+      setReplyTo(null);
+      setMentionIds([]);
+      setMention(null);
       setMessages((prev) => mergeMessages(prev, [res.message], []));
       lastIdRef.current = Math.max(lastIdRef.current, res.message.id);
       setEmojiOpen(false);
@@ -415,6 +446,77 @@ export default function ChatRoom() {
   const pickEmoji = (key: string) => {
     setDraft((d) => `${d}:${key}`);
     inputRef.current?.focus();
+  };
+
+  /**
+   * 从 @ 候选里选一个人。
+   *
+   * 把输入框里「@已经打了一半的名字」整段换成「@完整名字 」，光标落到后面 ——
+   * 不这么做的话，选完人光标会跳回开头，接着打字就全插到最前面了。
+   */
+  const pickMention = (m: ChatMember) => {
+    if (!mention) return;
+    const el = inputRef.current;
+    const pos = el?.selectionStart ?? draft.length;
+    const insert = `@${m.name} `;
+    const next = (draft.slice(0, mention.at) + insert + draft.slice(pos)).slice(0, 500);
+    setDraft(next);
+    setMentionIds((ids) => [...new Set([...ids, m.id])]);
+    setMention(null);
+    requestAnimationFrame(() => {
+      el?.focus();
+      const p = Math.min(mention.at + insert.length, next.length);
+      el?.setSelectionRange(p, p);
+    });
+  };
+
+  /** @ 候选：在线的人里名字包含当前输入的那几个字 */
+  const mentionList =
+    mention && members.length
+      ? members
+          .filter((m) => !mention.q || m.name.toLowerCase().includes(mention.q.toLowerCase()))
+          .slice(0, 5)
+      : [];
+
+  /**
+   * 从搜索结果跳过去。
+   *
+   * 那条可能比当前页更早（还没加载），所以先把它的精简形态并进列表再滚过去；
+   * 已经在列表里就**不覆盖** —— 覆盖会把它身上的回应和引用一起抹掉。
+   */
+  const jumpToMessage = (hit: SearchHit) => {
+    setSearchOpen(false);
+    setMessages((prev) => {
+      if (prev.some((m) => m.id === hit.id)) return prev;
+      return mergeMessages(
+        prev,
+        [
+          {
+            id: hit.id,
+            name: hit.name,
+            avatar: hit.avatar,
+            site: '',
+            admin: false,
+            body: hit.body,
+            at: hit.at,
+            status: hit.recalled ? ('recalled' as const) : ('visible' as const),
+            mine: hit.mine,
+            origin: 'local' as const,
+            reactions: [],
+            quote: null,
+            mentionedMe: false,
+          },
+        ],
+        [],
+      );
+    });
+    setHighlightId(hit.id);
+    requestAnimationFrame(() => {
+      document
+        .querySelector(`[data-mid="${hit.id}"]`)
+        ?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    });
+    window.setTimeout(() => setHighlightId(0), 2400);
   };
 
   /**
@@ -481,11 +583,20 @@ export default function ChatRoom() {
       {aside}
       <section className="q-chat" aria-label="长亭聊天室">
         <div className="q-chat__bar">
-        <span className="q-chat__live">
-          <i aria-hidden="true" />
-          {online > 0 ? `${online} 人在长亭` : '还没有人在'}
-        </span>
-      </div>
+          <span className="q-chat__live">
+            <i aria-hidden="true" />
+            {online > 0 ? `${online} 人在长亭` : '还没有人在'}
+          </span>
+          <button
+            type="button"
+            className="q-chat__searchbtn"
+            onClick={() => setSearchOpen(true)}
+            aria-label="搜索聊天记录"
+          >
+            <MorphIcon icon={Search} size={13} color="currentColor" />
+            搜索
+          </button>
+        </div>
 
       <div className="q-chat__scroll" ref={scrollRef} onScroll={onScroll}>
         <div className="q-chat__inner">
@@ -519,7 +630,11 @@ export default function ChatRoom() {
             const grouped = Boolean(sameAuthor) && !splitTime && !showReadMark;
 
             return (
-              <div key={m.id}>
+              <div
+                key={m.id}
+                data-mid={m.id}
+                className={highlightId === m.id ? 'q-chat__anchor' : undefined}
+              >
                 {splitTime && <div className="q-chat__time">{stampOf(m.at)}</div>}
                 {showReadMark && <div className="q-chat__readmark">上次看到这里</div>}
                 <MessageRow
@@ -528,6 +643,8 @@ export default function ChatRoom() {
                   canRecall={m.mine && m.status === 'visible' && Date.now() - ts < 2 * 60 * 1000}
                   onRecall={() => void doRecall(m.id)}
                   onReact={(emoji) => void doReact(m.id, emoji)}
+                  onReply={() => setReplyTo(m)}
+                  readCount={reads?.id === m.id ? reads.n : 0}
                 />
               </div>
             );
@@ -548,23 +665,88 @@ export default function ChatRoom() {
         </p>
       )}
 
+      {(replyTo || typingNames.length > 0) && (
+        <div className="q-chat__above">
+          {replyTo && (
+            <div className="q-chat__replybar">
+              <span className="q-chat__replybar__t">
+                回 <b>{replyTo.name}</b>
+                {replyTo.body ? `：${replyTo.body.replace(/\s+/g, ' ').slice(0, 40)}` : ''}
+              </span>
+              <button type="button" onClick={() => setReplyTo(null)} aria-label="取消引用">
+                <MorphIcon icon={X} size={11} color="currentColor" />
+              </button>
+            </div>
+          )}
+          {typingNames.length > 0 && (
+            <p className="q-chat__typing">
+              {typingNames.slice(0, 2).join('、')}
+              {typingNames.length > 2 ? ` 等 ${typingNames.length} 人` : ''} 正在输入
+              <i />
+              <i />
+              <i />
+            </p>
+          )}
+        </div>
+      )}
+
       {signedIn ? (
         <div className="q-chat__composer">
           <div className="q-chat__inputwrap">
+            {mention && mentionList.length > 0 && (
+              <div className="q-chat__mentions" role="listbox" aria-label="选一个人">
+                {mentionList.map((p) => (
+                  <button key={p.id} type="button" role="option" aria-selected={false} onClick={() => pickMention(p)}>
+                    <span
+                      className="q-chat__mentions__av"
+                      style={p.avatar ? { backgroundImage: `url("${p.avatar}")` } : undefined}
+                      aria-hidden="true"
+                    >
+                      {p.name.slice(0, 1)}
+                    </span>
+                    <span className="q-chat__mentions__n">{p.name}</span>
+                    {p.admin && <em>站长</em>}
+                  </button>
+                ))}
+              </div>
+            )}
             <textarea
               ref={inputRef}
               className="q-chat__input"
               value={draft}
-              onChange={(e) => setDraft(e.target.value.slice(0, 500))}
+              onChange={(e) => {
+                const v = e.target.value.slice(0, 500);
+                setDraft(v);
+                // 光标前是不是一个「刚打了一半的 @」
+                const pos = e.target.selectionStart ?? v.length;
+                const hit = /@([^\s@]{0,20})$/.exec(v.slice(0, pos));
+                setMention(hit ? { at: pos - hit[0].length, q: hit[1] ?? '' } : null);
+                // 「正在输入」上报：3 秒一次，别把接口打成 DoS
+                if (v.trim() && Date.now() - lastTypingRef.current > 3000) {
+                  lastTypingRef.current = Date.now();
+                  void typing();
+                }
+              }}
               onKeyDown={(e) => {
+                if (e.key === 'Escape' && mention) {
+                  e.preventDefault();
+                  setMention(null);
+                  return;
+                }
                 if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
+                  // 选人弹层开着时，Enter 先当作「选第一个」
+                  if (mention && mentionList.length > 0) {
+                    e.preventDefault();
+                    pickMention(mentionList[0]!);
+                    return;
+                  }
                   e.preventDefault();
                   void doSend();
                 }
               }}
               rows={1}
-              placeholder="说点什么…"
-              title="Enter 发送，Shift + Enter 换行"
+              placeholder="说点什么…（@ 可以叫个人）"
+              title="Enter 发送，Shift + Enter 换行，@ 提及"
               aria-label="说点什么"
             />
             <div className="q-chat__tools">
@@ -623,6 +805,8 @@ export default function ChatRoom() {
           }}
         />
       )}
+
+      {searchOpen && <ChatSearch onClose={() => setSearchOpen(false)} onPick={jumpToMessage} />}
       </section>
     </div>
   );
@@ -635,12 +819,17 @@ function MessageRow({
   canRecall,
   onRecall,
   onReact,
+  onReply,
+  readCount,
 }: {
   m: ChatMessage;
   grouped: boolean;
   canRecall: boolean;
   onRecall: () => void;
   onReact: (emoji: string) => void;
+  onReply: () => void;
+  /** 这条被多少人读完（只对「我最新那条」有意义，其余传 0） */
+  readCount: number;
 }) {
   // ⚠️ hook 必须在下面那个「撤回消息直接 return」之前 —— 否则两种状态的 hook
   //    数量不同，React 会报 "Rendered fewer hooks than expected"。
@@ -678,6 +867,7 @@ function MessageRow({
           <div className="q-chat__meta">
             <span className="q-chat__name">{m.name}</span>
             {m.admin && <span className="q-chat__tag">站长</span>}
+            {m.mentionedMe && <span className="q-chat__tag q-chat__tag--at">@了你</span>}
             {m.origin === 'remote' && m.site && (
               <span className="q-chat__site">来自 {m.site}</span>
             )}
@@ -688,6 +878,12 @@ function MessageRow({
         )}
 
         <div className="q-chat__bubblewrap">
+          {m.quote && (
+            <div className="q-chat__quote" title="引用的是更早的一条">
+              <b>{m.quote.name}</b>
+              <span>{m.quote.excerpt || '（空）'}</span>
+            </div>
+          )}
           <div
             className={`q-rich q-chat__bubble${m.status === 'pending' ? ' is-pending' : ''}`}
             // renderRich 先整段转义再拼固定标签（见 src/lib/richText.ts 顶部）
@@ -698,60 +894,69 @@ function MessageRow({
               等一等
             </span>
           )}
-          {canRecall && (
-            <button type="button" className="q-chat__recall" onClick={onRecall}>
-              撤回
+
+          {m.reactions.length > 0 && (
+            <div className="q-chat__reacts">
+              {m.reactions.map((r) => (
+                <button
+                  key={r.emoji}
+                  type="button"
+                  className={`q-chat__react${r.mine ? ' is-mine' : ''}`}
+                  onClick={() => onReact(r.emoji)}
+                  title={r.mine ? '再点一下取消' : '也点一个'}
+                >
+                  <img src={EMOJI_MAP[r.emoji]?.src} alt="" loading="lazy" decoding="async" />
+                  <span>{r.n}</span>
+                </button>
+              ))}
+            </div>
+          )}
+
+          {/* 操作条：绝对定位在气泡（含回应）下方，不占布局高度，悬停才露 */}
+          <div className={`q-chat__acts${pickOpen ? ' has-open' : ''}`}>
+            <button type="button" className="q-chat__recall" onClick={onReply}>
+              回复
             </button>
-          )}
-          {m.status === 'visible' && (
-            <span className="q-chat__addreact">
-              <button
-                type="button"
-                className="q-chat__plus"
-                aria-label="回应一下"
-                aria-expanded={pickOpen}
-                onClick={() => setPickOpen((v) => !v)}
-              >
-                +
+            {canRecall && (
+              <button type="button" className="q-chat__recall" onClick={onRecall}>
+                撤回
               </button>
-              {pickOpen && (
-                <span className="q-chat__reactpop" role="group" aria-label="选一个回应">
-                  {REACT_SET.map((r) => (
-                    <button
-                      key={r.key}
-                      type="button"
-                      title={r.label}
-                      aria-label={r.label}
-                      onClick={() => {
-                        onReact(r.key);
-                        setPickOpen(false);
-                      }}
-                    >
-                      <img src={EMOJI_MAP[r.key]?.src} alt="" loading="lazy" decoding="async" />
-                    </button>
-                  ))}
-                </span>
-              )}
-            </span>
-          )}
+            )}
+            {m.status === 'visible' && (
+              <span className="q-chat__addreact">
+                <button
+                  type="button"
+                  className="q-chat__plus"
+                  aria-label="回应一下"
+                  aria-expanded={pickOpen}
+                  onClick={() => setPickOpen((v) => !v)}
+                >
+                  +
+                </button>
+                {pickOpen && (
+                  <span className="q-chat__reactpop" role="group" aria-label="选一个回应">
+                    {REACT_SET.map((r) => (
+                      <button
+                        key={r.key}
+                        type="button"
+                        title={r.label}
+                        aria-label={r.label}
+                        onClick={() => {
+                          onReact(r.key);
+                          setPickOpen(false);
+                        }}
+                      >
+                        <img src={EMOJI_MAP[r.key]?.src} alt="" loading="lazy" decoding="async" />
+                      </button>
+                    ))}
+                  </span>
+                )}
+              </span>
+            )}
+          </div>
         </div>
 
-        {m.reactions.length > 0 && (
-          <div className="q-chat__reacts">
-            {m.reactions.map((r) => (
-              <button
-                key={r.emoji}
-                type="button"
-                className={`q-chat__react${r.mine ? ' is-mine' : ''}`}
-                onClick={() => onReact(r.emoji)}
-                title={r.mine ? '再点一下取消' : '也点一个'}
-              >
-                <img src={EMOJI_MAP[r.emoji]?.src} alt="" loading="lazy" decoding="async" />
-                <span>{r.n}</span>
-              </button>
-            ))}
-          </div>
-        )}
+        {readCount > 0 && <span className="q-chat__reads">已读 {readCount}</span>}
       </div>
     </div>
   );

@@ -7,11 +7,11 @@ import ChatRoom from '../../components/ChatRoom.tsx';
  *
  * 为什么是 `client:only`：这一页的内容完全取决于「现在有谁、说了什么」，
  * 服务端渲染出来的只会是一张空壳；更麻烦的是气泡里的相对时间
- * （`新 Date(iso)` 取本地时区）在服务端和浏览器可能差一秒，hydration 会报不一致。
+ * （`new Date(iso)` 取本地时区）在服务端和浏览器可能差一秒，hydration 会报不一致。
  * 直接跳过 SSR，让组件自己拉数据、自己画。
  *
- * 和留言板的分工：留言是「一次性招呼」，长亭是「在场」。
- * 两边都保留 —— 把留言板改成聊天室，等于把「签名本」改写成了「客厅」。
+ * 和其他页的分工：留言是「一次性招呼」，长亭是「在场」。
+ * 两边都保留 —— 把留言板改成聊天室，等于把「签名本」改写成「客厅」。
  */
 ---
 
@@ -19,7 +19,7 @@ import ChatRoom from '../../components/ChatRoom.tsx';
   title="长亭 · 清吾"
   description="清吾的长亭，路过就进来坐坐。聊两句、发个表情，或者只是看看别人在说什么。"
 >
-  <div class="page-shell">
+  <div class="page-shell q-chat-page">
     <header class="page-head">
       <div>
         <h1 class="page-head__title">长亭</h1>
@@ -28,20 +28,25 @@ import ChatRoom from '../../components/ChatRoom.tsx';
     </header>
 
     <ChatRoom client:only="react" />
-
-    <p class="q-chat-away">
-      聊天记录留在本站，不存储任何明文邮箱。
-      说得太频繁会被请去喝口茶（限流），两分钟内的消息可以撤回。
-    </p>
   </div>
 </Layout>
 
 <style>
-  /* 页脚说明：别用 text-ink/NN 当正文（见 tokens 的约定），走 text-subtle */
-  .q-chat-away {
-    margin-top: 1rem;
-    font-size: 0.75rem;
-    line-height: 1.9;
-    color: var(--color-subtle);
+  /* 页头压薄。
+     这一页的重点是聊天区，标题只为交代一句「这是哪儿」——
+     用和其他页一样的呼吸空间，等于把首屏让给了一个标题。
+     ⚠️ 必须 :global()：.page-head 是 layout.css 里的全局类，
+        组件级 scoped 选择器加不上 data-astro-cid，规则不会命中。 */
+  .q-chat-page :global(.page-head) {
+    margin-bottom: 1rem;
+  }
+
+  .q-chat-page :global(.page-head__title) {
+    /* --text-page 是给文章页那种大标题的，这里降一档 */
+    font-size: clamp(1.6rem, 2.6vw, 2rem);
+  }
+
+  .q-chat-page :global(.page-head__sub) {
+    margin-top: 0.15rem;
   }
 </style>

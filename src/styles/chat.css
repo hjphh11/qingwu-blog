@@ -354,7 +354,10 @@
     display: flex;
     flex-direction: column;
     /* 小屏 26rem 兜底、大屏最多 44rem —— 不写死 100vh，页头页脚要留位置 */
-    height: clamp(26rem, calc(100svh - 22rem), 44rem);
+    /* 高度：页头压薄之后（见 chat/index.astro 的 .page-head 覆盖），
+       这块可以往上顶 —— 站长原话「这里再做高点」。
+       上下限都放宽了一档，短屏仍然保留 30rem 兜底。 */
+    height: clamp(30rem, calc(100svh - 16rem), 56rem);
     border: 1px solid var(--color-hairline);
     border-radius: var(--radius-card);
     background: #fffdfb;
@@ -567,9 +570,54 @@
 
   /* ——— 气泡 ——— */
   .q-chat__bubblewrap {
+    position: relative;
     display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.3rem;
+  }
+
+  /* 自己的消息靠右，气泡、回应条、操作条一起靠右 */
+  .q-chat__row.is-mine .q-chat__bubblewrap {
     align-items: flex-end;
-    gap: 0.35rem;
+  }
+
+  /**
+   * 操作条（撤回 / +）：绝对定位在气泡下方，**不占布局高度**。
+   *
+   * 为什么不塞进正常流：那样每条消息下面都会多出约 24px 空白，
+   * 一屏只能放六七条。绝对定位之后它像浮层一样贴着气泡出现，鼠标移开就淡出。
+   */
+  .q-chat__acts {
+    position: absolute;
+    top: calc(100% + 0.15rem);
+    left: 0;
+    display: flex;
+    align-items: center;
+    gap: 0.3rem;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity var(--dur-micro) ease;
+  }
+
+  .q-chat__row.is-mine .q-chat__acts {
+    left: auto;
+    right: 0;
+  }
+
+  .q-chat__row:hover .q-chat__acts,
+  .q-chat__acts:focus-within,
+  .q-chat__acts.has-open {
+    opacity: 1;
+    pointer-events: auto;
+  }
+
+  /* 触屏没有 hover：直接给出来 */
+  @media (hover: none) {
+    .q-chat__acts {
+      opacity: 0.85;
+      pointer-events: auto;
+    }
   }
 
   .q-chat__bubble {
@@ -630,14 +678,8 @@
     color: var(--color-subtle);
     padding: 0.1rem 0.3rem;
     border-radius: 0.3rem;
-    opacity: 0;
-    transition: opacity var(--dur-micro) ease, color var(--dur-micro) ease;
-  }
-
-  /* 撤回只在悬停/聚焦时露面：正常阅读时不该有一排按钮抢眼 */
-  .q-chat__row:hover .q-chat__recall,
-  .q-chat__recall:focus-visible {
-    opacity: 1;
+    /* 显隐由外层的 .q-chat__acts 统一控制，这里不再自己管 opacity */
+    transition: color var(--dur-micro) ease;
   }
 
   .q-chat__recall:hover {
@@ -656,7 +698,6 @@
     position: relative;
     flex: none;
     display: inline-flex;
-    align-self: center;
   }
 
   .q-chat__plus {
@@ -670,27 +711,13 @@
     color: var(--color-subtle);
     font-size: 0.85rem;
     line-height: 1;
-    /* 和「撤回」同一套：正常阅读时不该有一排按钮抢眼 */
-    opacity: 0;
-    transition: opacity var(--dur-micro) ease, color var(--dur-micro) ease,
-      border-color var(--dur-micro) ease;
-  }
-
-  .q-chat__row:hover .q-chat__plus,
-  .q-chat__plus:focus-visible,
-  .q-chat__plus[aria-expanded="true"] {
-    opacity: 1;
+    /* 显隐同样交给外层 .q-chat__acts */
+    transition: color var(--dur-micro) ease, border-color var(--dur-micro) ease;
   }
 
   .q-chat__plus:hover {
     color: var(--color-crimson);
     border-color: color-mix(in srgb, var(--color-crimson) 34%, transparent);
-  }
-
-  @media (hover: none) {
-    .q-chat__plus {
-      opacity: 0.8;
-    }
   }
 
   /* 弹出的那一排：胶囊形，八个表情刚好一行 */
@@ -738,7 +765,6 @@
     display: flex;
     flex-wrap: wrap;
     gap: 0.25rem;
-    margin-top: 0.3rem;
   }
 
   .q-chat__react {
@@ -928,5 +954,345 @@
     background: var(--color-cta);
     color: #fff;
     font-size: 0.8rem;
+  }
+
+  /* ——— 顶栏搜索入口 ——— */
+  .q-chat__searchbtn {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.28rem;
+    padding: 0.14rem 0.55rem;
+    border-radius: var(--radius-pill);
+    font-size: 0.7rem;
+    color: var(--color-subtle);
+    transition: background-color var(--dur-micro) ease, color var(--dur-micro) ease;
+  }
+
+  .q-chat__searchbtn:hover {
+    background: color-mix(in srgb, var(--color-rose) 16%, transparent);
+    color: var(--color-crimson);
+  }
+
+  /* ——— 输入区上方：引用条 + 正在输入 ——— */
+  .q-chat__above {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+    padding: 0 0.85rem;
+  }
+
+  .q-chat__replybar {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.28rem 0.55rem;
+    border-left: 2px solid color-mix(in srgb, var(--color-crimson) 45%, transparent);
+    border-radius: 0 0.4rem 0.4rem 0;
+    background: color-mix(in srgb, var(--color-crimson) 5%, #fff);
+    font-size: 0.72rem;
+    color: var(--color-subtle);
+  }
+
+  .q-chat__replybar__t {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .q-chat__replybar__t b {
+    color: var(--color-brown);
+    font-weight: 500;
+  }
+
+  .q-chat__replybar button {
+    flex: none;
+    display: grid;
+    place-items: center;
+    width: 1.15rem;
+    height: 1.15rem;
+    border-radius: 9999px;
+    color: var(--color-subtle);
+  }
+
+  .q-chat__replybar button:hover {
+    background: color-mix(in srgb, var(--color-rose) 20%, transparent);
+    color: var(--color-crimson);
+  }
+
+  .q-chat__typing {
+    display: flex;
+    align-items: center;
+    gap: 0.2rem;
+    font-size: 0.68rem;
+    color: var(--color-subtle);
+  }
+
+  /* 三个点**不做闪烁动画**：这是个持续状态，为了三个点常驻跑 CSS 动画不划算 */
+  .q-chat__typing i {
+    width: 3px;
+    height: 3px;
+    border-radius: 9999px;
+    background: currentColor;
+    opacity: 0.5;
+  }
+
+  /* ——— @ 候选弹层 ——— */
+  .q-chat__mentions {
+    position: absolute;
+    bottom: calc(100% + 0.35rem);
+    left: 0;
+    right: 0;
+    z-index: 25;
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+    max-height: 12rem;
+    overflow-y: auto;
+    padding: 0.3rem;
+    border: 1px solid var(--color-hairline);
+    border-radius: 0.7rem;
+    background: #fffdfb;
+    box-shadow: 0 10px 30px rgba(90, 40, 50, 0.14);
+  }
+
+  .q-chat__mentions button {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.28rem 0.4rem;
+    border-radius: 0.4rem;
+    font-size: 0.78rem;
+    color: var(--color-ink);
+    text-align: left;
+  }
+
+  .q-chat__mentions button:hover {
+    background: color-mix(in srgb, var(--color-rose) 16%, transparent);
+  }
+
+  .q-chat__mentions__av {
+    flex: none;
+    display: grid;
+    place-items: center;
+    width: 1.4rem;
+    height: 1.4rem;
+    border-radius: 9999px;
+    background-color: color-mix(in srgb, var(--color-rose) 22%, #fff);
+    background-size: cover;
+    background-position: center;
+    font-size: 0.6rem;
+    color: var(--color-brown);
+  }
+
+  .q-chat__mentions__n {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .q-chat__mentions em {
+    font-style: normal;
+    font-size: 0.6rem;
+    color: var(--color-accent-soft);
+  }
+
+  /* ——— 引用条（气泡上方） ——— */
+  .q-chat__quote {
+    max-width: 100%;
+    padding: 0.22rem 0.5rem;
+    border-left: 2px solid color-mix(in srgb, var(--color-brown) 30%, transparent);
+    border-radius: 0 0.35rem 0.35rem 0;
+    background: color-mix(in srgb, var(--color-brown) 6%, #fff);
+    font-size: 0.7rem;
+    line-height: 1.6;
+    color: var(--color-subtle);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .q-chat__quote b {
+    margin-right: 0.3rem;
+    color: var(--color-brown);
+    font-weight: 500;
+  }
+
+  .q-chat__row.is-mine .q-chat__quote {
+    background: color-mix(in srgb, var(--color-crimson) 6%, #fff);
+    border-left-color: color-mix(in srgb, var(--color-crimson) 32%, transparent);
+  }
+
+  /* ——— 已读回执：只挂在我最新那条下面 ——— */
+  .q-chat__reads {
+    align-self: flex-end;
+    margin-top: 0.12rem;
+    font-size: 0.62rem;
+    color: var(--color-subtle);
+  }
+
+  /* @了你 的小标：比「站长」更显眼一点，但别做成红色警告 */
+  .q-chat__tag--at {
+    background: color-mix(in srgb, var(--color-crimson) 15%, transparent);
+    color: var(--color-crimson);
+  }
+
+  /* 从搜索结果跳过来时闪一下；纯视觉提示，2.2 秒后自己消失 */
+  .q-chat__anchor {
+    border-radius: 0.5rem;
+    animation: q-chat-flash 2.2s ease-out;
+  }
+
+  @keyframes q-chat-flash {
+    0%,
+    55% {
+      background: color-mix(in srgb, var(--color-crimson) 11%, transparent);
+    }
+    100% {
+      background: transparent;
+    }
+  }
+
+  /* ——— 搜索面板（portal 到 body） ——— */
+  .q-chatsearch {
+    position: fixed;
+    inset: 0;
+    z-index: 200;
+    display: grid;
+    place-items: start center;
+    padding: 12vh 1rem 1rem;
+    background: rgba(60, 30, 40, 0.26);
+  }
+
+  .q-chatsearch__panel {
+    display: flex;
+    flex-direction: column;
+    width: min(38rem, 100%);
+    max-height: 70vh;
+    overflow: hidden;
+    border: 1px solid var(--color-hairline);
+    border-radius: var(--radius-card);
+    background: #fffdfb;
+    box-shadow: 0 20px 60px rgba(60, 30, 40, 0.18);
+  }
+
+  .q-chatsearch__head {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.7rem 0.9rem;
+    border-bottom: 1px solid var(--color-hairline);
+    color: var(--color-subtle);
+  }
+
+  .q-chatsearch__input {
+    flex: 1;
+    min-width: 0;
+    border: 0;
+    outline: 0;
+    background: transparent;
+    color: var(--color-ink);
+    font-size: 0.9rem;
+    font-family: inherit;
+  }
+
+  .q-chatsearch__head button {
+    flex: none;
+    display: grid;
+    place-items: center;
+    width: 1.5rem;
+    height: 1.5rem;
+    border-radius: 9999px;
+    color: var(--color-subtle);
+  }
+
+  .q-chatsearch__head button:hover {
+    background: color-mix(in srgb, var(--color-rose) 18%, transparent);
+    color: var(--color-crimson);
+  }
+
+  .q-chatsearch__body {
+    overflow-y: auto;
+    padding: 0.5rem;
+  }
+
+  .q-chatsearch__hint {
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+    padding: 1rem 0.6rem;
+    font-size: 0.78rem;
+    color: var(--color-subtle);
+  }
+
+  .q-chatsearch__list {
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+  }
+
+  .q-chatsearch__list button {
+    display: flex;
+    gap: 0.55rem;
+    width: 100%;
+    padding: 0.45rem;
+    border-radius: 0.6rem;
+    text-align: left;
+  }
+
+  .q-chatsearch__list button:hover {
+    background: color-mix(in srgb, var(--color-rose) 13%, transparent);
+  }
+
+  .q-chatsearch__av {
+    flex: none;
+    display: grid;
+    place-items: center;
+    width: 1.7rem;
+    height: 1.7rem;
+    border-radius: 9999px;
+    background-color: color-mix(in srgb, var(--color-rose) 22%, #fff);
+    background-size: cover;
+    background-position: center;
+    font-size: 0.66rem;
+    color: var(--color-brown);
+  }
+
+  .q-chatsearch__main {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.1rem;
+  }
+
+  .q-chatsearch__meta {
+    display: flex;
+    align-items: baseline;
+    gap: 0.4rem;
+    font-size: 0.72rem;
+    color: var(--color-brown);
+  }
+
+  .q-chatsearch__meta time {
+    font-size: 0.66rem;
+    color: var(--color-subtle);
+  }
+
+  .q-chatsearch__meta em {
+    font-style: normal;
+    font-size: 0.62rem;
+    color: var(--color-accent-soft);
+  }
+
+  .q-chatsearch__text {
+    font-size: 0.78rem;
+    color: var(--color-muted);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 }

@@ -73,6 +73,18 @@ function inlineText(raw: string): string {
     return e ? `<img class="q-emoji" src="${e.src}" alt=":[${key}]" loading="lazy" decoding="async" />` : m;
   });
 
+  /**
+   * 再认一种写法：`:key`（不带方括号）。
+   *
+   * 为什么加：手打比点面板快，站长实测就打了 `:sunglasses`，结果原样显示成文字。
+   * **必须校验 key 存在**才替换 —— 否则 `12:30`、`https://a.com:8080`、
+   * `note:this` 全会被误伤。查表之后这几类都查不到 key，自然原样留着。
+   */
+  t = t.replace(/:([a-z0-9_]{2,32})(?![a-z0-9_\]])(?!\/)/gi, (m, key: string) => {
+    const e = EMOJI_MAP[key.toLowerCase()];
+    return e ? `<img class="q-emoji" src="${e.src}" alt=":[${key}]" loading="lazy" decoding="async" />` : m;
+  });
+
   return t;
 }
 

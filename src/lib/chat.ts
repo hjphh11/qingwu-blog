@@ -21,6 +21,13 @@ export interface Reaction {
   mine: boolean;
 }
 
+/** 被引用的那条（只带摘要，不带全文） */
+export interface Quote {
+  id: number;
+  name: string;
+  excerpt: string;
+}
+
 export interface ChatMessage {
   id: number;
   name: string;
@@ -37,6 +44,10 @@ export interface ChatMessage {
   mine: boolean;
   origin: 'local' | 'remote';
   reactions: Reaction[];
+  /** 这条在回哪一条（null = 不是回复） */
+  quote: Quote | null;
+  /** 这条 @ 了我 */
+  mentionedMe: boolean;
 }
 
 export interface ChatPage {
@@ -54,6 +65,10 @@ export interface PollResult {
   recalled: number[];
   online: number;
   signedIn: boolean;
+  /** 正在打字的人的名字（不含自己） */
+  typing: string[];
+  /** 我最新一条消息被多少人读到了；null = 我还没发过言 */
+  reads: { id: number; n: number } | null;
 }
 
 const TIMEOUT_POLL = 10_000;
@@ -85,6 +100,15 @@ function asMessage(raw: unknown): ChatMessage | null {
           }))
           .filter((x) => x.emoji && x.n > 0)
       : [],
+    quote:
+      r.quote && typeof r.quote === 'object'
+        ? {
+            id: Number((r.quote as Record<string, unknown>).id) || 0,
+            name: String((r.quote as Record<string, unknown>).name ?? ''),
+            excerpt: String((r.quote as Record<string, unknown>).excerpt ?? ''),
+          }
+        : null,
+    mentionedMe: Boolean(r.mentionedMe),
   };
 }
 
@@ -133,6 +157,8 @@ export async function poll(after: number): Promise<PollResult> {
     messages?: unknown[];
     recalled?: unknown[];
     online?: number;
+    typing?: unknown[];
+    reads?: { id?: unknown; n?: unknown } | null;
     auth?: { signedIn?: boolean };
   };
 
@@ -145,6 +171,14 @@ export async function poll(after: number): Promise<PollResult> {
       .filter((n) => Number.isFinite(n) && n > 0),
     online: Number(data.online) || 0,
     signedIn: Boolean(data.auth?.signedIn),
+    typing: (Array.isArray(data.typing) ? data.typing : [])
+      .map((s) => String(s ?? ''))
+      .filter(Boolean)
+      .slice(0, 5),
+    reads:
+      data.reads && Number(data.reads.id) > 0
+        ? { id: Number(data.reads.id), n: Number(data.reads.n) || 0 }
+        : null,
   };
 }
 
@@ -152,12 +186,19 @@ export type SendResult =
   | { ok: true; message: ChatMessage; screened: boolean }
   | { ok: false; reason: 'login' | 'limited' | 'screened' | 'error'; message: string };
 
-export async function send(body: string): Promise<SendResult> {
+export async function send(
+  body: string,
+  opts: { replyTo?: number; mentions?: number[] } = {},
+): Promise<SendResult> {
   try {
     const res = await fetch(`${BASE}/chat/send`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ body }),
+      body: JSON.stringify({
+        body,
+        replyTo: opts.replyTo ?? 0,
+        mentions: opts.mentions ?? [],
+      }),
       credentials: 'include',
       signal: AbortSignal.timeout(TIMEOUT_SEND),
     });
@@ -204,6 +245,48 @@ export async function recall(id: number): Promise<{ ok: true } | { ok: false; me
     return { ok: false, message: data.message || '没能撤回，稍后再试' };
   } catch {
     return { ok: false, message: '网络好像不太顺，稍后再试一次' };
+  }
+}
+
+/** 报告「正在输入」。失败无声 —— 这个信息可有可无，不该弹任何东西 */
+export async function typing(): Promise<void> {
+  try {
+    await fetch(`${BASE}/chat/typing`, {
+      method: 'POST',
+      credentials: 'include',
+      signal: AbortSignal.timeout(4000),
+      keepalive: true,
+    });
+  } catch {
+    /* 静默 */
+  }
+}
+
+export interface SearchHit {
+  id: number;
+  name: string;
+  avatar: string;
+  body: string;
+  at: string;
+  recalled: boolean;
+  mine: boolean;
+}
+
+/** 搜聊天记录。至少两个字符，服务端也再判一次 */
+export async function search(q: string): Promise<SearchHit[]> {
+  const query = q.trim();
+  if (query.length < 2) return [];
+  try {
+    const res = await fetch(`${BASE}/chat/search?q=${encodeURIComponent(query)}`, {
+      headers: { accept: 'application/json' },
+      credentials: 'include',
+      signal: AbortSignal.timeout(8000),
+    });
+    if (!res.ok) return [];
+    const data = (await res.json()) as { messages?: SearchHit[] };
+    return Array.isArray(data.messages) ? data.messages : [];
+  } catch {
+    return [];
   }
 }
 

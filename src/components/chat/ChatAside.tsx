@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { MorphIcon } from 'morphicons/react';
 import { MessageCircle, Sparkles, UserRound } from '../../lib/icons';
+import { avatarFromHash } from '../../lib/avatar';
 import type { SessionAccount } from '../../lib/auth';
 import type { ChatMember } from '../../lib/chat';
 
@@ -57,6 +58,21 @@ export default function ChatAside({
 
   const site = hostOf(account?.site || '');
 
+  /**
+   * 侧栏头像统一走 `avatarFromHash`（cravatar）。
+   *
+   * 为什么不用 `account.avatar`：那是 `avatar_url || avatarFromEmail(email)`，
+   * 而 QQ 邮箱会走 `q.qlogo.cn` —— 和在线列表里用的 cravatar 是两个域名。
+   * 实测后果就是「同一个账号，我的卡是空白首字、在线列表有头像」。
+   * cravatar 对 QQ 邮箱同样会回 QQ 头像，所以统一到它这里信息一点不少。
+   */
+  const meAvatar = account
+    ? account.emailHash
+      ? avatarFromHash(account.emailHash)
+      : account.avatar
+    : '';
+
+
   return (
     <aside className="q-aside" aria-label="长亭侧栏">
       {/* ——— ① 我 ——— */}
@@ -65,7 +81,7 @@ export default function ChatAside({
           <div className="q-aside-me__top">
             <span
               className="q-aside-me__avatar"
-              style={account.avatar ? { backgroundImage: `url("${account.avatar}")` } : undefined}
+              style={meAvatar ? { backgroundImage: `url("${meAvatar}")` } : undefined}
               aria-hidden="true"
             >
               {account.name.slice(0, 1)}

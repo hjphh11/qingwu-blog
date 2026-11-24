@@ -33,6 +33,9 @@ const ONLINE_WINDOW = 5 * 60 * 1000;
 /** presence 写入节流：同一人 20 秒内只写一次，否则 2.5 秒一轮会把库写热 */
 const PRESENCE_THROTTLE = 20 * 1000;
 
+/** 「正在输入」的有效窗口。前端 3 秒报一次，这里留一倍余量 */
+const TYPING_WINDOW = 6 * 1000;
+
 /** 补发窗口：状态在这么久之内变更过的消息，poll 要重新下发一次 */
 const RELEASE_WINDOW = 30 * 1000;
 
@@ -89,6 +92,8 @@ interface MessageRow {
   status: string;
   ts: number;
   origin: string;
+  reply_to_id: number | null;
+  mentions: string | null;
   remote_nick: string | null;
   remote_avatar: string | null;
   remote_site: string | null;
@@ -102,6 +107,7 @@ interface MessageRow {
 }
 
 const COLS = `m.id, m.account_id, m.body, m.status, m.ts, m.origin,
+              m.reply_to_id, m.mentions,
               m.remote_nick, m.remote_avatar, m.remote_site,
               a.display_name AS acc_name, a.avatar_url AS acc_avatar,
               a.role AS acc_role, a.site_url AS acc_site, a.email_hash AS email_hash,
@@ -116,6 +122,60 @@ function visibleClause(me: string | number): { sql: string; params: Array<string
     sql: `(m.status IN ('visible','recalled') OR (m.status = 'pending' AND m.account_id = ?))`,
     params: [me],
   };
+}
+
+/** 一条被引用的消息摘要（渲染引用条用） */
+export interface Quote {
+  id: number;
+  name: string;
+  /** 正文前 60 字，去掉换行 */
+  excerpt: string;
+}
+
+/**
+ * 批量取「被引用的那条」的摘要。
+ *
+ * 和 reactions 一样：一次 `IN (...)` 查完，再按 id 分组。
+ * 引用条只需要「谁说了什么开头」，所以只取 60 字 —— 全文会让一屏消息的响应体膨胀好几倍。
+ */
+async function loadQuotes(env: Env, ids: number[]): Promise<Map<number, Quote>> {
+  const map = new Map<number, Quote>();
+  const uniq = [...new Set(ids)].filter((n) => n > 0);
+  if (!uniq.length) return map;
+
+  try {
+    const ph = uniq.map(() => '?').join(',');
+    const rows = await env.DB.prepare(
+      `SELECT m.id, m.body, m.origin, m.remote_nick,
+              a.display_name AS acc_name,
+              substr(a.email, 1, instr(a.email, '@') - 1) AS acc_prefix
+         FROM chat_messages m LEFT JOIN accounts a ON a.id = m.account_id
+        WHERE m.id IN (${ph})`,
+    )
+      .bind(...uniq)
+      .all<{
+        id: number;
+        body: string;
+        origin: string;
+        remote_nick: string | null;
+        acc_name: string | null;
+        acc_prefix: string | null;
+      }>();
+
+    for (const r of rows.results ?? []) {
+      map.set(r.id, {
+        id: r.id,
+        name:
+          r.origin === 'remote'
+            ? r.remote_nick || '远方的茶客'
+            : r.acc_name || r.acc_prefix || '茶客',
+        excerpt: String(r.body || '').replace(/\s+/g, ' ').slice(0, 60),
+      });
+    }
+  } catch {
+    /* 引用条是锦上添花，查不到就当没引用 */
+  }
+  return map;
 }
 
 /** 一条消息上的表情回应汇总（一种表情一行） */
@@ -167,6 +227,7 @@ function toItem(
   r: MessageRow,
   meId: number | null,
   reactions: Reaction[] = [],
+  quote?: Quote,
 ): Record<string, unknown> {
   const remote = r.origin === 'remote';
   // 本地消息三档头像兜底：账号档案 → 邮箱哈希现拼（和评论同一套，不返回 emailHash 本身）
@@ -183,6 +244,17 @@ function toItem(
     ? r.remote_nick || '远方的茶客'
     : r.acc_name || r.acc_prefix || `茶客#${r.account_id ?? 0}`;
 
+  /** 这条 @ 了当前看的人没有 —— 前端据此挂一个「@了你」的小标 */
+  let mentionedMe = false;
+  if (meId !== null && r.mentions) {
+    try {
+      const arr = JSON.parse(r.mentions) as unknown;
+      if (Array.isArray(arr)) mentionedMe = arr.map(Number).includes(meId);
+    } catch {
+      /* 存坏的 JSON 当没 @ 过 */
+    }
+  }
+
   return {
     id: r.id,
     name,
@@ -195,6 +267,8 @@ function toItem(
     mine: meId !== null && r.account_id === meId,
     origin: remote ? 'remote' : 'local',
     reactions,
+    quote: quote ?? null,
+    mentionedMe,
   };
 }
 
@@ -256,11 +330,19 @@ export async function getHistory(request: Request, env: Env): Promise<Response> 
     }
 
     const reacts = await loadReactions(env, page.map((r) => r.id), meId);
+    const quotes = await loadQuotes(
+      env,
+      page.map((r) => r.reply_to_id).filter((n): n is number => typeof n === 'number' && n > 0),
+    );
 
     return json({
       ok: true,
       // 库里是倒序取的，给前端翻回正序 —— 渲染顺序由数据决定，前端不再 sort
-      messages: page.reverse().map((r) => toItem(r, meId, reacts.get(r.id))),
+      messages: page
+        .reverse()
+        .map((r) =>
+          toItem(r, meId, reacts.get(r.id), r.reply_to_id ? quotes.get(r.reply_to_id) : undefined),
+        ),
       hasMore,
       nextBefore: page[0]?.id ?? 0,
       lastRead,
@@ -346,12 +428,63 @@ export async function pollChat(request: Request, env: Env): Promise<Response> {
 
     const all = [...freshList, ...released];
     const reacts = await loadReactions(env, all.map((r) => r.id), meId);
+    const quotes = await loadQuotes(
+      env,
+      all.map((r) => r.reply_to_id).filter((n): n is number => typeof n === 'number' && n > 0),
+    );
+
+    /**
+     * 正在输入的人。
+     *
+     * 只回名字不回更多：这个信息的寿命只有几秒，多带字段没意义。
+     * 排除自己 —— 没人需要看到「你正在输入」。
+     */
+    const typingRows = await env.DB.prepare(
+      `SELECT p.account_id AS id, a.display_name AS name,
+              substr(a.email, 1, instr(a.email, '@') - 1) AS prefix
+         FROM chat_presence p JOIN accounts a ON a.id = p.account_id
+        WHERE p.typing_at > ? AND p.account_id != ?
+        LIMIT 5`,
+    )
+      .bind(now - TYPING_WINDOW, meId ?? -1)
+      .all<{ id: number; name: string | null; prefix: string | null }>()
+      .catch(() => ({ results: [] as Array<{ id: number; name: string | null; prefix: string | null }> }));
+
+    /**
+     * 已读回执：**只算「我最新那一条」**。
+     *
+     * 每条都算的话，一屏十几条自己的消息就要十几次 COUNT；
+     * 而「已读 N」这个信息在实际对话里也只对最后一句有意义（和 WhatsApp 一样）。
+     * 判定用阅读游标反推：某人的 last_read_id >= 这条的 id，就算他读到了。
+     */
+    let reads: { id: number; n: number } | null = null;
+    if (meId) {
+      const last = await env.DB.prepare(
+        `SELECT MAX(id) AS id FROM chat_messages WHERE account_id = ? AND status = 'visible'`,
+      )
+        .bind(meId)
+        .first<{ id: number | null }>()
+        .catch(() => null);
+      if (last?.id) {
+        const cnt = await env.DB.prepare(
+          `SELECT COUNT(*) AS n FROM chat_reads WHERE last_read_id >= ? AND account_id != ?`,
+        )
+          .bind(last.id, meId)
+          .first<{ n: number }>()
+          .catch(() => null);
+        reads = { id: last.id, n: cnt?.n ?? 0 };
+      }
+    }
 
     return json({
       ok: true,
-      messages: all.map((r) => toItem(r, meId, reacts.get(r.id))),
+      messages: all.map((r) =>
+        toItem(r, meId, reacts.get(r.id), r.reply_to_id ? quotes.get(r.reply_to_id) : undefined),
+      ),
       recalled,
       online: await onlineOf(env, now),
+      typing: (typingRows.results ?? []).map((r) => r.name || r.prefix || '有人'),
+      reads,
       auth: { signedIn: Boolean(me), canSend: Boolean(me) },
     });
   } catch (err) {
@@ -386,9 +519,9 @@ export async function sendMessage(
   env: Env,
   ctx: ExecutionContext,
 ): Promise<Response> {
-  let payload: { body?: unknown };
+  let payload: { body?: unknown; replyTo?: unknown; mentions?: unknown };
   try {
-    payload = (await request.json()) as { body?: unknown };
+    payload = (await request.json()) as typeof payload;
   } catch {
     return json({ ok: false, reason: 'bad_request', message: '请求格式不对' }, 400);
   }
@@ -414,6 +547,38 @@ export async function sendMessage(
   }
 
   const now = Date.now();
+
+  /**
+   * 引用与 @。
+   *
+   * 引用要**校验目标真的存在且能看**（撤回的也允许引用——「他撤回了但我回的是那句」，很常见）。
+   * 校验不过就当没引用，不报错：为了一个失效的引用把整条消息退回去不值。
+   *
+   * @ 的 id 列表只做形状清洗，不校验账号是否存在 —— 提一个已经不存在的账号，
+   * 前端最多是「@了你」不亮，没有任何副作用。
+   */
+  const replyTo = Number(payload.replyTo) || 0;
+  let quote: Quote | undefined;
+  if (replyTo > 0) {
+    const target = await env.DB.prepare(
+      `SELECT id FROM chat_messages WHERE id = ? AND status IN ('visible','recalled','pending')`,
+    )
+      .bind(replyTo)
+      .first<{ id: number }>()
+      .catch(() => null);
+    if (target) quote = (await loadQuotes(env, [replyTo])).get(replyTo);
+  }
+
+  let mentions: number[] = [];
+  if (Array.isArray(payload.mentions)) {
+    mentions = [
+      ...new Set(
+        payload.mentions
+          .map((n) => Number(n))
+          .filter((n) => Number.isInteger(n) && n > 0 && n !== me.id),
+      ),
+    ].slice(0, 10);
+  }
 
   try {
     /**
@@ -472,10 +637,19 @@ export async function sendMessage(
     const status = verdict.action === 'hold' ? 'pending' : 'visible';
 
     const res = await env.DB.prepare(
-      `INSERT INTO chat_messages (account_id, body, status, ts, updated_at, ip_hash, origin)
-       VALUES (?, ?, ?, ?, ?, ?, 'local')`,
+      `INSERT INTO chat_messages (account_id, body, status, ts, updated_at, ip_hash, origin, reply_to_id, mentions)
+       VALUES (?, ?, ?, ?, ?, ?, 'local', ?, ?)`,
     )
-      .bind(me.id, body, status, now, now, await visitorKey(request, env).catch(() => null))
+      .bind(
+        me.id,
+        body,
+        status,
+        now,
+        now,
+        await visitorKey(request, env).catch(() => null),
+        quote ? quote.id : null,
+        mentions.length ? JSON.stringify(mentions) : null,
+      )
       .run();
 
     const id = Number(res.meta.last_row_id);
@@ -513,6 +687,9 @@ export async function sendMessage(
         status: status === 'pending' ? 'pending' : 'visible',
         mine: true,
         origin: 'local',
+        reactions: [],
+        quote: quote ?? null,
+        mentionedMe: false,
       },
       /** 命中了哪些规则（只回条数，不回 id —— 别给出一份规避说明书） */
       screened: verdict.hits.length > 0,
