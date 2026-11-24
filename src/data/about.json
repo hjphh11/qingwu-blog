@@ -49,5 +49,69 @@
       "action": "link",
       "value": "https://github.com/hjphh11"
     }
+  ],
+  "uses": [
+    {
+      "label": "机器",
+      "value": "一台香港的轻量云，页面和接口都住在上面"
+    },
+    {
+      "label": "系统",
+      "value": "Linux + nginx + systemd，几个服务各自管好自己"
+    },
+    {
+      "label": "数据",
+      "value": "SQLite 单文件是主库，Cloudflare D1 只留一份只读归档"
+    },
+    {
+      "label": "运行时",
+      "value": "Node 22 + workerd，Worker 就地跑在同源 /api 后面"
+    },
+    {
+      "label": "部署",
+      "value": "push 之后约两分钟自己 pull + build，失败自动退回上一版"
+    },
+    {
+      "label": "邮件",
+      "value": "Resend 发信，Cloudflare Turnstile 挡机器人"
+    }
+  ],
+  "timeline": [
+    {
+      "date": "2026-08-30",
+      "version": "v2.0",
+      "title": "小屋上线",
+      "note": "首页、文章、音乐、友链、分享、关于，六个页面一次做完。"
+    },
+    {
+      "date": "2026-09-12",
+      "version": "v4.0",
+      "title": "有了后台",
+      "note": "第一次不用开编辑器就能改站点：内容、友链、发布都在后台里。"
+    },
+    {
+      "date": "2026-11-01",
+      "version": "v6.0",
+      "title": "整站重写",
+      "note": "从样式分层到交互手感全做了一遍，改动面比前面几版加起来还大。"
+    },
+    {
+      "date": "2026-11-10",
+      "version": "v6.2",
+      "title": "搬进自己租的机器",
+      "note": "从托管平台搬到香港机，页面、接口、数据库、发信全在自己手里。"
+    },
+    {
+      "date": "2026-11-14",
+      "version": "v6.6",
+      "title": "做了一次安全体检",
+      "note": "翻出三处「谁都能零成本用」的口子，全修了，顺手补齐纵深防御。"
+    },
+    {
+      "date": "2026-11-23",
+      "version": "v6.9",
+      "title": "音乐页推倒重做",
+      "note": "照桌面播放器重排，歌词会跟着一句一句唱。"
+    }
   ]
 }

@@ -13,6 +13,7 @@ import Navbar from '../components/Navbar.tsx';
 import Footer from '../components/Footer.astro';
 import BackgroundDecor from '../components/BackgroundDecor.tsx';
 import MiniPlayer from '../components/MiniPlayer.tsx';
+import SiteSearch from '../components/SiteSearch.tsx';
 import Splash from '../components/Splash.tsx';
 import ImageZoom from '../components/ImageZoom.astro';
 
@@ -179,6 +180,9 @@ const hitEndpoint = `${WORKER_BASE}/hit`;
     <Splash client:load dur={2000} />
     <BackgroundDecor client:only="react" />
     <MiniPlayer client:only="react" />
+    {/* 站内搜索：自己监听 Ctrl/⌘+K 与导航栏发出的 qingwu:search 事件。
+        索引到第一次打开时才拉（/search-index.json），不占首屏字节。 */}
+    <SiteSearch client:load />
 
     <slot />
 

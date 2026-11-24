@@ -2,9 +2,11 @@
 import Layout from '../../layouts/Layout.astro';
 import MorphIcon from 'morphicons/astro';
 import { Sparkles, X } from '../../lib/icons';
-import { projects } from '../../data/projects';
+import { projects, roadmap } from '../../data/projects';
 
 const pending = projects.filter((p) => p.placeholder).length;
+/** 路线图状态 → 人话。只在这里翻一次，模板里别再写两套字 */
+const ROAD_LABEL = { doing: '正在做', next: '排上了队' } as const;
 ---
 
 <Layout title="项目 · 清吾" description="自己做的小东西 —— 两个都还在长。">
@@ -123,6 +125,39 @@ const pending = projects.filter((p) => p.placeholder).length;
         }
       </div>
     </div>
+
+    {/* ── 还在折腾 ────────────────────────────────────────
+        两张卡排完到页脚之间原本空着近半屏（1080p 实测），视觉重心悬在顶部。
+        这里补的不是「假项目」——不开假详情页，只把**真实在做 / 排上队的事**
+        摆出来：既解释了这个站为什么一直在变，也把下半屏撑住。
+        roadmap 为空时整块不渲染（schema 默认 []），别为了版面硬凑条目。 */}
+    {
+      roadmap.length > 0 && (
+        <section class="q-proj-road reveal" aria-labelledby="proj-road-title">
+          <div class="q-proj-road__head">
+            <h2 id="proj-road-title" class="q-proj-road__title">
+              还在折腾
+            </h2>
+            <p class="q-proj-road__sub">还没到能开详情页的程度，先摆在这儿</p>
+          </div>
+          <ul class="q-proj-road__list">
+            {roadmap.map((item) => (
+              <li class="q-proj-road__item">
+                <span
+                  class={`q-proj-road__dot q-proj-road__dot--${item.status}`}
+                  aria-hidden="true"
+                />
+                <span class="q-proj-road__name">{item.title}</span>
+                <span class={`q-proj-road__status q-proj-road__status--${item.status}`}>
+                  {ROAD_LABEL[item.status]}
+                </span>
+                <span class="q-proj-road__note">{item.note}</span>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )
+    }
 
     {
       pending > 0 && (

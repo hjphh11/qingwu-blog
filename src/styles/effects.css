@@ -633,6 +633,37 @@
     transform: scale(1.06);
   }
 
+  /* 头像兜底（Letter Avatar）：外站图 404 / 防盗链时露出的首字圆。
+     底色用暖玫瑰到琥珀的柔光，和 .q-media 的占位渐变同一族 ——
+     让「图没了」看起来像设计好的字标，而不是一块破图。
+     ⚠️ [hidden] 必须带上父级前缀（0,3,0）：上面那条 display:grid 是 (0,2,0)，
+        同权重时后写的赢，`[hidden]` 的 UA 样式会被整条盖掉，首字会一直露着。 */
+  .q-links-card__avatar .q-links-card__initial {
+    display: grid;
+    place-items: center;
+    width: 100%;
+    height: 100%;
+    border-radius: 999px;
+    font-family: var(--font-display);
+    font-size: 1.65rem;
+    line-height: 1;
+    color: var(--color-accent);
+    background:
+      radial-gradient(
+        120% 120% at 30% 20%,
+        rgba(255, 255, 255, 0.92),
+        rgba(246, 165, 184, 0.38) 62%,
+        rgba(232, 176, 75, 0.22)
+      );
+    user-select: none;
+  }
+  .q-links-card__avatar .q-links-card__initial[hidden] {
+    display: none;
+  }
+  .q-links-card__avatar.is-fallback img {
+    display: none;
+  }
+
   .q-links-card__name {
     font-family: var(--font-display);
     font-size: 1.05rem;
@@ -1351,6 +1382,14 @@
     }
   }
 
+  /* 两张卡等高：网格默认 stretch，卡本身是 <article>，卡片面是里面的 <button>。
+     不给 button 高度，它就只有内容那么高 —— 两张卡正文行数不同时，底部那条
+     「展开看完整记录 →」一高一低（截图里的观感就是「没对齐」）。
+     .q-proj 拉成 flex + inner 撑满，`margin-top: auto` 才真的能把底栏推到底。 */
+  .q-proj {
+    display: flex;
+  }
+
   .q-proj__inner {
     --mx: 50%;
     --my: 50%;
@@ -1363,6 +1402,8 @@
     align-items: flex-start;
     gap: 0.85rem;
     width: 100%;
+    /* 与 .q-proj 的 stretch 配套 —— 少了这行，flex 子项按内容高度算，前一行白写 */
+    height: 100%;
     padding: 1.9rem;
     text-align: left;
     overflow: hidden;
@@ -1486,6 +1527,103 @@
 
   .q-proj__inner:hover .q-proj__arrow {
     transform: translateX(4px);
+  }
+
+  /* ── 还在折腾（路线图）──────────────────────────────────
+     排在两张卡下面，把「卡 → 页脚」之间那半屏空白接住。
+     刻意做得比项目卡轻：它不是第三张卡，是这两张卡的一次旁白 ——
+     同样的玻璃、同样的圆角，但没有箔膜、没有光扫、不倾斜。 */
+  .q-proj-road {
+    margin-top: 3.5rem;
+    padding: 1.5rem 1.7rem;
+    border: 1px solid rgba(246, 165, 184, 0.26);
+    border-radius: var(--radius-card);
+    background: rgba(255, 252, 247, 0.5);
+    backdrop-filter: blur(10px) saturate(140%);
+  }
+
+  .q-proj-road__head {
+    display: flex;
+    align-items: baseline;
+    gap: 0.75rem;
+    flex-wrap: wrap;
+  }
+
+  .q-proj-road__title {
+    font-family: var(--font-display);
+    font-size: var(--text-cardtitle);
+    color: var(--color-ink);
+    letter-spacing: 0.01em;
+  }
+
+  .q-proj-road__sub {
+    font-size: var(--text-label);
+    color: var(--color-subtle);
+  }
+
+  .q-proj-road__list {
+    margin-top: 0.9rem;
+  }
+
+  /* 三行三列：圆点 / 标题 / 状态，说明文字另起一行压在标题栏下面（第二列起）。
+     用 grid 而不是 flex：说明文字要和标题左缘严格对齐，flex 得再套一层才行。 */
+  .q-proj-road__item {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    align-items: center;
+    column-gap: 0.7rem;
+    row-gap: 0.25rem;
+    padding: 0.8rem 0;
+    border-top: 1px solid var(--color-hairline);
+  }
+
+  .q-proj-road__item:first-child {
+    border-top: 0;
+    padding-top: 0.1rem;
+  }
+
+  .q-proj-road__dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 999px;
+    background: var(--color-amber);
+    box-shadow: 0 0 0 4px rgba(232, 176, 75, 0.14);
+  }
+
+  /* 正在做的那条用绯红：一眼能分出「在动」和「排队」 */
+  .q-proj-road__dot--doing {
+    background: var(--color-crimson);
+    box-shadow: 0 0 0 4px rgba(194, 58, 85, 0.12);
+  }
+
+  .q-proj-road__name {
+    font-size: 0.9375rem;
+    color: var(--color-ink);
+  }
+
+  .q-proj-road__status {
+    border-radius: 999px;
+    border: 1px solid rgba(246, 165, 184, 0.45);
+    background: rgba(246, 165, 184, 0.12);
+    padding: 0.1rem 0.5rem;
+    font-size: 0.75rem;
+    line-height: 1.6;
+    color: var(--color-accent);
+    white-space: nowrap;
+  }
+
+  /* 排队中的降一档颜色：状态是「还没开始」，别和正在进行的一样抢眼 */
+  .q-proj-road__status--next {
+    color: var(--color-muted);
+    border-color: rgba(139, 90, 60, 0.22);
+    background: rgba(139, 90, 60, 0.06);
+  }
+
+  .q-proj-road__note {
+    grid-column: 2 / -1;
+    font-size: var(--text-label);
+    line-height: 1.75;
+    color: var(--color-muted);
   }
 
   /* ── 全屏 sheet ─────────────────────────────────────────── */

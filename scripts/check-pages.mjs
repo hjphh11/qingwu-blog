@@ -46,7 +46,7 @@ await page.goto(`${BASE}/about/`, { waitUntil: 'networkidle2', timeout: 60000 })
 await sleep(900);
 
 const about = await page.evaluate(() => {
-  const ids = ['about-01', 'about-02', 'about-03', 'about-04'];
+  const ids = ['about-01', 'about-02', 'about-03', 'about-04', 'about-05', 'about-06'];
   const blocks = ids.map((id) => {
     const h = document.getElementById(id);
     if (!h) return { id, ok: false };
@@ -77,12 +77,12 @@ const about = await page.evaluate(() => {
 
 for (const b of about.blocks) {
   // 联系块例外：内容藏在展开面板里，只要求有触发器
-  const enough = b.id === 'about-04' ? b.buttons > 0 : b.textLen > 40;
+  const enough = b.id === 'about-06' ? b.buttons > 0 : b.textLen > 40;
   verdict(b.ok && enough, `区块 ${b.id} 存在且有内容`, b.ok ? `${b.textLen} 字 / ${b.buttons} 个触发器` : '缺失');
 }
 verdict(
-  about.blocks.map((b) => b.num).join(',') === '01,02,03,04',
-  '四个区块按 01/02/03/04 编号',
+  about.blocks.map((b) => b.num).join(',') === '01,02,03,04,05,06',
+  '六个区块按 01–06 编号',
   about.blocks.map((b) => b.num).join(' / '),
 );
 verdict(about.sticky === 'sticky', '左栏立绘是 sticky（lg 断点）', `position=${about.sticky}`);
@@ -467,8 +467,12 @@ for (const [w, h] of [[1440, 900], [1024, 800], [390, 844]]) {
 /* ── 友链（只验入口与可读性，表单未改） ────────────────── */
 console.log('\n【友链】');
 await page.setViewport({ width: 1440, height: 900 });
-await page.goto(`${BASE}/links/`, { waitUntil: 'networkidle2', timeout: 60000 });
-await sleep(600);
+/* ⚠️ 这一页**不能等 networkidle2**：墙上是十几个外站头像/截图，还有按视口发的
+   favicon 探测（每个自带 6s 超时）。只要有两三个外站慢或不可达，连接数就一直
+   高于阈值，networkidle2 会一直等到 60s 超时 —— 这不是页面坏了，是判据选错了。
+   这里只验「卡片在、有名字与简介」，所以等 DOM 就够，再给水合留 1.2s。 */
+await page.goto(`${BASE}/links/`, { waitUntil: 'domcontentloaded', timeout: 60000 });
+await sleep(1200);
 const links = await page.evaluate(() => {
   // 友链卡本身就是 <a class="glass-card" href="http…">；
   // 用 a[href^="http"] 会连页脚/GitHub 图标一起数进来，那是我判据写错了。

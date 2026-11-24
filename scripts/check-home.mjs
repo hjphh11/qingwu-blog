@@ -496,10 +496,18 @@ if (catLink) {
     `aria-pressed=${filtered.pressed} is-active=${filtered.active}`,
   );
   verdict(
-    filtered.shown > 0 && filtered.shown < filtered.total && filtered.allMatch,
-    `列表真的只剩「${cat}」分类`,
+    filtered.shown > 0 && filtered.allMatch,
+    `列表里只剩「${cat}」分类`,
     `${filtered.shown}/${filtered.total} 张可见`,
   );
+
+  /* ⚠️ 这里**不能**再断言 `shown < total`（原来就是这么写的）。
+     文章长起来之后，第一页可能整页都是同一个分类：现在 15 篇 tech / 3 篇 life，
+     最新的 6 篇全是 tech —— 筛 tech 时一张都不用藏，`shown < total` 永远不成立。
+     那是内容分布变了，不是筛选坏了。
+     同理，「切到另一个分类看剩下几张」也不成立：life 的 3 篇在第 2、3 页，
+     第一页点 life 就是 0 张（筛选只作用于当前页，这是既有设计）。
+     所以判据只保留能证伪的那部分：按钮选中 + 可见的卡片全部属于该分类。 */
 }
 
 await ctx3.close();

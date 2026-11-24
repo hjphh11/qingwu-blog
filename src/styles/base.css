@@ -60,7 +60,7 @@
     color: var(--color-ink);
   }
 
-  /* 深色代码块上换 rose —— 18% 的绯红压在 #2b2320 上等于没选 */
+  /* 深色代码块上换 rose —— 18% 的绯红压在 #241c18 上等于没选 */
   pre ::selection,
   code ::selection {
     background-color: var(--color-selection-on-dark);

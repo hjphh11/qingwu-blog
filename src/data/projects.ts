@@ -38,6 +38,14 @@ export interface Project {
   placeholder?: boolean;
 }
 
+/** 路线图条目：还不够格开一张详情卡，但确实是正在做 / 打算做的事 */
+export interface RoadmapItem {
+  /** doing = 正在做；next = 排上了队 */
+  status: 'doing' | 'next';
+  title: string;
+  note: string;
+}
+
 const schema = z.object({
   projects: z.array(
     z.object({
@@ -62,6 +70,20 @@ const schema = z.object({
       placeholder: z.boolean().default(false),
     }),
   ),
+  // 路线图：页面上排在两张卡下面，把 /projects 下半屏的空白补成「还在长」的证据。
+  // 为空是允许的 —— 没有内容时页面自动不渲染这一块（不要为了填版面硬编几条）。
+  roadmap: z
+    .array(
+      z.object({
+        status: z.enum(['doing', 'next']),
+        title: z.string().min(1, '不能为空'),
+        note: z.string().min(1, '不能为空'),
+      }),
+    )
+    .default([]),
 });
 
-export const projects: Project[] = parseJson(schema, raw, 'src/data/projects.json').projects;
+const data = parseJson(schema, raw, 'src/data/projects.json');
+
+export const projects: Project[] = data.projects;
+export const roadmap: RoadmapItem[] = data.roadmap;

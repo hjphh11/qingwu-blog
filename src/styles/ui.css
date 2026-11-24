@@ -233,4 +233,90 @@
       transition: none;
     }
   }
+
+  /* ── 关于页 · 站点时间线 ─────────────────────────────────
+     三列：日期 / 圆点 / 内容。竖线画在 <ol> 上而不是每个 li 上 ——
+     每项各画一段会在 padding 处断开，看起来像虚线。
+     --tl-date 是日期列宽，竖线位置由它推导，改宽度只改这一个数。 */
+  .q-timeline {
+    --tl-date: 5.1rem;
+    position: relative;
+  }
+
+  .q-timeline::before {
+    content: '';
+    position: absolute;
+    left: calc(var(--tl-date) + 1.25rem);
+    top: 1rem;
+    bottom: 1rem;
+    width: 1px;
+    background: var(--color-hairline);
+  }
+
+  .q-timeline__item {
+    display: grid;
+    grid-template-columns: var(--tl-date) 1rem minmax(0, 1fr);
+    column-gap: 0.75rem;
+    align-items: start;
+    padding: 0.5rem 0;
+  }
+
+  .q-timeline__date {
+    grid-row: 1;
+    grid-column: 1;
+    font-size: var(--text-label);
+    line-height: 1.6;
+    letter-spacing: 0.03em;
+    color: var(--color-subtle);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .q-timeline__dot {
+    grid-row: 1;
+    grid-column: 2;
+    width: 9px;
+    height: 9px;
+    margin: 0.36rem auto 0;
+    border-radius: 999px;
+    background: var(--color-rose);
+    box-shadow: 0 0 0 3px rgba(246, 165, 184, 0.22);
+  }
+
+  /* 最新那一版（数组按时间正序，最后一条）用绯红实心：
+     时间线从上往下读，眼睛最后该停在「现在」。 */
+  .q-timeline__item:last-child .q-timeline__dot {
+    background: var(--color-crimson);
+    box-shadow: 0 0 0 4px rgba(194, 58, 85, 0.14);
+  }
+
+  .q-timeline__title {
+    grid-row: 1;
+    grid-column: 3;
+    font-size: 0.9375rem;
+    line-height: 1.6;
+    color: var(--color-ink);
+  }
+
+  .q-timeline__ver {
+    margin-left: 0.4rem;
+    font-size: 0.75rem;
+    color: var(--color-subtle);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .q-timeline__note {
+    grid-row: 2;
+    grid-column: 3;
+    margin-top: 0.15rem;
+    font-size: var(--text-label);
+    line-height: 1.7;
+    color: var(--color-muted);
+  }
+
+  /* 窄屏把日期列收窄：5.1rem 的日期 + 1rem 圆点会把正文挤到 10 个字一行 */
+  @media (max-width: 479px) {
+    .q-timeline {
+      --tl-date: 4.15rem;
+    }
+  }
 }

@@ -63,7 +63,11 @@ async function minContrast(page) {
     for (const p of paras) {
       const r = p.getBoundingClientRect();
       if (r.width < 40 || r.height < 8) continue;
-      if (r.bottom < 0 || r.top > window.innerHeight) continue;
+      /* 只测**完整落在视口里**的段落。
+         原来只排除了「完全在视口外」的盒子，于是跨在折线（视口上下缘）上的段落
+         会被截掉一半再采样：剩下的像素几乎全是背景，算出来 1.4:1 这种数字 ——
+         那不是对比度低，是取样框里没有字。这种误报会随文章长度和视口高度漂移。 */
+      if (r.top < 0 || r.bottom > window.innerHeight) continue;
 
       const x0 = Math.max(0, Math.round(r.left * scale));
       const y0 = Math.max(0, Math.round(r.top * scale));
@@ -138,7 +142,11 @@ for (const href of uniq) {
     const links = Array.from(document.querySelectorAll('[data-toc-link]'));
     const ids = links.map((a) => a.dataset.tocLink);
     const missing = ids.filter((id) => !document.getElementById(id));
-    const heads = Array.from(document.querySelectorAll('article h2[id], article h3[id]')).map((h) => h.id);
+    /* 只收正文里的小标题（.prose 内）。
+       ⚠️ 原来取的是 `article h2[id]`，会把文章底部的评论区标题 `#pc-title`
+       也算进来 —— 那是 PostComments 组件自己的 h2，本来就不该出现在目录里。
+       v6.8 给所有文章加上评论区之后，这条一直是一条假的失败。 */
+    const heads = Array.from(document.querySelectorAll('article .prose h2[id], article .prose h3[id]')).map((h) => h.id);
     const noLink = heads.filter((id) => !ids.includes(id));
     return { links: ids.length, heads: heads.length, missing, noLink };
   });

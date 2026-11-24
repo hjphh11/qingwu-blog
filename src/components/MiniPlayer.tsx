@@ -26,8 +26,13 @@ export default function MiniPlayer() {
 
   const { currentSong, isPlaying, isBuffering, currentLyric } = state;
 
-  // 首页与音乐页隐藏(音乐页已有完整播放器)
-  if (pathname === '/' || pathname === '/music') return null;
+  /* 首页与音乐页隐藏（音乐页已有完整播放器）。
+     ⚠️ 不能直接比 `pathname === '/music'`：Astro 默认 `trailingSlash: 'always'`，
+     线上实际地址是 `/music/`，字符串不等 → 判断失效，右下角会和音乐馆里那台
+     完整播放器同屏出现两个（2026-11-24 核对截图确认）。
+     这里统一抹掉末尾斜杠再比，`/music` 与 `/music/` 都能命中。 */
+  const route = pathname.replace(/\/+$/, '') || '/';
+  if (route === '/' || route === '/music') return null;
 
   return (
     <div ref={viewportRef} className="pointer-events-none fixed inset-0 z-50">

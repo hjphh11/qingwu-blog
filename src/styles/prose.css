@@ -63,9 +63,15 @@
     border-radius: 6px;
     font-size: 0.9em;
   }
+  /* 深色代码块。底色与 src/lib/shiki-qingwu.mjs 的 editor.background 必须一致 ——
+     Shiki 会在 <pre> 上内联 style，盖掉这里的 background；这里留着是给
+     「没有高亮的 pre」（比如 HTML 块里手写的）兜底，两边不一致就会出现两种深色。
+     还有一点：暖棕底 + 一层极淡的内描边，边界才立得住，不会糊在奶油纸上。 */
   .prose pre {
-    background: #2b2320;
-    color: #f6f0ea;
+    background: #241c18;
+    color: #ecdccb;
+    border: 1px solid rgba(139, 90, 60, 0.28);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.045);
     padding: 1em 1.2em;
     border-radius: 12px;
     overflow-x: auto;

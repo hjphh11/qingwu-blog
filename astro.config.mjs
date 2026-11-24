@@ -4,6 +4,7 @@ import mdx from '@astrojs/mdx';
 import sitemap from '@astrojs/sitemap';
 import vercel from '@astrojs/vercel';
 import tailwindcss from '@tailwindcss/vite';
+import qingwuWarm from './src/lib/shiki-qingwu.mjs';
 
 // https://astro.build/config
 export default defineConfig({
@@ -13,6 +14,17 @@ export default defineConfig({
   adapter: vercel(),
   // 后台不进 sitemap：它本来就叫 noindex，别一边禁止收录一边把地址交出去
   integrations: [react(), mdx(), sitemap({ filter: (page) => !page.includes('/admin') })],
+  /*
+   * 代码块高亮：换成自定义暖棕主题（见 src/lib/shiki-qingwu.mjs）。
+   * 默认 github-dark 的蓝黑底压在这站的奶油纸张上太跳 —— 深色块本身没问题，
+   * 问题是色相：这里是暖棕底 + 玫瑰/琥珀/陶土的语法色，和 token 同源。
+   * 换主题只影响构建产物（Shiki 在构建期把颜色内联到每个 span），不需要客户端脚本。
+   */
+  markdown: {
+    shikiConfig: {
+      theme: qingwuWarm,
+    },
+  },
   // 本地改界面时那根黑色浮动工具条会压住页面内容，截图和肉眼都碍事
   devToolbar: { enabled: false },
   // 默认只绑 IPv6 的 [::1]，某些机器上 http://127.0.0.1:4321 连不上；

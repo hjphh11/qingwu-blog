@@ -5,6 +5,7 @@
 //   GET    /hit          能力探测（与旧的 /api/hit GET 同形）
 //   GET    /stats        后台统计查询（需 Bearer 口令）
 //   GET    /post-views   单篇阅读量（文章页头部，只认 /blog/ 开头）
+//   GET    /site-summary 全站访问汇总（公开只读：totalPv + uniqueVisitors，首页足迹卡用）
 //   GET    /link-status  友链展示状态（失联缓冲 / 违规整改 / 到期下架）
 //   GET    /post-comments?path=/blog/<slug>   文章评论列表（写口见下方同名路由）
 //   GET    /health       健康检查
@@ -25,6 +26,7 @@ import { refreshAllFeeds } from './links-refresh';
 import { flushOutbox } from './mail';
 import { getHit, postHit } from './hit';
 import { getPostViews } from './views';
+import { getSiteSummary } from './summary';
 import { getStats } from './stats';
 import { json, originAllowed, parseOrigins } from './util';
 import type { Env } from './types';
@@ -195,6 +197,13 @@ export default {
     if (path === '/post-views') {
       if (request.method !== 'GET') return json({ ok: false, reason: 'method_not_allowed' }, 405);
       return getPostViews(request, env);
+    }
+
+    // —— 全站访问汇总（首页「悄悄收藏的脚印」）——
+    // 公开只读、只回两个整数，缓存 60s；见 summary.ts 顶部的三条边界。
+    if (path === '/site-summary') {
+      if (request.method !== 'GET') return json({ ok: false, reason: 'method_not_allowed' }, 405);
+      return getSiteSummary(request, env);
     }
 
     if (path === '/stats') {

@@ -133,6 +133,16 @@ shown.forEach((f, i) => wallColumns[i % WALL_COLS]!.push({ f, i }));
                   decoding="async"
                   referrerpolicy="no-referrer"
                 />
+                {/* 头像兜底（Letter Avatar）：
+                    外站头像随时可能 404、防盗链、换域名 —— 只剩一个粉色空圆，
+                    看起来就是「这站挂了」。这里预置站点名的首字，加载失败时
+                    由脚本摘掉 hidden 并给容器加 .is-fallback（见页面底部脚本）。
+                    首字先在构建期算好，运行时只做「藏图 / 露字」，不造 DOM。
+                    ⚠️ 用 Array.from 而不是 name[0]：首字是 emoji / 代理对时
+                    下标会切出半个字符（半个码元 = 一个「�」）。 */}
+                <span class="q-links-card__initial" aria-hidden="true" hidden>
+                  {Array.from(f.name)[0]}
+                </span>
               </span>
               <p class="q-links-card__name">{f.name}</p>
               {/* 展示状态徽章 —— 默认 hidden，等 /link-status 回来才决定填不填。
@@ -373,6 +383,52 @@ shown.forEach((f, i) => wallColumns[i % WALL_COLS]!.push({ f, i }));
     document.addEventListener('astro:page-load', initLinkSpeed);
     if (document.readyState !== 'loading') initLinkSpeed();
     else document.addEventListener('DOMContentLoaded', initLinkSpeed, { once: true });
+
+    /*
+     * 头像兜底：外站头像加载失败时，露出站点名首字（结构在模板里已备好）。
+     *
+     * 为什么不用 img 的 onerror 内联属性：CSP 的 script-src 不放行内联属性，
+     * 写了也会被浏览器直接拦掉（后台的 /api/csp-report 能看到这类上报）。
+     * 这里用**捕获阶段**的 error —— 图片的 error 不冒泡，但捕获阶段会路过 document。
+     *
+     * ⚠️ 必须补扫一次 `img.complete && naturalWidth === 0`：脚本挂上之前就已经
+     *    失败的图，那个 error 事件永远不会再来。友链页是 ClientRouter 换 body 的，
+     *    从别的页面切过来时经常是这种情况（图早已失败，首字却一直不出现）。
+     */
+    let teardownAvatars = () => {};
+
+    function initAvatarFallback() {
+      teardownAvatars();
+      const images = Array.from(
+        document.querySelectorAll<HTMLImageElement>('.q-links-card__avatar img'),
+      );
+      if (!images.length) return;
+
+      const fail = (img: HTMLImageElement) => {
+        const box = img.closest<HTMLElement>('.q-links-card__avatar');
+        // 已经兜过就跳过：一张图可能先 error 再被补扫命中
+        if (!box || box.classList.contains('is-fallback')) return;
+        box.classList.add('is-fallback');
+        img.setAttribute('aria-hidden', 'true');
+        const initial = box.querySelector<HTMLElement>('.q-links-card__initial');
+        if (initial) initial.hidden = false;
+      };
+
+      const onError = (e: Event) => {
+        if (e.target instanceof HTMLImageElement) fail(e.target);
+      };
+
+      document.addEventListener('error', onError, true);
+      images.forEach((img) => {
+        if (img.complete && img.naturalWidth === 0) fail(img);
+      });
+
+      teardownAvatars = () => document.removeEventListener('error', onError, true);
+    }
+
+    document.addEventListener('astro:page-load', initAvatarFallback);
+    if (document.readyState !== 'loading') initAvatarFallback();
+    else document.addEventListener('DOMContentLoaded', initAvatarFallback, { once: true });
 
 
     /*

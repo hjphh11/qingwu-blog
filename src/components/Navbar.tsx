@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { MorphIcon } from 'morphicons/react';
-import { Menu, X, ChevronDown } from '../lib/icons';
+import { Menu, X, ChevronDown, Search } from '../lib/icons';
 import ContrastToggle from './ContrastToggle';
 import {
   motion,
@@ -389,9 +389,22 @@ export default function Navbar({ pathname = '/' }: Props) {
           })}
         </nav>
 
-        {/* 右侧动作区：高对比开关 + 移动端菜单。
+        {/* 右侧动作区：搜索 + 高对比开关 + 移动端菜单。
             两个放一个容器里，免得 justify-between 把它们分到两端。 */}
         <div className="relative z-10 flex shrink-0 items-center gap-1">
+          {/* 搜索入口：只负责发事件，弹层在 components/SiteSearch.tsx 里（挂在 Layout）。
+              这样导航栏不用背一份索引与弹层状态，两侧都能独立改。
+              桌面端 Ctrl/⌘+K 直接开，这里主要给鼠标用户与手机一个可见入口。 */}
+          <button
+            type="button"
+            aria-label="搜索文章（Ctrl + K）"
+            title="搜索文章 · Ctrl K"
+            onClick={() => window.dispatchEvent(new CustomEvent('qingwu:search'))}
+            className="grid h-9 w-9 place-items-center rounded-full text-ink transition-colors hover:bg-rose/15 q-press"
+          >
+            <MorphIcon icon={Search} size={18} color="currentColor" />
+          </button>
+
           <ContrastToggle />
 
           {/* 移动端折叠按钮 → 右侧(移动) */}
@@ -427,6 +440,19 @@ export default function Navbar({ pathname = '/' }: Props) {
               boxShadow: '0 16px 40px rgba(246, 165, 184, 0.22)',
             }}
           >
+            {/* 手机上「搜索」排第一行：菜单里翻到一半才发现没有搜索，是最常见的抱怨 */}
+            <button
+              type="button"
+              onClick={() => {
+                setOpen(false);
+                window.dispatchEvent(new CustomEvent('qingwu:search'));
+              }}
+              className="mb-1 flex items-center gap-2 rounded-xl border border-rose/25 bg-rose/10 px-4 py-2.5 text-left text-base font-medium text-muted transition q-press hover:bg-rose/18 hover:text-crimson"
+            >
+              <MorphIcon icon={Search} size={17} color="currentColor" />
+              搜索文章
+            </button>
+
             {NAV_ITEMS.flatMap((item) => item.children ?? [item]).map((item) => (
               <a
                 key={item.href}
