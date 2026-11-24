@@ -179,7 +179,7 @@ nginx 层有一组 `limit_req` zone，配 fail2ban 看日志封 IP。这套东�
 
 <figure>
   <img src="/images/blog/edge-vs-home.svg" width="820" height="300" alt="迁移前后对比：左边是 Cloudflare 边缘上的 Worker 与 D1，能看到的东西只有接口返回；右边是香港机器上的 nginx、workerd、SQLite，能 ssh 进去看进程、日志和数据库文件" loading="lazy" />
-  <figcaption>左边能看到的只有「接口返回了什么」，右边能 `ssh` 进去 `tail -f`。这个差别比任何性能指标都值钱。</figcaption>
+  <figcaption>左边能看到的只有「接口返回了什么」，右边能 <code>ssh</code> 进去 <code>tail -f</code>。这个差别比任何性能指标都值钱。</figcaption>
 </figure>
 
 ## 数据：25 个迁移，一个文件
