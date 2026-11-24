@@ -1448,4 +1448,249 @@
     text-overflow: ellipsis;
     white-space: nowrap;
   }
+
+  /* ═══════════════════════════════════════════════════════════════════
+     视觉升级（2026-11-24 夜）
+     
+     方向：**产品克制的精修**，不是加特效。这一页的骨架（页头 / 侧栏 / 会话 /
+     输入区）已经定了，这次只动六件事：骨架屏、空态、时间线、等宽数字、
+     新消息入场、触屏目标。刻意没做：气泡渐变、头像光晕、在线点呼吸
+     （后者以前明确写过「常驻闪的东西最耗神」，那条判断仍然成立）。
+     ═══════════════════════════════════════════════════════════════════ */
+
+  /* ——— ① 骨架屏 ———
+     原来的加载态是一行「正在推开长亭的门…」，整张卡片空着。
+     聊天的形状很固定（来一条、回一条），骨架能提前把节奏画出来。 */
+  .q-chat__skeleton {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    gap: 1.1rem;
+    padding: 1.25rem 1rem;
+    overflow: hidden;
+  }
+
+  .q-skel-row {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.5rem;
+  }
+
+  .q-skel-row.is-mine {
+    flex-direction: row-reverse;
+  }
+
+  .q-skel-av {
+    flex: none;
+    width: 2rem;
+    height: 2rem;
+    border-radius: 9999px;
+    background: color-mix(in srgb, var(--color-brown) 10%, #fffdfb);
+    animation: q-skel-breathe 1.8s ease-in-out infinite alternate;
+  }
+
+  .q-skel-body {
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+    min-width: 0;
+  }
+
+  .q-skel-line {
+    height: 0.62rem;
+    border-radius: 9999px;
+    background: color-mix(in srgb, var(--color-brown) 9%, #fffdfb);
+    animation: q-skel-breathe 1.8s ease-in-out infinite alternate;
+  }
+
+  /* 宽度给参差，不要三条一样长 —— 一样的长度看起来像表格 */
+  .q-skel-line:nth-child(1) { width: 6rem; }
+  .q-skel-line:nth-child(2) { width: 13rem; }
+  .q-skel-line:nth-child(3) { width: 9rem; }
+
+  .q-skel-row.is-mine .q-skel-body {
+    align-items: flex-end;
+  }
+
+  .q-skel-row.is-mine .q-skel-line:nth-child(1) { width: 5rem; }
+  .q-skel-row.is-mine .q-skel-line:nth-child(2) { width: 11rem; }
+
+  @keyframes q-skel-breathe {
+    from { opacity: 0.55; }
+    to { opacity: 1; }
+  }
+
+  .q-chat__skeleton-note {
+    margin-top: auto;
+    padding-top: 1rem;
+    text-align: center;
+    font-size: 0.74rem;
+    color: var(--color-subtle);
+  }
+
+  /* ——— ② 空态 ———
+     原来只有两行灰字，落在卡片底部（`.q-chat__inner` 的 margin-top: auto）。
+     空聊天室其实是一次邀请，值得给个落点和一句「你可以先说话」。 */
+  .q-chat__scroll.is-empty .q-chat__inner {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+    margin-top: 0;
+  }
+
+  .q-chat__blank {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.55rem;
+    padding: 2rem 1rem;
+    text-align: center;
+  }
+
+  /* 一枚印章：细线方框 + 门内的「亭」字。全站只有这一处这样用，别扩散 */
+  .q-chat__blank__mark {
+    display: grid;
+    place-items: center;
+    width: 2.6rem;
+    height: 2.6rem;
+    margin-bottom: 0.35rem;
+    border: 1px solid color-mix(in srgb, var(--color-crimson) 42%, transparent);
+    border-radius: 0.3rem;
+    color: var(--color-crimson);
+    font-family: var(--font-display);
+    font-size: 1.15rem;
+    line-height: 1;
+    opacity: 0.9;
+  }
+
+  .q-chat__blank__t {
+    font-family: var(--font-display);
+    font-size: 1.05rem;
+    color: var(--color-ink);
+    letter-spacing: 0.02em;
+  }
+
+  .q-chat__blank__s {
+    max-width: 20rem;
+    font-size: 0.8rem;
+    line-height: 1.8;
+    color: var(--color-subtle);
+  }
+
+  .q-chat__blank__cta {
+    margin-top: 0.5rem;
+    padding: 0.4rem 1.1rem;
+    border-radius: var(--radius-pill);
+    background: var(--color-cta);
+    color: #fff;
+    font-size: 0.78rem;
+    transition: opacity var(--dur-micro) ease;
+  }
+
+  .q-chat__blank__cta:hover {
+    opacity: 0.88;
+  }
+
+  /* ——— ③ 时间线 ———
+     纯居中文字读起来像「正文里插了一句」，加两条细线之后才是分隔符。 */
+  .q-chat__time {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    margin: 1rem 0 0.55rem;
+    text-align: center;
+    font-size: 0.68rem;
+    letter-spacing: 0.02em;
+    color: var(--color-subtle);
+  }
+
+  .q-chat__time::before,
+  .q-chat__time::after {
+    content: '';
+    flex: 1;
+    height: 1px;
+    background: color-mix(in srgb, var(--color-brown) 13%, transparent);
+  }
+
+  /* ——— ④ 数字对齐 ———
+     时间、已读、字数都是会变的数字，比例字体会让它们逐帧抖。 */
+  .q-chat__clock,
+  .q-chat__time,
+  .q-chat__reads,
+  .q-chat__count,
+  .q-chat__readmark {
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* ——— ⑤ 新消息入场 ———
+     只给「进来之后才到」的消息（自己发的也算）。首屏那批不动 ——
+     一进页面十几条一起浮上来，比不浮更吵。 */
+  .q-chat__row.is-fresh {
+    animation: q-msg-in 220ms cubic-bezier(0.22, 0.61, 0.36, 1) both;
+  }
+
+  @keyframes q-msg-in {
+    from {
+      opacity: 0;
+      transform: translateY(5px);
+    }
+  }
+
+  /* ——— ⑥ 焦点可见 ———
+     聊天室里 Tab 要能走完「回复 → 撤回 → + → 输入框」，每一步都得看得见。 */
+  .q-chat :is(button, textarea, a):focus-visible {
+    outline: 2px solid color-mix(in srgb, var(--color-crimson) 62%, transparent);
+    outline-offset: 2px;
+    border-radius: 0.4rem;
+  }
+
+  /* ——— ⑦ 拖拽投放 ———
+     拖文件进聊天区本来就能发，但之前没有任何反馈；松手前不知道会发生什么。 */
+  .q-chat.is-drop {
+    border-color: color-mix(in srgb, var(--color-crimson) 40%, transparent);
+  }
+
+  .q-chat.is-drop::after {
+    content: '松手就发出去';
+    position: absolute;
+    inset: 0.5rem;
+    z-index: 30;
+    display: grid;
+    place-items: center;
+    border: 1px dashed color-mix(in srgb, var(--color-crimson) 45%, transparent);
+    border-radius: var(--radius-card);
+    background: color-mix(in srgb, #fffdfb 82%, transparent);
+    color: var(--color-crimson);
+    font-size: 0.85rem;
+    letter-spacing: 0.04em;
+    pointer-events: none;
+  }
+
+  /* ——— ⑧ 触屏目标 ———
+     WCAG 2.5.8 是 24×24 的底线，44 是 AAA / Apple HIG 的尺寸。
+     触屏上没有鼠标精度，输入区的按钮按 40px 走。 */
+  @media (hover: none) {
+    .q-chat__tool {
+      width: 2.5rem;
+      height: 2.5rem;
+    }
+
+    .q-chat__send {
+      width: 2.75rem;
+      height: 2.75rem;
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .q-skel-av,
+    .q-skel-line {
+      animation: none;
+      opacity: 0.85;
+    }
+
+    .q-chat__row.is-fresh {
+      animation: none;
+    }
+  }
 }

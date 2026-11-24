@@ -275,6 +275,19 @@ export default function ChatRoom() {
   /** 从搜索结果跳过去之后，临时高亮的那条 */
   const [highlightId, setHighlightId] = useState(0);
 
+  /**
+   * 拖文件进来时的投放态。
+   *
+   * 用计数器而不是布尔：`dragenter` / `dragleave` 在嵌套元素之间会成对狂发，
+   * 直接置 true/false 会在鼠标划过一个气泡的瞬间闪一下。
+   */
+  const [dragging, setDragging] = useState(0);
+  /**
+   * 进来那一刻的最大 id。比它大的都算「新到的」，才做入场动画；
+   * 首屏那批（含快照里的）不动，否则一进页面十几条一起浮上来。
+   */
+  const firstMaxRef = useRef(boot ? boot.lastId : -1);
+
   /** 「正在输入」上报节流 */
   const lastTypingRef = useRef(0);
 
@@ -340,6 +353,8 @@ export default function ChatRoom() {
         setMembers(list);
         lastIdRef.current = page.messages.reduce((max, m) => Math.max(max, m.id), 0);
         readMarkRef.current = page.lastRead;
+        // 冷启动（没有快照）时，首批消息不该有入场动画
+        if (firstMaxRef.current < 0) firstMaxRef.current = lastIdRef.current;
         writeSnapshot({
           accountId: who.account?.id ?? null,
           hasMore: page.hasMore,
@@ -765,7 +780,7 @@ export default function ChatRoom() {
     <ChatAside
       account={account}
       members={members}
-      online={online}
+      online={loading ? -1 : online}
       onLogin={() => setLoginOpen(true)}
     />
   );
@@ -774,10 +789,48 @@ export default function ChatRoom() {
     return (
       <div className="q-chat-layout">
         {aside}
-        <section className="q-chat" aria-busy="true">
-          <div className="q-chat__empty">
-            <MorphIcon icon={LoaderCircle} size={18} color="currentColor" />
-            <span>正在推开长亭的门…</span>
+        <section className="q-chat" aria-busy="true" aria-label="正在加载聊天记录">
+          {/* 骨架按聊天的真实节奏摆：来一条、回一条、再来一条。
+              纯装饰，读屏跳过（文字说明在最后一行）。 */}
+          <div className="q-chat__skeleton" aria-hidden="true">
+            <div className="q-skel-row">
+              <span className="q-skel-av" />
+              <div className="q-skel-body">
+                <i className="q-skel-line" />
+                <i className="q-skel-line" />
+              </div>
+            </div>
+            <div className="q-skel-row is-mine">
+              <span className="q-skel-av" />
+              <div className="q-skel-body">
+                <i className="q-skel-line" />
+                <i className="q-skel-line" />
+                <i className="q-skel-line" />
+              </div>
+            </div>
+            <div className="q-skel-row">
+              <span className="q-skel-av" />
+              <div className="q-skel-body">
+                <i className="q-skel-line" />
+                <i className="q-skel-line" />
+                <i className="q-skel-line" />
+              </div>
+            </div>
+            <div className="q-skel-row is-mine">
+              <span className="q-skel-av" />
+              <div className="q-skel-body">
+                <i className="q-skel-line" />
+                <i className="q-skel-line" />
+              </div>
+            </div>
+            <div className="q-skel-row">
+              <span className="q-skel-av" />
+              <div className="q-skel-body">
+                <i className="q-skel-line" />
+                <i className="q-skel-line" />
+              </div>
+            </div>
+            <p className="q-chat__skeleton-note">正在推开长亭的门…</p>
           </div>
         </section>
       </div>
@@ -807,13 +860,23 @@ export default function ChatRoom() {
     <div className="q-chat-layout">
       {aside}
       <section
-        className="q-chat"
+        className={`q-chat${dragging > 0 ? ' is-drop' : ''}`}
         aria-label="长亭聊天室"
+        onDragEnter={(e) => {
+          if (!e.dataTransfer?.types.includes('Files')) return;
+          e.preventDefault();
+          setDragging((n) => n + 1);
+        }}
         onDragOver={(e) => {
           // 不 preventDefault 的话浏览器会直接打开这个文件，把聊天页面顶掉
           if (e.dataTransfer?.types.includes('Files')) e.preventDefault();
         }}
+        onDragLeave={(e) => {
+          if (!e.dataTransfer?.types.includes('Files')) return;
+          setDragging((n) => Math.max(0, n - 1));
+        }}
         onDrop={(e) => {
+          setDragging(0);
           const f = e.dataTransfer?.files?.[0];
           if (!f) return;
           e.preventDefault();
@@ -836,8 +899,20 @@ export default function ChatRoom() {
           </button>
         </div>
 
-      <div className="q-chat__scroll" ref={scrollRef} onScroll={onScroll}>
-        <div className="q-chat__inner">
+      <div
+        className={`q-chat__scroll${messages.length === 0 ? ' is-empty' : ''}`}
+        ref={scrollRef}
+        onScroll={onScroll}
+      >
+        {/* role=log + aria-live：新消息进来读屏会念出来。
+            只声明 additions —— 撤回、已读这些状态变化不该抢话。 */}
+        <div
+          className="q-chat__inner"
+          role="log"
+          aria-live="polite"
+          aria-relevant="additions"
+          aria-label="聊天记录"
+        >
           {hasMore && (
             <div className="q-chat__more">
               <button type="button" onClick={() => void loadMore()} disabled={loadingMore}>
@@ -847,11 +922,23 @@ export default function ChatRoom() {
           )}
 
           {messages.length === 0 && (
-            <p className="q-chat__blank">
-              长亭刚开门，还没有人说话。
-              <br />
-              你可以是第一个。
-            </p>
+            <div className="q-chat__blank">
+              {/* 一枚印章式的落点：细线方框 + 「亭」字。全站只有这一处这么用 */}
+              <span className="q-chat__blank__mark" aria-hidden="true">
+                亭
+              </span>
+              <p className="q-chat__blank__t">长亭还空着</p>
+              <p className="q-chat__blank__s">坐下来说第一句。路过的人会看见，也会回你一句。</p>
+              {!signedIn && (
+                <button
+                  type="button"
+                  className="q-chat__blank__cta"
+                  onClick={() => setLoginOpen(true)}
+                >
+                  坐下聊聊
+                </button>
+              )}
+            </div>
           )}
 
           {messages.map((m, i) => {
@@ -866,6 +953,8 @@ export default function ChatRoom() {
             const sameAuthor =
               prev && prev.name === m.name && prev.status !== 'recalled' && m.status !== 'recalled';
             const grouped = Boolean(sameAuthor) && !splitTime && !showReadMark;
+            // 进来之后才到的消息（含自己刚发的）才做入场动画
+            const fresh = firstMaxRef.current >= 0 && m.id > firstMaxRef.current;
 
             return (
               <div
@@ -878,6 +967,7 @@ export default function ChatRoom() {
                 <MessageRow
                   m={m}
                   grouped={grouped}
+                  fresh={fresh}
                   canRecall={m.mine && m.status === 'visible' && Date.now() - ts < 2 * 60 * 1000}
                   onRecall={() => void doRecall(m.id)}
                   onReact={(emoji) => void doReact(m.id, emoji)}
@@ -1013,9 +1103,11 @@ export default function ChatRoom() {
                 }
               }}
               rows={1}
-              placeholder="说点什么…（@ 可以叫个人）"
+              /* 占位符要能在 390px 宽下**一行放完**：原来那句（@ 可以叫个人）
+                 在手机上会折成两行，输入框一进页面就变高，看着像刚打了一半字 */
+              placeholder="说点什么… @ 叫人"
               title="Enter 发送，Shift + Enter 换行，@ 提及"
-              aria-label="说点什么"
+              aria-label="说点什么，@ 可以提及在场的人"
             />
             <div className="q-chat__tools">
               <button
@@ -1109,6 +1201,7 @@ export default function ChatRoom() {
 function MessageRow({
   m,
   grouped,
+  fresh,
   canRecall,
   onRecall,
   onReact,
@@ -1117,6 +1210,7 @@ function MessageRow({
 }: {
   m: ChatMessage;
   grouped: boolean;
+  fresh: boolean;
   canRecall: boolean;
   onRecall: () => void;
   onReact: (emoji: string) => void;
@@ -1138,7 +1232,11 @@ function MessageRow({
 
   const mine = m.mine;
   return (
-    <div className={`q-chat__row${mine ? ' is-mine' : ''}${grouped ? ' is-grouped' : ''}`}>
+    <div
+      className={`q-chat__row${mine ? ' is-mine' : ''}${grouped ? ' is-grouped' : ''}${
+        fresh ? ' is-fresh' : ''
+      }`}
+    >
       {!mine && (
         /**
          * 头像用 background-image 而不是 <img>：
@@ -1172,15 +1270,12 @@ function MessageRow({
 
         <div className="q-chat__bubblewrap">
           {m.media && (
-            <div className={`q-chat__media is-${m.media.kind}`}>
+            /* data-zoomable：交给全站的灯箱（ImageZoom）接管点击，
+               点开停在本站，能 Esc 关、能翻组里的下一张 ——
+               比原来 window.open 到新标签页少一次上下文切换 */
+            <div className={`q-chat__media is-${m.media.kind}`} data-zoomable>
               {m.media.kind === 'image' ? (
-                <img
-                  src={mediaSrc(m.media)}
-                  alt="图片"
-                  loading="lazy"
-                  decoding="async"
-                  onClick={() => window.open(mediaSrc(m.media!), '_blank', 'noopener')}
-                />
+                <img src={mediaSrc(m.media)} alt="图片" loading="lazy" decoding="async" />
               ) : (
                 <video src={mediaSrc(m.media)} controls playsInline preload="metadata" />
               )}

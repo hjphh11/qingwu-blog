@@ -2,7 +2,9 @@
 /*
  * 清吾 · 正文图片灯箱
  *
- * 只做一件事：点 `.prose` 里的图 → 全屏看原图，Esc / 点空白关，← → 在同篇图里翻。
+ * 只做一件事：点 `.prose`（或 `[data-zoomable]`）里的图 → 全屏看原图，
+ * Esc / 点空白关，← → 在同组图里翻。长亭的图片消息也走这条通道
+ * （点开停在本站，不再跳新标签页）。
  *
  * 几个刻意的选择：
  *   · **不用框架组件**。一张遮罩 + 一个 img + 三个按钮，用 React/Motion 上来就是几 KB
@@ -65,9 +67,10 @@
       return document.querySelector('[data-zoom]');
     }
 
-    /* 同篇的图：优先取同一个 .prose 容器里的，没有就退到父元素 */
+    /* 同篇的图：优先取同一个 .prose 容器里的；长亭（聊天室）里用 [data-zoomable]
+       标出「这一组可以翻」，图上没有 `.prose` 可依；都没有就退到父元素 */
     function collect(el) {
-      var host = el.closest('.prose') || el.parentElement;
+      var host = el.closest('.prose') || el.closest('[data-zoomable]') || el.parentElement;
       if (!host) return [];
       var all = host.querySelectorAll('img');
       var list = [];
@@ -151,7 +154,7 @@
         return;
       }
 
-      var im = t.closest('.prose img');
+      var im = t.closest('.prose img, [data-zoomable] img');
       if (!(im instanceof HTMLImageElement)) return;
       if (im.closest('a')) return;
       if (im.width && im.width < MIN_SIDE) return;

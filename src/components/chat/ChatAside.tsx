@@ -117,12 +117,15 @@ export default function ChatAside({
           </span>
           <span className="q-aside-head__n">
             <i aria-hidden="true" />
-            {online} 人在长亭
+            {/* 加载中传 -1：写「0 人在长亭」是假话，下一秒变 2 更奇怪 */}
+            {online < 0 ? '正在数人…' : `${online} 人在长亭`}
           </span>
         </header>
 
         {members.length === 0 ? (
-          <p className="q-aside-empty">此刻只有你在。说句话，就有人循声过来了。</p>
+          <p className="q-aside-empty">
+            {online < 0 ? '正在看看谁在…' : '此刻只有你在。说句话，就有人循声过来了。'}
+          </p>
         ) : (
           <ul className="q-aside-list">
             {shown.map((m) => {
