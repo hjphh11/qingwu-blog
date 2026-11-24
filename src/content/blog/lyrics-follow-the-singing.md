@@ -10,6 +10,11 @@ tags: ["CSS", "React", "动效", "音乐", "踩坑"]
 
 这次照桌面播放器的样子重排：上半是正在播放，右边整片让给歌词，曲库挪到下面去。但真正花时间的不是版式，是那个「跟着唱」的观感 —— 一句一句滚过去太普通了，想要的是**这一句里，字一个一个亮起来**。
 
+<figure>
+  <img src="/images/blog/music-stage.webp" width="1440" height="860" alt="音乐页改版后的实际画面：左边是唱片封面、歌名与播放控制，右边整片歌词，当前句清晰、往下逐行变虚" loading="lazy" />
+  <figcaption>改完的样子。右边那片歌词里只有正在唱的那句是实的 —— 越往下越虚，这不是套了一层渐隐。</figcaption>
+</figure>
+
 ## 第一个问题：LRC 没有字级时间
 
 标准 LRC 长这样：
@@ -127,6 +132,11 @@ el.style.setProperty('--p', progressAt(lines, i, t, duration).toFixed(4));
 我一开始试过钉右缘（`transform-origin: right center`），想让左边往后缩。结果长句被透视推到面板左侧以外，直接被遮罩切掉半个字。旋转的轴在哪，另一边就会被拉出去 —— 钉右边就等于让左端承受最大的位移。
 
 `perspective` 给的是 660px。试过 900px，那点宽度差几乎看不出纵深，等于白转；再小到 500px 又会把字拉得太夸张。660 是「看得出来但不滑稽」的那一档。
+
+<figure>
+  <img src="/images/blog/lyrics-depth.svg" width="820" height="350" alt="歌词面板以左缘为轴旋转 18 度，中间那行清晰、上下两端渐隐渐糊，右下角标出四档景深参数" loading="lazy" />
+  <figcaption>轴钉在左缘，右端往镜头前来 —— 每句开头不动。同一幅画面里，上下两端的行按距离分档模糊，只有当前句是实心的。</figcaption>
+</figure>
 
 手机上这个倾斜直接关掉：
 

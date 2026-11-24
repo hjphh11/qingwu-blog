@@ -1,0 +1,62 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 820 310" width="820" height="310" role="img" aria-label="Astro 按顺序逐页写盘，前 30 页成功，第 31 页因空头像校验抛错中断，后面的页面全部没写；结果是目录存在但没有 index.html 的页面返回 403，连目录都没建出来的返回 404">
+  <defs>
+    <marker id="a4" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0 0 L10 5 L0 10 Z" fill="#B9A493"/>
+    </marker>
+    <marker id="a4r" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0 0 L10 5 L0 10 Z" fill="#C23A55"/>
+    </marker>
+  </defs>
+
+  <style>
+    .t { font-family:ui-sans-serif,-apple-system,"Segoe UI","Microsoft YaHei",sans-serif; font-size:13px; font-weight:600; fill:#3A2B1F }
+    .s { font-family:ui-sans-serif,-apple-system,"Segoe UI","Microsoft YaHei",sans-serif; font-size:11px; fill:#8A7561 }
+    .code { font-family:ui-monospace,"SFMono-Regular",Consolas,monospace; font-size:10.5px; fill:#C23A55 }
+    .big { font-family:ui-sans-serif,-apple-system,"Segoe UI","Microsoft YaHei",sans-serif; font-size:24px; font-weight:700; fill:#3A2B1F }
+    .bigr { font-family:ui-sans-serif,-apple-system,"Segoe UI","Microsoft YaHei",sans-serif; font-size:24px; font-weight:700; fill:#C23A55 }
+  </style>
+
+  <text class="t" x="30" y="34">Astro 按渲染顺序逐页写盘</text>
+  <text class="s" x="30" y="52">写一页、落一个目录，不是「全部渲染完再一次性落地」</text>
+
+  <!-- 已写盘的页面 -->
+  <rect x="30" y="74" width="40" height="40" rx="7" fill="#FBF4EC" stroke="#E3D3C3" stroke-width="1.5"/>
+  <rect x="78" y="74" width="40" height="40" rx="7" fill="#FBF4EC" stroke="#E3D3C3" stroke-width="1.5"/>
+  <rect x="126" y="74" width="40" height="40" rx="7" fill="#FBF4EC" stroke="#E3D3C3" stroke-width="1.5"/>
+  <rect x="174" y="74" width="40" height="40" rx="7" fill="#FBF4EC" stroke="#E3D3C3" stroke-width="1.5"/>
+  <rect x="222" y="74" width="40" height="40" rx="7" fill="#FBF4EC" stroke="#E3D3C3" stroke-width="1.5"/>
+  <text class="s" x="284" y="100">…</text>
+  <text class="s" x="30" y="134">已写盘 335 个文件</text>
+
+  <!-- 断点 -->
+  <rect x="318" y="74" width="96" height="40" rx="7" fill="#FCEEF1" stroke="#C23A55" stroke-width="2"/>
+  <text class="s" x="366" y="99" text-anchor="middle" fill="#C23A55">✕ 断在这</text>
+  <text class="code" x="318" y="134">/links/posts</text>
+
+  <!-- 没轮到的页面 -->
+  <rect x="440" y="74" width="40" height="40" rx="7" fill="none" stroke="#D8C7B6" stroke-width="1.5" stroke-dasharray="4 4"/>
+  <rect x="488" y="74" width="40" height="40" rx="7" fill="none" stroke="#D8C7B6" stroke-width="1.5" stroke-dasharray="4 4"/>
+  <rect x="536" y="74" width="40" height="40" rx="7" fill="none" stroke="#D8C7B6" stroke-width="1.5" stroke-dasharray="4 4"/>
+  <rect x="584" y="74" width="40" height="40" rx="7" fill="none" stroke="#D8C7B6" stroke-width="1.5" stroke-dasharray="4 4"/>
+  <text class="s" x="440" y="134">没轮到：/links、/music、/projects、首页</text>
+
+  <!-- 抛错信息 -->
+  <path d="M366 118 V 152" stroke="#C23A55" stroke-width="1.5" fill="none" marker-end="url(#a4r)"/>
+  <text class="code" x="376" y="150">Error: friends.17.avatar 不能为空</text>
+
+  <!-- 分叉到两种后果 -->
+  <path d="M366 160 V 186 H 214" stroke="#B9A493" stroke-width="1.5" fill="none" marker-end="url(#a4)"/>
+  <path d="M366 160 V 186 H 565" stroke="#B9A493" stroke-width="1.5" fill="none" marker-end="url(#a4)"/>
+
+  <rect x="120" y="190" width="190" height="86" rx="12" fill="#FDFAF6" stroke="#E9DCCD" stroke-width="1.5"/>
+  <text class="s" x="215" y="212" text-anchor="middle">目录在，里面没有 index.html</text>
+  <text class="bigr" x="215" y="244" text-anchor="middle">403</text>
+  <text class="s" x="215" y="264" text-anchor="middle">directory index … forbidden</text>
+
+  <rect x="470" y="190" width="190" height="86" rx="12" fill="#FDFAF6" stroke="#E9DCCD" stroke-width="1.5"/>
+  <text class="s" x="565" y="212" text-anchor="middle">连目录都没建出来</text>
+  <text class="big" x="565" y="244" text-anchor="middle">404</text>
+  <text class="s" x="565" y="264" text-anchor="middle">try_files 三个候选全落空</text>
+
+  <text class="s" x="30" y="296">所以「有些页面 404」只是表象 —— 真正的信号是 403：东西在，文件没写完。</text>
+</svg>

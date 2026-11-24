@@ -12,6 +12,11 @@ tags: ["AI", "Worker", "评论系统", "工程取舍"]
 
 所以这次开启的顺序是反的：先把「什么时候不许说话」写清楚，最后才允许她开口。
 
+<figure>
+  <img src="/images/blog/board-comments.webp" width="1440" height="900" alt="留言板实际画面：上方是发言表单，下方是按时间倒序的留言，每条带点赞、回复、展开回复" loading="lazy" />
+  <figcaption>留言板实际的样子。上面这条正是后来把站点搞挂的那次友链申请 —— 它的头像字段空着，一路进了仓库。</figcaption>
+</figure>
+
 ## 什么情况下不说话
 
 `autoReplyTo` 进去之后是一串 return，全在前面：
@@ -180,6 +185,11 @@ const settings = await loadSettings(env);
 ## 写在最后
 
 做这一块最大的收获不是 prompt 怎么写，而是把「AI 功能」当成一个**有输出权限的组件**来设计。
+
+<figure>
+  <img src="/images/blog/ai-gates.svg" width="820" height="260" alt="示意图：小爱自动回复要过四道闸门——场景、对象、内容、形态，任何一道不过就直接返回不落库" loading="lazy" />
+  <figcaption>四道闸门。哪一道不过都直接 return —— 这句话既不会落库，也不会再花一次调用。</figcaption>
+</figure>
 
 一个会自动说话的功能，它的失败模式不是「不说话」，而是「说了不该说的」。所以规则的重心全在否决上：
 

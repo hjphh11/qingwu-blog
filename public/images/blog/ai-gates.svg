@@ -1,0 +1,57 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 820 260" width="820" height="260" role="img" aria-label="小爱自动回复的四道闸门：场景、对象、内容、形态，任一不过直接返回不落库，四道全过才写入">
+  <style>
+    .t { font-family:ui-sans-serif,-apple-system,"Segoe UI","Microsoft YaHei",sans-serif; font-size:13px; font-weight:600; fill:#3A2B1F }
+    .r { font-family:ui-sans-serif,-apple-system,"Segoe UI","Microsoft YaHei",sans-serif; font-size:11px; fill:#8A7561 }
+    .n { font-family:ui-sans-serif,-apple-system,"Segoe UI","Microsoft YaHei",sans-serif; font-size:13px; font-weight:700; fill:#C23A55 }
+  </style>
+
+  <!-- ① 场景 -->
+  <rect x="22" y="56" width="176" height="120" rx="12" fill="#FDFAF6" stroke="#E9DCCD" stroke-width="1.5"/>
+  <text class="n" x="40" y="82">①</text>
+  <text class="t" x="58" y="82">场景</text>
+  <text class="r" x="40" y="110">只回顶层留言</text>
+  <text class="r" x="40" y="132">楼中楼不插嘴</text>
+  <text class="r" x="40" y="154">路径白名单</text>
+
+  <path d="M202 116 l 10 -7 v 14 z" fill="#C9B8A6"/>
+
+  <!-- ② 对象 -->
+  <rect x="218" y="56" width="176" height="120" rx="12" fill="#FDFAF6" stroke="#E9DCCD" stroke-width="1.5"/>
+  <text class="n" x="236" y="82">②</text>
+  <text class="t" x="254" y="82">对象</text>
+  <text class="r" x="236" y="110">不接她自己</text>
+  <text class="r" x="236" y="132">不接站长（admin）</text>
+  <text class="r" x="236" y="154">已有回复不重复</text>
+
+  <path d="M398 116 l 10 -7 v 14 z" fill="#C9B8A6"/>
+
+  <!-- ③ 内容 -->
+  <rect x="414" y="56" width="176" height="120" rx="12" fill="#FDFAF6" stroke="#E9DCCD" stroke-width="1.5"/>
+  <text class="n" x="432" y="82">③</text>
+  <text class="t" x="450" y="82">内容</text>
+  <text class="r" x="432" y="110">无 http(s) 链接</text>
+  <text class="r" x="432" y="132">无邮箱 / 电话</text>
+  <text class="r" x="432" y="154">无微信 · 扫码 · 私聊</text>
+
+  <path d="M594 116 l 10 -7 v 14 z" fill="#C9B8A6"/>
+
+  <!-- ④ 形态 -->
+  <rect x="610" y="56" width="176" height="120" rx="12" fill="#FCEEF1" stroke="#E5A9B6" stroke-width="1.5"/>
+  <text class="n" x="628" y="82">④</text>
+  <text class="t" x="646" y="82">形态</text>
+  <text class="r" x="628" y="110">空内容不发</text>
+  <text class="r" x="628" y="132">命中报错特征就丢</text>
+  <text class="r" x="628" y="154">复用提交时的判定</text>
+
+
+  <!-- 四道闸门任一不过，都从这里掉下去 -->
+  <path d="M110 176 V 198" stroke="#DCCBBB" stroke-width="1.2" stroke-dasharray="3 4"/>
+  <path d="M306 176 V 198" stroke="#DCCBBB" stroke-width="1.2" stroke-dasharray="3 4"/>
+  <path d="M502 176 V 198" stroke="#DCCBBB" stroke-width="1.2" stroke-dasharray="3 4"/>
+  <path d="M698 176 V 198" stroke="#DCCBBB" stroke-width="1.2" stroke-dasharray="3 4"/>
+
+  <!-- 底部结论 -->
+  <line x1="22" y1="204" x2="786" y2="204" stroke="#EFE3D6" stroke-width="1"/>
+  <text class="r" x="22" y="228">任何一道不过 → 直接 <tspan fill="#C23A55" font-weight="600">return</tspan>，这句话不落库、也不花下一次调用。</text>
+  <text class="r" x="22" y="248">四道全过，才写进 comments —— 所以她说的每句话都经过这四关。</text>
+</svg>

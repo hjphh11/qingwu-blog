@@ -124,9 +124,26 @@
     font-weight: 600;
   }
   .prose img {
+    /* 必须 block：inline 元素上 margin auto 不生效，图片不会居中 */
+    display: block;
     border-radius: 14px;
     margin: 1.4em auto;
     max-width: 100%;
+  }
+  /* 插图：文章里的 SVG 示意图（public/images/blog/）。
+     图注用三级文字，与正文拉开层级但不抢戏；居中，跟随图片宽度。 */
+  .prose figure {
+    margin: 1.9em 0;
+  }
+  .prose figure img {
+    margin: 0 auto;
+  }
+  .prose figcaption {
+    margin-top: 0.75em;
+    text-align: center;
+    font-size: 0.8125rem;
+    line-height: 1.65;
+    color: var(--color-subtle);
   }
 
 }

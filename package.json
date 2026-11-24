@@ -6,7 +6,7 @@
   "description": "清吾 (qingwu.ink) - 温馨二次元的个人博客",
   "scripts": {
     "dev": "astro dev",
-  "dev:admin": "node scripts/dev-admin.mjs",
+    "dev:admin": "node scripts/dev-admin.mjs",
     "new:post": "node scripts/new-post.mjs",
     "build": "astro build",
     "preview": "astro preview",
@@ -44,6 +44,7 @@
   "devDependencies": {
     "@astrojs/check": "^0.9.10",
     "@tailwindcss/vite": "^4.3.3",
+    "puppeteer-core": "^25.18.1",
     "tailwindcss": "^4.3.3"
   }
 }

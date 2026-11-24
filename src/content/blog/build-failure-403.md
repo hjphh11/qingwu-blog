@@ -107,6 +107,11 @@ Astro 的静态构建不是「全部渲染完再一次性落盘」，而是一�
 
 我在 `src/data/links.ts` 里用 zod 校验友链数据，其中 `avatar` 要求非空且是链接。后台加了一条友链，头像字段留了空字符串。
 
+<figure>
+  <img src="/images/blog/build-interrupt.svg" width="820" height="310" alt="示意图：Astro 按顺序逐页写盘，前 30 页成功，第 31 页 /links/posts 因头像校验抛错中断，后面的页面再没写；结果是目录存在但没有 index.html 的页面返回 403，连目录都没建出来的返回 404" loading="lazy" />
+  <figcaption>断点在前 30 个页面之后。已经写进磁盘的留着，没轮到的连目录都没有 —— 这就是「有些页面 403、有些 404」的来源。</figcaption>
+</figure>
+
 校验在渲染 `/links/posts` 时才触发 —— 因为只有这一页会去 import 那份数据。于是它成了断点：前面 30 个页面已经写完了，后面 10 来个（包括首页）**再也没轮到**。
 
 ## 更糟的是，它不会自己恢复

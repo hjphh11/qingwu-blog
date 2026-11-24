@@ -1,0 +1,63 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 820 300" width="820" height="300" role="img" aria-label="迁移前后对比：左侧 Cloudflare 边缘上只能看到接口返回，看不到进程、日志与数据库文件；右侧自己的机器上可以 ssh、tail 日志、直接用 sqlite3 打开数据库">
+  <defs>
+    <marker id="a2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0 0 L10 5 L0 10 Z" fill="#B9A493"/>
+    </marker>
+  </defs>
+
+  <style>
+    .t { font-family:ui-sans-serif,-apple-system,"Segoe UI","Microsoft YaHei",sans-serif; font-size:14px; font-weight:600; fill:#3A2B1F }
+    .s { font-family:ui-sans-serif,-apple-system,"Segoe UI","Microsoft YaHei",sans-serif; font-size:11.5px; fill:#8A7561 }
+    .k { font-family:ui-sans-serif,-apple-system,"Segoe UI","Microsoft YaHei",sans-serif; font-size:12px; font-weight:600; fill:#3A2B1F }
+    .mono { font-family:ui-monospace,"SFMono-Regular",Consolas,monospace; font-size:11.5px; fill:#8A7561 }
+    .line { stroke:#B9A493; stroke-width:1.5; fill:none; marker-end:url(#a2) }
+  </style>
+
+  <!-- ───── 左：Cloudflare 边缘 ───── -->
+  <rect x="20" y="40" width="380" height="228" rx="16" fill="#FDFAF6" stroke="#E9DCCD" stroke-width="1.5"/>
+  <text class="t" x="42" y="68">Cloudflare 边缘</text>
+  <text class="s" x="42" y="86">代码跑在别人的节点上</text>
+
+  <rect x="44" y="102" width="140" height="60" rx="10" fill="#FBF4EC" stroke="#E3D3C3" stroke-width="1.5"/>
+  <text class="k" x="114" y="126" text-anchor="middle">Worker</text>
+  <text class="s" x="114" y="145" text-anchor="middle">fetch 入口</text>
+
+  <rect x="248" y="102" width="128" height="60" rx="10" fill="#FBF4EC" stroke="#E3D3C3" stroke-width="1.5"/>
+  <text class="k" x="312" y="126" text-anchor="middle">D1</text>
+  <text class="s" x="312" y="145" text-anchor="middle">托管数据库</text>
+
+  <path class="line" d="M186 132 H244"/>
+
+  <text class="s" x="44" y="196">能看到的，只有这个：</text>
+  <rect x="44" y="206" width="150" height="44" rx="8" fill="#FFFFFF" stroke="#C9B8A6" stroke-width="1.4" stroke-dasharray="5 4"/>
+  <text class="mono" x="119" y="225" text-anchor="middle">HTTP 响应</text>
+  <text class="mono" x="119" y="241" text-anchor="middle">200 / 500</text>
+
+  <text class="s" x="216" y="222">看不到：进程、日志、</text>
+  <text class="s" x="216" y="239">数据库文件、连接数</text>
+
+  <!-- ───── 右：自己的机器 ───── -->
+  <rect x="440" y="40" width="360" height="228" rx="16" fill="#FDFAF6" stroke="#E9DCCD" stroke-width="1.5"/>
+  <text class="t" x="462" y="68">自己的机器 · 2 核 2G</text>
+  <text class="s" x="462" y="86">所有进程都在自己眼皮下</text>
+
+  <rect x="462" y="98" width="132" height="40" rx="9" fill="#FBF4EC" stroke="#E3D3C3" stroke-width="1.5"/>
+  <text class="k" x="528" y="123" text-anchor="middle">nginx</text>
+
+  <rect x="462" y="150" width="132" height="40" rx="9" fill="#FCEEF1" stroke="#E5A9B6" stroke-width="1.5"/>
+  <text class="k" x="528" y="175" text-anchor="middle">workerd</text>
+
+  <rect x="462" y="202" width="132" height="40" rx="9" fill="#FBF4EC" stroke="#E3D3C3" stroke-width="1.5"/>
+  <text class="k" x="528" y="227" text-anchor="middle">SQLite</text>
+
+  <path class="line" d="M528 138 V148"/>
+  <path class="line" d="M528 190 V200"/>
+
+  <text class="mono" x="614" y="112">ssh root@…</text>
+  <text class="mono" x="614" y="136">tail -f *.log</text>
+  <text class="mono" x="614" y="160">sqlite3 data.db</text>
+  <text class="mono" x="614" y="184">systemctl status</text>
+  <text class="mono" x="614" y="208">tar czf backup</text>
+
+  <text class="s" x="614" y="238">每一项都能立刻上手</text>
+</svg>
