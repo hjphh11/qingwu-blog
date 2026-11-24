@@ -1,7 +1,7 @@
 ---
 import Layout from '../../layouts/Layout.astro';
 import MorphIcon from 'morphicons/astro';
-import { Mail, BookOpen, Sparkles, GitBranch, Wrench, Clock } from '../../lib/icons';
+import { Mail, Sparkles, GitBranch, Wrench, Clock } from '../../lib/icons';
 import { aboutIcon } from '../../lib/aboutIcons';
 import { profile, info, emis, contacts, uses, timeline } from '../../data/about';
 import ContactExpand from '../../components/ContactExpand.tsx';
@@ -134,49 +134,35 @@ import { SITE } from '../../config';
               <h2 id="about-03" class="card-head">做过的事</h2>
             </div>
 
-            <div class="mt-6 grid gap-4 sm:grid-cols-2">
-              <a
-                href="/projects"
-                class="group card-lift flex flex-col items-start gap-2.5 rounded-[var(--radius-card)] border border-rose/25 bg-white/40 p-6 hover:border-rose/50 hover:bg-rose/10"
-              >
-                <span class="text-crimson/80">
+            {/* 只剩一个入口，所以做成**横条**而不是方形卡：
+                两列网格里孤零零一张会像「另一张没加载出来」。 */}
+            <a
+              href="/projects"
+              class="group card-lift mt-6 flex items-center justify-between gap-4 rounded-[var(--radius-card)] border border-rose/25 bg-white/40 px-6 py-5 hover:border-rose/50 hover:bg-rose/10"
+            >
+              <span class="flex min-w-0 items-center gap-4">
+                <span class="shrink-0 text-crimson/80">
                   <MorphIcon icon={Sparkles} size={22} color="currentColor" />
                 </span>
-                <span class="font-display text-lg text-ink transition-colors group-hover:text-accent">
-                  项目
-                </span>
-                <span class="text-xs leading-relaxed text-muted"> 自己做的小东西，都还在长 </span>
-                <span class="mt-1 inline-flex items-center gap-1 text-sm text-accent">
-                  去看看
+                <span class="min-w-0">
                   <span
-                    aria-hidden="true"
-                    class="transition-transform duration-300 group-hover:translate-x-1">→</span
+                    class="block font-display text-lg text-ink transition-colors group-hover:text-accent"
                   >
+                    项目
+                  </span>
+                  <span class="mt-1 block text-xs leading-relaxed text-muted">
+                    自己做的小东西，都还在长
+                  </span>
                 </span>
-              </a>
-
-              <a
-                href="/quiz/"
-                class="group card-lift flex flex-col items-start gap-2.5 rounded-[var(--radius-card)] border border-rose/25 bg-white/40 p-6 hover:border-rose/50 hover:bg-rose/10"
-              >
-                <span class="text-crimson/80">
-                  <MorphIcon icon={BookOpen} size={22} color="currentColor" />
-                </span>
-                <span class="font-display text-lg text-ink transition-colors group-hover:text-accent">
-                  Python 二级刷题
-                </span>
-                <span class="text-xs leading-relaxed text-muted">
-                  选择题 · 随机抽题 · 自动判分与解析
-                </span>
-                <span class="mt-1 inline-flex items-center gap-1 text-sm text-accent">
-                  进入题库
-                  <span
-                    aria-hidden="true"
-                    class="transition-transform duration-300 group-hover:translate-x-1">→</span
-                  >
-                </span>
-              </a>
-            </div>
+              </span>
+              <span class="inline-flex shrink-0 items-center gap-1 text-sm text-accent">
+                去看看
+                <span
+                  aria-hidden="true"
+                  class="transition-transform duration-300 group-hover:translate-x-1">→</span
+                >
+              </span>
+            </a>
           </section>
 
           {/* 04 设备间 —— 这站真正跑在什么上面。
