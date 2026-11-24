@@ -20,6 +20,7 @@
 import type { Env } from '../types';
 import { json } from '../util';
 import { getHistory, markRead, pollChat, sendMessage } from './messages';
+import { getMedia, uploadMedia } from './media';
 import { reactToMessage } from './react';
 import { recallMessage } from './recall';
 import { searchChat } from './search';
@@ -65,6 +66,15 @@ export async function handleChat(
   // 搜索聊天记录
   if (path === '/chat/search') {
     return method === 'GET' ? searchChat(request, env) : NOT_ALLOWED();
+  }
+
+  // 图片 / 视频：上传（POST）与读取（GET /chat/media/:id）
+  if (path === '/chat/media') {
+    return method === 'POST' ? uploadMedia(request, env) : NOT_ALLOWED();
+  }
+  const media = path.match(/^\/chat\/media\/(\d+)$/);
+  if (media) {
+    return method === 'GET' ? getMedia(env, media[1]!) : NOT_ALLOWED();
   }
 
   // /chat/:id/recall

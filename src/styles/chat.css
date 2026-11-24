@@ -665,6 +665,68 @@
     opacity: 0.85;
   }
 
+  /* ——— 消息里的图 / 视频 ——— */
+  .q-chat__media {
+    /* 20rem 是「看得清、又不至于一条占满整屏」的折中 */
+    max-width: min(100%, 20rem);
+    overflow: hidden;
+    border: 1px solid var(--color-hairline);
+    border-radius: 0.9rem;
+    background: #fff;
+    line-height: 0;
+  }
+
+  .q-chat__media img {
+    display: block;
+    width: 100%;
+    height: auto;
+    cursor: zoom-in;
+  }
+
+  .q-chat__media video {
+    display: block;
+    width: 100%;
+    height: auto;
+    max-height: 22rem;
+    background: #000;
+  }
+
+  .q-chat__row.is-mine .q-chat__media {
+    border-color: color-mix(in srgb, var(--color-crimson) 20%, transparent);
+  }
+
+  /* 待发送的那张缩略图 */
+  .q-chat__pendingmedia {
+    position: relative;
+    display: inline-flex;
+    max-width: 10rem;
+    border: 1px solid var(--color-hairline);
+    border-radius: 0.6rem;
+    overflow: hidden;
+  }
+
+  .q-chat__pendingmedia img,
+  .q-chat__pendingmedia video {
+    display: block;
+    width: 100%;
+    height: auto;
+    max-height: 6rem;
+    object-fit: cover;
+  }
+
+  .q-chat__pendingmedia button {
+    position: absolute;
+    top: 0.2rem;
+    right: 0.2rem;
+    display: grid;
+    place-items: center;
+    width: 1.1rem;
+    height: 1.1rem;
+    border-radius: 9999px;
+    background: rgba(40, 20, 25, 0.55);
+    color: #fff;
+  }
+
   .q-chat__pending {
     flex: none;
     font-size: 0.65rem;

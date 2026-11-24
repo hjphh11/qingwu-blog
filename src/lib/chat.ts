@@ -28,6 +28,20 @@ export interface Quote {
   excerpt: string;
 }
 
+/** 图片 / 视频的元信息。二进制走独立的 `/api/chat/media/:id` */
+export interface ChatMedia {
+  id: number;
+  kind: 'image' | 'video';
+  width: number | null;
+  height: number | null;
+  duration: number | null;
+}
+
+/** 媒体地址。带上 BASE，线上是 /api、本地是 /api（astro 代理到 8799） */
+export function mediaUrl(id: number): string {
+  return `${BASE}/chat/media/${id}`;
+}
+
 export interface ChatMessage {
   id: number;
   name: string;
@@ -48,6 +62,8 @@ export interface ChatMessage {
   quote: Quote | null;
   /** 这条 @ 了我 */
   mentionedMe: boolean;
+  /** 图片 / 视频（null = 纯文字） */
+  media: ChatMedia | null;
 }
 
 export interface ChatPage {
@@ -109,6 +125,21 @@ function asMessage(raw: unknown): ChatMessage | null {
           }
         : null,
     mentionedMe: Boolean(r.mentionedMe),
+    media:
+      r.media && typeof r.media === 'object'
+        ? (() => {
+            const mm = r.media as Record<string, unknown>;
+            const id = Number(mm.id);
+            if (!id) return null;
+            return {
+              id,
+              kind: mm.kind === 'video' ? ('video' as const) : ('image' as const),
+              width: Number(mm.width) || null,
+              height: Number(mm.height) || null,
+              duration: Number(mm.duration) || null,
+            };
+          })()
+        : null,
   };
 }
 
@@ -188,7 +219,7 @@ export type SendResult =
 
 export async function send(
   body: string,
-  opts: { replyTo?: number; mentions?: number[] } = {},
+  opts: { replyTo?: number; mentions?: number[]; mediaId?: number } = {},
 ): Promise<SendResult> {
   try {
     const res = await fetch(`${BASE}/chat/send`, {
@@ -198,9 +229,11 @@ export async function send(
         body,
         replyTo: opts.replyTo ?? 0,
         mentions: opts.mentions ?? [],
+        mediaId: opts.mediaId ?? 0,
       }),
       credentials: 'include',
-      signal: AbortSignal.timeout(TIMEOUT_SEND),
+      // 带图的消息要先把图传完才发，给足时间
+      signal: AbortSignal.timeout(opts.mediaId ? 30_000 : TIMEOUT_SEND),
     });
     const data = (await res.json().catch(() => ({}))) as {
       message?: unknown;
@@ -248,8 +281,41 @@ export async function recall(id: number): Promise<{ ok: true } | { ok: false; me
   }
 }
 
-/** 报告「正在输入」。失败无声 —— 这个信息可有可无，不该弹任何东西 */
-export async function typing(): Promise<void> {
+export type UploadResult = { ok: true; media: ChatMedia } | { ok: false; message: string };
+
+/**
+ * 上传图片 / 视频。
+ *
+ * 走 data URL 而不是 multipart：前端本来就要用 canvas 压图（压完拿到 data URL），
+ * 再转一次 Blob 纯属绕路。服务端会自己校验 mime 和大小 —— 客户端的限制永远可绕过。
+ */
+export async function uploadMedia(
+  dataUrl: string,
+  meta: { width?: number; height?: number; duration?: number } = {},
+): Promise<UploadResult> {
+  try {
+    const res = await fetch(`${BASE}/chat/media`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        data: dataUrl,
+        width: meta.width,
+        height: meta.height,
+        duration: meta.duration,
+      }),
+      credentials: 'include',
+      // 5MB 的视频在慢网络上要传一会儿
+      signal: AbortSignal.timeout(120_000),
+    });
+    const data = (await res.json().catch(() => ({}))) as { media?: ChatMedia; message?: string };
+    if (res.ok && data.media) return { ok: true, media: data.media };
+    return { ok: false, message: data.message || '没能传上去，稍后再试' };
+  } catch {
+    return { ok: false, message: '网络好像不太顺，稍后再试一次' };
+  }
+}
+
+/** 报告「正在输入」。失败无声 —— 这个信息可有可无，不该弹任何东西 */export async function typing(): Promise<void> {
   try {
     await fetch(`${BASE}/chat/typing`, {
       method: 'POST',

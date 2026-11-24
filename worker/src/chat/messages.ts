@@ -92,6 +92,8 @@ interface MessageRow {
   status: string;
   ts: number;
   origin: string;
+  kind: string;
+  image_id: number | null;
   reply_to_id: number | null;
   mentions: string | null;
   remote_nick: string | null;
@@ -106,7 +108,7 @@ interface MessageRow {
   email_hash: string | null;
 }
 
-const COLS = `m.id, m.account_id, m.body, m.status, m.ts, m.origin,
+const COLS = `m.id, m.account_id, m.body, m.status, m.ts, m.origin, m.kind, m.image_id,
               m.reply_to_id, m.mentions,
               m.remote_nick, m.remote_avatar, m.remote_site,
               a.display_name AS acc_name, a.avatar_url AS acc_avatar,
@@ -122,6 +124,35 @@ function visibleClause(me: string | number): { sql: string; params: Array<string
     sql: `(m.status IN ('visible','recalled') OR (m.status = 'pending' AND m.account_id = ?))`,
     params: [me],
   };
+}
+
+/** 一张图 / 一段视频的元信息（二进制不在这里，走 /chat/media/:id） */
+export interface MediaInfo {
+  id: number;
+  kind: string;
+  width: number | null;
+  height: number | null;
+  duration: number | null;
+}
+
+/** 批量取媒体元信息（绝不碰 data 列 —— 那是几百 KB 的二进制） */
+async function loadMedia(env: Env, ids: number[]): Promise<Map<number, MediaInfo>> {
+  const map = new Map<number, MediaInfo>();
+  const uniq = [...new Set(ids)].filter((n) => n > 0);
+  if (!uniq.length) return map;
+
+  try {
+    const ph = uniq.map(() => '?').join(',');
+    const rows = await env.DB.prepare(
+      `SELECT id, kind, width, height, duration FROM chat_media WHERE id IN (${ph})`,
+    )
+      .bind(...uniq)
+      .all<MediaInfo>();
+    for (const r of rows.results ?? []) map.set(r.id, r);
+  } catch {
+    /* 表不存在 / 查挂了都当没有图 */
+  }
+  return map;
 }
 
 /** 一条被引用的消息摘要（渲染引用条用） */
@@ -228,6 +259,7 @@ function toItem(
   meId: number | null,
   reactions: Reaction[] = [],
   quote?: Quote,
+  media?: MediaInfo,
 ): Record<string, unknown> {
   const remote = r.origin === 'remote';
   // 本地消息三档头像兜底：账号档案 → 邮箱哈希现拼（和评论同一套，不返回 emailHash 本身）
@@ -269,6 +301,16 @@ function toItem(
     reactions,
     quote: quote ?? null,
     mentionedMe,
+    /** 图片/视频消息才有；二进制走 /chat/media/:id，不随消息下发 */
+    media: media
+      ? {
+          id: media.id,
+          kind: media.kind,
+          width: media.width,
+          height: media.height,
+          duration: media.duration,
+        }
+      : null,
   };
 }
 
@@ -334,15 +376,23 @@ export async function getHistory(request: Request, env: Env): Promise<Response> 
       env,
       page.map((r) => r.reply_to_id).filter((n): n is number => typeof n === 'number' && n > 0),
     );
+    const medias = await loadMedia(
+      env,
+      page.map((r) => r.image_id).filter((n): n is number => typeof n === 'number' && n > 0),
+    );
 
     return json({
       ok: true,
       // 库里是倒序取的，给前端翻回正序 —— 渲染顺序由数据决定，前端不再 sort
-      messages: page
-        .reverse()
-        .map((r) =>
-          toItem(r, meId, reacts.get(r.id), r.reply_to_id ? quotes.get(r.reply_to_id) : undefined),
+      messages: page.reverse().map((r) =>
+        toItem(
+          r,
+          meId,
+          reacts.get(r.id),
+          r.reply_to_id ? quotes.get(r.reply_to_id) : undefined,
+          r.image_id ? medias.get(r.image_id) : undefined,
         ),
+      ),
       hasMore,
       nextBefore: page[0]?.id ?? 0,
       lastRead,
@@ -432,6 +482,10 @@ export async function pollChat(request: Request, env: Env): Promise<Response> {
       env,
       all.map((r) => r.reply_to_id).filter((n): n is number => typeof n === 'number' && n > 0),
     );
+    const medias = await loadMedia(
+      env,
+      all.map((r) => r.image_id).filter((n): n is number => typeof n === 'number' && n > 0),
+    );
 
     /**
      * 正在输入的人。
@@ -479,7 +533,13 @@ export async function pollChat(request: Request, env: Env): Promise<Response> {
     return json({
       ok: true,
       messages: all.map((r) =>
-        toItem(r, meId, reacts.get(r.id), r.reply_to_id ? quotes.get(r.reply_to_id) : undefined),
+        toItem(
+          r,
+          meId,
+          reacts.get(r.id),
+          r.reply_to_id ? quotes.get(r.reply_to_id) : undefined,
+          r.image_id ? medias.get(r.image_id) : undefined,
+        ),
       ),
       recalled,
       online: await onlineOf(env, now),
@@ -519,7 +579,7 @@ export async function sendMessage(
   env: Env,
   ctx: ExecutionContext,
 ): Promise<Response> {
-  let payload: { body?: unknown; replyTo?: unknown; mentions?: unknown };
+  let payload: { body?: unknown; replyTo?: unknown; mentions?: unknown; mediaId?: unknown };
   try {
     payload = (await request.json()) as typeof payload;
   } catch {
@@ -540,8 +600,30 @@ export async function sendMessage(
     );
   }
 
+  /**
+   * 图片 / 视频消息。
+   *
+   * 只认**自己刚上传的那张**（account_id 必须对得上）：不然可以把别人的图
+   * 挂到自己的消息上，删了原消息图还在。
+   */
+  const mediaId = Number(payload.mediaId) || 0;
+  let media: MediaInfo | undefined;
+  if (mediaId > 0) {
+    const row = await env.DB.prepare(
+      'SELECT id, kind, width, height, duration, account_id FROM chat_media WHERE id = ?',
+    )
+      .bind(mediaId)
+      .first<MediaInfo & { account_id: number }>()
+      .catch(() => null);
+    if (!row || row.account_id !== me.id) {
+      return json({ ok: false, reason: 'bad_media', message: '这张图找不到，重新传一次' }, 400);
+    }
+    media = row;
+  }
+
   const body = String(payload.body ?? '').trim();
-  if (!body) return json({ ok: false, reason: 'empty', message: '说点什么吧' }, 400);
+  // 纯图消息允许空正文
+  if (!body && !media) return json({ ok: false, reason: 'empty', message: '说点什么吧' }, 400);
   if (body.length > BODY_MAX) {
     return json({ ok: false, reason: 'too_long', message: `最多 ${BODY_MAX} 个字` }, 400);
   }
@@ -637,8 +719,8 @@ export async function sendMessage(
     const status = verdict.action === 'hold' ? 'pending' : 'visible';
 
     const res = await env.DB.prepare(
-      `INSERT INTO chat_messages (account_id, body, status, ts, updated_at, ip_hash, origin, reply_to_id, mentions)
-       VALUES (?, ?, ?, ?, ?, ?, 'local', ?, ?)`,
+      `INSERT INTO chat_messages (account_id, body, status, ts, updated_at, ip_hash, origin, reply_to_id, mentions, kind, image_id)
+       VALUES (?, ?, ?, ?, ?, ?, 'local', ?, ?, ?, ?)`,
     )
       .bind(
         me.id,
@@ -649,6 +731,8 @@ export async function sendMessage(
         await visitorKey(request, env).catch(() => null),
         quote ? quote.id : null,
         mentions.length ? JSON.stringify(mentions) : null,
+        media ? media.kind : 'text',
+        media ? media.id : null,
       )
       .run();
 
@@ -690,6 +774,15 @@ export async function sendMessage(
         reactions: [],
         quote: quote ?? null,
         mentionedMe: false,
+        media: media
+          ? {
+              id: media.id,
+              kind: media.kind,
+              width: media.width,
+              height: media.height,
+              duration: media.duration,
+            }
+          : null,
       },
       /** 命中了哪些规则（只回条数，不回 id —— 别给出一份规避说明书） */
       screened: verdict.hits.length > 0,

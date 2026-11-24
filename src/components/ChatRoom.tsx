@@ -3,6 +3,7 @@ import { MorphIcon } from 'morphicons/react';
 import {
   ChevronDown,
   CircleAlert,
+  ImageUp as ImageIcon,
   LoaderCircle,
   Search,
   Send,
@@ -20,11 +21,14 @@ import {
   fetchWho,
   loadHistory,
   markRead,
+  mediaUrl,
   poll,
   react,
   recall,
   send,
   typing,
+  uploadMedia,
+  type ChatMedia,
   type ChatMember,
   type ChatMessage,
   type SearchHit,
@@ -57,6 +61,63 @@ const GROUP_GAP_MS = 5 * 60 * 1000;
 const BOTTOM_SLACK = 80;
 
 const DRAFT_KEY = 'qingwu:chat-draft';
+
+/** 图片上传前压到长边这么多 */
+const IMAGE_MAX_SIDE = 1600;
+/** 压缩后的目标体积（解码后）。服务端上限 1MB，留点余量 */
+const IMAGE_MAX_BYTES = 900 * 1024;
+/** 视频原样上传的上限 */
+const VIDEO_MAX_BYTES = 5 * 1024 * 1024;
+
+function readAsDataURL(file: Blob): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const fr = new FileReader();
+    fr.onload = () => resolve(String(fr.result || ''));
+    fr.onerror = () => reject(new Error('read_failed'));
+    fr.readAsDataURL(file);
+  });
+}
+
+/**
+ * 图片压缩：长边 1600、webp，不够小就继续降质量。
+ *
+ * GIF **不压**：canvas 只取第一帧，压完动画就没了 —— 动态表情是这个站的常用物料，
+ * 压成静图比不压更糟。GIF 直接原样传（限 1MB）。
+ */
+async function shrinkImage(
+  file: File,
+): Promise<{ dataUrl: string; width: number; height: number } | null> {
+  if (file.type === 'image/gif') {
+    if (file.size > 1024 * 1024) return null;
+    return { dataUrl: await readAsDataURL(file), width: 0, height: 0 };
+  }
+
+  try {
+    const bitmap = await createImageBitmap(file);
+    const scale = Math.min(1, IMAGE_MAX_SIDE / Math.max(bitmap.width, bitmap.height));
+    const w = Math.max(1, Math.round(bitmap.width * scale));
+    const h = Math.max(1, Math.round(bitmap.height * scale));
+
+    const canvas = document.createElement('canvas');
+    canvas.width = w;
+    canvas.height = h;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return null;
+    ctx.drawImage(bitmap, 0, 0, w, h);
+    bitmap.close?.();
+
+    let quality = 0.86;
+    let dataUrl = canvas.toDataURL('image/webp', quality);
+    // data URL 的长度 ≈ base64，解码后是 0.75 倍
+    while (dataUrl.length * 0.75 > IMAGE_MAX_BYTES && quality > 0.45) {
+      quality -= 0.1;
+      dataUrl = canvas.toDataURL('image/webp', quality);
+    }
+    return { dataUrl, width: w, height: h };
+  } catch {
+    return null;
+  }
+}
 
 /**
  * 「轻回应」的一组固定表情。
@@ -161,6 +222,11 @@ export default function ChatRoom() {
   const [sending, setSending] = useState(false);
   const [tip, setTip] = useState<{ kind: 'warn' | 'ok'; text: string } | null>(null);
   const [emojiOpen, setEmojiOpen] = useState(false);
+
+  /** 已经传好、还没发出去的那张图 / 那段视频 */
+  const [pendingMedia, setPendingMedia] = useState<ChatMedia | null>(null);
+  const [uploading, setUploading] = useState(false);
+  const fileRef = useRef<HTMLInputElement>(null);
 
   /** 已见过的最新 id —— poll 的游标 */
   const lastIdRef = useRef(0);
@@ -378,20 +444,75 @@ export default function ChatRoom() {
     }
   };
 
+  /**
+   * 处理一个文件：压图 → 上传 → 挂到「待发送」上。
+   *
+   * 为什么不直接发出去：图片经常要配一句话（「你看这个」），
+   * 上传完先挂着、等用户按发送，比「先发图再补文字」自然。
+   */
+  const attachFile = async (file: File) => {
+    if (!signedIn) {
+      setLoginOpen(true);
+      return;
+    }
+    if (uploading) return;
+    setTip(null);
+    setUploading(true);
+
+    try {
+      if (file.type.startsWith('image/')) {
+        const shrunk = await shrinkImage(file);
+        if (!shrunk) {
+          setTip({ kind: 'warn', text: '这张图压不动，换一张试试（gif 请控制在 1MB 内）' });
+          return;
+        }
+        const up = await uploadMedia(shrunk.dataUrl, {
+          width: shrunk.width,
+          height: shrunk.height,
+        });
+        if (up.ok) setPendingMedia(up.media);
+        else setTip({ kind: 'warn', text: up.message });
+        return;
+      }
+
+      if (file.type.startsWith('video/')) {
+        if (file.size > VIDEO_MAX_BYTES) {
+          setTip({ kind: 'warn', text: '视频不要超过 5 MB，先剪短一点' });
+          return;
+        }
+        const dataUrl = await readAsDataURL(file);
+        const up = await uploadMedia(dataUrl);
+        if (up.ok) setPendingMedia(up.media);
+        else setTip({ kind: 'warn', text: up.message });
+        return;
+      }
+
+      setTip({ kind: 'warn', text: '只能发图片或视频' });
+    } finally {
+      setUploading(false);
+    }
+  };
+
   const doSend = async () => {
     const text = draft.trim();
-    if (!text || sending) return;
+    // 纯图消息允许没有文字
+    if ((!text && !pendingMedia) || sending || uploading) return;
     setSending(true);
     setTip(null);
-    const res = await send(text, { replyTo: replyTo?.id ?? 0, mentions: mentionIds });
+    const res = await send(text, {
+      replyTo: replyTo?.id ?? 0,
+      mentions: mentionIds,
+      mediaId: pendingMedia?.id ?? 0,
+    });
     setSending(false);
 
     if (res.ok) {
       setDraft('');
-      // 发出去之后引用和 @ 都该清掉 —— 留着会让下一条莫名其妙也带上
+      // 发出去之后引用、@、待发媒体都该清掉 —— 留着会让下一条莫名其妙也带上
       setReplyTo(null);
       setMentionIds([]);
       setMention(null);
+      setPendingMedia(null);
       setMessages((prev) => mergeMessages(prev, [res.message], []));
       lastIdRef.current = Math.max(lastIdRef.current, res.message.id);
       setEmojiOpen(false);
@@ -505,6 +626,7 @@ export default function ChatRoom() {
             reactions: [],
             quote: null,
             mentionedMe: false,
+            media: null,
           },
         ],
         [],
@@ -581,7 +703,20 @@ export default function ChatRoom() {
   return (
     <div className="q-chat-layout">
       {aside}
-      <section className="q-chat" aria-label="长亭聊天室">
+      <section
+        className="q-chat"
+        aria-label="长亭聊天室"
+        onDragOver={(e) => {
+          // 不 preventDefault 的话浏览器会直接打开这个文件，把聊天页面顶掉
+          if (e.dataTransfer?.types.includes('Files')) e.preventDefault();
+        }}
+        onDrop={(e) => {
+          const f = e.dataTransfer?.files?.[0];
+          if (!f) return;
+          e.preventDefault();
+          void attachFile(f);
+        }}
+      >
         <div className="q-chat__bar">
           <span className="q-chat__live">
             <i aria-hidden="true" />
@@ -665,7 +800,7 @@ export default function ChatRoom() {
         </p>
       )}
 
-      {(replyTo || typingNames.length > 0) && (
+      {(replyTo || typingNames.length > 0 || pendingMedia) && (
         <div className="q-chat__above">
           {replyTo && (
             <div className="q-chat__replybar">
@@ -686,6 +821,22 @@ export default function ChatRoom() {
               <i />
               <i />
             </p>
+          )}
+          {pendingMedia && (
+            <div className="q-chat__pendingmedia">
+              {pendingMedia.kind === 'image' ? (
+                <img src={mediaUrl(pendingMedia.id)} alt="待发送的图片" />
+              ) : (
+                <video src={mediaUrl(pendingMedia.id)} muted playsInline preload="metadata" />
+              )}
+              <button
+                type="button"
+                onClick={() => setPendingMedia(null)}
+                aria-label="不用这张了"
+              >
+                <MorphIcon icon={X} size={11} color="currentColor" />
+              </button>
+            </div>
           )}
         </div>
       )}
@@ -744,6 +895,20 @@ export default function ChatRoom() {
                   void doSend();
                 }
               }}
+              onPaste={(e) => {
+                // 截图直接 Ctrl+V —— 聊天里这是最常用的发图方式
+                const items = e.clipboardData?.items;
+                if (!items) return;
+                for (const it of items) {
+                  if (it.kind !== 'file') continue;
+                  const f = it.getAsFile();
+                  if (f) {
+                    e.preventDefault();
+                    void attachFile(f);
+                    return;
+                  }
+                }
+              }}
               rows={1}
               placeholder="说点什么…（@ 可以叫个人）"
               title="Enter 发送，Shift + Enter 换行，@ 提及"
@@ -759,6 +924,31 @@ export default function ChatRoom() {
               >
                 <MorphIcon icon={Smile} size={15} color="currentColor" />
               </button>
+              <button
+                type="button"
+                className="q-chat__tool"
+                aria-label="发图片或视频"
+                onClick={() => fileRef.current?.click()}
+                disabled={uploading}
+              >
+                {uploading ? (
+                  <MorphIcon icon={LoaderCircle} size={15} color="currentColor" />
+                ) : (
+                  <MorphIcon icon={ImageIcon} size={15} color="currentColor" />
+                )}
+              </button>
+              <input
+                ref={fileRef}
+                type="file"
+                accept="image/*,video/*"
+                hidden
+                onChange={(e) => {
+                  const f = e.target.files?.[0];
+                  // 清空 value：不然连选同一张图不会触发 change
+                  e.target.value = '';
+                  if (f) void attachFile(f);
+                }}
+              />
               {emojiOpen && (
                 <EmojiPicker
                   open
@@ -884,11 +1074,29 @@ function MessageRow({
               <span>{m.quote.excerpt || '（空）'}</span>
             </div>
           )}
-          <div
-            className={`q-rich q-chat__bubble${m.status === 'pending' ? ' is-pending' : ''}`}
-            // renderRich 先整段转义再拼固定标签（见 src/lib/richText.ts 顶部）
-            dangerouslySetInnerHTML={{ __html: renderRich(m.body) }}
-          />
+          {m.media && (
+            <div className={`q-chat__media is-${m.media.kind}`}>
+              {m.media.kind === 'image' ? (
+                <img
+                  src={mediaUrl(m.media.id)}
+                  alt="图片"
+                  loading="lazy"
+                  decoding="async"
+                  onClick={() => window.open(mediaUrl(m.media!.id), '_blank', 'noopener')}
+                />
+              ) : (
+                <video src={mediaUrl(m.media.id)} controls playsInline preload="metadata" />
+              )}
+            </div>
+          )}
+          {/* 纯图消息的 body 是空串，不画空气泡 */}
+          {m.body && (
+            <div
+              className={`q-rich q-chat__bubble${m.status === 'pending' ? ' is-pending' : ''}`}
+              // renderRich 先整段转义再拼固定标签（见 src/lib/richText.ts 顶部）
+              dangerouslySetInnerHTML={{ __html: renderRich(m.body) }}
+            />
+          )}
           {m.status === 'pending' && (
             <span className="q-chat__pending" title="正在过一遍审核，稍等一下">
               等一等
