@@ -1068,12 +1068,6 @@ function MessageRow({
         )}
 
         <div className="q-chat__bubblewrap">
-          {m.quote && (
-            <div className="q-chat__quote" title="引用的是更早的一条">
-              <b>{m.quote.name}</b>
-              <span>{m.quote.excerpt || '（空）'}</span>
-            </div>
-          )}
           {m.media && (
             <div className={`q-chat__media is-${m.media.kind}`}>
               {m.media.kind === 'image' ? (
@@ -1096,6 +1090,13 @@ function MessageRow({
               // renderRich 先整段转义再拼固定标签（见 src/lib/richText.ts 顶部）
               dangerouslySetInnerHTML={{ __html: renderRich(m.body) }}
             />
+          )}
+          {/* 引用放在正文**下面**（和微信一致）：先看谁说了什么，再看他在回哪句 */}
+          {m.quote && (
+            <div className="q-chat__quote" title="引用的是更早的一条">
+              <b>{m.quote.name}：</b>
+              <span>{m.quote.excerpt || '（空）'}</span>
+            </div>
           )}
           {m.status === 'pending' && (
             <span className="q-chat__pending" title="正在过一遍审核，稍等一下">

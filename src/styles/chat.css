@@ -583,18 +583,23 @@
   }
 
   /**
-   * 操作条（撤回 / +）：绝对定位在气泡下方，**不占布局高度**。
+   * 操作条（撤回 / 回复 / +）：绝对定位在气泡下方，**不占布局高度**。
    *
-   * 为什么不塞进正常流：那样每条消息下面都会多出约 24px 空白，
-   * 一屏只能放六七条。绝对定位之后它像浮层一样贴着气泡出现，鼠标移开就淡出。
+   * ⚠️ `top: 100%` 必须贴着气泡底部，**不能留 margin 空隙**：
+   *    之前写的是 `calc(100% + 0.15rem)`，鼠标从气泡往下移动时会穿过那 2px 死区，
+   *    掉出 :hover 范围 → 操作条瞬间消失 → 根本点不到（站长实测）。
+   *    视觉上的间距改用 padding-top 假装 —— padding 也是盒子的一部分，
+   *    鼠标经过它时仍算在 row 的子元素上，hover 不会断。
    */
   .q-chat__acts {
     position: absolute;
-    top: calc(100% + 0.15rem);
+    top: 100%;
     left: 0;
+    z-index: 5;
     display: flex;
     align-items: center;
     gap: 0.3rem;
+    padding-top: 0.3rem;
     opacity: 0;
     pointer-events: none;
     transition: opacity var(--dur-micro) ease;
@@ -632,8 +637,10 @@
 
   .q-chat__row.is-mine .q-chat__bubble {
     border-radius: 0.9rem 0.9rem 0.25rem 0.9rem;
-    background: color-mix(in srgb, var(--color-crimson) 7%, #fff);
-    border-color: color-mix(in srgb, var(--color-crimson) 20%, transparent);
+    /* 自己的消息要有明确的「这是我说的」：底色比第一版深一档（7% → 12%），
+       但不到微信那种饱和绿 —— 站点整体是暖白，压得太重会跳出画面 */
+    background: color-mix(in srgb, var(--color-crimson) 12%, #fff);
+    border-color: color-mix(in srgb, var(--color-crimson) 24%, transparent);
   }
 
   /* .q-rich 的段落间距是给评论区写的（0.5em），气泡里要收紧 */
@@ -1162,16 +1169,15 @@
     color: var(--color-accent-soft);
   }
 
-  /* ——— 引用条（气泡上方） ——— */
+  /* ——— 引用条（气泡下方，样子学微信：一条竖线 + 「名字: 内容」）——— */
   .q-chat__quote {
     max-width: 100%;
-    padding: 0.22rem 0.5rem;
+    padding: 0.1rem 0 0.1rem 0.5rem;
     border-left: 2px solid color-mix(in srgb, var(--color-brown) 30%, transparent);
-    border-radius: 0 0.35rem 0.35rem 0;
-    background: color-mix(in srgb, var(--color-brown) 6%, #fff);
-    font-size: 0.7rem;
+    font-size: 0.72rem;
     line-height: 1.6;
     color: var(--color-subtle);
+    /* 微信那边引用是单行截断的，长的链接也不会把气泡撑宽 */
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -1184,8 +1190,7 @@
   }
 
   .q-chat__row.is-mine .q-chat__quote {
-    background: color-mix(in srgb, var(--color-crimson) 6%, #fff);
-    border-left-color: color-mix(in srgb, var(--color-crimson) 32%, transparent);
+    border-left-color: color-mix(in srgb, var(--color-crimson) 34%, transparent);
   }
 
   /* ——— 已读回执：只挂在我最新那条下面 ——— */
