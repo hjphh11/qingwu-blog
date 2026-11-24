@@ -36,6 +36,8 @@
 @import "./gallery.css";
 /* 音乐馆（正在播放 + 曲库）—— 只作用于 .q-mp- / .q-ly- 前缀 */
 @import "./music.css";
+/* 长亭（聊天室）—— 只作用于 .q-chat 前缀 */
+@import "./chat.css";
 @import "./emis.css";
 @import "./cursor.css";
 @import "./motion.css";

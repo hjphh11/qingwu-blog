@@ -18,10 +18,18 @@ export default function EmojiPicker({
   open,
   onPick,
   onClose,
+  placement = 'bottom',
 }: {
   open: boolean;
   onPick: (key: string) => void;
   onClose: () => void;
+  /**
+   * 往哪边弹。默认向下、左对齐（评论区那个位置上面有内容、下面没有，左边是正文）。
+   * 长亭的输入区在**页面最底部、按钮靠右**，所以是「向上 + 右对齐」：
+   * 向下弹会被容器的 `overflow: hidden` 裁掉，左对齐会让 312px 宽的面板顶出卡片右缘
+   * （实测两个都踩了）。默认值不改，其余调用点零感知。
+   */
+  placement?: 'bottom' | 'top';
 }) {
   const [tab, setTab] = useState(0);
   const boxRef = useRef<HTMLDivElement>(null);
@@ -54,7 +62,9 @@ export default function EmojiPicker({
       ref={boxRef}
       role="dialog"
       aria-label="表情"
-      className="absolute left-0 top-full z-30 mt-2 w-[19.5rem] max-w-[calc(100vw-3rem)] rounded-xl border border-rose/30 bg-[#fffdfb] p-2 shadow-[0_12px_36px_rgba(60,30,40,0.14)]"
+      className={`absolute z-30 w-[19.5rem] max-w-[calc(100vw-3rem)] rounded-xl border border-rose/30 bg-[#fffdfb] p-2 shadow-[0_12px_36px_rgba(60,30,40,0.14)] ${
+        placement === 'top' ? 'bottom-full right-0 mb-2' : 'top-full left-0 mt-2'
+      }`}
     >
       <div className="mb-1.5 flex items-center gap-1 border-b border-rose/20 pb-1.5">
         {EMOJI_PACKS.map((p, idx) => (

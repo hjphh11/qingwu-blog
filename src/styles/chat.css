@@ -1,0 +1,462 @@
+/* 长亭（聊天室）—— 只作用于 .q-chat 前缀，不碰任何现有页面的类。
+   形状参考评论区（暖白卡片 + 发丝边），但气泡是「对话」而不是「楼」：
+   自己靠右、别人靠左，和 IM 的肌肉记忆一致；不做冷蓝灰那套。 */
+
+@layer components {
+  .q-chat {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    /* 小屏 26rem 兜底、大屏最多 44rem —— 不写死 100vh，页头页脚要留位置 */
+    height: clamp(26rem, calc(100svh - 22rem), 44rem);
+    border: 1px solid var(--color-hairline);
+    border-radius: var(--radius-card);
+    background: #fffdfb;
+    overflow: hidden;
+  }
+
+  /* ——— 顶部状态条 ——— */
+  .q-chat__bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    padding: 0.6rem 1rem;
+    border-bottom: 1px solid var(--color-hairline);
+    background: color-mix(in srgb, var(--color-cream) 62%, #fff);
+    font-size: 0.75rem;
+    color: var(--color-subtle);
+  }
+
+  .q-chat__live {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+  }
+
+  /* 在线小圆点：不呼吸、不闪 —— 聊天室里常驻闪的东西最耗神 */
+  .q-chat__live i {
+    width: 0.4rem;
+    height: 0.4rem;
+    border-radius: 9999px;
+    background: #4a9e6b;
+  }
+
+  /* ——— 滚动区 ——— */
+  .q-chat__scroll {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    scrollbar-width: thin;
+    scrollbar-color: color-mix(in srgb, var(--color-rose) 40%, transparent) transparent;
+  }
+
+  .q-chat__inner {
+    /* margin-top: auto 是「消息少时贴底」的正解：
+       内容从下往上堆，像任何一个聊天软件；内容多了自然撑开并滚动。
+       用 justify-content: flex-end 会踩 overflow 的经典 bug（顶部内容滚不到）。 */
+    margin-top: auto;
+    padding: 0.75rem 1rem 1rem;
+  }
+
+  .q-chat__empty,
+  .q-chat__blank {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    padding: 3rem 1rem;
+    color: var(--color-subtle);
+    font-size: 0.85rem;
+    text-align: center;
+    line-height: 1.9;
+  }
+
+  .q-chat__empty {
+    flex: 1;
+  }
+
+  .q-chat__retry {
+    display: flex;
+    justify-content: center;
+    padding-bottom: 2rem;
+  }
+
+  .q-chat__retry button,
+  .q-chat__more button {
+    border: 1px solid var(--color-hairline);
+    border-radius: var(--radius-pill);
+    padding: 0.25rem 0.9rem;
+    font-size: 0.75rem;
+    color: var(--color-crimson);
+    background: transparent;
+    transition: background-color var(--dur-micro) ease, border-color var(--dur-micro) ease;
+  }
+
+  .q-chat__retry button:hover,
+  .q-chat__more button:hover {
+    background: color-mix(in srgb, var(--color-rose) 14%, transparent);
+    border-color: color-mix(in srgb, var(--color-crimson) 30%, transparent);
+  }
+
+  .q-chat__more {
+    display: flex;
+    justify-content: center;
+    padding: 0.25rem 0 0.75rem;
+  }
+
+  /* ——— 时间与分割线 ——— */
+  .q-chat__time {
+    margin: 0.9rem 0 0.5rem;
+    text-align: center;
+    font-size: 0.7rem;
+    color: var(--color-subtle);
+  }
+
+  .q-chat__readmark {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    margin: 1rem 0 0.6rem;
+    font-size: 0.7rem;
+    color: var(--color-accent-soft);
+  }
+
+  .q-chat__readmark::before,
+  .q-chat__readmark::after {
+    content: "";
+    flex: 1;
+    height: 1px;
+    background: color-mix(in srgb, var(--color-crimson) 26%, transparent);
+  }
+
+  /* ——— 消息行 ——— */
+  .q-chat__row {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.5rem;
+    margin-top: 0.85rem;
+  }
+
+  .q-chat__row.is-grouped {
+    margin-top: 0.2rem;
+  }
+
+  /* 自己的靠右：翻转方向比 float/absolute 都稳，窄屏也不会塌 */
+  .q-chat__row.is-mine {
+    flex-direction: row-reverse;
+  }
+
+  .q-chat__avatar {
+    flex: none;
+    display: grid;
+    place-items: center;
+    width: 2rem;
+    height: 2rem;
+    border-radius: 9999px;
+    overflow: hidden;
+    background-color: color-mix(in srgb, var(--color-rose) 22%, #fff);
+    /* 头像走 background-image（见 ChatRoom 里的说明）：
+       外链挂了不会有破图占位符，底下的首字直接露出来 */
+    background-size: cover;
+    background-position: center;
+    background-repeat: no-repeat;
+    border: 1px solid var(--color-hairline);
+    font-size: 0.75rem;
+    color: var(--color-brown);
+    user-select: none;
+  }
+
+  .q-chat__body {
+    max-width: min(78%, 34rem);
+    min-width: 0;
+  }
+
+  .q-chat__row.is-mine .q-chat__body {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+  }
+
+  .q-chat__meta {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 0.4rem;
+    margin-bottom: 0.2rem;
+    font-size: 0.72rem;
+    color: var(--color-subtle);
+  }
+
+  .q-chat__row.is-mine .q-chat__meta {
+    justify-content: flex-end;
+  }
+
+  .q-chat__name {
+    color: var(--color-brown);
+    font-weight: 500;
+  }
+
+  .q-chat__tag {
+    padding: 0 0.3rem;
+    border-radius: 0.3rem;
+    background: color-mix(in srgb, var(--color-crimson) 12%, transparent);
+    color: var(--color-accent-soft);
+    font-size: 0.65rem;
+    line-height: 1.5;
+  }
+
+  .q-chat__site {
+    font-size: 0.65rem;
+    color: var(--color-accent-soft);
+  }
+
+  .q-chat__clock {
+    font-size: 0.68rem;
+    opacity: 0.8;
+  }
+
+  /* ——— 气泡 ——— */
+  .q-chat__bubblewrap {
+    display: flex;
+    align-items: flex-end;
+    gap: 0.35rem;
+  }
+
+  .q-chat__bubble {
+    padding: 0.45rem 0.7rem;
+    border-radius: 0.9rem 0.9rem 0.9rem 0.25rem;
+    border: 1px solid var(--color-hairline);
+    background: #fff;
+    color: var(--color-ink);
+    font-size: 0.9rem;
+    overflow-wrap: anywhere;
+  }
+
+  .q-chat__row.is-mine .q-chat__bubble {
+    border-radius: 0.9rem 0.9rem 0.25rem 0.9rem;
+    background: color-mix(in srgb, var(--color-crimson) 7%, #fff);
+    border-color: color-mix(in srgb, var(--color-crimson) 20%, transparent);
+  }
+
+  /* .q-rich 的段落间距是给评论区写的（0.5em），气泡里要收紧 */
+  .q-chat__bubble.q-rich {
+    line-height: 1.65;
+  }
+
+  .q-chat__bubble.q-rich p {
+    margin: 0.15em 0;
+  }
+
+  .q-chat__bubble.q-rich pre {
+    max-width: 100%;
+    overflow-x: auto;
+    margin: 0.4em 0;
+  }
+
+  .q-chat__bubble.q-rich > *:first-child {
+    margin-top: 0;
+  }
+
+  .q-chat__bubble.q-rich > *:last-child {
+    margin-bottom: 0;
+  }
+
+  /* 审核中：不遮、不抖，只把边框虚一下 —— 让人知道在等，但别焦虑 */
+  .q-chat__bubble.is-pending {
+    border-style: dashed;
+    opacity: 0.85;
+  }
+
+  .q-chat__pending {
+    flex: none;
+    font-size: 0.65rem;
+    color: var(--color-subtle);
+    white-space: nowrap;
+  }
+
+  .q-chat__recall {
+    flex: none;
+    font-size: 0.65rem;
+    color: var(--color-subtle);
+    padding: 0.1rem 0.3rem;
+    border-radius: 0.3rem;
+    opacity: 0;
+    transition: opacity var(--dur-micro) ease, color var(--dur-micro) ease;
+  }
+
+  /* 撤回只在悬停/聚焦时露面：正常阅读时不该有一排按钮抢眼 */
+  .q-chat__row:hover .q-chat__recall,
+  .q-chat__recall:focus-visible {
+    opacity: 1;
+  }
+
+  .q-chat__recall:hover {
+    color: var(--color-crimson);
+  }
+
+  /* 触屏没有 hover：直接给出来 */
+  @media (hover: none) {
+    .q-chat__recall {
+      opacity: 0.85;
+    }
+  }
+
+  .q-chat__recalled {
+    margin: 0.7rem 0;
+    text-align: center;
+    font-size: 0.72rem;
+    color: var(--color-subtle);
+  }
+
+  /* ——— 新消息浮标 ——— */
+  .q-chat__jump {
+    position: absolute;
+    left: 50%;
+    bottom: 5.6rem;
+    transform: translateX(-50%);
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    padding: 0.3rem 0.8rem;
+    border-radius: var(--radius-pill);
+    border: 1px solid color-mix(in srgb, var(--color-crimson) 28%, transparent);
+    background: #fffdfb;
+    color: var(--color-crimson);
+    font-size: 0.75rem;
+    box-shadow: 0 6px 20px rgba(90, 40, 50, 0.12);
+  }
+
+  .q-chat__tip {
+    padding: 0.35rem 1rem 0;
+    font-size: 0.72rem;
+    color: var(--color-accent-soft);
+  }
+
+  /* ——— 输入区 ——— */
+  .q-chat__composer {
+    display: flex;
+    align-items: flex-end;
+    gap: 0.5rem;
+    padding: 0.7rem 0.85rem 0.85rem;
+    border-top: 1px solid var(--color-hairline);
+    background: color-mix(in srgb, var(--color-cream) 55%, #fff);
+  }
+
+  .q-chat__inputwrap {
+    position: relative;
+    /* min-width: 0 不能省：flex 子项的默认 min-width 是 auto，
+       textarea 的固有宽度会把整行撑破，发送按钮被挤到卡片外面（实测窄屏就是这样） */
+    min-width: 0;
+    flex: 1;
+    display: flex;
+    align-items: flex-end;
+    gap: 0.25rem;
+    padding: 0.35rem 0.4rem 0.35rem 0.7rem;
+    border: 1px solid var(--color-hairline);
+    border-radius: 1rem;
+    background: #fff;
+    transition: border-color var(--dur-micro) ease;
+  }
+
+  .q-chat__inputwrap:focus-within {
+    border-color: color-mix(in srgb, var(--color-crimson) 42%, transparent);
+  }
+
+  .q-chat__input {
+    flex: 1;
+    width: 100%;
+    min-width: 0;
+    min-height: 1.6rem;
+    max-height: 8rem;
+    padding: 0.2rem 0;
+    border: 0;
+    outline: 0;
+    resize: none;
+    background: transparent;
+    color: var(--color-ink);
+    font-size: 0.9rem;
+    line-height: 1.6;
+    font-family: inherit;
+  }
+
+  .q-chat__input::placeholder {
+    color: var(--color-subtle);
+    opacity: 0.85;
+  }
+
+  .q-chat__tools {
+    position: relative;
+    flex: none;
+    display: flex;
+    align-items: center;
+    padding-bottom: 0.1rem;
+  }
+
+  .q-chat__tool {
+    display: grid;
+    place-items: center;
+    width: 1.85rem;
+    height: 1.85rem;
+    border-radius: 9999px;
+    color: var(--color-subtle);
+    transition: background-color var(--dur-micro) ease, color var(--dur-micro) ease;
+  }
+
+  .q-chat__tool:hover {
+    background: color-mix(in srgb, var(--color-rose) 16%, transparent);
+    color: var(--color-crimson);
+  }
+
+  .q-chat__send {
+    flex: none;
+    display: grid;
+    place-items: center;
+    width: 2.3rem;
+    height: 2.3rem;
+    border-radius: 9999px;
+    background: var(--color-cta);
+    color: #fff;
+    transition: opacity var(--dur-micro) ease, transform var(--dur-micro) ease;
+  }
+
+  .q-chat__send:disabled {
+    opacity: 0.42;
+  }
+
+  .q-chat__send:not(:disabled):active {
+    transform: scale(0.94);
+  }
+
+  .q-chat__count {
+    position: absolute;
+    right: 0.9rem;
+    bottom: -0.9rem;
+    font-size: 0.65rem;
+    color: var(--color-subtle);
+  }
+
+  /* ——— 未登录 ——— */
+  .q-chat__guest {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.75rem;
+    padding: 1rem;
+    border-top: 1px solid var(--color-hairline);
+    background: color-mix(in srgb, var(--color-cream) 55%, #fff);
+    font-size: 0.82rem;
+    color: var(--color-subtle);
+  }
+
+  .q-chat__guest button {
+    padding: 0.35rem 1.1rem;
+    border-radius: var(--radius-pill);
+    background: var(--color-cta);
+    color: #fff;
+    font-size: 0.8rem;
+  }
+}

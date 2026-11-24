@@ -1,0 +1,54 @@
+// 长亭 · 路由分发
+//
+// 对外是 /api/chat/*（nginx 的 location /api/ 去前缀转发到这里），
+// 和 auth / admin 一个写法：入口在 src/index.ts 只有一行，这里自己分派。
+//
+// 已启用（v1）：
+//   GET  /chat/history?before=<id>&limit=50   首屏 / 向上翻页
+//   GET  /chat/poll?after=<id>                增量 + 在线人数 + 被撤回的 id
+//   POST /chat/send                           发一条
+//   POST /chat/read                           更新阅读游标
+//   POST /chat/:id/recall                     2 分钟内撤回自己的
+//
+// v2 再加桥接状态与 /admin 那两页；路由先不占位 —— 开着口子却没实现，
+// 比 404 更难查。
+
+import type { Env } from '../types';
+import { json } from '../util';
+import { getHistory, markRead, pollChat, sendMessage } from './messages';
+import { recallMessage } from './recall';
+
+const NOT_ALLOWED = () => json({ ok: false, reason: 'method_not_allowed' }, 405);
+
+export async function handleChat(
+  request: Request,
+  env: Env,
+  ctx: ExecutionContext,
+  path: string,
+): Promise<Response> {
+  const method = request.method;
+
+  if (path === '/chat/history') {
+    return method === 'GET' ? getHistory(request, env) : NOT_ALLOWED();
+  }
+
+  if (path === '/chat/poll') {
+    return method === 'GET' ? pollChat(request, env) : NOT_ALLOWED();
+  }
+
+  if (path === '/chat/send') {
+    return method === 'POST' ? sendMessage(request, env, ctx) : NOT_ALLOWED();
+  }
+
+  if (path === '/chat/read') {
+    return method === 'POST' ? markRead(request, env) : NOT_ALLOWED();
+  }
+
+  // /chat/:id/recall
+  const recall = path.match(/^\/chat\/(\d+)\/recall$/);
+  if (recall) {
+    return method === 'POST' ? recallMessage(request, env, recall[1]!) : NOT_ALLOWED();
+  }
+
+  return json({ ok: false, reason: 'not_found' }, 404);
+}

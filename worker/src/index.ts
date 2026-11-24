@@ -12,12 +12,15 @@
 //   POST   /apply        友链申请提交（第 2 步）
 //   GET    /apply        无口令 = 能力探测；带口令 = 后台读列表
 //   PATCH  /apply/:id    后台改审批状态（需 Bearer 口令）
+//   GET    /chat/history 长亭（聊天室）历史 / /chat/poll 增量 / /chat/send 发送
+//                        见 worker/src/chat/index.ts
 //
 // 第 3~5 步的路由（/comments、/likes、Cron）以后再加，别现在就把口子开着。
 
 import { getApply, patchApply, postApply } from './apply';
 import { handleAuth } from './auth/index';
 import { handleAdmin } from './admin/index';
+import { handleChat } from './chat/index';
 import { runBacklinkCheck } from './admin/friends';
 import { deleteFriendComment, getFriendsBoard, postFriendLike, postFriendReply, postFriendsBoard } from './friends-board';
 import { deletePostComment, getPostComments, postPostComment, postPostLike, postPostReply } from './post-comments';
@@ -107,6 +110,11 @@ export default {
     // 且 /api/auth/ 不在 Basic Auth 的范围内 —— **nginx 零改动**。
     // 设计见 docs/方案-统一身份-登录与绑定.md。
     if (path.startsWith('/auth/')) return handleAuth(request, env, path);
+
+    // —— 长亭（聊天室）——
+    // 对外 /api/chat/*，同 auth 一样由 nginx 去前缀。设计见 docs/方案-聊天室.md。
+    // ⚠️ 必须带斜杠：`/chat/` 而不是 `/chat`，否则将来加个 /chatterbox 之类会被误吞。
+    if (path.startsWith('/chat/')) return handleChat(request, env, ctx, path);
 
     // —— 后台（对外 /api/admin/*，nginx 去前缀后到这里）——
     // 说明见 docs/方案-后台-admin.md；路由表在 src/admin/index.ts。

@@ -26,13 +26,16 @@ export default function MiniPlayer() {
 
   const { currentSong, isPlaying, isBuffering, currentLyric } = state;
 
-  /* 首页与音乐页隐藏（音乐页已有完整播放器）。
+  /* 首页、音乐页与长亭隐藏。
      ⚠️ 不能直接比 `pathname === '/music'`：Astro 默认 `trailingSlash: 'always'`，
      线上实际地址是 `/music/`，字符串不等 → 判断失效，右下角会和音乐馆里那台
      完整播放器同屏出现两个（2026-11-24 核对截图确认）。
-     这里统一抹掉末尾斜杠再比，`/music` 与 `/music/` 都能命中。 */
+     这里统一抹掉末尾斜杠再比，`/music` 与 `/music/` 都能命中。
+
+     长亭（/chat）为什么也藏：那一页底部有一条常驻输入区，播放器浮在右下会压住
+     输入框和页脚说明（移动端 390×844 实测，正好盖住两行字）。 */
   const route = pathname.replace(/\/+$/, '') || '/';
-  if (route === '/' || route === '/music') return null;
+  if (route === '/' || route === '/music' || route === '/chat') return null;
 
   return (
     <div ref={viewportRef} className="pointer-events-none fixed inset-0 z-50">
