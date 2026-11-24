@@ -75,9 +75,13 @@ export {
   ListPlus,
   // 表情面板
   Smile,
-  // 长亭（桌面提醒开关）
+  // 长亭（提醒 / 编辑 / 举报 / 置顶 / 文件）
   Bell,
   BellRing,
+  Flag,
+  Pin,
+  Download,
+  FileText,
   // 账号页（上传头像 / 定位留言 / 站长徽章）
   ImageUp,
   RotateCcw,

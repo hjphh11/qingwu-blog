@@ -13,6 +13,9 @@
 //   POST /chat/typing                         报告「正在输入」
 //   POST /chat/:id/recall                     2 分钟内撤回自己的
 //   POST /chat/:id/react                      表情回应（再点一次取消）
+//   POST /chat/:id/edit                       5 分钟内改自己的话（重新过清单）
+//   POST /chat/:id/report                     举报一条（只落库，不自动隐藏）
+//   POST /chat/pin                            站长置顶 / 取消置顶
 //
 // v2 再加桥接状态与 /admin 那两页；路由先不占位 —— 开着口子却没实现，
 // 比 404 更难查。
@@ -26,6 +29,9 @@ import { recallMessage } from './recall';
 import { searchChat } from './search';
 import { markTyping } from './typing';
 import { getWho } from './who';
+import { editMessage } from './edit';
+import { reportMessage } from './report';
+import { setPin } from './pin';
 
 const NOT_ALLOWED = () => json({ ok: false, reason: 'method_not_allowed' }, 405);
 
@@ -87,6 +93,23 @@ export async function handleChat(
   const react = path.match(/^\/chat\/(\d+)\/react$/);
   if (react) {
     return method === 'POST' ? reactToMessage(request, env, react[1]!) : NOT_ALLOWED();
+  }
+
+  // /chat/:id/edit
+  const edit = path.match(/^\/chat\/(\d+)\/edit$/);
+  if (edit) {
+    return method === 'POST' ? editMessage(request, env, ctx, edit[1]!) : NOT_ALLOWED();
+  }
+
+  // /chat/:id/report
+  const report = path.match(/^\/chat\/(\d+)\/report$/);
+  if (report) {
+    return method === 'POST' ? reportMessage(request, env, report[1]!) : NOT_ALLOWED();
+  }
+
+  // 置顶（站长）
+  if (path === '/chat/pin') {
+    return method === 'POST' ? setPin(request, env) : NOT_ALLOWED();
   }
 
   return json({ ok: false, reason: 'not_found' }, 404);

@@ -31,12 +31,16 @@ export interface Quote {
 /** 图片 / 视频的元信息 */
 export interface ChatMedia {
   id: number;
-  kind: 'image' | 'video';
+  kind: 'image' | 'video' | 'file';
   width: number | null;
   height: number | null;
   duration: number | null;
   /** 非空 = 图在 R2（走 CDN 一年缓存）；空 = 早期存在库里的，走 `/api/chat/media/:id` */
   url: string | null;
+  /** 只有 kind='file' 才有：原始文件名，下载卡片显示它 */
+  filename?: string | null;
+  /** 字节数（文件卡片显示大小）；老数据可能没有 */
+  bytes?: number | null;
 }
 
 /** 库里老数据的地址（R2 的图不走这里） */
@@ -69,6 +73,8 @@ export interface ChatMessage {
   quote: Quote | null;
   /** 这条 @ 了我 */
   mentionedMe: boolean;
+  /** 最后一次编辑时间（ISO）；null = 没改过 */
+  editedAt: string | null;
   /** 图片 / 视频（null = 纯文字） */
   media: ChatMedia | null;
 }
@@ -81,6 +87,8 @@ export interface ChatPage {
   lastRead: number;
   online: number;
   signedIn: boolean;
+  /** 当前置顶 */
+  pin: PinInfo | null;
 }
 
 export interface PollResult {
@@ -92,10 +100,34 @@ export interface PollResult {
   typing: string[];
   /** 我最新一条消息被多少人读到了；null = 我还没发过言 */
   reads: { id: number; n: number } | null;
+  /** 当前置顶（每次 poll 都带，站长一改所有人两秒内看见） */
+  pin: PinInfo | null;
+}
+
+/** 置顶条（没有就是 null） */
+export interface PinInfo {
+  id: number;
+  name: string;
+  excerpt: string;
+  at: string;
 }
 
 const TIMEOUT_POLL = 10_000;
 const TIMEOUT_SEND = 15_000;
+
+/** 置顶体解析：字段缺一个就当没有，别让半截数据把横幅画坏 */
+function asPin(raw: unknown): PinInfo | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const r = raw as Record<string, unknown>;
+  const id = Number(r.id);
+  if (!Number.isFinite(id) || id <= 0) return null;
+  return {
+    id,
+    name: String(r.name ?? ''),
+    excerpt: String(r.excerpt ?? ''),
+    at: String(r.at ?? ''),
+  };
+}
 
 function asMessage(raw: unknown): ChatMessage | null {
   if (!raw || typeof raw !== 'object') return null;
@@ -132,6 +164,7 @@ function asMessage(raw: unknown): ChatMessage | null {
           }
         : null,
     mentionedMe: Boolean(r.mentionedMe),
+    editedAt: typeof r.editedAt === 'string' && r.editedAt ? r.editedAt : null,
     media:
       r.media && typeof r.media === 'object'
         ? (() => {
@@ -140,11 +173,14 @@ function asMessage(raw: unknown): ChatMessage | null {
             if (!id) return null;
             return {
               id,
-              kind: mm.kind === 'video' ? ('video' as const) : ('image' as const),
+              kind:
+                mm.kind === 'video' ? ('video' as const) : mm.kind === 'file' ? ('file' as const) : ('image' as const),
               width: Number(mm.width) || null,
               height: Number(mm.height) || null,
               duration: Number(mm.duration) || null,
               url: typeof mm.url === 'string' && mm.url ? mm.url : null,
+              filename: typeof mm.filename === 'string' && mm.filename ? mm.filename : null,
+              bytes: Number(mm.bytes) || null,
             };
           })()
         : null,
@@ -169,6 +205,7 @@ export async function loadHistory(opts: { before?: number; limit?: number } = {}
     nextBefore?: number;
     lastRead?: number;
     online?: number;
+    pin?: unknown;
     auth?: { signedIn?: boolean };
   };
 
@@ -181,6 +218,7 @@ export async function loadHistory(opts: { before?: number; limit?: number } = {}
     lastRead: Number(data.lastRead) || 0,
     online: Number(data.online) || 0,
     signedIn: Boolean(data.auth?.signedIn),
+    pin: asPin(data.pin),
   };
 }
 
@@ -198,6 +236,7 @@ export async function poll(after: number): Promise<PollResult> {
     online?: number;
     typing?: unknown[];
     reads?: { id?: unknown; n?: unknown } | null;
+    pin?: unknown;
     auth?: { signedIn?: boolean };
   };
 
@@ -210,6 +249,7 @@ export async function poll(after: number): Promise<PollResult> {
       .filter((n) => Number.isFinite(n) && n > 0),
     online: Number(data.online) || 0,
     signedIn: Boolean(data.auth?.signedIn),
+    pin: asPin(data.pin),
     typing: (Array.isArray(data.typing) ? data.typing : [])
       .map((s) => String(s ?? ''))
       .filter(Boolean)
@@ -299,7 +339,7 @@ export type UploadResult = { ok: true; media: ChatMedia } | { ok: false; message
  */
 export async function uploadMedia(
   dataUrl: string,
-  meta: { width?: number; height?: number; duration?: number } = {},
+  meta: { width?: number; height?: number; duration?: number; filename?: string } = {},
 ): Promise<UploadResult> {
   try {
     const res = await fetch(`${BASE}/chat/media`, {
@@ -310,6 +350,7 @@ export async function uploadMedia(
         width: meta.width,
         height: meta.height,
         duration: meta.duration,
+        filename: meta.filename,
       }),
       credentials: 'include',
       // 5MB 的视频在慢网络上要传一会儿
@@ -323,7 +364,8 @@ export async function uploadMedia(
   }
 }
 
-/** 报告「正在输入」。失败无声 —— 这个信息可有可无，不该弹任何东西 */export async function typing(): Promise<void> {
+/** 报告「正在输入」。失败无声 —— 这个信息可有可无，不该弹任何东西 */
+export async function typing(): Promise<void> {
   try {
     await fetch(`${BASE}/chat/typing`, {
       method: 'POST',
@@ -455,5 +497,92 @@ export async function fetchWho(): Promise<ChatMember[]> {
     return Array.isArray(data.members) ? data.members : [];
   } catch {
     return [];
+  }
+}
+
+// ——————————————————————————————————————————————————————————
+// 编辑 / 举报 / 置顶
+// ——————————————————————————————————————————————————————————
+
+export interface EditResult {
+  ok: boolean;
+  message?: string;
+  body?: string;
+  editedAt?: string;
+}
+
+/**
+ * 改自己的话。服务端限 5 分钟、只认本人 —— 前端的按钮显示条件要和它一致，
+ * 否则会出现「按钮在、点了报错」。
+ */
+export async function edit(id: number, body: string): Promise<EditResult> {
+  try {
+    const res = await fetch(`${BASE}/chat/${id}/edit`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ body }),
+      credentials: 'include',
+      signal: AbortSignal.timeout(TIMEOUT_SEND),
+    });
+    const data = (await res.json()) as {
+      ok?: boolean;
+      message?: string;
+      body?: string;
+      editedAt?: string;
+    };
+    if (!res.ok || !data.ok) return { ok: false, message: data.message ?? '没改成，稍后再试' };
+    return { ok: true, body: String(data.body ?? body), editedAt: String(data.editedAt ?? '') };
+  } catch {
+    return { ok: false, message: '网络不稳，再试一次' };
+  }
+}
+
+export interface ReportResult {
+  ok: boolean;
+  already?: boolean;
+  message?: string;
+}
+
+/** 举报一条。理由用和审核同一套五类 + other，服务端会校验 */
+export async function report(id: number, reason: string): Promise<ReportResult> {
+  try {
+    const res = await fetch(`${BASE}/chat/${id}/report`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ reason }),
+      credentials: 'include',
+      signal: AbortSignal.timeout(TIMEOUT_SEND),
+    });
+    const data = (await res.json()) as {
+      ok?: boolean;
+      already?: boolean;
+      message?: string;
+    };
+    if (!res.ok || !data.ok) return { ok: false, message: data.message ?? '没报上去' };
+    return { ok: true, already: Boolean(data.already), message: data.message };
+  } catch {
+    return { ok: false, message: '网络不稳，再试一次' };
+  }
+}
+
+/** 置顶 / 取消置顶（只有站长能用，服务端把关） */
+export async function setPin(id: number | null): Promise<{
+  ok: boolean;
+  pin?: PinInfo | null;
+  message?: string;
+}> {
+  try {
+    const res = await fetch(`${BASE}/chat/pin`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ messageId: id ?? 0 }),
+      credentials: 'include',
+      signal: AbortSignal.timeout(TIMEOUT_SEND),
+    });
+    const data = (await res.json()) as { ok?: boolean; pin?: unknown; message?: string };
+    if (!res.ok || !data.ok) return { ok: false, message: data.message ?? '没置顶成' };
+    return { ok: true, pin: asPin(data.pin) };
+  } catch {
+    return { ok: false, message: '网络不稳，再试一次' };
   }
 }

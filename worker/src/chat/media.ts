@@ -24,16 +24,37 @@ import { json } from '../util';
 import { sessionUser } from '../auth/store';
 
 /** 上限（解码后的字节）。有 R2 时放宽 —— R2 出网不计费，且没有单行大小限制 */
-const LIMIT_SQLITE = { image: 1024 * 1024, video: 5 * 1024 * 1024 } as const;
-const LIMIT_R2 = { image: 4 * 1024 * 1024, video: 32 * 1024 * 1024 } as const;
+const LIMIT_SQLITE = { image: 1024 * 1024, video: 5 * 1024 * 1024, file: 5 * 1024 * 1024 } as const;
+const LIMIT_R2 = { image: 4 * 1024 * 1024, video: 32 * 1024 * 1024, file: 5 * 1024 * 1024 } as const;
 
 const IMAGE_MIME = new Set(['image/webp', 'image/jpeg', 'image/png', 'image/gif']);
 const VIDEO_MIME = new Set(['video/mp4', 'video/webm', 'video/quicktime']);
 
+/**
+ * 任意文件：**白名单**，不是黑名单。
+ *
+ * 这些字节将来会以 `content-type` 原样从 worker 吐出去（回退到 SQLite 时还和站点同源），
+ * 所以绝不能收 `text/html`、`image/svg+xml` 这类能被当页面执行的类型 ——
+ * 一个 svg 里塞 script，就成了本站域名下的 XSS。只收「打开也只是个文件」的格式。
+ */
+const FILE_MIME = new Set([
+  'application/pdf',
+  'application/zip',
+  'text/plain',
+  'text/markdown',
+  'text/csv',
+  'application/json',
+  'application/epub+zip',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+]);
+
 /** 只接受白名单里的 mime —— 存进来的字节将来会以 `content-type` 原样吐出去 */
-function kindOf(mime: string): 'image' | 'video' | null {
+function kindOf(mime: string): 'image' | 'video' | 'file' | null {
   if (IMAGE_MIME.has(mime)) return 'image';
   if (VIDEO_MIME.has(mime)) return 'video';
+  if (FILE_MIME.has(mime)) return 'file';
   return null;
 }
 
@@ -45,7 +66,36 @@ const EXT: Record<string, string> = {
   'video/mp4': 'mp4',
   'video/webm': 'webm',
   'video/quicktime': 'mov',
+  'application/pdf': 'pdf',
+  'application/zip': 'zip',
+  'text/plain': 'txt',
+  'text/markdown': 'md',
+  'text/csv': 'csv',
+  'application/json': 'json',
+  'application/epub+zip': 'epub',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document': 'docx',
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': 'xlsx',
+  'application/vnd.openxmlformats-officedocument.presentationml.presentation': 'pptx',
 };
+
+/**
+ * 原始文件名清洗。
+ *
+ * 这个名字会进 Content-Disposition 响应头，也会显示在下载卡片上：
+ * 所以去掉路径分隔符与控制字符（防 header 注入），截到 60 字符，
+ * 并且**绝不信任客户端传的扩展名** —— 扩展名按 mime 兜底。
+ */
+function cleanName(raw: unknown, mime: string): string {
+  const fallback = `文件.${EXT[mime] ?? 'bin'}`;
+  const name = String(raw ?? '')
+    .replace(/[\\/:*?"<>|\u0000-\u001f]/g, '_')
+    .trim();
+  if (!name) return fallback;
+  const dot = name.lastIndexOf('.');
+  const base = (dot > 0 ? name.slice(0, dot) : name).slice(0, 60) || '文件';
+  const ext = dot > 0 ? name.slice(dot + 1).slice(0, 8) : (EXT[mime] ?? 'bin');
+  return `${base}.${ext}`;
+}
 
 function base64Bytes(b64: string): number {
   const clean = b64.replace(/\s+/g, '');
@@ -182,7 +232,13 @@ export async function uploadMedia(request: Request, env: Env): Promise<Response>
     return json({ ok: false, reason: 'login_required', message: '登录之后才能传图' }, 401);
   }
 
-  let payload: { data?: unknown; width?: unknown; height?: unknown; duration?: unknown };
+  let payload: {
+    data?: unknown;
+    width?: unknown;
+    height?: unknown;
+    duration?: unknown;
+    filename?: unknown;
+  };
   try {
     payload = (await request.json()) as typeof payload;
   } catch {
@@ -192,14 +248,18 @@ export async function uploadMedia(request: Request, env: Env): Promise<Response>
   const raw = String(payload.data ?? '').trim();
   const m = /^data:([a-z0-9/+.-]+);base64,(.+)$/i.exec(raw);
   if (!m) {
-    return json({ ok: false, reason: 'bad_format', message: '只能传图片或视频' }, 400);
+    return json({ ok: false, reason: 'bad_format', message: '只能传图片、视频或文档' }, 400);
   }
 
   const mime = m[1]!.toLowerCase();
   const kind = kindOf(mime);
   if (!kind) {
     return json(
-      { ok: false, reason: 'bad_type', message: '这个格式不支持，换 jpg / png / webp / mp4' },
+      {
+        ok: false,
+        reason: 'bad_type',
+        message: '这个格式不支持：图片 jpg/png/webp/gif、视频 mp4/webm、文档 pdf/zip/md/txt/csv/office',
+      },
       400,
     );
   }
@@ -216,7 +276,7 @@ export async function uploadMedia(request: Request, env: Env): Promise<Response>
       {
         ok: false,
         reason: 'too_large',
-        message: `${kind === 'image' ? '图片' : '视频'}不能超过 ${mb} MB`,
+        message: `${kind === 'image' ? '图片' : kind === 'video' ? '视频' : '文件'}不能超过 ${mb} MB`,
       },
       413,
     );
@@ -252,8 +312,8 @@ export async function uploadMedia(request: Request, env: Env): Promise<Response>
      * TEXT 存 base64 两边行为一致（体积 +33% 换个可靠）。
      */
     const res = await env.DB.prepare(
-      `INSERT INTO chat_media (kind, mime, bytes, data, width, height, duration, account_id, ts, url)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO chat_media (kind, mime, bytes, data, width, height, duration, account_id, ts, url, filename)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     )
       .bind(
         kind,
@@ -266,6 +326,7 @@ export async function uploadMedia(request: Request, env: Env): Promise<Response>
         me.id,
         now,
         url,
+        kind === 'file' ? cleanName(payload.filename, mime) : null,
       )
       .run();
 
@@ -279,6 +340,8 @@ export async function uploadMedia(request: Request, env: Env): Promise<Response>
         width: num(payload.width),
         height: num(payload.height),
         duration: kind === 'video' ? num(payload.duration) : null,
+        /** 只有 kind='file' 才有；前端下载卡片显示这个名字 */
+        filename: kind === 'file' ? cleanName(payload.filename, mime) : null,
         /** 非空 = 图在 R2，前端直接用；空 = 走 /chat/media/:id */
         url,
       },
@@ -300,9 +363,17 @@ export async function getMedia(env: Env, idParam: string): Promise<Response> {
   if (!Number.isInteger(id) || id <= 0) return new Response(null, { status: 404 });
 
   try {
-    const row = await env.DB.prepare('SELECT mime, data, url FROM chat_media WHERE id = ?')
+    const row = await env.DB.prepare(
+      'SELECT mime, data, url, kind, filename FROM chat_media WHERE id = ?',
+    )
       .bind(id)
-      .first<{ mime: string; data: string | null; url: string | null }>();
+      .first<{
+        mime: string;
+        data: string | null;
+        url: string | null;
+        kind: string | null;
+        filename: string | null;
+      }>();
 
     if (!row) return new Response(null, { status: 404 });
 
@@ -317,17 +388,22 @@ export async function getMedia(env: Env, idParam: string): Promise<Response> {
       return new Response(null, { status: 500 });
     }
 
-    return new Response(bin as unknown as BodyInit, {
-      status: 200,
-      headers: {
-        'content-type': row.mime || 'application/octet-stream',
-        'content-length': String(bin.byteLength),
-        'cache-control': 'public, max-age=31536000, immutable',
-        // 用户上传的内容一律不允许被当成页面执行
-        'content-security-policy': "default-src 'none'; sandbox",
-        'x-content-type-options': 'nosniff',
-      },
-    });
+    const isFile = row.kind === 'file';
+    const headers: Record<string, string> = {
+      'content-type': row.mime || 'application/octet-stream',
+      'content-length': String(bin.byteLength),
+      'cache-control': 'public, max-age=31536000, immutable',
+      // 用户上传的内容一律不允许被当成页面执行
+      'content-security-policy': "default-src 'none'; sandbox",
+      'x-content-type-options': 'nosniff',
+    };
+    // 文档一律「下载」而不是「在浏览器里打开」：pdf / html 类的预览面太大
+    if (isFile) {
+      headers['content-disposition'] =
+        `attachment; filename*=UTF-8''${encodeURIComponent(row.filename || 'file')}`;
+    }
+
+    return new Response(bin as unknown as BodyInit, { status: 200, headers });
   } catch (err) {
     console.error('[chat] media 读取失败:', err instanceof Error ? err.message : err);
     return new Response(null, { status: 502 });

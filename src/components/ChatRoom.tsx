@@ -1,9 +1,14 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { MorphIcon } from 'morphicons/react';
 import {
   Bell,
   BellRing,
   ChevronDown,
+  Download,
+  FileText,
+  Pencil,
+  Pin,
   CircleAlert,
   ImageUp as ImageIcon,
   LoaderCircle,
@@ -27,12 +32,16 @@ import {
   poll,
   react,
   recall,
+  report as reportApi,
   send,
+  setPin as setPinApi,
   typing,
   uploadMedia,
+  edit as editApi,
   type ChatMedia,
   type ChatMember,
   type ChatMessage,
+  type PinInfo,
   type SearchHit,
 } from '../lib/chat';
 
@@ -66,6 +75,16 @@ const POLL_MS = 2_500;
 const POLL_HIDDEN_MS = 10_000;
 /** 连续失败几次才认定「断了」—— 偶发一次超时不该闪提示 */
 const LINK_FAIL_TOLERANCE = 2;
+/** 举报理由：和审核的五类同一套口径，外加一个「其他」 */
+const REPORT_REASONS = [
+  { key: 'spam', label: '广告 / 刷屏' },
+  { key: 'abuse', label: '骂人 / 攻击' },
+  { key: 'porn', label: '色情低俗' },
+  { key: 'illegal', label: '违法内容' },
+  { key: 'privacy', label: '泄露隐私' },
+  { key: 'other', label: '其他' },
+] as const;
+
 /** 桌面提醒开关存在本机（权限是浏览器级的，偏好是本机级的） */
 const NOTIFY_KEY = 'qingwu:chat-notify';
 
@@ -83,6 +102,8 @@ const IMAGE_MAX_SIDE = 1600;
 const IMAGE_MAX_BYTES = 900 * 1024;
 /** 视频原样上传的上限 */
 const VIDEO_MAX_BYTES = 5 * 1024 * 1024;
+/** 文档上限（服务端 FILE_MIME 白名单之外的一律拒收） */
+const FILE_MAX_BYTES = 5 * 1024 * 1024;
 
 function readAsDataURL(file: Blob): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -306,6 +327,14 @@ export default function ChatRoom() {
   const [link, setLink] = useState<'ok' | 'down'>('ok');
   const linkFailRef = useRef(0);
 
+  /** 当前置顶（null = 没有）。poll 每次都带，所以站长一改，两秒内所有人可见 */
+  const [pin, setPinState] = useState<PinInfo | null>(null);
+  /** 正在编辑的那条（null = 不是编辑态）。输入区复用，取消就回到发新消息 */
+  const [editing, setEditing] = useState<{ id: number; body: string } | null>(null);
+  /** 举报弹层的目标消息 */
+  const [reporting, setReporting] = useState<ChatMessage | null>(null);
+  const [reportBusy, setReportBusy] = useState(false);
+
   /**
    * 拖文件进来时的投放态。
    *
@@ -394,6 +423,7 @@ export default function ChatRoom() {
         setConfig(who.config);
         setAccount(who.account);
         setMembers(list);
+        setPinState(page.pin);
         lastIdRef.current = page.messages.reduce((max, m) => Math.max(max, m.id), 0);
         readMarkRef.current = page.lastRead;
         // 冷启动（没有快照）时，首批消息不该有入场动画
@@ -554,6 +584,7 @@ export default function ChatRoom() {
         setSignedIn(r.signedIn);
         setTypingNames(r.typing);
         setReads(r.reads);
+        setPinState((prev) => (prev?.id === r.pin?.id ? prev : r.pin));
 
         if (r.messages.length || r.recalled.length) {
           const incoming = r.messages;
@@ -754,13 +785,54 @@ export default function ChatRoom() {
         return;
       }
 
-      setTip({ kind: 'warn', text: '只能发图片或视频' });
+      /**
+       * 其他文件：不压、不转，原样传。
+       * 白名单在服务端（`FILE_MIME`），这里只管大小 —— 客户端的检查永远可绕过，
+       * 真正的门在 worker 那边。
+       */
+      if (file.size > FILE_MAX_BYTES) {
+        setTip({ kind: 'warn', text: '文件不要超过 5 MB' });
+        return;
+      }
+      const dataUrl = await readAsDataURL(file);
+      const up = await uploadMedia(dataUrl, { filename: file.name });
+      if (up.ok) setPendingMedia(up.media);
+      else setTip({ kind: 'warn', text: up.message });
     } finally {
       setUploading(false);
     }
   };
 
   const doSend = async () => {
+    /**
+     * 编辑态：这次「发送」其实是**保存修改**。
+     * 复用同一个输入区（而不是弹个框）—— 改一句话不该换一个界面，
+     * 而且 EmojiPicker / @ / 粘贴都在原位可用。
+     */
+    if (editing) {
+      const text = draft.trim();
+      if (!text || sending) return;
+      setSending(true);
+      setTip(null);
+      const res = await editApi(editing.id, text);
+      setSending(false);
+      if (res.ok) {
+        setMessages((prev) =>
+          prev.map((m) =>
+            m.id === editing.id
+              ? { ...m, body: res.body ?? text, editedAt: res.editedAt || new Date().toISOString() }
+              : m,
+          ),
+        );
+        setEditing(null);
+        setDraft('');
+        setTip({ kind: 'ok', text: '改好了' });
+      } else {
+        setTip({ kind: 'warn', text: res.message ?? '没改成，稍后再试' });
+      }
+      return;
+    }
+
     const text = draft.trim();
     // 纯图消息允许没有文字
     if ((!text && !pendingMedia) || sending || uploading) return;
@@ -807,6 +879,49 @@ export default function ChatRoom() {
       );
     } else {
       setTip({ kind: 'warn', text: res.message });
+    }
+  };
+
+  /** 进入编辑态：把原文放进输入区，光标落到末尾 */
+  const startEdit = (m: ChatMessage) => {
+    setEditing({ id: m.id, body: m.body });
+    setDraft(m.body);
+    setReplyTo(null);
+    setPendingMedia(null);
+    setEmojiOpen(false);
+    requestAnimationFrame(() => {
+      const el = inputRef.current;
+      if (!el) return;
+      el.focus();
+      el.setSelectionRange(el.value.length, el.value.length);
+      el.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+    });
+  };
+
+  const cancelEdit = () => {
+    setEditing(null);
+    setDraft('');
+  };
+
+  /** 举报：只把选择交给服务端，处置权在站长 —— 前端不做任何「自动隐藏」 */
+  const doReport = async (reason: string) => {
+    const target = reporting;
+    if (!target || reportBusy) return;
+    setReportBusy(true);
+    const res = await reportApi(target.id, reason);
+    setReportBusy(false);
+    setReporting(null);
+    setTip({ kind: res.ok ? 'ok' : 'warn', text: res.message ?? (res.ok ? '交到站长那儿了' : '没报上去') });
+  };
+
+  /** 置顶 / 取消置顶（服务端只认站长，这里只负责调用与回显） */
+  const doPin = async (m: ChatMessage | null) => {
+    const res = m ? await setPinApi(pin?.id === m.id ? null : m.id) : await setPinApi(null);
+    if (res.ok) {
+      setPinState(res.pin ?? null);
+      setTip({ kind: 'ok', text: res.pin ? '置顶上去了' : '取消置顶了' });
+    } else {
+      setTip({ kind: 'warn', text: res.message ?? '没置顶成' });
     }
   };
 
@@ -867,6 +982,23 @@ export default function ChatRoom() {
       : [];
 
   /**
+   * 跳到置顶那条。
+   *
+   * 不主动 loadMore 去找：置顶可能是很久以前的一句，为它把几十条历史全拉进来
+   * 会把滚动位置冲掉。找不到就直说「往上翻一翻」。
+   */
+  const jumpToPin = (id: number) => {
+    const el = document.querySelector(`[data-mid="${id}"]`);
+    if (!el) {
+      setTip({ kind: 'warn', text: '这条更早，往上翻一翻就看到了' });
+      return;
+    }
+    setHighlightId(id);
+    el.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    window.setTimeout(() => setHighlightId(0), 2400);
+  };
+
+  /**
    * 从搜索结果跳过去。
    *
    * 那条可能比当前页更早（还没加载），所以先把它的精简形态并进列表再滚过去；
@@ -893,6 +1025,7 @@ export default function ChatRoom() {
             reactions: [],
             quote: null,
             mentionedMe: false,
+            editedAt: null,
             media: null,
           },
         ],
@@ -1073,6 +1206,29 @@ export default function ChatRoom() {
           </p>
         )}
 
+      {pin && (
+        <div className="q-chat__pin">
+          <span className="q-chat__pin__ic" aria-hidden="true">
+            <MorphIcon icon={Pin} size={12} color="currentColor" />
+          </span>
+          <button type="button" className="q-chat__pin__t" onClick={() => jumpToPin(pin.id)}>
+            <b>{pin.name}</b>
+            <span>{pin.excerpt || '（这条没写正文）'}</span>
+          </button>
+          {account?.role === 'admin' && (
+            <button
+              type="button"
+              className="q-chat__pin__x"
+              onClick={() => void doPin(null)}
+              aria-label="取消置顶"
+              title="取消置顶"
+            >
+              <MorphIcon icon={X} size={11} color="currentColor" />
+            </button>
+          )}
+        </div>
+      )}
+
       <div
         className={`q-chat__scroll${messages.length === 0 ? ' is-empty' : ''}`}
         ref={scrollRef}
@@ -1143,7 +1299,14 @@ export default function ChatRoom() {
                   grouped={grouped}
                   fresh={fresh}
                   canRecall={m.mine && m.status === 'visible' && Date.now() - ts < 2 * 60 * 1000}
+                  /* 和服务端同一个 5 分钟窗口：按钮显示条件不一致会出现「按钮在、点了报错」 */
+                  canEdit={m.mine && m.status === 'visible' && Date.now() - ts < 5 * 60 * 1000}
+                  canPin={account?.role === 'admin' && m.status === 'visible'}
+                  pinned={pin?.id === m.id}
                   onRecall={() => void doRecall(m.id)}
+                  onEdit={() => startEdit(m)}
+                  onPin={() => void doPin(m)}
+                  onReport={() => setReporting(m)}
                   onReact={(emoji) => void doReact(m.id, emoji)}
                   onReply={() => setReplyTo(m)}
                   readCount={reads?.id === m.id ? reads.n : 0}
@@ -1167,8 +1330,18 @@ export default function ChatRoom() {
         </p>
       )}
 
-      {(replyTo || typingNames.length > 0 || pendingMedia) && (
+      {(editing || replyTo || typingNames.length > 0 || pendingMedia) && (
         <div className="q-chat__above">
+          {editing && (
+            <div className="q-chat__replybar is-editing">
+              <span className="q-chat__replybar__t">
+                正在改这条 · Enter 保存，Esc 取消
+              </span>
+              <button type="button" onClick={cancelEdit} aria-label="取消编辑">
+                <MorphIcon icon={X} size={11} color="currentColor" />
+              </button>
+            </div>
+          )}
           {replyTo && (
             <div className="q-chat__replybar">
               <span className="q-chat__replybar__t">
@@ -1193,8 +1366,13 @@ export default function ChatRoom() {
             <div className="q-chat__pendingmedia">
               {pendingMedia.kind === 'image' ? (
                 <img src={mediaSrc(pendingMedia)} alt="待发送的图片" />
-              ) : (
+              ) : pendingMedia.kind === 'video' ? (
                 <video src={mediaSrc(pendingMedia)} muted playsInline preload="metadata" />
+              ) : (
+                <span className="q-chat__pendingmedia__file">
+                  <MorphIcon icon={FileText} size={14} color="currentColor" />
+                  {pendingMedia.filename || '文件'}
+                </span>
               )}
               <button
                 type="button"
@@ -1246,10 +1424,18 @@ export default function ChatRoom() {
                 }
               }}
               onKeyDown={(e) => {
-                if (e.key === 'Escape' && mention) {
-                  e.preventDefault();
-                  setMention(null);
-                  return;
+                if (e.key === 'Escape') {
+                  if (mention) {
+                    e.preventDefault();
+                    setMention(null);
+                    return;
+                  }
+                  // 编辑态下 Esc = 放弃这次修改，把输入区还给「发新消息」
+                  if (editing) {
+                    e.preventDefault();
+                    cancelEdit();
+                    return;
+                  }
                 }
                 if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
                   // 选人弹层开着时，Enter 先当作「选第一个」
@@ -1279,7 +1465,7 @@ export default function ChatRoom() {
               rows={1}
               /* 占位符要能在 390px 宽下**一行放完**：原来那句（@ 可以叫个人）
                  在手机上会折成两行，输入框一进页面就变高，看着像刚打了一半字 */
-              placeholder="说点什么… @ 叫人"
+              placeholder={editing ? '改这句话…' : '说点什么… @ 叫人'}
               title="Enter 发送，Shift + Enter 换行，@ 提及"
               aria-label="说点什么，@ 可以提及在场的人"
             />
@@ -1296,7 +1482,7 @@ export default function ChatRoom() {
               <button
                 type="button"
                 className="q-chat__tool"
-                aria-label="发图片或视频"
+                aria-label="发图片、视频或文件"
                 onClick={() => fileRef.current?.click()}
                 disabled={uploading}
               >
@@ -1309,7 +1495,9 @@ export default function ChatRoom() {
               <input
                 ref={fileRef}
                 type="file"
-                accept="image/*,video/*"
+                /* 不再是 image/video 两个通配 —— 文档也要能发。
+                   accept 只影响选择框的默认筛选，真正收什么由服务端白名单决定 */
+                accept="image/*,video/*,.pdf,.zip,.txt,.md,.csv,.json,.epub,.docx,.xlsx,.pptx"
                 hidden
                 onChange={(e) => {
                   const f = e.target.files?.[0];
@@ -1333,10 +1521,13 @@ export default function ChatRoom() {
             className="q-chat__send"
             onClick={() => void doSend()}
             disabled={sending || !draft.trim()}
-            aria-label="发送"
+            aria-label={editing ? '保存修改' : '发送'}
+            title={editing ? '保存修改（Esc 取消）' : '发送（Enter）'}
           >
             {sending ? (
               <MorphIcon icon={LoaderCircle} size={15} color="currentColor" />
+            ) : editing ? (
+              <MorphIcon icon={Pencil} size={14} color="currentColor" />
             ) : (
               <MorphIcon icon={Send} size={15} color="currentColor" />
             )}
@@ -1366,6 +1557,41 @@ export default function ChatRoom() {
       )}
 
       {searchOpen && <ChatSearch onClose={() => setSearchOpen(false)} onPick={jumpToMessage} />}
+
+      {reporting &&
+        createPortal(
+          <div className="q-report" role="dialog" aria-modal="true" aria-label="举报这条消息">
+            <button
+              type="button"
+              className="q-report__mask"
+              aria-label="关掉"
+              onClick={() => setReporting(null)}
+            />
+            <div className="q-report__box">
+              <p className="q-report__t">举报给站长</p>
+              <p className="q-report__s">
+                {reporting.name} 的这条会标出来给站长看。不会自动删 ——
+                举报不该让人说的话凭空消失。
+              </p>
+              <div className="q-report__opts">
+                {REPORT_REASONS.map((r) => (
+                  <button
+                    key={r.key}
+                    type="button"
+                    disabled={reportBusy}
+                    onClick={() => void doReport(r.key)}
+                  >
+                    {r.label}
+                  </button>
+                ))}
+              </div>
+              <button type="button" className="q-report__cancel" onClick={() => setReporting(null)}>
+                算了
+              </button>
+            </div>
+          </div>,
+          document.body,
+        )}
       </section>
     </div>
   );
@@ -1377,7 +1603,13 @@ function MessageRow({
   grouped,
   fresh,
   canRecall,
+  canEdit,
+  canPin,
+  pinned,
   onRecall,
+  onEdit,
+  onPin,
+  onReport,
   onReact,
   onReply,
   readCount,
@@ -1386,7 +1618,16 @@ function MessageRow({
   grouped: boolean;
   fresh: boolean;
   canRecall: boolean;
+  /** 自己的、可见的、5 分钟内 */
+  canEdit: boolean;
+  /** 站长，且这条可见 */
+  canPin: boolean;
+  /** 这条就是当前置顶 */
+  pinned: boolean;
   onRecall: () => void;
+  onEdit: () => void;
+  onPin: () => void;
+  onReport: () => void;
   onReact: (emoji: string) => void;
   onReply: () => void;
   /** 这条被多少人读完（只对「我最新那条」有意义，其余传 0） */
@@ -1436,6 +1677,11 @@ function MessageRow({
             {m.origin === 'remote' && m.site && (
               <span className="q-chat__site">来自 {m.site}</span>
             )}
+            {m.editedAt && (
+              <span className="q-chat__edited" title={`改于 ${clockOf(m.editedAt)}`}>
+                已编辑
+              </span>
+            )}
             <time className="q-chat__clock" dateTime={m.at}>
               {clockOf(m.at)}
             </time>
@@ -1443,18 +1689,41 @@ function MessageRow({
         )}
 
         <div className="q-chat__bubblewrap">
-          {m.media && (
-            /* data-zoomable：交给全站的灯箱（ImageZoom）接管点击，
-               点开停在本站，能 Esc 关、能翻组里的下一张 ——
-               比原来 window.open 到新标签页少一次上下文切换 */
-            <div className={`q-chat__media is-${m.media.kind}`} data-zoomable>
-              {m.media.kind === 'image' ? (
-                <img src={mediaSrc(m.media)} alt="图片" loading="lazy" decoding="async" />
-              ) : (
-                <video src={mediaSrc(m.media)} controls playsInline preload="metadata" />
-              )}
-            </div>
-          )}
+          {m.media &&
+            (m.media.kind === 'file' ? (
+              /* 文件不挂 data-zoomable：那是给能放大的图用的，
+                 文档的正确动作是「下载」，挂上去反而让点按行为变含糊 */
+              <a
+                className="q-chat__file"
+                href={mediaSrc(m.media)}
+                download={m.media.filename || undefined}
+                rel="noopener"
+              >
+                <span className="q-chat__file__ic" aria-hidden="true">
+                  <MorphIcon icon={FileText} size={16} color="currentColor" />
+                </span>
+                <span className="q-chat__file__meta">
+                  <b>{m.media.filename || '文件'}</b>
+                  <i>
+                    {m.media.bytes ? `${Math.max(1, Math.round(m.media.bytes / 1024))} KB` : '点击下载'}
+                  </i>
+                </span>
+                <span className="q-chat__file__dl" aria-hidden="true">
+                  <MorphIcon icon={Download} size={15} color="currentColor" />
+                </span>
+              </a>
+            ) : (
+              /* data-zoomable：交给全站灯箱接管点击，点开停在本站，
+                 能 Esc 关、能翻组里的下一张 */
+              <div className={`q-chat__media is-${m.media.kind}`} data-zoomable>
+                {m.media.kind === 'image' ? (
+                  <img src={mediaSrc(m.media)} alt="图片" loading="lazy" decoding="async" />
+                ) : (
+                  <video src={mediaSrc(m.media)} controls playsInline preload="metadata" />
+                )}
+              </div>
+            ))}
+
           {/* 纯图消息的 body 是空串，不画空气泡 */}
           {m.body && (
             <div
@@ -1499,9 +1768,29 @@ function MessageRow({
             <button type="button" className="q-chat__recall" onClick={onReply}>
               回复
             </button>
+            {canEdit && (
+              <button type="button" className="q-chat__recall" onClick={onEdit}>
+                编辑
+              </button>
+            )}
             {canRecall && (
               <button type="button" className="q-chat__recall" onClick={onRecall}>
                 撤回
+              </button>
+            )}
+            {canPin && (
+              <button type="button" className="q-chat__recall" onClick={onPin}>
+                {pinned ? '取消置顶' : '置顶'}
+              </button>
+            )}
+            {!mine && m.status === 'visible' && (
+              <button
+                type="button"
+                className="q-chat__recall q-chat__report"
+                onClick={onReport}
+                title="觉得这条不合适？交给站长看"
+              >
+                举报
               </button>
             )}
             {m.status === 'visible' && (

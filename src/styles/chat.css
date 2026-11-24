@@ -1753,6 +1753,245 @@
     background: var(--color-amber);
   }
 
+  /* ═══════════════════════════════════════════════════════════════════
+     编辑 / 举报 / 置顶 / 文件（2026-11-24 夜 · 第二批）
+     ═══════════════════════════════════════════════════════════════════ */
+
+  /* ——— 置顶条 ———
+     常驻在会话区上方，不随滚动消失：置顶的意义就是「一直看得见」。
+     点击跳过去；站长右侧多一个取消按钮。 */
+  .q-chat__pin {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    flex: none;
+    padding: 0.45rem 0.9rem;
+    border-bottom: 1px solid var(--color-hairline);
+    background: color-mix(in srgb, var(--color-rose) 10%, #fffdfb);
+  }
+
+  .q-chat__pin__ic {
+    flex: none;
+    display: grid;
+    place-items: center;
+    color: var(--color-crimson);
+  }
+
+  .q-chat__pin__t {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    align-items: baseline;
+    gap: 0.4rem;
+    text-align: left;
+    font-size: 0.74rem;
+    color: var(--color-muted);
+    overflow: hidden;
+  }
+
+  .q-chat__pin__t b {
+    flex: none;
+    font-weight: 500;
+    color: var(--color-brown);
+  }
+
+  .q-chat__pin__t span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .q-chat__pin__t:hover span {
+    color: var(--color-crimson);
+  }
+
+  .q-chat__pin__x {
+    flex: none;
+    display: grid;
+    place-items: center;
+    width: 1.4rem;
+    height: 1.4rem;
+    border-radius: 9999px;
+    color: var(--color-subtle);
+    transition: color var(--dur-micro) ease, background-color var(--dur-micro) ease;
+  }
+
+  .q-chat__pin__x:hover {
+    color: var(--color-crimson);
+    background: color-mix(in srgb, var(--color-rose) 18%, transparent);
+  }
+
+  /* ——— 「已编辑」———
+     不做成徽章：它属于「这条的元信息」，和时刻同级，压重了反而抢眼。 */
+  .q-chat__edited {
+    font-size: 0.62rem;
+    color: var(--color-subtle);
+    opacity: 0.9;
+  }
+
+  /* ——— 文件卡片 ———
+     不放进气泡：文档是「一个可下载的东西」，不是一段话。 */
+  .q-chat__file {
+    display: flex;
+    align-items: center;
+    gap: 0.55rem;
+    width: min(20rem, 100%);
+    padding: 0.55rem 0.65rem;
+    border: 1px solid var(--color-hairline);
+    border-radius: 0.8rem;
+    background: #fff;
+    transition: border-color var(--dur-micro) ease, background-color var(--dur-micro) ease;
+  }
+
+  .q-chat__file:hover {
+    border-color: color-mix(in srgb, var(--color-crimson) 32%, transparent);
+    background: color-mix(in srgb, var(--color-rose) 8%, #fff);
+  }
+
+  .q-chat__file__ic {
+    flex: none;
+    display: grid;
+    place-items: center;
+    width: 2rem;
+    height: 2rem;
+    border-radius: 0.55rem;
+    background: color-mix(in srgb, var(--color-rose) 20%, #fff);
+    color: var(--color-accent-soft);
+  }
+
+  .q-chat__file__meta {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.1rem;
+  }
+
+  .q-chat__file__meta b {
+    font-size: 0.8rem;
+    font-weight: 500;
+    color: var(--color-ink);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .q-chat__file__meta i {
+    font-style: normal;
+    font-size: 0.66rem;
+    color: var(--color-subtle);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .q-chat__file__dl {
+    flex: none;
+    color: var(--color-subtle);
+  }
+
+  .q-chat__file:hover .q-chat__file__dl {
+    color: var(--color-crimson);
+  }
+
+  /* 待发文件：一行胶囊，不占一块图的地 */
+  .q-chat__pendingmedia__file {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.4rem 0.7rem;
+    border: 1px solid var(--color-hairline);
+    border-radius: 0.6rem;
+    background: #fff;
+    font-size: 0.76rem;
+    color: var(--color-brown);
+    max-width: 16rem;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+  }
+
+  /* 举报按钮：和「回复/撤回」同一套外观，只在悬停时泛红 —— 它是重动作，不该抢眼 */
+  .q-chat__report:hover {
+    color: var(--color-crimson);
+  }
+
+  /* ——— 举报弹层 ——— */
+  .q-report {
+    position: fixed;
+    inset: 0;
+    z-index: 80;
+    display: grid;
+    place-items: center;
+    padding: 1rem;
+  }
+
+  .q-report__mask {
+    position: absolute;
+    inset: 0;
+    background: color-mix(in srgb, #2a1216 38%, transparent);
+  }
+
+  .q-report__box {
+    position: relative;
+    width: min(21rem, 100%);
+    padding: 1.15rem 1.15rem 0.9rem;
+    border: 1px solid var(--color-hairline);
+    border-radius: var(--radius-card);
+    background: #fffdfb;
+    box-shadow: 0 18px 48px rgba(90, 40, 50, 0.18);
+  }
+
+  .q-report__t {
+    font-family: var(--font-display);
+    font-size: 1rem;
+    color: var(--color-ink);
+  }
+
+  .q-report__s {
+    margin-top: 0.4rem;
+    font-size: 0.74rem;
+    line-height: 1.8;
+    color: var(--color-subtle);
+  }
+
+  .q-report__opts {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.4rem;
+    margin-top: 0.85rem;
+  }
+
+  .q-report__opts button {
+    padding: 0.5rem 0.4rem;
+    border: 1px solid var(--color-hairline);
+    border-radius: 0.6rem;
+    background: #fff;
+    font-size: 0.78rem;
+    color: var(--color-brown);
+    transition: border-color var(--dur-micro) ease, color var(--dur-micro) ease,
+      background-color var(--dur-micro) ease;
+  }
+
+  .q-report__opts button:hover:not(:disabled) {
+    border-color: color-mix(in srgb, var(--color-crimson) 34%, transparent);
+    background: color-mix(in srgb, var(--color-rose) 12%, #fff);
+    color: var(--color-crimson);
+  }
+
+  .q-report__opts button:disabled {
+    opacity: 0.5;
+  }
+
+  .q-report__cancel {
+    display: block;
+    margin: 0.7rem auto 0;
+    font-size: 0.76rem;
+    color: var(--color-subtle);
+  }
+
+  .q-report__cancel:hover {
+    color: var(--color-brown);
+  }
+
   @media (prefers-reduced-motion: reduce) {
     .q-skel-av,
     .q-skel-line {

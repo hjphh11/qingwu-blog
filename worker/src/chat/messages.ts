@@ -20,6 +20,7 @@ import { avatarFromEmail, avatarFromHash } from '../auth/avatar';
 import { sessionUser, type AccountRow } from '../auth/store';
 import { moderateComment } from '../admin/ai';
 import { screen, type ScreenCtx } from './screen';
+import { getPin } from './pin';
 
 /** 正文上限。和 screen.ts 的 MAX_BODY 对齐 —— 那边是审核判据，这里是硬校验 */
 const BODY_MAX = 500;
@@ -66,7 +67,7 @@ async function currentAccount(request: Request, env: Env): Promise<AccountRow | 
  */
 let hostCache: { set: Set<string>; at: number } | null = null;
 
-async function trustedHosts(env: Env): Promise<Set<string>> {
+export async function trustedHosts(env: Env): Promise<Set<string>> {
   const now = Date.now();
   if (hostCache && now - hostCache.at < 10 * 60 * 1000) return hostCache.set;
 
@@ -89,6 +90,8 @@ interface MessageRow {
   id: number;
   account_id: number | null;
   body: string;
+  /** 最后一次编辑时间（毫秒）；null = 没改过 */
+  edited_at: number | null;
   status: string;
   ts: number;
   origin: string;
@@ -108,7 +111,7 @@ interface MessageRow {
   email_hash: string | null;
 }
 
-const COLS = `m.id, m.account_id, m.body, m.status, m.ts, m.origin, m.kind, m.image_id,
+const COLS = `m.id, m.account_id, m.body, m.status, m.ts, m.edited_at, m.origin, m.kind, m.image_id,
               m.reply_to_id, m.mentions,
               m.remote_nick, m.remote_avatar, m.remote_site,
               a.display_name AS acc_name, a.avatar_url AS acc_avatar,
@@ -129,10 +132,15 @@ function visibleClause(me: string | number): { sql: string; params: Array<string
 /** 一张图 / 一段视频的元信息（二进制不在这里，走 url 或 /chat/media/:id） */
 export interface MediaInfo {
   id: number;
+  /** image / video / file */
   kind: string;
   width: number | null;
   height: number | null;
   duration: number | null;
+  /** 原始文件名 —— 只有 kind='file' 才有，下载卡片要显示它 */
+  filename?: string | null;
+  /** 字节数（文件卡片显示大小） */
+  bytes?: number | null;
   /** 非空 = 存在 R2，前端直接用这个地址（走 CDN，不经过 worker） */
   url: string | null;
 }
@@ -146,7 +154,7 @@ async function loadMedia(env: Env, ids: number[]): Promise<Map<number, MediaInfo
   try {
     const ph = uniq.map(() => '?').join(',');
     const rows = await env.DB.prepare(
-      `SELECT id, kind, width, height, duration, url FROM chat_media WHERE id IN (${ph})`,
+      `SELECT id, kind, width, height, duration, url, filename, bytes FROM chat_media WHERE id IN (${ph})`,
     )
       .bind(...uniq)
       .all<MediaInfo>();
@@ -312,8 +320,12 @@ function toItem(
           height: media.height,
           duration: media.duration,
           url: media.url ?? null,
+          filename: media.filename ?? null,
+          bytes: media.bytes ?? null,
         }
       : null,
+    /** 有值 = 显示「已编辑」 */
+    editedAt: r.edited_at ? new Date(r.edited_at).toISOString() : null,
   };
 }
 
@@ -400,6 +412,8 @@ export async function getHistory(request: Request, env: Env): Promise<Response> 
       nextBefore: page[0]?.id ?? 0,
       lastRead,
       online: await onlineOf(env, Date.now()),
+      /** 置顶条（没有就是 null）。跟 history 一起下发，首屏就有 */
+      pin: await getPin(env),
       auth: { signedIn: Boolean(me), canSend: Boolean(me) },
     });
   } catch (err) {
@@ -546,6 +560,8 @@ export async function pollChat(request: Request, env: Env): Promise<Response> {
       ),
       recalled,
       online: await onlineOf(env, now),
+      /** 每次 poll 都带 —— 一百来个字节，换取「站长一置顶，所有人两秒内看见」 */
+      pin: await getPin(env),
       typing: (typingRows.results ?? []).map((r) => r.name || r.prefix || '有人'),
       reads,
       auth: { signedIn: Boolean(me), canSend: Boolean(me) },
@@ -613,7 +629,7 @@ export async function sendMessage(
   let media: MediaInfo | undefined;
   if (mediaId > 0) {
     const row = await env.DB.prepare(
-      'SELECT id, kind, width, height, duration, url, account_id FROM chat_media WHERE id = ?',
+      'SELECT id, kind, width, height, duration, url, filename, bytes, account_id FROM chat_media WHERE id = ?',
     )
       .bind(mediaId)
       .first<MediaInfo & { account_id: number }>()
@@ -785,8 +801,11 @@ export async function sendMessage(
               height: media.height,
               duration: media.duration,
               url: media.url ?? null,
+              filename: media.filename ?? null,
+              bytes: media.bytes ?? null,
             }
           : null,
+        editedAt: null,
       },
       /** 命中了哪些规则（只回条数，不回 id —— 别给出一份规避说明书） */
       screened: verdict.hits.length > 0,
@@ -798,7 +817,7 @@ export async function sendMessage(
 }
 
 /** 后台判定：命中转 spam，没命中把 pending 放出来 */
-async function judgeLater(
+export async function judgeLater(
   env: Env,
   msg: { id: number; body: string; author: string; wasPending: boolean },
 ): Promise<void> {
