@@ -727,6 +727,25 @@ export async function commitLinks(request: Request, env: Env, admin: Admin): Pro
   const bad = friends.findIndex((f) => !f.name || !f.url);
   if (bad >= 0) return json({ ok: false, reason: 'incomplete', index: bad }, 400);
 
+  // ⚠️ avatar 也必须校验（2026-11-24）：src/data/links.ts 用 urlLike 校验头像，
+  // 空串会让**整份构建**在渲染 /links 时抛错。而 Astro 是逐页写 dist 的，
+  // 中途失败就留下半套产物 → nginx 对「有目录没 index.html」返回 403，
+  // 首页、/links/、/music/ 全挂，/projects/ 变 404。事故现场见 .workbuddy/memory。
+  // 所以宁可在这里 400 拦住，也不让空头像进仓库。
+  const LINK_LIKE = /^(https?:\/\/|\/)/;
+  const noAvatar = friends.findIndex((f) => !LINK_LIKE.test(f.avatar));
+  if (noAvatar >= 0) {
+    return json(
+      {
+        ok: false,
+        reason: 'no_avatar',
+        index: noAvatar,
+        message: `第 ${noAvatar + 1} 条「${friends[noAvatar].name}」的头像地址为空或格式不对（需要 http(s):// 或 / 开头）—— 空头像会让整站构建失败，请补上再提交`,
+      },
+      400,
+    );
+  }
+
   const sha = String(body.sha ?? '').trim();
 
   // 提交说明先定下来：manual / 失败这两条分支也要记进发布历史，

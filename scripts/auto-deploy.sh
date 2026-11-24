@@ -46,15 +46,34 @@ fi
 
 log "发现新提交 $REMOTE，开始构建"
 
-if ! PUBLIC_HIT_WORKER_URL=/api PUBLIC_TURNSTILE_SITE_KEY= npm run build >>"$LOG" 2>&1; then
-  log "构建失败，保持上一版"
+# ——— 构建前先备份产物（2026-11-24 全站事故的补丁）———
+# 上面那句注释原本写着「构建失败，保持上一版」，但那是**错的**：
+# Astro build 一开始就把 dist 清空重建，页数是逐页写盘的，
+# 任何一页抛错（比如 links.json 校验失败）都会留下「只有一半页面」的 dist。
+# 而 nginx 对「目录存在、里面没有 index.html」的响应是 **403**，
+# 于是首页、/links/、/music/ 全部 403，/projects/ 之类连目录都没建出来变 404 ——
+# 整站看起来像挂了，实际上只是构建中断。旧产物必须自己搬走、失败再搬回来。
+PREV="$REPO/.dist-prev"
+rm -rf "$PREV"
+[ -d "$REPO/dist" ] && mv "$REPO/dist" "$PREV"
+
+rollback() {
+  log "$1，回滚上一版产物"
+  rm -rf "$REPO/dist"
+  [ -d "$PREV" ] && mv "$PREV" "$REPO/dist"
   exit 1
+}
+
+if ! PUBLIC_HIT_WORKER_URL=/api PUBLIC_TURNSTILE_SITE_KEY= npm run build >>"$LOG" 2>&1; then
+  rollback "构建失败"
 fi
 
-if [ ! -s "$REPO/dist/client/index.html" ]; then
-  log "构建产物缺 index.html，放弃重启"
-  exit 1
-fi
+# 产物完整性闸门：光看 exit code 不够，必须确认关键页面真的落盘了
+for f in index.html links/index.html music/index.html projects/index.html; do
+  [ -s "$REPO/dist/client/$f" ] || rollback "构建产物缺 $f"
+done
+
+rm -rf "$PREV"
 
 systemctl restart qingwu-api
 log "完成 $REMOTE"
