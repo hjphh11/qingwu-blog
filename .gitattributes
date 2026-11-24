@@ -7,3 +7,13 @@
 
 # 服务器 nginx 配置副本：线上是 LF，入库必须保持，否则每次同步都会整文件 diff。
 deploy/nginx/*.conf text eol=lf
+
+# 前端资源同样钉死 LF（2026-11-24）：
+# 本机 core.autocrlf=true 只在 `git add` 时转换；用 tar/scp 直接上传会绕过它，
+# 结果整份文件变 CRLF 入库，diff 全红。prose.css 就这样被整文件重写过一次。
+*.css   text eol=lf
+*.md    text eol=lf
+*.astro text eol=lf
+*.ts    text eol=lf
+*.tsx   text eol=lf
+*.mjs   text eol=lf
