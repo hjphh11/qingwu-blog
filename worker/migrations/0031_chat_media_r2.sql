@@ -1,0 +1,13 @@
+-- 清吾 · 长亭：媒体改走 R2
+--
+-- 背景（2026-11-24 纠正）：
+--   之前以为「R2 没启用」，那是**看错了** —— wrangler.toml 里的 `[[r2_buckets]]`
+--   是注释占位（worker 没有绑定），但桶 `qingwu-uploads` 一直在用：
+--   自定义域 https://img.qingwu.ink/ 公开可读，画市一万两千多张图就在里面，
+--   S3 凭据在服务器 /etc/qingwu-r2.conf，备份脚本走 rclone 用了很久。
+--
+-- 所以图片不再往 SQLite 里塞，改成 worker 直接 PUT 到 R2（SigV4，见 media.ts）。
+-- 这张表仍然保留：
+--   · url 非空 → 图在 R2，前端直接用这个地址（走 CF CDN，不经过 worker）
+--   · url 为空 → 老数据还在库里，继续走 /chat/media/:id
+ALTER TABLE chat_media ADD COLUMN url TEXT;

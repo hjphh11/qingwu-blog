@@ -21,7 +21,7 @@ import {
   fetchWho,
   loadHistory,
   markRead,
-  mediaUrl,
+  mediaSrc,
   poll,
   react,
   recall,
@@ -825,9 +825,9 @@ export default function ChatRoom() {
           {pendingMedia && (
             <div className="q-chat__pendingmedia">
               {pendingMedia.kind === 'image' ? (
-                <img src={mediaUrl(pendingMedia.id)} alt="待发送的图片" />
+                <img src={mediaSrc(pendingMedia)} alt="待发送的图片" />
               ) : (
-                <video src={mediaUrl(pendingMedia.id)} muted playsInline preload="metadata" />
+                <video src={mediaSrc(pendingMedia)} muted playsInline preload="metadata" />
               )}
               <button
                 type="button"
@@ -1072,14 +1072,14 @@ function MessageRow({
             <div className={`q-chat__media is-${m.media.kind}`}>
               {m.media.kind === 'image' ? (
                 <img
-                  src={mediaUrl(m.media.id)}
+                  src={mediaSrc(m.media)}
                   alt="图片"
                   loading="lazy"
                   decoding="async"
-                  onClick={() => window.open(mediaUrl(m.media!.id), '_blank', 'noopener')}
+                  onClick={() => window.open(mediaSrc(m.media!), '_blank', 'noopener')}
                 />
               ) : (
-                <video src={mediaUrl(m.media.id)} controls playsInline preload="metadata" />
+                <video src={mediaSrc(m.media)} controls playsInline preload="metadata" />
               )}
             </div>
           )}

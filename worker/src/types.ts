@@ -211,6 +211,27 @@ export interface Env {
   /** 站点根地址，AI 回复署名的 author_url 用。缺省 https://www.qingwu.ink */
   SITE_URL?: string;
 
+  // ————————————————————————————————————————————————
+  // 聊天室图片 / 视频的存储（R2）
+  //
+  // ⚠️ 这里**不是** `[[r2_buckets]]` 绑定 —— 生产跑的是 `wrangler dev --local`，
+  // 那种绑定会模拟成本地目录，图根本到不了云端。所以直接走 R2 的 S3 API（SigV4）。
+  //
+  // 桶 `qingwu-uploads` 早就有了（画市一万两千张图在里面），
+  // 公共域 https://img.qingwu.ink/ 公开可读（不需要鉴权）。
+  // S3 凭据在服务器 /etc/qingwu-r2.conf —— 账号级，与备份脚本共用。
+  //
+  // **三个都配齐才走 R2，否则自动回退到「存 SQLite」**（本地开发不需要凭据也能用）。
+  // ————————————————————————————————————————————————
+  /** R2 账号 ID（S3 endpoint 是 `{account}.r2.cloudflarestorage.com`） */
+  R2_ACCOUNT_ID?: string;
+  R2_ACCESS_KEY_ID?: string;
+  R2_SECRET_ACCESS_KEY?: string;
+  /** 桶名，缺省 `qingwu-uploads` */
+  R2_BUCKET?: string;
+  /** 公共域，缺省 `https://img.qingwu.ink`（末尾不要带斜杠） */
+  R2_PUBLIC_BASE?: string;
+
   // ——— 访客留言后小爱自动回复（见 admin/ai.ts 的 autoReplyTo）———
   /**
    * 总开关。`off` / `0` / `false` / `no` 任意一个即关闭，其余（含不填）都算开。

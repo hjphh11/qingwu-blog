@@ -28,18 +28,25 @@ export interface Quote {
   excerpt: string;
 }
 
-/** 图片 / 视频的元信息。二进制走独立的 `/api/chat/media/:id` */
+/** 图片 / 视频的元信息 */
 export interface ChatMedia {
   id: number;
   kind: 'image' | 'video';
   width: number | null;
   height: number | null;
   duration: number | null;
+  /** 非空 = 图在 R2（走 CDN 一年缓存）；空 = 早期存在库里的，走 `/api/chat/media/:id` */
+  url: string | null;
 }
 
-/** 媒体地址。带上 BASE，线上是 /api、本地是 /api（astro 代理到 8799） */
+/** 库里老数据的地址（R2 的图不走这里） */
 export function mediaUrl(id: number): string {
   return `${BASE}/chat/media/${id}`;
+}
+
+/** 取真正该用的地址：优先 R2，兜底走 worker */
+export function mediaSrc(m: ChatMedia): string {
+  return m.url || mediaUrl(m.id);
 }
 
 export interface ChatMessage {
@@ -137,6 +144,7 @@ function asMessage(raw: unknown): ChatMessage | null {
               width: Number(mm.width) || null,
               height: Number(mm.height) || null,
               duration: Number(mm.duration) || null,
+              url: typeof mm.url === 'string' && mm.url ? mm.url : null,
             };
           })()
         : null,

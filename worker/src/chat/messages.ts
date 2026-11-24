@@ -126,16 +126,18 @@ function visibleClause(me: string | number): { sql: string; params: Array<string
   };
 }
 
-/** 一张图 / 一段视频的元信息（二进制不在这里，走 /chat/media/:id） */
+/** 一张图 / 一段视频的元信息（二进制不在这里，走 url 或 /chat/media/:id） */
 export interface MediaInfo {
   id: number;
   kind: string;
   width: number | null;
   height: number | null;
   duration: number | null;
+  /** 非空 = 存在 R2，前端直接用这个地址（走 CDN，不经过 worker） */
+  url: string | null;
 }
 
-/** 批量取媒体元信息（绝不碰 data 列 —— 那是几百 KB 的二进制） */
+/** 批量取媒体元信息（绝不碰 data 列 —— 那是几百 KB 的 base64） */
 async function loadMedia(env: Env, ids: number[]): Promise<Map<number, MediaInfo>> {
   const map = new Map<number, MediaInfo>();
   const uniq = [...new Set(ids)].filter((n) => n > 0);
@@ -144,7 +146,7 @@ async function loadMedia(env: Env, ids: number[]): Promise<Map<number, MediaInfo
   try {
     const ph = uniq.map(() => '?').join(',');
     const rows = await env.DB.prepare(
-      `SELECT id, kind, width, height, duration FROM chat_media WHERE id IN (${ph})`,
+      `SELECT id, kind, width, height, duration, url FROM chat_media WHERE id IN (${ph})`,
     )
       .bind(...uniq)
       .all<MediaInfo>();
@@ -301,7 +303,7 @@ function toItem(
     reactions,
     quote: quote ?? null,
     mentionedMe,
-    /** 图片/视频消息才有；二进制走 /chat/media/:id，不随消息下发 */
+    /** 图片/视频消息才有；url 非空走 R2，为空走 /chat/media/:id */
     media: media
       ? {
           id: media.id,
@@ -309,6 +311,7 @@ function toItem(
           width: media.width,
           height: media.height,
           duration: media.duration,
+          url: media.url ?? null,
         }
       : null,
   };
@@ -610,7 +613,7 @@ export async function sendMessage(
   let media: MediaInfo | undefined;
   if (mediaId > 0) {
     const row = await env.DB.prepare(
-      'SELECT id, kind, width, height, duration, account_id FROM chat_media WHERE id = ?',
+      'SELECT id, kind, width, height, duration, url, account_id FROM chat_media WHERE id = ?',
     )
       .bind(mediaId)
       .first<MediaInfo & { account_id: number }>()
@@ -781,6 +784,7 @@ export async function sendMessage(
               width: media.width,
               height: media.height,
               duration: media.duration,
+              url: media.url ?? null,
             }
           : null,
       },
