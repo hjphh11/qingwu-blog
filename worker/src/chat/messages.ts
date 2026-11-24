@@ -118,7 +118,56 @@ function visibleClause(me: string | number): { sql: string; params: Array<string
   };
 }
 
-function toItem(r: MessageRow, meId: number | null): Record<string, unknown> {
+/** 一条消息上的表情回应汇总（一种表情一行） */
+export interface Reaction {
+  emoji: string;
+  n: number;
+  /** 我自己点没点 */
+  mine: boolean;
+}
+
+/**
+ * 批量取这批消息的表情回应。
+ *
+ * 为什么一次查完而不是逐条：一屏 30 条、轮询 100 条，逐条查就是 30~100 次往返。
+ * `IN (...)` 一次拿全，再在内存里按 message_id 分组。
+ */
+async function loadReactions(
+  env: Env,
+  ids: number[],
+  meId: number | null,
+): Promise<Map<number, Reaction[]>> {
+  const map = new Map<number, Reaction[]>();
+  if (!ids.length) return map;
+
+  try {
+    const ph = ids.map(() => '?').join(',');
+    const rows = await env.DB.prepare(
+      `SELECT message_id, emoji, COUNT(*) AS n,
+              MAX(CASE WHEN account_id = ? THEN 1 ELSE 0 END) AS mine
+         FROM chat_reactions WHERE message_id IN (${ph})
+        GROUP BY message_id, emoji
+        ORDER BY n DESC, emoji ASC`,
+    )
+      .bind(meId ?? -1, ...ids)
+      .all<{ message_id: number; emoji: string; n: number; mine: number }>();
+
+    for (const r of rows.results ?? []) {
+      const list = map.get(r.message_id) ?? [];
+      list.push({ emoji: r.emoji, n: r.n, mine: r.mine === 1 });
+      map.set(r.message_id, list);
+    }
+  } catch {
+    /* 表不存在 / 查挂了都当没有：回应是锦上添花，不该让消息列表整个挂掉 */
+  }
+  return map;
+}
+
+function toItem(
+  r: MessageRow,
+  meId: number | null,
+  reactions: Reaction[] = [],
+): Record<string, unknown> {
   const remote = r.origin === 'remote';
   // 本地消息三档头像兜底：账号档案 → 邮箱哈希现拼（和评论同一套，不返回 emailHash 本身）
   const avatar = remote
@@ -145,6 +194,7 @@ function toItem(r: MessageRow, meId: number | null): Record<string, unknown> {
     status: r.status === 'recalled' ? 'recalled' : r.status === 'pending' ? 'pending' : 'visible',
     mine: meId !== null && r.account_id === meId,
     origin: remote ? 'remote' : 'local',
+    reactions,
   };
 }
 
@@ -205,10 +255,12 @@ export async function getHistory(request: Request, env: Env): Promise<Response> 
       lastRead = r?.last_read_id ?? 0;
     }
 
+    const reacts = await loadReactions(env, page.map((r) => r.id), meId);
+
     return json({
       ok: true,
       // 库里是倒序取的，给前端翻回正序 —— 渲染顺序由数据决定，前端不再 sort
-      messages: page.reverse().map((r) => toItem(r, meId)),
+      messages: page.reverse().map((r) => toItem(r, meId, reacts.get(r.id))),
       hasMore,
       nextBefore: page[0]?.id ?? 0,
       lastRead,
@@ -292,9 +344,12 @@ export async function pollChat(request: Request, env: Env): Promise<Response> {
     // 在线人数：能投票说明人就在页面上
     if (meId) await touchPresence(env, meId, now);
 
+    const all = [...freshList, ...released];
+    const reacts = await loadReactions(env, all.map((r) => r.id), meId);
+
     return json({
       ok: true,
-      messages: [...freshList, ...released].map((r) => toItem(r, meId)),
+      messages: all.map((r) => toItem(r, meId, reacts.get(r.id))),
       recalled,
       online: await onlineOf(env, now),
       auth: { signedIn: Boolean(me), canSend: Boolean(me) },

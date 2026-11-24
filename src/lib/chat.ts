@@ -12,6 +12,15 @@ import { WORKER_BASE as BASE } from './workerBase';
  *     只推增量的话，一条消息被撤回后前端永远不知道，会一直挂在屏幕上
  */
 
+/** 一条消息上的表情回应汇总 */
+export interface Reaction {
+  /** 表情 key（就是 `:[key]` 里那个 key） */
+  emoji: string;
+  n: number;
+  /** 我自己点没点 */
+  mine: boolean;
+}
+
 export interface ChatMessage {
   id: number;
   name: string;
@@ -27,6 +36,7 @@ export interface ChatMessage {
   status: 'visible' | 'pending' | 'recalled';
   mine: boolean;
   origin: 'local' | 'remote';
+  reactions: Reaction[];
 }
 
 export interface ChatPage {
@@ -66,6 +76,15 @@ function asMessage(raw: unknown): ChatMessage | null {
     status,
     mine: Boolean(r.mine),
     origin: r.origin === 'remote' ? 'remote' : 'local',
+    reactions: Array.isArray(r.reactions)
+      ? (r.reactions as Array<Record<string, unknown>>)
+          .map((x) => ({
+            emoji: String(x.emoji ?? ''),
+            n: Number(x.n) || 0,
+            mine: Boolean(x.mine),
+          }))
+          .filter((x) => x.emoji && x.n > 0)
+      : [],
   };
 }
 
@@ -188,6 +207,46 @@ export async function recall(id: number): Promise<{ ok: true } | { ok: false; me
   }
 }
 
+/**
+ * 表情回应（再点一次取消）。
+ *
+ * 服务端回的是这条消息的**最新汇总**，前端直接替换，不用自己加减 ——
+ * 两个人同时点的时候，本地算的数和真实值会分叉。
+ */
+export async function react(
+  id: number,
+  emoji: string,
+): Promise<{ ok: true; reactions: Reaction[] } | { ok: false; message: string }> {
+  try {
+    const res = await fetch(`${BASE}/chat/${id}/react`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ emoji }),
+      credentials: 'include',
+      signal: AbortSignal.timeout(8000),
+    });
+    const data = (await res.json().catch(() => ({}))) as {
+      reactions?: Array<Record<string, unknown>>;
+      message?: string;
+    };
+    if (res.ok && Array.isArray(data.reactions)) {
+      return {
+        ok: true,
+        reactions: data.reactions
+          .map((x) => ({
+            emoji: String(x.emoji ?? ''),
+            n: Number(x.n) || 0,
+            mine: Boolean(x.mine),
+          }))
+          .filter((x) => x.emoji && x.n > 0),
+      };
+    }
+    return { ok: false, message: data.message || '没能回应，稍后再试' };
+  } catch {
+    return { ok: false, message: '网络好像不太顺，稍后再试一次' };
+  }
+}
+
 /** 更新阅读游标。失败无所谓 —— 下次进来顶多是未读线位置偏一点 */
 export async function markRead(lastId: number): Promise<void> {
   if (lastId <= 0) return;
@@ -206,30 +265,8 @@ export async function markRead(lastId: number): Promise<void> {
 }
 
 // ——————————————————————————————————————————————————————————
-// 侧栏（我的卡 + 在线的人）
+// 在线的人
 // ——————————————————————————————————————————————————————————
-
-export interface ChatRank {
-  /** 称号，如「檐下常客」 */
-  title: string;
-  /** 第几档（1 起）—— 只给进度条用，不展示成 Lv.N */
-  step: number;
-  total: number;
-  messages: number;
-  nextTitle: string;
-  /** 还差几句到下一档；顶格为 0 */
-  toNext: number;
-  /** 当前档内进度 0~100 */
-  progress: number;
-}
-
-export interface ChatMe extends ChatRank {
-  id: number;
-  name: string;
-  avatar: string;
-  site: string;
-  admin: boolean;
-}
 
 export interface ChatMember {
   id: number;
@@ -240,31 +277,26 @@ export interface ChatMember {
   online: boolean;
 }
 
-export interface WhoResult {
-  me: ChatMe | null;
-  members: ChatMember[];
-}
-
 /**
- * 侧栏数据。
+ * 在线名单。
  *
- * 和 poll 分开：poll 2.5 秒跑一次，只该拿增量消息；侧栏 30 秒刷一次就够。
- * 失败了回空值不抛错 —— 侧栏是锦上添花，不该让聊天室看起来坏了。
+ * 和 poll 分开：poll 2.5 秒跑一次，只该拿增量消息；名单 30 秒刷一次就够。
+ * 失败了回空数组不抛错 —— 侧栏是锦上添花，不该让聊天室看起来坏了。
+ *
+ * ⚠️ 这里**没有**「称号 / 经验 / 累计发言」：那一套 2026-11-24 被站长否掉了，
+ *    「我是谁」由前端从会话里拿（头像 + 昵称），不必服务端再算一遍。
  */
-export async function fetchWho(): Promise<WhoResult> {
+export async function fetchWho(): Promise<ChatMember[]> {
   try {
     const res = await fetch(`${BASE}/chat/who`, {
       headers: { accept: 'application/json' },
       credentials: 'include',
       signal: AbortSignal.timeout(8000),
     });
-    if (!res.ok) return { me: null, members: [] };
-    const data = (await res.json()) as { me?: ChatMe | null; members?: ChatMember[] };
-    return {
-      me: data.me ?? null,
-      members: Array.isArray(data.members) ? data.members : [],
-    };
+    if (!res.ok) return [];
+    const data = (await res.json()) as { members?: ChatMember[] };
+    return Array.isArray(data.members) ? data.members : [];
   } catch {
-    return { me: null, members: [] };
+    return [];
   }
 }

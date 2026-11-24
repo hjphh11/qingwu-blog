@@ -1,16 +1,19 @@
 import { useState } from 'react';
 import { MorphIcon } from 'morphicons/react';
-import { ChevronDown, MessageCircle, Sparkles, UserRound } from '../../lib/icons';
-import type { ChatMe, ChatMember } from '../../lib/chat';
+import { MessageCircle, Sparkles, UserRound } from '../../lib/icons';
+import type { SessionAccount } from '../../lib/auth';
+import type { ChatMember } from '../../lib/chat';
 
 /**
  * 长亭 · 左侧栏
  *
- * 三块：我的卡 / 在线的人 / 长亭的话。
+ * 三块：我 / 在线的人 / 长亭的话。
  *
- * 和参考对象（听雨茶室的侧栏）刻意不同的一处：**不做「Lv.2 + EXP 61/63」**。
- * 那套是副本面板的语言，长亭是歇脚的地方。这里换成一个称呼 + 进度 + 一句
- * 「再聊 8 句就是「煮茶的人」了」—— 进度感在，游戏味没有。
+ * 2026-11-24 按站长的意见瘦过一次：
+ *   · 整套「称号 · 经验条 · 累计发言 · 再聊 N 句」删掉了 ——
+ *     那是副本面板的语言，长亭是歇脚的地方，进来坐坐不需要「你还差 11 句」。
+ *     剩下头像和昵称，直接从会话里拿，服务端不再算一遍。
+ *   · 「回到最新」挪进了聊天框（那本来就是聊天区的操作，放在侧栏要跨半屏点）
  *
  * 数据 30 秒刷一次（见 ChatRoom 的 whoTimer），不跟 2.5 秒的 poll 走。
  */
@@ -20,13 +23,13 @@ const VISIBLE_MEMBERS = 6;
 
 /**
  * 公告文案。**改这里就能改公告** —— 不落库是有意的：
- * 公告是站长的口吻，属于内容，归仓库；状态（谁在线、聊了几句）才归数据库。
+ * 公告是站长的口吻，属于内容，归仓库；状态（谁在线）才归数据库。
  */
 const NOTICE = [
   '欢迎来长亭。这里是清吾的一角，路过就坐坐，不必客气。',
   '说话留点余地；被冒犯了也可以直说，不用忍着。',
   '两分钟内的消息可以撤回；一分钟十五句是上限，再快会被请去喝口茶。',
-  '站点已备案，违规内容会处理。',
+  '发言会过一遍 AI 审核，违规的内容会被收走。',
 ];
 
 function hostOf(url: string): string {
@@ -38,72 +41,45 @@ function hostOf(url: string): string {
 }
 
 export default function ChatAside({
-  me,
+  account,
   members,
-  signedIn,
   online,
   onLogin,
-  onJumpLatest,
 }: {
-  me: ChatMe | null;
+  account: SessionAccount | null;
   members: ChatMember[];
-  signedIn: boolean;
   online: number;
   onLogin: () => void;
-  onJumpLatest: () => void;
 }) {
   const [expanded, setExpanded] = useState(false);
   const shown = expanded ? members : members.slice(0, VISIBLE_MEMBERS);
   const rest = members.length - shown.length;
 
+  const site = hostOf(account?.site || '');
+
   return (
     <aside className="q-aside" aria-label="长亭侧栏">
-      {/* ——— ① 我的卡 ——— */}
-      {signedIn && me ? (
+      {/* ——— ① 我 ——— */}
+      {account ? (
         <section className="q-aside-card q-aside-me">
           <div className="q-aside-me__top">
             <span
               className="q-aside-me__avatar"
-              style={me.avatar ? { backgroundImage: `url("${me.avatar}")` } : undefined}
+              style={account.avatar ? { backgroundImage: `url("${account.avatar}")` } : undefined}
               aria-hidden="true"
             >
-              {me.name.slice(0, 1)}
+              {account.name.slice(0, 1)}
             </span>
             <div className="q-aside-me__id">
               <p className="q-aside-me__name">
-                {me.name}
-                {me.admin && <span className="q-aside-me__tag">站长</span>}
+                {account.name}
+                {account.role === 'admin' && <span className="q-aside-me__tag">站长</span>}
               </p>
-              <p className="q-aside-me__title">{me.title}</p>
+              {site && <p className="q-aside-me__site">来自 {site}</p>}
             </div>
-          </div>
-
-          <p className="q-aside-me__count">
-            累计发言 <b>{me.messages}</b> 条
-          </p>
-
-          <div className="q-aside-me__bar" aria-hidden="true">
-            <i style={{ width: `${me.progress}%` }} />
-          </div>
-          <p className="q-aside-me__next">
-            {me.nextTitle ? (
-              <>
-                再聊 <b>{me.toNext}</b> 句就是「{me.nextTitle}」了
-              </>
-            ) : (
-              <>已经走到最后一档，这亭子交给你了</>
-            )}
-          </p>
-
-          <div className="q-aside-me__acts">
-            <a href="/account/" className="q-aside-act">
-              <MorphIcon icon={UserRound} size={13} color="currentColor" />
-              个人主页
+            <a href="/account/" className="q-aside-me__link" aria-label="个人主页">
+              <MorphIcon icon={UserRound} size={14} color="currentColor" />
             </a>
-            <button type="button" className="q-aside-act" onClick={onJumpLatest}>
-              <MorphIcon icon={ChevronDown} size={13} color="currentColor" />
-              回到最新
-            </button>
           </div>
         </section>
       ) : (
@@ -134,7 +110,7 @@ export default function ChatAside({
         ) : (
           <ul className="q-aside-list">
             {shown.map((m) => {
-              const site = hostOf(m.site);
+              const mSite = hostOf(m.site);
               return (
                 <li key={m.id} className="q-aside-person">
                   <span
@@ -149,7 +125,7 @@ export default function ChatAside({
                       {m.name}
                       {m.admin && <em>站长</em>}
                     </span>
-                    {site && <span className="q-aside-person__site">来自 {site}</span>}
+                    {mSite && <span className="q-aside-person__site">来自 {mSite}</span>}
                   </span>
                   <span className="q-aside-person__dot" aria-label="在线" />
                 </li>

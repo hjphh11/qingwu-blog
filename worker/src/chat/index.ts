@@ -10,6 +10,7 @@
 //   POST /chat/send                           发一条
 //   POST /chat/read                           更新阅读游标
 //   POST /chat/:id/recall                     2 分钟内撤回自己的
+//   POST /chat/:id/react                      表情回应（再点一次取消）
 //
 // v2 再加桥接状态与 /admin 那两页；路由先不占位 —— 开着口子却没实现，
 // 比 404 更难查。
@@ -17,6 +18,7 @@
 import type { Env } from '../types';
 import { json } from '../util';
 import { getHistory, markRead, pollChat, sendMessage } from './messages';
+import { reactToMessage } from './react';
 import { recallMessage } from './recall';
 import { getWho } from './who';
 
@@ -55,6 +57,12 @@ export async function handleChat(
   const recall = path.match(/^\/chat\/(\d+)\/recall$/);
   if (recall) {
     return method === 'POST' ? recallMessage(request, env, recall[1]!) : NOT_ALLOWED();
+  }
+
+  // /chat/:id/react
+  const react = path.match(/^\/chat\/(\d+)\/react$/);
+  if (react) {
+    return method === 'POST' ? reactToMessage(request, env, react[1]!) : NOT_ALLOWED();
   }
 
   return json({ ok: false, reason: 'not_found' }, 404);

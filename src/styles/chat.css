@@ -29,6 +29,55 @@
     }
   }
 
+  /* ——— 窄屏微调 ———
+     侧栏挪到下面之后，它离视线更远、字更该大一点：
+     0.72rem 在 390px 宽的手机上偏小，加上卡片内边距大，整体会显得「空而碎」。 */
+  @media (max-width: 1023px) {
+    .q-aside-card {
+      padding: 1rem;
+    }
+
+    .q-aside-head__t {
+      font-size: 0.85rem;
+    }
+
+    .q-aside-head__n {
+      font-size: 0.75rem;
+    }
+
+    .q-aside-me__avatar {
+      width: 3rem;
+      height: 3rem;
+    }
+
+    .q-aside-me__name {
+      font-size: 1rem;
+    }
+
+    .q-aside-me__site {
+      font-size: 0.72rem;
+    }
+
+    .q-aside-person__name {
+      font-size: 0.85rem;
+    }
+
+    .q-aside-person__site {
+      font-size: 0.7rem;
+    }
+
+    .q-aside-notice__list li {
+      font-size: 0.78rem;
+    }
+
+    /* 移动端别套内滚动：外层页面本来就在滚，
+       列表再来一层 max-height + overflow，手势会打架（划一半卡住最难受） */
+    .q-aside-list {
+      max-height: none;
+      overflow-y: visible;
+    }
+  }
+
   /* ——— 侧栏 ——— */
   .q-aside {
     display: flex;
@@ -129,82 +178,34 @@
     line-height: 1.6;
   }
 
-  .q-aside-me__title {
-    display: inline-block;
-    margin-top: 0.25rem;
-    padding: 0.05rem 0.5rem;
-    border-radius: var(--radius-pill);
-    background: color-mix(in srgb, var(--color-rose) 26%, #fff);
-    color: var(--color-accent-soft);
-    font-size: 0.7rem;
-  }
-
-  .q-aside-me__count {
-    margin-top: 0.75rem;
-    font-size: 0.72rem;
-    color: var(--color-subtle);
-  }
-
-  .q-aside-me__count b {
-    color: var(--color-crimson);
-    font-weight: 500;
-  }
-
-  .q-aside-me__bar {
-    height: 6px;
-    margin-top: 0.45rem;
-    border-radius: 9999px;
-    /* 轨道要够淡、填充要够重：两者差不多深浅时，27% 那一小截几乎看不出来（第一版就是这样） */
-    background: color-mix(in srgb, var(--color-brown) 12%, #fff);
-    overflow: hidden;
-  }
-
-  .q-aside-me__bar i {
-    display: block;
-    height: 100%;
-    /* 极小进度也要能看见一眼，否则「刚起步」和「没有进度」长得一样 */
-    min-width: 4px;
-    border-radius: inherit;
-    background: var(--color-crimson);
-    transition: width var(--dur-state) ease;
-  }
-
-  .q-aside-me__next {
-    margin-top: 0.4rem;
+  .q-aside-me__site {
+    margin-top: 0.15rem;
     font-size: 0.68rem;
-    line-height: 1.7;
     color: var(--color-subtle);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
 
-  .q-aside-me__next b {
-    color: var(--color-crimson);
-    font-weight: 500;
-  }
-
-  .q-aside-me__acts {
+  /* 个人主页：右上角一个小按钮。
+     原来这里是「个人主页 + 回到最新」两个并排大按钮，占了半张卡 ——
+     回到最新已经挪进聊天框了，剩下的一个不该再占那么宽。 */
+  .q-aside-me__link {
+    flex: none;
+    margin-left: auto;
     display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 0.4rem;
-    margin-top: 0.8rem;
-  }
-
-  .q-aside-act {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    gap: 0.3rem;
-    padding: 0.38rem 0.4rem;
+    place-items: center;
+    width: 1.9rem;
+    height: 1.9rem;
+    border-radius: 9999px;
     border: 1px solid var(--color-hairline);
-    border-radius: 0.6rem;
-    font-size: 0.72rem;
     color: var(--color-brown);
-    background: transparent;
     transition: background-color var(--dur-micro) ease, border-color var(--dur-micro) ease,
       color var(--dur-micro) ease;
   }
 
-  .q-aside-act:hover {
-    background: color-mix(in srgb, var(--color-rose) 14%, transparent);
+  .q-aside-me__link:hover {
+    background: color-mix(in srgb, var(--color-rose) 16%, transparent);
     border-color: color-mix(in srgb, var(--color-crimson) 28%, transparent);
     color: var(--color-crimson);
   }
@@ -650,6 +651,126 @@
     }
   }
 
+  /* ——— 表情回应 ——— */
+  .q-chat__addreact {
+    position: relative;
+    flex: none;
+    display: inline-flex;
+    align-self: center;
+  }
+
+  .q-chat__plus {
+    display: grid;
+    place-items: center;
+    width: 1.35rem;
+    height: 1.35rem;
+    border-radius: 9999px;
+    border: 1px solid var(--color-hairline);
+    background: #fffdfb;
+    color: var(--color-subtle);
+    font-size: 0.85rem;
+    line-height: 1;
+    /* 和「撤回」同一套：正常阅读时不该有一排按钮抢眼 */
+    opacity: 0;
+    transition: opacity var(--dur-micro) ease, color var(--dur-micro) ease,
+      border-color var(--dur-micro) ease;
+  }
+
+  .q-chat__row:hover .q-chat__plus,
+  .q-chat__plus:focus-visible,
+  .q-chat__plus[aria-expanded="true"] {
+    opacity: 1;
+  }
+
+  .q-chat__plus:hover {
+    color: var(--color-crimson);
+    border-color: color-mix(in srgb, var(--color-crimson) 34%, transparent);
+  }
+
+  @media (hover: none) {
+    .q-chat__plus {
+      opacity: 0.8;
+    }
+  }
+
+  /* 弹出的那一排：胶囊形，八个表情刚好一行 */
+  .q-chat__reactpop {
+    position: absolute;
+    bottom: 100%;
+    left: 0;
+    z-index: 20;
+    display: flex;
+    gap: 0.1rem;
+    margin-bottom: 0.35rem;
+    padding: 0.3rem;
+    border-radius: var(--radius-pill);
+    border: 1px solid var(--color-hairline);
+    background: #fffdfb;
+    box-shadow: 0 8px 24px rgba(90, 40, 50, 0.12);
+  }
+
+  /* 自己的消息靠右，弹层也要右对齐，否则会伸到卡片外面 */
+  .q-chat__row.is-mine .q-chat__reactpop {
+    left: auto;
+    right: 0;
+  }
+
+  .q-chat__reactpop button {
+    display: grid;
+    place-items: center;
+    width: 1.7rem;
+    height: 1.7rem;
+    border-radius: 9999px;
+    transition: background-color var(--dur-micro) ease;
+  }
+
+  .q-chat__reactpop button:hover {
+    background: color-mix(in srgb, var(--color-rose) 18%, transparent);
+  }
+
+  .q-chat__reactpop img {
+    width: 1.2rem;
+    height: 1.2rem;
+    object-fit: contain;
+  }
+
+  .q-chat__reacts {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.25rem;
+    margin-top: 0.3rem;
+  }
+
+  .q-chat__react {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.2rem;
+    padding: 0.1rem 0.42rem 0.1rem 0.26rem;
+    border-radius: var(--radius-pill);
+    border: 1px solid var(--color-hairline);
+    background: #fff;
+    font-size: 0.68rem;
+    color: var(--color-subtle);
+    transition: border-color var(--dur-micro) ease, background-color var(--dur-micro) ease;
+  }
+
+  /* 自己点过的：底色和边框都加一档，一眼能看出「这个我也点了」 */
+  .q-chat__react.is-mine {
+    border-color: color-mix(in srgb, var(--color-crimson) 34%, transparent);
+    background: color-mix(in srgb, var(--color-crimson) 8%, #fff);
+    color: var(--color-accent-soft);
+  }
+
+  .q-chat__react:hover {
+    border-color: color-mix(in srgb, var(--color-crimson) 40%, transparent);
+  }
+
+  .q-chat__react img {
+    width: 0.95rem;
+    height: 0.95rem;
+    object-fit: contain;
+  }
+
   .q-chat__recalled {
     margin: 0.7rem 0;
     text-align: center;
@@ -715,12 +836,16 @@
     flex: 1;
     width: 100%;
     min-width: 0;
-    min-height: 1.6rem;
+    /* 内容高度 = line-height(1.6 × 0.9rem ≈ 23px) + 上下 padding(0.3rem ≈ 9.6px) ≈ 33px。
+       min-height 必须盖住它，否则 textarea 一进页面就溢出、右侧冒出上下滚动条
+       （站长截图里输入框右边那两个小箭头就是它）。 */
+    min-height: 2rem;
     max-height: 8rem;
-    padding: 0.2rem 0;
+    padding: 0.3rem 0;
     border: 0;
     outline: 0;
     resize: none;
+    overflow-y: auto;
     background: transparent;
     color: var(--color-ink);
     font-size: 0.9rem;

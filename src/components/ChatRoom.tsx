@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { MorphIcon } from 'morphicons/react';
 import {
-  ChevronUp,
+  ChevronDown,
   CircleAlert,
   LoaderCircle,
   Send,
@@ -11,15 +11,16 @@ import EmojiPicker from './EmojiPicker';
 import LoginDialog from './auth/LoginDialog';
 import ChatAside from './chat/ChatAside';
 import { renderRich } from '../lib/richText';
-import { fetchMe, type AuthConfig } from '../lib/auth';
+import { EMOJI_MAP } from '../lib/emojis';
+import { fetchMe, type AuthConfig, type SessionAccount } from '../lib/auth';
 import {
   fetchWho,
   loadHistory,
   markRead,
   poll,
+  react,
   recall,
   send,
-  type ChatMe,
   type ChatMember,
   type ChatMessage,
 } from '../lib/chat';
@@ -51,6 +52,24 @@ const GROUP_GAP_MS = 5 * 60 * 1000;
 const BOTTOM_SLACK = 80;
 
 const DRAFT_KEY = 'qingwu:chat-draft';
+
+/**
+ * 「轻回应」的一组固定表情。
+ *
+ * 为什么不做完整表情面板：轻回应的意思是「不必回一句话，点一下就好」，
+ * 挑一个比挑一个「从 153 个里选」快得多。要发表情进正文，输入框那边有完整面板。
+ * （听雨那边用的六只小猫也是同一个思路，只是他们有自己画的素材。）
+ */
+const REACT_SET = [
+  { key: 'clap', label: '赞' },
+  { key: 'heart_eyes', label: '喜欢' },
+  { key: 'rofl', label: '笑到了' },
+  { key: 'cry', label: '哭了' },
+  { key: 'eyes', label: '围观' },
+  { key: 'partying_face', label: '庆祝' },
+  { key: 'sparkles', label: '好看' },
+  { key: 'pray', label: '谢啦' },
+] as const;
 
 function pad(n: number): string {
   return String(n).padStart(2, '0');
@@ -106,9 +125,12 @@ export default function ChatRoom() {
   const [config, setConfig] = useState<AuthConfig | null>(null);
   const [loginOpen, setLoginOpen] = useState(false);
 
-  /** 侧栏数据：我的称号/发言数、在线的人 */
-  const [me, setMe] = useState<ChatMe | null>(null);
+  /** 侧栏数据：在线的人（「我是谁」直接用会话里的 account，服务端不再算一遍） */
+  const [account, setAccount] = useState<SessionAccount | null>(null);
   const [members, setMembers] = useState<ChatMember[]>([]);
+
+  /** 是否停在底部 —— 控制「回到最新 / N 条新消息」浮标的显隐 */
+  const [atBottom, setAtBottom] = useState(true);
 
   const [draft, setDraft] = useState('');
   const [sending, setSending] = useState(false);
@@ -121,6 +143,8 @@ export default function ChatRoom() {
   const readMarkRef = useRef(0);
   /** 用户不在底部时，攒下来的新消息条数 */
   const [pendingNew, setPendingNew] = useState(0);
+  /** 页面在后台时攒的新消息数 —— 只用来改页签标题 */
+  const [unread, setUnread] = useState(0);
   const atBottomRef = useRef(true);
 
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -132,13 +156,12 @@ export default function ChatRoom() {
     el.scrollTo({ top: el.scrollHeight, behavior: smooth ? 'smooth' : 'auto' });
     setPendingNew(0);
     atBottomRef.current = true;
+    setAtBottom(true);
   }, []);
 
-  /** 侧栏刷新：只刷 me / members，不动消息流 */
+  /** 侧栏刷新：只刷在线名单，不动消息流 */
   const refreshWho = useCallback(async () => {
-    const side = await fetchWho();
-    setMe(side.me);
-    setMembers(side.members);
+    setMembers(await fetchWho());
   }, []);
 
   /** 首屏：翻历史 + 认身份 + 侧栏 */
@@ -146,7 +169,7 @@ export default function ChatRoom() {
     setLoading(true);
     setFailed(false);
     try {
-      const [page, who, side] = await Promise.all([
+      const [page, who, list] = await Promise.all([
         loadHistory({ limit: 30 }),
         fetchMe(),
         fetchWho(),
@@ -156,8 +179,8 @@ export default function ChatRoom() {
       setOnline(page.online);
       setSignedIn(page.signedIn);
       setConfig(who.config);
-      setMe(side.me);
-      setMembers(side.members);
+      setAccount(who.account);
+      setMembers(list);
       lastIdRef.current = page.messages.reduce((max, m) => Math.max(max, m.id), 0);
       readMarkRef.current = page.lastRead;
       // 首屏一定在底部：进来要看的是最新的
@@ -196,7 +219,14 @@ export default function ChatRoom() {
 
             // 自己发的那条不算「新消息」—— 发送路径已经滚到底了
             const others = incoming.filter((m) => !m.mine).length;
-            if (!atBottom && others > 0) setPendingNew((n) => n + others);
+            if (others > 0) {
+              if (document.visibilityState !== 'visible') {
+                // 人在别的标签页：只累加页签数字，别在他回来时再滚一次屏
+                setUnread((n) => n + others);
+              } else if (!atBottom) {
+                setPendingNew((n) => n + others);
+              }
+            }
           }
         } catch {
           /* 静默：2.5 秒后自然重试，弹错误只会让人以为聊天坏了 */
@@ -210,6 +240,7 @@ export default function ChatRoom() {
     // 切回前台立刻补一次，别等下一个 tick
     const onVisible = () => {
       if (document.visibilityState === 'visible') {
+        setUnread(0);
         window.clearTimeout(timer);
         void tick();
       }
@@ -236,6 +267,19 @@ export default function ChatRoom() {
     }, 30_000);
     return () => window.clearInterval(timer);
   }, [refreshWho]);
+
+  /**
+   * 页签标题带未读数。
+   *
+   * 为什么值得做：长亭是「有人在场」的地方，但没人会一直盯着这一页。
+   * 切去写文章、听音乐时，标题栏那个「(3)」就是唯一能把你叫回来的东西。
+   *
+   * 每次都「先剥掉旧前缀再加」，所以连续收到消息不会叠成 `(1) (2) 长亭`。
+   */
+  useEffect(() => {
+    const clean = document.title.replace(/^\(\d+\+?\)\s*/, '');
+    document.title = unread > 0 ? `(${unread > 99 ? '99+' : unread}) ${clean}` : clean;
+  }, [unread]);
 
   /** 读到哪了：有新消息且自己在底部时，把游标推上去 */
   useEffect(() => {
@@ -282,6 +326,7 @@ export default function ChatRoom() {
     if (!el) return;
     const near = el.scrollHeight - el.scrollTop - el.clientHeight < BOTTOM_SLACK;
     atBottomRef.current = near;
+    setAtBottom(near);
     if (near) setPendingNew(0);
   };
 
@@ -346,6 +391,27 @@ export default function ChatRoom() {
     }
   };
 
+  /**
+   * 表情回应。
+   *
+   * 用服务端回的整份汇总替换本地那份 —— 自己加减的话，
+   * 两个人同时点会出现「本地看着 2、实际是 3」的分叉。
+   */
+  const doReact = async (id: number, emoji: string) => {
+    if (!signedIn) {
+      setLoginOpen(true);
+      return;
+    }
+    const res = await react(id, emoji);
+    if (res.ok) {
+      setMessages((prev) =>
+        prev.map((m) => (m.id === id ? { ...m, reactions: res.reactions } : m)),
+      );
+    } else {
+      setTip({ kind: 'warn', text: res.message });
+    }
+  };
+
   const pickEmoji = (key: string) => {
     setDraft((d) => `${d}:${key}`);
     inputRef.current?.focus();
@@ -370,12 +436,10 @@ export default function ChatRoom() {
   /** 侧栏（三个分支共用一份配置，避免 props 写三遍） */
   const aside = (
     <ChatAside
-      me={me}
+      account={account}
       members={members}
-      signedIn={signedIn}
       online={online}
       onLogin={() => setLoginOpen(true)}
-      onJumpLatest={() => scrollToBottom(true)}
     />
   );
 
@@ -463,6 +527,7 @@ export default function ChatRoom() {
                   grouped={grouped}
                   canRecall={m.mine && m.status === 'visible' && Date.now() - ts < 2 * 60 * 1000}
                   onRecall={() => void doRecall(m.id)}
+                  onReact={(emoji) => void doReact(m.id, emoji)}
                 />
               </div>
             );
@@ -470,10 +535,10 @@ export default function ChatRoom() {
         </div>
       </div>
 
-      {pendingNew > 0 && (
+      {!atBottom && (
         <button type="button" className="q-chat__jump" onClick={() => scrollToBottom(true)}>
-          <MorphIcon icon={ChevronUp} size={13} color="currentColor" />
-          {pendingNew} 条新消息
+          <MorphIcon icon={ChevronDown} size={13} color="currentColor" />
+          {pendingNew > 0 ? `${pendingNew} 条新消息` : '回到最新'}
         </button>
       )}
 
@@ -569,12 +634,18 @@ function MessageRow({
   grouped,
   canRecall,
   onRecall,
+  onReact,
 }: {
   m: ChatMessage;
   grouped: boolean;
   canRecall: boolean;
   onRecall: () => void;
+  onReact: (emoji: string) => void;
 }) {
+  // ⚠️ hook 必须在下面那个「撤回消息直接 return」之前 —— 否则两种状态的 hook
+  //    数量不同，React 会报 "Rendered fewer hooks than expected"。
+  const [pickOpen, setPickOpen] = useState(false);
+
   if (m.status === 'recalled') {
     return (
       <p className="q-chat__recalled">
@@ -632,7 +703,55 @@ function MessageRow({
               撤回
             </button>
           )}
+          {m.status === 'visible' && (
+            <span className="q-chat__addreact">
+              <button
+                type="button"
+                className="q-chat__plus"
+                aria-label="回应一下"
+                aria-expanded={pickOpen}
+                onClick={() => setPickOpen((v) => !v)}
+              >
+                +
+              </button>
+              {pickOpen && (
+                <span className="q-chat__reactpop" role="group" aria-label="选一个回应">
+                  {REACT_SET.map((r) => (
+                    <button
+                      key={r.key}
+                      type="button"
+                      title={r.label}
+                      aria-label={r.label}
+                      onClick={() => {
+                        onReact(r.key);
+                        setPickOpen(false);
+                      }}
+                    >
+                      <img src={EMOJI_MAP[r.key]?.src} alt="" loading="lazy" decoding="async" />
+                    </button>
+                  ))}
+                </span>
+              )}
+            </span>
+          )}
         </div>
+
+        {m.reactions.length > 0 && (
+          <div className="q-chat__reacts">
+            {m.reactions.map((r) => (
+              <button
+                key={r.emoji}
+                type="button"
+                className={`q-chat__react${r.mine ? ' is-mine' : ''}`}
+                onClick={() => onReact(r.emoji)}
+                title={r.mine ? '再点一下取消' : '也点一个'}
+              >
+                <img src={EMOJI_MAP[r.emoji]?.src} alt="" loading="lazy" decoding="async" />
+                <span>{r.n}</span>
+              </button>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );
