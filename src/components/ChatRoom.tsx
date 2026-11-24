@@ -9,14 +9,18 @@ import {
 } from '../lib/icons';
 import EmojiPicker from './EmojiPicker';
 import LoginDialog from './auth/LoginDialog';
+import ChatAside from './chat/ChatAside';
 import { renderRich } from '../lib/richText';
 import { fetchMe, type AuthConfig } from '../lib/auth';
 import {
+  fetchWho,
   loadHistory,
   markRead,
   poll,
   recall,
   send,
+  type ChatMe,
+  type ChatMember,
   type ChatMessage,
 } from '../lib/chat';
 
@@ -102,6 +106,10 @@ export default function ChatRoom() {
   const [config, setConfig] = useState<AuthConfig | null>(null);
   const [loginOpen, setLoginOpen] = useState(false);
 
+  /** 侧栏数据：我的称号/发言数、在线的人 */
+  const [me, setMe] = useState<ChatMe | null>(null);
+  const [members, setMembers] = useState<ChatMember[]>([]);
+
   const [draft, setDraft] = useState('');
   const [sending, setSending] = useState(false);
   const [tip, setTip] = useState<{ kind: 'warn' | 'ok'; text: string } | null>(null);
@@ -126,17 +134,30 @@ export default function ChatRoom() {
     atBottomRef.current = true;
   }, []);
 
-  /** 首屏：翻历史 + 认身份 */
+  /** 侧栏刷新：只刷 me / members，不动消息流 */
+  const refreshWho = useCallback(async () => {
+    const side = await fetchWho();
+    setMe(side.me);
+    setMembers(side.members);
+  }, []);
+
+  /** 首屏：翻历史 + 认身份 + 侧栏 */
   const init = useCallback(async () => {
     setLoading(true);
     setFailed(false);
     try {
-      const [page, who] = await Promise.all([loadHistory({ limit: 30 }), fetchMe()]);
+      const [page, who, side] = await Promise.all([
+        loadHistory({ limit: 30 }),
+        fetchMe(),
+        fetchWho(),
+      ]);
       setMessages(page.messages);
       setHasMore(page.hasMore);
       setOnline(page.online);
       setSignedIn(page.signedIn);
       setConfig(who.config);
+      setMe(side.me);
+      setMembers(side.members);
       lastIdRef.current = page.messages.reduce((max, m) => Math.max(max, m.id), 0);
       readMarkRef.current = page.lastRead;
       // 首屏一定在底部：进来要看的是最新的
@@ -201,6 +222,20 @@ export default function ChatRoom() {
       document.removeEventListener('visibilitychange', onVisible);
     };
   }, []);
+
+  /**
+   * 侧栏 30 秒刷一次。
+   *
+   * 不跟 poll 的 2.5 秒走：在线名单和称号变化极慢，跟着轮询只会让每条
+   * 消息的请求都多一次 JOIN。切回前台时 refreshWho 会由 poll 之外的
+   * 时机补一次（见 doSend 与 init），这里只管「一直开着页面」的场景。
+   */
+  useEffect(() => {
+    const timer = window.setInterval(() => {
+      if (document.visibilityState === 'visible') void refreshWho();
+    }, 30_000);
+    return () => window.clearInterval(timer);
+  }, [refreshWho]);
 
   /** 读到哪了：有新消息且自己在底部时，把游标推上去 */
   useEffect(() => {
@@ -286,6 +321,8 @@ export default function ChatRoom() {
       setEmojiOpen(false);
       requestAnimationFrame(() => scrollToBottom(true));
       inputRef.current?.focus();
+      // 发言数变了 —— 侧栏的「累计发言 / 再聊几句」要跟着走，别等 30 秒
+      void refreshWho();
       return;
     }
 
@@ -326,37 +363,60 @@ export default function ChatRoom() {
       : 0;
 
   // —— 渲染 ——
+  //
+  // 左栏在三个分支里都渲染：加载骨架如果只有右边一列，加载完一变两列会横向跳一下。
+  // 加载阶段登录按钮点了没反应（LoginDialog 要等 config 才有），属于必然，不是 bug。
+
+  /** 侧栏（三个分支共用一份配置，避免 props 写三遍） */
+  const aside = (
+    <ChatAside
+      me={me}
+      members={members}
+      signedIn={signedIn}
+      online={online}
+      onLogin={() => setLoginOpen(true)}
+      onJumpLatest={() => scrollToBottom(true)}
+    />
+  );
 
   if (loading) {
     return (
-      <section className="q-chat" aria-busy="true">
-        <div className="q-chat__empty">
-          <MorphIcon icon={LoaderCircle} size={18} color="currentColor" />
-          <span>正在推开长亭的门…</span>
-        </div>
-      </section>
+      <div className="q-chat-layout">
+        {aside}
+        <section className="q-chat" aria-busy="true">
+          <div className="q-chat__empty">
+            <MorphIcon icon={LoaderCircle} size={18} color="currentColor" />
+            <span>正在推开长亭的门…</span>
+          </div>
+        </section>
+      </div>
     );
   }
 
   if (failed) {
     return (
-      <section className="q-chat">
-        <div className="q-chat__empty">
-          <MorphIcon icon={CircleAlert} size={18} color="currentColor" />
-          <span>长亭的门暂时推不开，稍后再来看看</span>
-        </div>
-        <div className="q-chat__retry">
-          <button type="button" onClick={() => void init()}>
-            再试一次
-          </button>
-        </div>
-      </section>
+      <div className="q-chat-layout">
+        {aside}
+        <section className="q-chat">
+          <div className="q-chat__empty">
+            <MorphIcon icon={CircleAlert} size={18} color="currentColor" />
+            <span>长亭的门暂时推不开，稍后再来看看</span>
+          </div>
+          <div className="q-chat__retry">
+            <button type="button" onClick={() => void init()}>
+              再试一次
+            </button>
+          </div>
+        </section>
+      </div>
     );
   }
 
   return (
-    <section className="q-chat" aria-label="长亭聊天室">
-      <div className="q-chat__bar">
+    <div className="q-chat-layout">
+      {aside}
+      <section className="q-chat" aria-label="长亭聊天室">
+        <div className="q-chat__bar">
         <span className="q-chat__live">
           <i aria-hidden="true" />
           {online > 0 ? `${online} 人在长亭` : '还没有人在'}
@@ -498,7 +558,8 @@ export default function ChatRoom() {
           }}
         />
       )}
-    </section>
+      </section>
+    </div>
   );
 }
 

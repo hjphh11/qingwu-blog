@@ -204,3 +204,67 @@ export async function markRead(lastId: number): Promise<void> {
     /* 静默 */
   }
 }
+
+// ——————————————————————————————————————————————————————————
+// 侧栏（我的卡 + 在线的人）
+// ——————————————————————————————————————————————————————————
+
+export interface ChatRank {
+  /** 称号，如「檐下常客」 */
+  title: string;
+  /** 第几档（1 起）—— 只给进度条用，不展示成 Lv.N */
+  step: number;
+  total: number;
+  messages: number;
+  nextTitle: string;
+  /** 还差几句到下一档；顶格为 0 */
+  toNext: number;
+  /** 当前档内进度 0~100 */
+  progress: number;
+}
+
+export interface ChatMe extends ChatRank {
+  id: number;
+  name: string;
+  avatar: string;
+  site: string;
+  admin: boolean;
+}
+
+export interface ChatMember {
+  id: number;
+  name: string;
+  avatar: string;
+  site: string;
+  admin: boolean;
+  online: boolean;
+}
+
+export interface WhoResult {
+  me: ChatMe | null;
+  members: ChatMember[];
+}
+
+/**
+ * 侧栏数据。
+ *
+ * 和 poll 分开：poll 2.5 秒跑一次，只该拿增量消息；侧栏 30 秒刷一次就够。
+ * 失败了回空值不抛错 —— 侧栏是锦上添花，不该让聊天室看起来坏了。
+ */
+export async function fetchWho(): Promise<WhoResult> {
+  try {
+    const res = await fetch(`${BASE}/chat/who`, {
+      headers: { accept: 'application/json' },
+      credentials: 'include',
+      signal: AbortSignal.timeout(8000),
+    });
+    if (!res.ok) return { me: null, members: [] };
+    const data = (await res.json()) as { me?: ChatMe | null; members?: ChatMember[] };
+    return {
+      me: data.me ?? null,
+      members: Array.isArray(data.members) ? data.members : [],
+    };
+  } catch {
+    return { me: null, members: [] };
+  }
+}

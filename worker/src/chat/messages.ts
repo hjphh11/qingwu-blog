@@ -157,7 +157,7 @@ function onlineOf(env: Env, now: number): Promise<number> {
 }
 
 /** 谁在读（写节流版）：只有超过 20 秒没记过才写 */
-async function touchPresence(env: Env, accountId: number, now: number): Promise<void> {
+export async function touchPresence(env: Env, accountId: number, now: number): Promise<void> {
   await env.DB.prepare(
     `INSERT INTO chat_presence (account_id, last_seen) VALUES (?, ?)
        ON CONFLICT(account_id) DO UPDATE SET last_seen = excluded.last_seen

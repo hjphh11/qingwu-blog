@@ -6,6 +6,7 @@
 // 已启用（v1）：
 //   GET  /chat/history?before=<id>&limit=50   首屏 / 向上翻页
 //   GET  /chat/poll?after=<id>                增量 + 在线人数 + 被撤回的 id
+//   GET  /chat/who                            侧栏：我的称号 / 累计发言 / 在线的人
 //   POST /chat/send                           发一条
 //   POST /chat/read                           更新阅读游标
 //   POST /chat/:id/recall                     2 分钟内撤回自己的
@@ -17,6 +18,7 @@ import type { Env } from '../types';
 import { json } from '../util';
 import { getHistory, markRead, pollChat, sendMessage } from './messages';
 import { recallMessage } from './recall';
+import { getWho } from './who';
 
 const NOT_ALLOWED = () => json({ ok: false, reason: 'method_not_allowed' }, 405);
 
@@ -34,6 +36,11 @@ export async function handleChat(
 
   if (path === '/chat/poll') {
     return method === 'GET' ? pollChat(request, env) : NOT_ALLOWED();
+  }
+
+  // 侧栏：我的称号/发言数 + 在线的人。30 秒刷一次就够，不该跟 poll 一起 2.5 秒跑
+  if (path === '/chat/who') {
+    return method === 'GET' ? getWho(request, env) : NOT_ALLOWED();
   }
 
   if (path === '/chat/send') {

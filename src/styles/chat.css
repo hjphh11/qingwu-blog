@@ -3,6 +3,351 @@
    自己靠右、别人靠左，和 IM 的肌肉记忆一致；不做冷蓝灰那套。 */
 
 @layer components {
+  /* ——— 整页布局：左栏 + 聊天 ——— */
+  .q-chat-layout {
+    display: grid;
+    /* 17.5rem 是「够放昵称 + 站点名、又不至于挤掉聊天区」的实测宽度 */
+    grid-template-columns: 17.5rem minmax(0, 1fr);
+    gap: 1.25rem;
+    align-items: start;
+  }
+
+  /* 窄屏：聊天优先，侧栏挪到下面。
+     挪而不是藏 —— 在线名单和公告在手机上一样有人想看，只是不该占首屏。 */
+  @media (max-width: 1023px) {
+    .q-chat-layout {
+      grid-template-columns: 1fr;
+      gap: 1rem;
+    }
+
+    .q-chat-layout > .q-chat {
+      order: 1;
+    }
+
+    .q-chat-layout > .q-aside {
+      order: 2;
+    }
+  }
+
+  /* ——— 侧栏 ——— */
+  .q-aside {
+    display: flex;
+    flex-direction: column;
+    gap: 0.85rem;
+    min-width: 0;
+  }
+
+  .q-aside-card {
+    border: 1px solid var(--color-hairline);
+    border-radius: var(--radius-card);
+    background: #fffdfb;
+    padding: 0.9rem;
+  }
+
+  .q-aside-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+    margin-bottom: 0.6rem;
+  }
+
+  .q-aside-head__t {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    font-size: 0.8rem;
+    color: var(--color-brown);
+  }
+
+  .q-aside-head__n {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    font-size: 0.7rem;
+    color: var(--color-subtle);
+  }
+
+  .q-aside-head__n i {
+    width: 0.35rem;
+    height: 0.35rem;
+    border-radius: 9999px;
+    background: #4a9e6b;
+  }
+
+  .q-aside-empty {
+    padding: 0.6rem 0 0.3rem;
+    font-size: 0.72rem;
+    line-height: 1.8;
+    color: var(--color-subtle);
+  }
+
+  /* ——— ① 我的卡 ——— */
+  .q-aside-me__top {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+  }
+
+  .q-aside-me__avatar {
+    flex: none;
+    display: grid;
+    place-items: center;
+    width: 2.8rem;
+    height: 2.8rem;
+    border-radius: 9999px;
+    background-color: color-mix(in srgb, var(--color-rose) 24%, #fff);
+    /* 和消息头像同一套：background-image + 首字兜底，外链挂了不留破图 */
+    background-size: cover;
+    background-position: center;
+    border: 1px solid var(--color-hairline);
+    font-size: 0.95rem;
+    color: var(--color-brown);
+    user-select: none;
+  }
+
+  .q-aside-me__id {
+    min-width: 0;
+  }
+
+  .q-aside-me__name {
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+    font-size: 0.92rem;
+    color: var(--color-ink);
+    overflow-wrap: anywhere;
+  }
+
+  .q-aside-me__tag {
+    flex: none;
+    padding: 0 0.28rem;
+    border-radius: 0.28rem;
+    background: color-mix(in srgb, var(--color-crimson) 12%, transparent);
+    color: var(--color-accent-soft);
+    font-size: 0.62rem;
+    line-height: 1.6;
+  }
+
+  .q-aside-me__title {
+    display: inline-block;
+    margin-top: 0.25rem;
+    padding: 0.05rem 0.5rem;
+    border-radius: var(--radius-pill);
+    background: color-mix(in srgb, var(--color-rose) 26%, #fff);
+    color: var(--color-accent-soft);
+    font-size: 0.7rem;
+  }
+
+  .q-aside-me__count {
+    margin-top: 0.75rem;
+    font-size: 0.72rem;
+    color: var(--color-subtle);
+  }
+
+  .q-aside-me__count b {
+    color: var(--color-crimson);
+    font-weight: 500;
+  }
+
+  .q-aside-me__bar {
+    height: 6px;
+    margin-top: 0.45rem;
+    border-radius: 9999px;
+    /* 轨道要够淡、填充要够重：两者差不多深浅时，27% 那一小截几乎看不出来（第一版就是这样） */
+    background: color-mix(in srgb, var(--color-brown) 12%, #fff);
+    overflow: hidden;
+  }
+
+  .q-aside-me__bar i {
+    display: block;
+    height: 100%;
+    /* 极小进度也要能看见一眼，否则「刚起步」和「没有进度」长得一样 */
+    min-width: 4px;
+    border-radius: inherit;
+    background: var(--color-crimson);
+    transition: width var(--dur-state) ease;
+  }
+
+  .q-aside-me__next {
+    margin-top: 0.4rem;
+    font-size: 0.68rem;
+    line-height: 1.7;
+    color: var(--color-subtle);
+  }
+
+  .q-aside-me__next b {
+    color: var(--color-crimson);
+    font-weight: 500;
+  }
+
+  .q-aside-me__acts {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.4rem;
+    margin-top: 0.8rem;
+  }
+
+  .q-aside-act {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.3rem;
+    padding: 0.38rem 0.4rem;
+    border: 1px solid var(--color-hairline);
+    border-radius: 0.6rem;
+    font-size: 0.72rem;
+    color: var(--color-brown);
+    background: transparent;
+    transition: background-color var(--dur-micro) ease, border-color var(--dur-micro) ease,
+      color var(--dur-micro) ease;
+  }
+
+  .q-aside-act:hover {
+    background: color-mix(in srgb, var(--color-rose) 14%, transparent);
+    border-color: color-mix(in srgb, var(--color-crimson) 28%, transparent);
+    color: var(--color-crimson);
+  }
+
+  /* 未登录的那张邀请卡 */
+  .q-aside-guest__t {
+    font-size: 0.88rem;
+    color: var(--color-ink);
+  }
+
+  .q-aside-guest__s {
+    margin: 0.35rem 0 0.75rem;
+    font-size: 0.72rem;
+    line-height: 1.8;
+    color: var(--color-subtle);
+  }
+
+  .q-aside-guest button {
+    width: 100%;
+    padding: 0.42rem;
+    border-radius: var(--radius-pill);
+    background: var(--color-cta);
+    color: #fff;
+    font-size: 0.78rem;
+  }
+
+  /* ——— ② 在线的人 ——— */
+  .q-aside-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.1rem;
+    /* 超过这个高度就在卡片里滚 —— 侧栏不该比聊天区还长 */
+    max-height: 15rem;
+    overflow-y: auto;
+    scrollbar-width: thin;
+  }
+
+  .q-aside-person {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.28rem 0.15rem;
+    border-radius: 0.5rem;
+  }
+
+  .q-aside-person__avatar {
+    flex: none;
+    display: grid;
+    place-items: center;
+    width: 1.85rem;
+    height: 1.85rem;
+    border-radius: 9999px;
+    background-color: color-mix(in srgb, var(--color-rose) 22%, #fff);
+    background-size: cover;
+    background-position: center;
+    border: 1px solid var(--color-hairline);
+    font-size: 0.7rem;
+    color: var(--color-brown);
+    user-select: none;
+  }
+
+  .q-aside-person__body {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .q-aside-person__name {
+    display: flex;
+    align-items: center;
+    gap: 0.3rem;
+    font-size: 0.78rem;
+    color: var(--color-ink);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .q-aside-person__name em {
+    flex: none;
+    font-style: normal;
+    padding: 0 0.24rem;
+    border-radius: 0.24rem;
+    background: color-mix(in srgb, var(--color-crimson) 11%, transparent);
+    color: var(--color-accent-soft);
+    font-size: 0.6rem;
+  }
+
+  .q-aside-person__site {
+    display: block;
+    font-size: 0.63rem;
+    color: var(--color-subtle);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .q-aside-person__dot {
+    flex: none;
+    width: 0.35rem;
+    height: 0.35rem;
+    border-radius: 9999px;
+    background: #4a9e6b;
+  }
+
+  .q-aside-more {
+    width: 100%;
+    margin-top: 0.5rem;
+    padding: 0.35rem;
+    border-top: 1px solid var(--color-hairline);
+    font-size: 0.7rem;
+    color: var(--color-accent-soft);
+  }
+
+  .q-aside-more:hover {
+    color: var(--color-crimson);
+  }
+
+  /* ——— ③ 公告 ——— */
+  .q-aside-notice__list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.45rem;
+  }
+
+  .q-aside-notice__list li {
+    position: relative;
+    padding-left: 0.7rem;
+    font-size: 0.72rem;
+    line-height: 1.85;
+    color: var(--color-muted);
+  }
+
+  .q-aside-notice__list li::before {
+    content: "";
+    position: absolute;
+    left: 0.15rem;
+    top: 0.68rem;
+    width: 0.22rem;
+    height: 0.22rem;
+    border-radius: 9999px;
+    background: var(--color-rose);
+  }
+
   .q-chat {
     position: relative;
     display: flex;
