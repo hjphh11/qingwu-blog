@@ -1682,6 +1682,41 @@
     }
   }
 
+  /* ——— ⑨ 顶栏右侧按钮组 + 断线提示 ———
+     提醒开关进顶栏而不是侧栏：它是「这一页怎么提醒我」，属于会话本身的操作；
+     侧栏那块是「我是谁 / 谁在 / 规矩」，职责不同。 */
+  .q-chat__barbtns {
+    display: flex;
+    align-items: center;
+    gap: 0.15rem;
+  }
+
+  .q-chat__searchbtn.is-on {
+    color: var(--color-crimson);
+    background: color-mix(in srgb, var(--color-rose) 16%, transparent);
+  }
+
+  /* 断线提示条：整个会话区上面一条细带，比弹 toast 轻，也不会挡住消息 */
+  .q-chat__offline {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.4rem;
+    flex: none;
+    padding: 0.32rem 1rem;
+    border-bottom: 1px solid var(--color-hairline);
+    background: color-mix(in srgb, var(--color-amber) 12%, #fffdfb);
+    color: var(--color-brown);
+    font-size: 0.72rem;
+  }
+
+  .q-chat__offline i {
+    width: 0.36rem;
+    height: 0.36rem;
+    border-radius: 9999px;
+    background: var(--color-amber);
+  }
+
   @media (prefers-reduced-motion: reduce) {
     .q-skel-av,
     .q-skel-line {

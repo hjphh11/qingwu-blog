@@ -75,6 +75,9 @@ export {
   ListPlus,
   // 表情面板
   Smile,
+  // 长亭（桌面提醒开关）
+  Bell,
+  BellRing,
   // 账号页（上传头像 / 定位留言 / 站长徽章）
   ImageUp,
   RotateCcw,

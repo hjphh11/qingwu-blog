@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { MorphIcon } from 'morphicons/react';
 import {
+  Bell,
+  BellRing,
   ChevronDown,
   CircleAlert,
   ImageUp as ImageIcon,
@@ -53,6 +55,19 @@ import {
 
 /** poll 间隔。2.5 秒是「体感即时」和「不把库写热」的平衡点 */
 const POLL_MS = 2_500;
+/**
+ * 页面在后台时的轮询间隔。
+ *
+ * 原来后台是**完全暂停**的，代价是两个功能其实一直是死的：
+ * 页签标题的未读数字永远等不到新消息（poll 不跑就没有「新消息」），
+ * 桌面通知也没有触发源。而这页恰恰是「人不在看」的时候才需要提醒。
+ * 10 秒一次，空转响应 117 字节 ≈ 42 KB/小时，换来「切回来数字是对的」。
+ */
+const POLL_HIDDEN_MS = 10_000;
+/** 连续失败几次才认定「断了」—— 偶发一次超时不该闪提示 */
+const LINK_FAIL_TOLERANCE = 2;
+/** 桌面提醒开关存在本机（权限是浏览器级的，偏好是本机级的） */
+const NOTIFY_KEY = 'qingwu:chat-notify';
 
 /** 相邻消息超过这个间隔就插一条时间分割 */
 const GROUP_GAP_MS = 5 * 60 * 1000;
@@ -276,6 +291,22 @@ export default function ChatRoom() {
   const [highlightId, setHighlightId] = useState(0);
 
   /**
+   * 桌面提醒。三态：
+   *   · off      —— 用户没开（默认，不主动骚扰）
+   *   · on       —— 开了且浏览器已授权
+   *   · denied   —— 浏览器层面被拒，再点也没用，只能去地址栏解除
+   * 权限申请**必须由用户手势发起**（浏览器规则），所以只能做成一个按钮，
+   * 不能在进页面时偷偷弹窗。
+   */
+  const [notify, setNotify] = useState<'off' | 'on' | 'denied'>('off');
+  /** 轮询里读的镜像值：写在 ref 里，免得每次开关都重建 setTimeout 链 */
+  const notifyOnRef = useRef(false);
+
+  /** 连接状态：连续失败两次才显示提示条；恢复后自动收回 */
+  const [link, setLink] = useState<'ok' | 'down'>('ok');
+  const linkFailRef = useRef(0);
+
+  /**
    * 拖文件进来时的投放态。
    *
    * 用计数器而不是布尔：`dragenter` / `dragleave` 在嵌套元素之间会成对狂发，
@@ -294,6 +325,18 @@ export default function ChatRoom() {
   const [draft, setDraft] = useState('');
   const [sending, setSending] = useState(false);
   const [tip, setTip] = useState<{ kind: 'warn' | 'ok'; text: string } | null>(null);
+
+  /**
+   * 提示的寿命：**成功类 4 秒自动收，警告类留着**。
+   *
+   * 「开着页面放后台，有人说话会提醒你」这种话挂在输入框上方不走，
+   * 会一直占一行高度；而「没连上」「太长了」这类警告得让人看清再消失。
+   */
+  useEffect(() => {
+    if (tip?.kind !== 'ok') return;
+    const t = window.setTimeout(() => setTip(null), 4000);
+    return () => window.clearTimeout(t);
+  }, [tip]);
   const [emojiOpen, setEmojiOpen] = useState(false);
 
   /** 已经传好、还没发出去的那张图 / 那段视频 */
@@ -383,6 +426,92 @@ export default function ChatRoom() {
     void init({ quiet: Boolean(boot) });
   }, [init, boot]);
 
+  /** 读本机保存的提醒偏好（权限是浏览器级的，偏好是本机级的，两个都对上才算「开」） */
+  useEffect(() => {
+    try {
+      const wanted = window.localStorage.getItem(NOTIFY_KEY) === '1';
+      if (typeof Notification === 'undefined') return;
+      if (Notification.permission === 'denied') setNotify('denied');
+      else if (wanted && Notification.permission === 'granted') setNotify('on');
+    } catch {
+      /* 隐私模式读不了 localStorage：当作没开 */
+    }
+  }, []);
+
+  useEffect(() => {
+    notifyOnRef.current = notify === 'on';
+  }, [notify]);
+
+  /**
+   * 发一条桌面提醒。**只在页面不可见时调用** —— 人就在页面上时，
+   * 系统通知是噪音，标题数字和浮标已经够了。
+   *
+   * 用 `tag: 'changting'` 让同一段时间的提醒互相替换而不是排队；
+   * 点一下就回到页面并贴底，比只把窗口提到前台更有用。
+   */
+  const fireNotify = useCallback(
+    (income: ChatMessage[]) => {
+      if (!notifyOnRef.current) return;
+      if (typeof Notification === 'undefined' || Notification.permission !== 'granted') return;
+      const others = income.filter((m) => !m.mine && m.status !== 'recalled');
+      if (!others.length) return;
+      const last = others[others.length - 1]!;
+      const plain = last.body.replace(/\s+/g, ' ').trim();
+      const excerpt = plain || (last.media ? (last.media.kind === 'video' ? '[视频]' : '[图片]') : '');
+      const title = others.length === 1 ? `长亭 · ${last.name}` : `长亭 · ${others.length} 条新消息`;
+      const body =
+        others.length === 1 ? excerpt.slice(0, 60) : `最后一条来自 ${last.name}：${excerpt.slice(0, 40)}`;
+      try {
+        const n = new Notification(title, {
+          body,
+          tag: 'changting',
+          icon: last.avatar || undefined,
+        });
+        n.onclick = () => {
+          window.focus();
+          scrollToBottom(true);
+          n.close();
+        };
+      } catch {
+        /* 少数浏览器要求走 ServiceWorker；失败就静默，不该因此弹错误 */
+      }
+    },
+    [scrollToBottom],
+  );
+
+  const toggleNotify = async () => {
+    if (typeof Notification === 'undefined') {
+      setTip({ kind: 'warn', text: '这个浏览器不支持桌面提醒' });
+      return;
+    }
+    if (notify === 'on') {
+      try {
+        window.localStorage.setItem(NOTIFY_KEY, '0');
+      } catch {
+        /* 忽略 */
+      }
+      setNotify('off');
+      return;
+    }
+    if (Notification.permission === 'denied') {
+      setTip({ kind: 'warn', text: '浏览器已经拦了提醒，去地址栏左边放行一下' });
+      setNotify('denied');
+      return;
+    }
+    const perm = await Notification.requestPermission();
+    if (perm === 'granted') {
+      try {
+        window.localStorage.setItem(NOTIFY_KEY, '1');
+      } catch {
+        /* 忽略 */
+      }
+      setNotify('on');
+      setTip({ kind: 'ok', text: '开着页面放后台，有人说话会提醒你' });
+    } else {
+      setNotify('denied');
+    }
+  };
+
   /**
    * 快照保鲜：收到新消息 / 自己发完，把快照重写一次，3 秒节流。
    *
@@ -405,45 +534,57 @@ export default function ChatRoom() {
     });
   }, [messages, hasMore, account]);
 
-  /** 轮询：setTimeout 递归，页面不可见时暂停 */
+  /** 轮询：setTimeout 递归；前台 2.5 秒，后台降到 10 秒（不再完全停） */
   useEffect(() => {
     let alive = true;
     let timer = 0;
 
     const tick = async () => {
       if (!alive) return;
-      if (document.visibilityState === 'visible') {
-        try {
-          const r = await poll(lastIdRef.current);
-          if (!alive) return;
+      const hidden = document.visibilityState !== 'visible';
+      try {
+        const r = await poll(lastIdRef.current);
+        if (!alive) return;
 
-          setOnline(r.online);
-          setSignedIn(r.signedIn);
-          setTypingNames(r.typing);
-          setReads(r.reads);
+        // 通了就把断线计数清掉；提示条只在「真断了」时出现
+        linkFailRef.current = 0;
+        setLink((prev) => (prev === 'ok' ? prev : 'ok'));
 
-          if (r.messages.length || r.recalled.length) {
-            const incoming = r.messages;
-            const atBottom = atBottomRef.current;
-            setMessages((prev) => mergeMessages(prev, incoming, r.recalled));
-            for (const m of incoming) lastIdRef.current = Math.max(lastIdRef.current, m.id);
+        setOnline(r.online);
+        setSignedIn(r.signedIn);
+        setTypingNames(r.typing);
+        setReads(r.reads);
 
-            // 自己发的那条不算「新消息」—— 发送路径已经滚到底了
-            const others = incoming.filter((m) => !m.mine).length;
-            if (others > 0) {
-              if (document.visibilityState !== 'visible') {
-                // 人在别的标签页：只累加页签数字，别在他回来时再滚一次屏
-                setUnread((n) => n + others);
-              } else if (!atBottom) {
-                setPendingNew((n) => n + others);
-              }
+        if (r.messages.length || r.recalled.length) {
+          const incoming = r.messages;
+          const atBottom = atBottomRef.current;
+          setMessages((prev) => mergeMessages(prev, incoming, r.recalled));
+          for (const m of incoming) lastIdRef.current = Math.max(lastIdRef.current, m.id);
+
+          // 自己发的那条不算「新消息」—— 发送路径已经滚到底了
+          const others = incoming.filter((m) => !m.mine).length;
+          if (others > 0) {
+            if (hidden) {
+              // 人在别的标签页：累加页签数字 + 发桌面提醒，别在他回来时再滚屏
+              setUnread((n) => n + others);
+              fireNotify(incoming);
+            } else if (!atBottom) {
+              setPendingNew((n) => n + others);
             }
           }
-        } catch {
-          /* 静默：2.5 秒后自然重试，弹错误只会让人以为聊天坏了 */
         }
+      } catch {
+        /* 不弹错误：偶发超时不该让人以为聊天坏了。
+           连续两次失败才亮提示条，恢复后自动收回。 */
+        linkFailRef.current += 1;
+        if (linkFailRef.current >= LINK_FAIL_TOLERANCE) setLink('down');
       }
-      if (alive) timer = window.setTimeout(tick, POLL_MS);
+      if (alive) {
+        timer = window.setTimeout(
+          tick,
+          document.visibilityState === 'visible' ? POLL_MS : POLL_HIDDEN_MS,
+        );
+      }
     };
 
     timer = window.setTimeout(tick, POLL_MS);
@@ -458,12 +599,20 @@ export default function ChatRoom() {
     };
     document.addEventListener('visibilitychange', onVisible);
 
+    // 系统层面恢复联网：不等 10 秒，立刻验一次
+    const onOnline = () => {
+      window.clearTimeout(timer);
+      void tick();
+    };
+    window.addEventListener('online', onOnline);
+
     return () => {
       alive = false;
       window.clearTimeout(timer);
       document.removeEventListener('visibilitychange', onVisible);
+      window.removeEventListener('online', onOnline);
     };
-  }, []);
+  }, [fireNotify]);
 
   /**
    * 侧栏 30 秒刷一次。
@@ -888,16 +1037,41 @@ export default function ChatRoom() {
             <i aria-hidden="true" />
             {online > 0 ? `${online} 人在长亭` : '还没有人在'}
           </span>
-          <button
-            type="button"
-            className="q-chat__searchbtn"
-            onClick={() => setSearchOpen(true)}
-            aria-label="搜索聊天记录"
-          >
-            <MorphIcon icon={Search} size={13} color="currentColor" />
-            搜索
-          </button>
+          <div className="q-chat__barbtns">
+            <button
+              type="button"
+              className={`q-chat__searchbtn${notify === 'on' ? ' is-on' : ''}`}
+              onClick={() => void toggleNotify()}
+              aria-pressed={notify === 'on'}
+              title={
+                notify === 'on'
+                  ? '开着呢：页面在后台时，有人说话会弹一条系统提醒'
+                  : notify === 'denied'
+                    ? '浏览器拦了提醒，去地址栏左边放行'
+                    : '页面放后台时，有人说话弹一条系统提醒'
+              }
+            >
+              <MorphIcon icon={notify === 'on' ? BellRing : Bell} size={13} color="currentColor" />
+              {notify === 'on' ? '提醒开' : '提醒'}
+            </button>
+            <button
+              type="button"
+              className="q-chat__searchbtn"
+              onClick={() => setSearchOpen(true)}
+              aria-label="搜索聊天记录"
+            >
+              <MorphIcon icon={Search} size={13} color="currentColor" />
+              搜索
+            </button>
+          </div>
         </div>
+
+        {link === 'down' && (
+          <p className="q-chat__offline" role="status">
+            <i aria-hidden="true" />
+            连接断了，正在重连…
+          </p>
+        )}
 
       <div
         className={`q-chat__scroll${messages.length === 0 ? ' is-empty' : ''}`}
