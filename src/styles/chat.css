@@ -483,15 +483,24 @@
   }
 
   /* ——— 消息行 ——— */
+  /**
+   * 行间距用 **padding 而不是 margin**。
+   *
+   * margin 不属于任何元素的盒子，所以两个行盒子之间会留下一条 0.85rem 的
+   * 「死带」：鼠标落在这条缝里，没有任何 `.q-chat__row` 处于 :hover，
+   * 操作条会凭空消失。改成 padding 之后行盒子首尾相接，纵向连续 ——
+   * 指针永远落在某一行里，露出的就是那一行的按钮。
+   * （Slack / Discord 的消息行也是整块无缝隙的，同一个道理。）
+   */
   .q-chat__row {
     display: flex;
     align-items: flex-start;
     gap: 0.5rem;
-    margin-top: 0.85rem;
+    padding-top: 0.85rem;
   }
 
   .q-chat__row.is-grouped {
-    margin-top: 0.2rem;
+    padding-top: 0.2rem;
   }
 
   /* 自己的靠右：翻转方向比 float/absolute 都稳，窄屏也不会塌 */
@@ -583,31 +592,41 @@
   }
 
   /**
-   * 操作条（撤回 / 回复 / +）：绝对定位在气泡下方，**不占布局高度**。
+   * 操作条（回复 / 撤回 / +）。
    *
-   * ⚠️ `top: 100%` 必须贴着气泡底部，**不能留 margin 空隙**：
-   *    之前写的是 `calc(100% + 0.15rem)`，鼠标从气泡往下移动时会穿过那 2px 死区，
-   *    掉出 :hover 范围 → 操作条瞬间消失 → 根本点不到（站长实测）。
-   *    视觉上的间距改用 padding-top 假装 —— padding 也是盒子的一部分，
-   *    鼠标经过它时仍算在 row 的子元素上，hover 不会断。
+   * 位置放在气泡**右侧同一水平带**（自己的消息镜像到左侧），原因三条：
+   *
+   * 1. **命中区 = 整行**。显隐的触发条件挂在 `.q-chat__row:hover` 上，而整行是
+   *    满宽的块，于是「想点按钮」这件事的容错范围从「一条 18px 高的窄条」
+   *    变成了「整行 —— 横向几百像素、纵向四十像素」。Fitts 定律里这等于
+   *    把目标一路延伸到家门口；贴边目标更是近乎无限大。
+   * 2. **不再需要跨过行边界**。原先按钮绝对定位在气泡**下方**，属于行盒子之外：
+   *    从下面往上够，会先命中下一条消息的行、露出的是**下面那条**的按钮；
+   *    从上往下够，中途只要偏出那条窄带就掉 hover。挪到同一水平带之后，
+   *    按钮整个落在行盒子内部，进出都不会断开 hover 链。
+   * 3. **滑过去是直线**。气泡 → 按钮是一次纯水平移动，不用斜向穿过空隙。
+   *
+   * 尺寸按 WCAG 2.2 SC 2.5.8 来：「指针目标至少 24×24 CSS px」。
+   * 这里给到 30px（约 2.6 倍于原来的 18px 高文字按钮），间距 5px。
    */
   .q-chat__acts {
     position: absolute;
-    top: 100%;
-    left: 0;
+    top: 0;
+    left: calc(100% + 0.4rem);
     z-index: 5;
     display: flex;
     align-items: center;
-    gap: 0.3rem;
-    padding-top: 0.3rem;
+    gap: 5px;
     opacity: 0;
     pointer-events: none;
     transition: opacity var(--dur-micro) ease;
   }
 
+  /* 自己的消息靠右：整体镜像到气泡左侧，按钮顺序也跟着反 */
   .q-chat__row.is-mine .q-chat__acts {
     left: auto;
-    right: 0;
+    right: calc(100% + 0.4rem);
+    flex-direction: row-reverse;
   }
 
   .q-chat__row:hover .q-chat__acts,
@@ -617,10 +636,28 @@
     pointer-events: auto;
   }
 
-  /* 触屏没有 hover：直接给出来 */
+  /**
+   * 窄屏 / 触屏：横向没地方放，动作回到气泡**下方**，并改成正常流。
+   *
+   * 必须进正常流而不是继续绝对定位：
+   *   · 绝对定位在下方 → 和下一行文字叠在一起（行间距只有 0.85rem，按钮 30px 高）
+   *   · 绝对定位在右侧 → 实测 390px 宽时把滚动容器撑出 37px 横向溢出，
+   *     聊天区会永久多一条横向滚动条（气泡最宽能到 70%，右边只剩几十像素）
+   *
+   * 进流之后「提前预留 35px」这件事反而变成了优点：这块空白属于行盒子内部，
+   * 鼠标悬停它同样算悬停在行上，于是显隐依然可靠，而布局不会因为 hover 而跳动。
+   */
+  @media (max-width: 640px), (hover: none) {
+    .q-chat__acts {
+      position: static;
+      margin-top: 0.35rem;
+    }
+  }
+
+  /* 触屏没有 hover：直接常显，不然根本点不到 */
   @media (hover: none) {
     .q-chat__acts {
-      opacity: 0.85;
+      opacity: 1;
       pointer-events: auto;
     }
   }
@@ -741,25 +778,39 @@
     white-space: nowrap;
   }
 
+  /**
+   * 文字按钮（回复 / 撤回）。
+   *
+   * 保留文字而不是换图标：图标（尤其「铅笔 / 三个点」）的语义要靠猜，
+   * 而站长这套界面里只有两个动作，写出来更快 —— Slack 自己做简化版时
+   * 也是把动作从灰图标改成「可见、能读懂的入口」。
+   *
+   * 尺寸 30×30（WCAG 2.2 SC 2.5.8 要求 ≥24×24）。原来 0.65rem 字号 + 0.1rem 内边距
+   * 只有 18px 高，鼠标要停在一条 18px 的窄条上才点得中。
+   */
   .q-chat__recall {
     flex: none;
-    font-size: 0.65rem;
-    color: var(--color-subtle);
-    padding: 0.1rem 0.3rem;
-    border-radius: 0.3rem;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 1.875rem;
+    min-height: 1.875rem;
+    padding: 0 0.5rem;
+    border: 1px solid var(--color-hairline);
+    border-radius: 0.55rem;
+    background: #fffdfb;
+    color: var(--color-brown);
+    font-size: 0.72rem;
+    line-height: 1;
     /* 显隐由外层的 .q-chat__acts 统一控制，这里不再自己管 opacity */
-    transition: color var(--dur-micro) ease;
+    transition: color var(--dur-micro) ease, border-color var(--dur-micro) ease,
+      background-color var(--dur-micro) ease;
   }
 
   .q-chat__recall:hover {
     color: var(--color-crimson);
-  }
-
-  /* 触屏没有 hover：直接给出来 */
-  @media (hover: none) {
-    .q-chat__recall {
-      opacity: 0.85;
-    }
+    border-color: color-mix(in srgb, var(--color-crimson) 30%, transparent);
+    background: color-mix(in srgb, var(--color-rose) 12%, #fff);
   }
 
   /* ——— 表情回应 ——— */
@@ -772,28 +823,33 @@
   .q-chat__plus {
     display: grid;
     place-items: center;
-    width: 1.35rem;
-    height: 1.35rem;
+    width: 1.875rem;
+    height: 1.875rem;
     border-radius: 9999px;
     border: 1px solid var(--color-hairline);
     background: #fffdfb;
     color: var(--color-subtle);
-    font-size: 0.85rem;
+    font-size: 1rem;
     line-height: 1;
     /* 显隐同样交给外层 .q-chat__acts */
-    transition: color var(--dur-micro) ease, border-color var(--dur-micro) ease;
+    transition: color var(--dur-micro) ease, border-color var(--dur-micro) ease,
+      background-color var(--dur-micro) ease;
   }
 
   .q-chat__plus:hover {
     color: var(--color-crimson);
     border-color: color-mix(in srgb, var(--color-crimson) 34%, transparent);
+    background: color-mix(in srgb, var(--color-rose) 12%, #fff);
   }
 
   /* 弹出的那一排：胶囊形，八个表情刚好一行 */
   .q-chat__reactpop {
     position: absolute;
     bottom: 100%;
-    left: 0;
+    /* 默认往**左**展开：操作条现在挂在自己气泡的右侧，「+」离卡片右缘只有
+       几十像素，往右展开会被裁掉一半（触屏布局下按钮在气泡下方，同样成立） */
+    left: auto;
+    right: 0;
     z-index: 20;
     display: flex;
     gap: 0.1rem;
@@ -805,10 +861,10 @@
     box-shadow: 0 8px 24px rgba(90, 40, 50, 0.12);
   }
 
-  /* 自己的消息靠右，弹层也要右对齐，否则会伸到卡片外面 */
+  /* 自己的消息镜像过来：操作条在气泡左侧，弹层改为向右展开 */
   .q-chat__row.is-mine .q-chat__reactpop {
-    left: auto;
-    right: 0;
+    left: 0;
+    right: auto;
   }
 
   .q-chat__reactpop button {

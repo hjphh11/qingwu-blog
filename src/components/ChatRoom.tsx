@@ -1121,7 +1121,8 @@ function MessageRow({
             </div>
           )}
 
-          {/* 操作条：绝对定位在气泡（含回应）下方，不占布局高度，悬停才露 */}
+          {/* 操作条：贴在气泡右侧同一水平带（自己的消息镜像到左侧）。
+              位置、尺寸和「为什么不做悬停下方的窄条」见 chat.css 里 .q-chat__acts 的注释 */}
           <div className={`q-chat__acts${pickOpen ? ' has-open' : ''}`}>
             <button type="button" className="q-chat__recall" onClick={onReply}>
               回复
