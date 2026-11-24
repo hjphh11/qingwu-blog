@@ -1001,16 +1001,37 @@
     flex: 1;
     display: flex;
     align-items: flex-end;
-    gap: 0.25rem;
-    padding: 0.35rem 0.4rem 0.35rem 0.7rem;
+    /* 两个工具按钮之间 0.3rem：0.25 太挤，手指点「表情」常常点到旁边那张图 */
+    gap: 0.3rem;
+    padding: 0.35rem 0.4rem 0.35rem 0.8rem;
     border: 1px solid var(--color-hairline);
     border-radius: 1rem;
     background: #fff;
-    transition: border-color var(--dur-micro) ease;
+    transition: border-color var(--dur-micro) ease, box-shadow var(--dur-micro) ease;
   }
 
+  /**
+   * 焦点画在**容器**上，不是 textarea 自己身上。
+   *
+   * 原来这一层只改边框颜色，同时我又给全局的 `textarea:focus-visible` 加了轮廓 ——
+   * 两层叠起来就是「外面一圈绯红 + 里面一条发丝边」的双框（站长截图那个）。
+   * Signal / Element / Telegram 的输入区都只有一层：容器边框变色 + 一圈柔和外环，
+   * 环用 box-shadow 画，不占布局，光标进出时不会把下面的内容顶动。
+   */
   .q-chat__inputwrap:focus-within {
-    border-color: color-mix(in srgb, var(--color-crimson) 42%, transparent);
+    border-color: color-mix(in srgb, var(--color-crimson) 46%, transparent);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-rose) 22%, transparent);
+  }
+
+  /* 鼠标设备上给一点悬停反馈：不然「点这儿才能打字」这件事没有前兆 */
+  @media (hover: hover) {
+    .q-chat__inputwrap:hover {
+      border-color: color-mix(in srgb, var(--color-brown) 26%, transparent);
+    }
+  }
+
+  .q-chat__inputwrap:focus-within:hover {
+    border-color: color-mix(in srgb, var(--color-crimson) 46%, transparent);
   }
 
   .q-chat__input {
@@ -1076,6 +1097,15 @@
 
   .q-chat__send:disabled {
     opacity: 0.42;
+    cursor: not-allowed;
+  }
+
+  /* hover 之前是完全没有的：鼠标移上去毫无变化，像一张图片。
+     用同色系（混一点棕）压暗，而不是混黑 —— 混黑会把暖调压成脏红。 */
+  @media (hover: hover) {
+    .q-chat__send:not(:disabled):hover {
+      background: color-mix(in oklab, var(--color-cta) 86%, var(--color-brown));
+    }
   }
 
   .q-chat__send:not(:disabled):active {
@@ -1643,6 +1673,12 @@
     outline: 2px solid color-mix(in srgb, var(--color-crimson) 62%, transparent);
     outline-offset: 2px;
     border-radius: 0.4rem;
+  }
+
+  /* 例外：输入框的焦点由外层 `.q-chat__inputwrap:focus-within` 统一画。
+     不排除的话 textarea 会再套一圈轮廓，和外框叠成双框。 */
+  .q-chat .q-chat__input:focus-visible {
+    outline: none;
   }
 
   /* ——— ⑦ 拖拽投放 ———
