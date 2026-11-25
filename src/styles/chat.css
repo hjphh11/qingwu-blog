@@ -112,7 +112,26 @@
       calc(var(--info-w, 312px) + var(--bento-gap));
     /* 三栏之间的缝：8px。再宽三栏就像三张各过各的卡，读起来要来回跳 */
     --bento-gap: 0.5rem;
-    height: clamp(32rem, calc(100svh - 12rem), 62rem);
+    /**
+     * 卡片高度。
+     *
+     * `- 9rem` 是「导航（68）+ 卡片上方的呼吸 + 底部留一条边」的总和：
+     * 1440×900 下卡顶在 120、卡底落在 876，视口底还剩 24px。
+     * 原来是 `- 12rem` / 上限 62rem —— 900 高时只有 708，卡片底下空出一大截，
+     * 看着像没铺满；上限提到 72rem 后，1080 高的屏能到 936。
+     */
+    height: clamp(34rem, calc(100svh - 9rem), 72rem);
+  }
+
+  /**
+   * 长亭这一页：把 `.page-shell` 底部那 5rem 收紧。
+   *
+   * 全站的 5rem 是给「读完一篇文章」的呼吸；聊天室是一屏铺满的应用页，
+   * 卡片底到页脚之间多出 5rem，等于白送一段空白 —— 用户会觉得卡片没铺满。
+   * 只改这一页（`.q-chat-wide` 挂在 body 上），别的页面不受影响。
+   */
+  .q-chat-wide .page-shell {
+    padding-bottom: 1.5rem;
   }
 
   /* 缝由这两条 margin 供货（配合上面的 column-gap: 0） */
