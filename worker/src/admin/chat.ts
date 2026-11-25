@@ -374,3 +374,34 @@ export async function judgeChatReport(
   }
   return json(r);
 }
+
+/**
+ * 把 AI 收起来的消息放回去。
+ *
+ * 只认 `removed`：站长自己收走的（`deleted`）要恢复得走另一套判断 ——
+ * 那种情况往往是内容真有问题，不该和「模型误判」共用一颗按钮。
+ *
+ * 恢复本身也记一行流水（`restore`）：**误判率是本轮最该盯的数**。
+ * 如果 `auto_remove` 里有一半紧接着出现 `restore`，那就该收紧阈值或者关掉自动收。
+ */
+export async function restoreChatMessage(
+  _request: Request,
+  env: Env,
+  _admin: Admin,
+  id: number,
+): Promise<Response> {
+  const now = Date.now();
+  const res = await env.DB.prepare(
+    `UPDATE chat_messages SET status = 'visible', updated_at = ? WHERE id = ? AND status = 'removed'`,
+  )
+    .bind(now, id)
+    .run();
+  if (!res.meta?.changes) return json({ ok: false, reason: 'not_removed' }, 404);
+
+  await env.DB.prepare(
+    `INSERT INTO chat_alerts (kind, report_id, message_id, ts) VALUES ('restore', NULL, ?, ?)`,
+  )
+    .bind(id, now)
+    .run();
+  return json({ ok: true });
+}

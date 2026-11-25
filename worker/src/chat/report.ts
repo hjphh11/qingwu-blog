@@ -20,12 +20,35 @@ import type { Env } from '../types';
 import { json } from '../util';
 import { sessionUser } from '../auth/store';
 import { judgeFreeText } from '../admin/ai';
+import { sendMail } from '../mail';
 
 /** 和审核口径同一套五类，外加一个 other */
 const REASONS = new Set(['spam', 'abuse', 'porn', 'illegal', 'privacy', 'other']);
 
 /** 每人每小时最多报几条：正常用户一两条，刷的人一小时能报几百条 */
 const HOURLY_LIMIT = 20;
+
+/** 站址：只用来在信里拼后台链接 */
+const SITE_URL = 'https://www.qingwu.ink';
+
+/**
+ * 「拿不准」的通知信，半小时内最多一封。
+ *
+ * 一个人认真刷十条举报，就能让站长收到十封几乎一样的信 —— 那和垃圾邮件没区别。
+ * 半小时这个数来自实际：真出事的时候，半小时足够处理完手头这一批；
+ * 而半小时内连着来第二、第三条「拿不准」，去后台一次就能全看到。
+ */
+const REVIEW_MAIL_GAP = 30 * 60 * 1000;
+
+/** 类别 → 中文。前端 `AdminChat.tsx` 的 `VERDICT_LABEL` 与这份同步 */
+const VERDICT_CN: Record<string, string> = {
+  ok: '正常',
+  illegal: '违法',
+  porn: '色情',
+  abuse: '辱骂',
+  privacy: '隐私',
+  spam: '广告',
+};
 
 export async function reportMessage(
   request: Request,
@@ -99,7 +122,7 @@ export async function reportMessage(
      */
     if (!already && reportId > 0) {
       ctx.waitUntil(
-        judgeReportById(env, reportId).catch((err) => {
+        judgeReportById(env, reportId, { act: true }).catch((err) => {
           console.warn('[chat] 举报复核失败:', err instanceof Error ? err.message : err);
         }),
       );
@@ -141,6 +164,13 @@ export type JudgeOutcome =
       ai: ReportVerdict;
       /** 建议动作。**没有 ban**：封人只由站长决定 */
       advise: 'ignore' | 'delete' | 'review';
+      /**
+       * 这次实际做了什么（只在 `act: true` 时不为 none）：
+       *   · removed —— 确定违规，已经收起来（不是删）；
+       *   · mailed  —— 拿不准，已经给站长发信；
+       *   · none    —— 判成正常，或者这是后台的复核（不自动动手）。
+       */
+      action: 'removed' | 'mailed' | 'none';
       wouldBlock: boolean;
       threshold: number;
       ms: number;
@@ -155,22 +185,30 @@ export type JudgeOutcome =
  * 而且结论是处置依据，事后要能对账（谁、什么时候、用哪个模型判的）。
  * 再点一次就是重判，覆盖旧值（`ai_at` 跟着变）。
  */
-export async function judgeReportById(env: Env, reportId: number): Promise<JudgeOutcome> {
+export async function judgeReportById(
+  env: Env,
+  reportId: number,
+  opts: { act?: boolean } = {},
+): Promise<JudgeOutcome> {
   const row = await env.DB.prepare(
-    `SELECT r.id AS rid, m.id AS mid, m.body AS body, m.kind AS kind,
-            COALESCE(NULLIF(a.display_name, ''), substr(a.email, 1, instr(a.email, '@') - 1)) AS author_name
+    `SELECT r.id AS rid, r.reason AS reason, m.id AS mid, m.body AS body, m.kind AS kind,
+            COALESCE(NULLIF(a.display_name, ''), substr(a.email, 1, instr(a.email, '@') - 1)) AS author_name,
+            COALESCE(NULLIF(b.display_name, ''), substr(b.email, 1, instr(b.email, '@') - 1)) AS reporter_name
        FROM chat_reports r
        LEFT JOIN chat_messages m ON m.id = r.message_id
        LEFT JOIN accounts a ON a.id = m.account_id
+       LEFT JOIN accounts b ON b.id = r.account_id
       WHERE r.id = ?`,
   )
     .bind(reportId)
     .first<{
       rid: number;
+      reason: string | null;
       mid: number | null;
       body: string | null;
       kind: string | null;
       author_name: string | null;
+      reporter_name: string | null;
     }>();
 
   if (!row) return { ok: false, status: 404, reason: 'not_found' };
@@ -226,6 +264,49 @@ export async function judgeReportById(env: Env, reportId: number): Promise<Judge
    */
   const advise = r.verdict === 'ok' ? 'ignore' : r.wouldBlock ? 'delete' : 'review';
 
+  /**
+   * 按站长 2026-11-25 的规则动手：
+   *   · 模型**确定**（命中类别且到了阈值）→ 把这条**收起来**，不是删。
+   *     数据仍在库里（`status='removed'`），前台留一行「这条被收起来了」，
+   *     站长在后台能一键恢复。删了就再也恢复不了，而模型是会错的。
+   *   · 模型**拿不准**（命中类别但分数不够）→ 给站长发信，让他自己看。
+   *   · 判成正常 → 什么都不做。
+   *
+   * 只在 `act: true` 时动手：举报刚进来那一刻是自动的；后台点「重新判」
+   * 是**复核**，不该因为站长多看了一眼就把消息收走。
+   */
+  let action: 'removed' | 'mailed' | 'none' = 'none';
+  if (opts.act) {
+    if (advise === 'delete') {
+      await removeByAi(env, {
+        reportId,
+        messageId: row.mid,
+        verdict: r.verdict,
+        score: r.score,
+      }).catch((err) => {
+        console.warn('[chat] AI 收起失败:', err instanceof Error ? err.message : err);
+      });
+      action = 'removed';
+    } else if (advise === 'review') {
+      const mailed = await mailDoubtful(env, {
+        reportId,
+        reason: row.reason ?? 'other',
+        author: row.author_name || '长亭的访客',
+        reporter: row.reporter_name || '有人',
+        body,
+        verdict: r.verdict,
+        score: r.score,
+        threshold: r.threshold,
+        note: r.note,
+        reasons: r.reasons,
+      }).catch((err) => {
+        console.warn('[chat] 拿不准的信没发出去:', err instanceof Error ? err.message : err);
+        return false;
+      });
+      action = mailed ? 'mailed' : 'none';
+    }
+  }
+
   return {
     ok: true,
     ai: {
@@ -237,9 +318,120 @@ export async function judgeReportById(env: Env, reportId: number): Promise<Judge
       at: now,
     },
     advise,
+    action,
     wouldBlock: r.wouldBlock,
     threshold: r.threshold,
     ms: r.ms,
     tokens: r.tokens,
   };
+}
+
+/** 举报理由 → 中文（`other` 也在这儿，判定类别那份没有它） */
+const REASON_CN: Record<string, string> = { ...VERDICT_CN, other: '其他' };
+
+/**
+ * 模型确定违规：**收起来，不是删**。
+ *
+ * `status='removed'` 和站长的 `deleted` 分开，是为了两件事：
+ *   · 前台能说准是谁干的（「作者撤回」/「站长收走」/「被收起来了」三种话不一样）；
+ *   · 后台能一键**恢复** —— 模型会错，删了就救不回来，收起来只是一句话的事。
+ *
+ * 举报本身标成 handled：这条已经处理完了，不该继续占「待处理」的位。
+ * 但结论（`ai_*`）留着，站长点进去仍能看到当时凭什么收的。
+ */
+async function removeByAi(
+  env: Env,
+  p: { reportId: number; messageId: number; verdict: string; score: number },
+): Promise<void> {
+  const now = Date.now();
+  const res = await env.DB.prepare(
+    `UPDATE chat_messages SET status = 'removed', updated_at = ?
+      WHERE id = ? AND status IN ('visible','pending')`,
+  )
+    .bind(now, p.messageId)
+    .run();
+
+  // 已经撤回 / 已被站长收走 / 本来就是 spam：不重复写流水
+  if (!res.meta?.changes) return;
+
+  await env.DB.prepare(`UPDATE chat_reports SET status = 'handled' WHERE id = ?`)
+    .bind(p.reportId)
+    .run();
+  await env.DB.prepare(
+    `INSERT INTO chat_alerts (kind, report_id, message_id, ts) VALUES ('auto_remove', ?, ?, ?)`,
+  )
+    .bind(p.reportId, p.messageId, now)
+    .run();
+}
+
+/**
+ * 模型拿不准：给站长发一封。
+ *
+ * 三件事按顺序做：**有没有配收件地址 → 半小时内发过没有 → 发**。
+ * 任何一步不满足就静默返回 false —— 一封通知信不值得让举报流程报错，
+ * 后台那条举报本来就是完整的（结论、原文、按钮都在）。
+ */
+async function mailDoubtful(
+  env: Env,
+  m: {
+    reportId: number;
+    reason: string;
+    author: string;
+    reporter: string;
+    body: string;
+    verdict: string;
+    score: number;
+    threshold: number;
+    note: string;
+    reasons: string[];
+  },
+): Promise<boolean> {
+  const to = (env.MAIL_TO || '').trim();
+  if (!to) {
+    console.warn('[chat] 模型拿不准，但没配 MAIL_TO，跳过通知信');
+    return false;
+  }
+
+  const last = await env.DB.prepare(
+    `SELECT MAX(ts) AS ts FROM chat_alerts WHERE kind = 'review_mail'`,
+  )
+    .first<{ ts: number | null }>()
+    .catch(() => null);
+  if (last?.ts && Date.now() - last.ts < REVIEW_MAIL_GAP) return false;
+
+  const label = VERDICT_CN[m.verdict] ?? m.verdict;
+  const quote = m.body.length > 400 ? `${m.body.slice(0, 400)}…（后略）` : m.body;
+  const text = [
+    '长亭有一条举报，模型拿不准 —— 它觉得像点什么，但没到「确定」那一步。',
+    '',
+    `被举报的话（${m.author}）：`,
+    ...quote.split('\n').map((line) => `  ${line}`),
+    '',
+    `举报人：${m.reporter} · 理由：${REASON_CN[m.reason] ?? m.reason}`,
+    '',
+    `模型：${label} ${m.score} 分（判定线 ${m.threshold}，所以它没有自动收走）`,
+    m.note ? `它说的：${m.note}` : '',
+    m.reasons.length ? `它给的理由：${m.reasons.join('、')}` : '',
+    '',
+    '要不要收走，你定：',
+    `${SITE_URL}/admin/chat`,
+    '',
+    '—— 这条通知半小时内最多发一封；被收起来的内容在后台都能恢复。',
+  ]
+    .filter((line) => line !== '')
+    .join('\n');
+
+  const ok = await sendMail(env, {
+    to,
+    subject: `长亭：模型拿不准这条（${label} ${m.score}%）`,
+    text,
+  });
+  if (!ok) return false;
+
+  await env.DB.prepare(
+    `INSERT INTO chat_alerts (kind, report_id, message_id, ts) VALUES ('review_mail', ?, NULL, ?)`,
+  )
+    .bind(m.reportId, Date.now())
+    .run();
+  return true;
 }

@@ -20,6 +20,7 @@ import {
   getChatOverview,
   judgeChatReport,
   markRuleHurt,
+  restoreChatMessage,
   setChatBan,
   setChatReportStatus,
 } from './chat';
@@ -145,6 +146,12 @@ export async function handleAdmin(request: Request, env: Env, path: string): Pro
   if (chatDelete && m === 'POST') {
     const id = Number(chatDelete[1]);
     return requireAdmin(request, env, (admin) => deleteChatMessage(request, env, admin, id));
+  }
+
+  const chatRestore = path.match(/^\/admin\/chat\/messages\/(\d+)\/restore$/);
+  if (chatRestore && m === 'POST') {
+    const id = Number(chatRestore[1]);
+    return requireAdmin(request, env, (admin) => restoreChatMessage(request, env, admin, id));
   }
 
   if (path === '/admin/chat/ban' && m === 'POST') {

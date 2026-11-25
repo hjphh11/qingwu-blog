@@ -64,8 +64,13 @@ export interface ChatMessage {
   body: string;
   /** ISO 字符串 */
   at: string;
-  /** pending = 审核中，只有自己看得见；recalled = 已撤回，只留一行提示 */
-  status: 'visible' | 'pending' | 'recalled' | 'deleted';
+  /**
+   * pending  = 审核中，只有自己看得见
+   * recalled = 作者自己撤回，留一行提示
+   * deleted  = 站长在后台收走，留一行提示
+   * removed  = AI 判定违规自动收起来（不是删），留一行提示，后台可恢复
+   */
+  status: 'visible' | 'pending' | 'recalled' | 'deleted' | 'removed';
   mine: boolean;
   origin: 'local' | 'remote';
   reactions: Reaction[];
@@ -93,7 +98,10 @@ export interface ChatPage {
 
 export interface PollResult {
   messages: ChatMessage[];
+  /** 作者撤回 / 站长收走的 id（前端摘成占位） */
   recalled: number[];
+  /** AI 判定后收起来的 id（和 recalled 分开：占位文案不一样） */
+  removed: number[];
   online: number;
   signedIn: boolean;
   /** 正在打字的人的名字（不含自己） */
@@ -137,8 +145,9 @@ function asMessage(raw: unknown): ChatMessage | null {
   /**
    * 状态映射。
    *
-   * ⚠️ `deleted` 必须单独认出来：站长在后台删掉一条后，后端把 status 改成 'deleted'，
-   * 如果不认，这里会落进 'visible' —— 删了个寂寞，正文照常显示。
+   * ⚠️ `deleted` 与 `removed` 都必须单独认出来：后端把 status 改掉之后，
+   * 这里若不认就会落进 'visible' —— 删了个寂寞，正文照常显示
+   * （deleted = 站长收走，removed = AI 判违规自动收起）。
    */
   const status =
     r.status === 'pending'
@@ -147,7 +156,9 @@ function asMessage(raw: unknown): ChatMessage | null {
         ? 'recalled'
         : r.status === 'deleted'
           ? 'deleted'
-          : 'visible';
+          : r.status === 'removed'
+            ? 'removed'
+            : 'visible';
   return {
     id,
     name: String(r.name ?? ''),
@@ -246,6 +257,7 @@ export async function poll(after: number): Promise<PollResult> {
   const data = (await res.json()) as {
     messages?: unknown[];
     recalled?: unknown[];
+    removed?: unknown[];
     online?: number;
     typing?: unknown[];
     reads?: { id?: unknown; n?: unknown; names?: unknown[] } | null;
@@ -258,6 +270,11 @@ export async function poll(after: number): Promise<PollResult> {
       .map(asMessage)
       .filter((m): m is ChatMessage => Boolean(m)),
     recalled: (Array.isArray(data.recalled) ? data.recalled : [])
+      .map((x) => Number(x))
+      .filter((n) => Number.isFinite(n) && n > 0),
+    removed: (Array.isArray(data.removed) ? data.removed : [])
+      .map((x) => Number(x))
+      .filter((n) => Number.isFinite(n) && n > 0)
       .map((n) => Number(n))
       .filter((n) => Number.isFinite(n) && n > 0),
     online: Number(data.online) || 0,

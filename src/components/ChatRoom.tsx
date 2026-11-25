@@ -221,19 +221,29 @@ function stampOf(iso: string): string {
   return `${d.getMonth() + 1} 月 ${d.getDate()} 日 ${clockOf(iso)}`;
 }
 
-/** 按 id 合并：新状态覆盖旧状态，被撤回的不删（要留一行提示） */
+/**
+ * 按 id 合并：新状态覆盖旧状态，被收起来的不删（要留一行提示）。
+ *
+ * `removed` 与 `recalled` 分开传：两者的占位话不一样（「撤回了一条消息」
+ * vs「被收起来了」）。混成一个数组，前端只能挑一句写，另一句就是在替人说话。
+ */
 function mergeMessages(
   prev: ChatMessage[],
   incoming: ChatMessage[],
   recalled: number[],
+  removed: number[] = [],
 ): ChatMessage[] {
-  if (!incoming.length && !recalled.length) return prev;
+  if (!incoming.length && !recalled.length && !removed.length) return prev;
 
   const map = new Map(prev.map((m) => [m.id, m]));
   for (const m of incoming) map.set(m.id, m);
   for (const id of recalled) {
     const old = map.get(id);
     if (old && old.status !== 'recalled') map.set(id, { ...old, status: 'recalled' });
+  }
+  for (const id of removed) {
+    const old = map.get(id);
+    if (old && old.status !== 'removed') map.set(id, { ...old, status: 'removed' });
   }
   // 新消息可能插在中间（补发），统一按 id 排 —— 前端不再费心维护顺序
   return [...map.values()].sort((a, b) => a.id - b.id);
@@ -917,7 +927,7 @@ export default function ChatRoom() {
         if (r.messages.length || r.recalled.length) {
           const incoming = r.messages;
           const atBottom = atBottomRef.current;
-          setMessages((prev) => mergeMessages(prev, incoming, r.recalled));
+          setMessages((prev) => mergeMessages(prev, incoming, r.recalled, r.removed));
           for (const m of incoming) lastIdRef.current = Math.max(lastIdRef.current, m.id);
 
           // 自己发的那条不算「新消息」—— 发送路径已经滚到底了
@@ -2347,6 +2357,21 @@ function MessageRow({
 
   if (m.status === 'deleted') {
     return <p className="q-chat__recalled">这条被站长收走了</p>;
+  }
+
+  /**
+   * AI 判定违规、自动收起来的那条。
+   *
+   * 措辞刻意和「撤回」「站长收走」都不一样：用户得能分清这是三件事，
+   * 尤其不能让人以为作者自己撤了。悬停补一句解释 —— 只说「被收起来了」
+   * 太像故障，得让人知道该找谁。
+   */
+  if (m.status === 'removed') {
+    return (
+      <p className="q-chat__recalled" title="模型判定不符合长亭的规矩，已经收起来；有异议可以找站长">
+        这条被收起来了
+      </p>
+    );
   }
 
   const mine = m.mine;

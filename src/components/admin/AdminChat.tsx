@@ -95,13 +95,28 @@ const ADVISE_LABEL: Record<string, string> = {
   ignore: '建议放行',
   delete: '建议收走',
   review: '拿不准，你自己看',
+  /** 已经收起来了。与「建议收走」分开：一个是请求，一个是既成事实 */
+  removed: '已收起（可恢复）',
 };
 
 /**
  * 建议动作。**与 worker/src/admin/chat.ts 的 judgeChatReport 同一口径**：
  * 判成正常 → 放行；命中类别且到阈值 → 收走；其余 → 拿不准。
  */
-function adviseOf(verdict: string, score: number, threshold: number): 'ignore' | 'delete' | 'review' {
+function adviseOf(
+  verdict: string,
+  score: number,
+  threshold: number,
+  alreadyRemoved = false,
+): 'ignore' | 'delete' | 'review' | 'removed' {
+  /**
+   * 已经收起来的，就写「已收起」——**不跟着阈值漂**。
+   *
+   * 站长把阈值从 60 调到 90 之后，同一条 96 分的旧结论会重新算成「拿不准」，
+   * 可消息明明已经被收走了。卡片上写「拿不准」而前台已经看不到，只会让人
+   * 怀疑哪一边坏了。
+   */
+  if (alreadyRemoved) return 'removed';
   if (verdict === 'ok') return 'ignore';
   return score >= threshold ? 'delete' : 'review';
 }
@@ -110,6 +125,8 @@ const STATUS_LABEL: Record<string, string> = {
   visible: '正常',
   pending: '待审',
   recalled: '已撤回',
+  /** AI 判定违规、自动收起来的（不是删，可恢复） */
+  removed: '已收起',
 };
 
 /** 封禁时长三个常用档，别让人填分钟数 */
@@ -214,6 +231,14 @@ export default function AdminChat() {
     if (tab === 'messages' && msgs === null) void loadMsgs();
   }, [tab, msgs, loadMsgs]);
 
+  /**
+   * 这张举报的建议动作（已收起的固定显示「已收起」，见 adviseOf 的说明）。
+   * ⚠️ 名字不能也叫 `adviceOf`：`const` 的初始化表达式里引用同名的自己，
+   * 那就是一个无限递归（TS 不报，运行时栈溢出）。
+   */
+  const adviceFor = (r: ChatReport) =>
+    r.ai ? adviseOf(r.ai.verdict, r.ai.score, threshold, r.message?.status === 'removed') : 'ignore';
+
   const flash = (text: string) => {
     setToast(text);
     window.setTimeout(() => setToast(''), 2600);
@@ -283,6 +308,19 @@ export default function AdminChat() {
       `hurt:${ruleId}`,
       () => fetch(`${API}/chat/rules/${ruleId}/hurt`, { method: 'POST', credentials: 'include' }),
       `${ruleId} 记了一次误伤`,
+    );
+
+  /**
+   * 把 AI 收起来的放回去。
+   *
+   * 这是自动收起唯一的「撤销键」—— 模型会错，所以每一条都要能一句话恢复。
+   * 恢复会记一行流水（`restore`），误判率就是这么算出来的。
+   */
+  const restore = (id: number) =>
+    act(
+      `restore:${id}`,
+      () => fetch(`${API}/chat/messages/${id}/restore`, { method: 'POST', credentials: 'include' }),
+      '放回去了，前台能重新看到',
     );
 
   /** 交给模型看一眼。结论落库，所以这个按钮点第二次是「重判」 */
@@ -379,7 +417,11 @@ export default function AdminChat() {
                     </p>
                     <p className="q-chat-adm__from">
                       —— {r.message.authorName}
-                      {r.message.status === 'deleted' ? '（已收走）' : ''}
+                      {r.message.status === 'deleted'
+                        ? '（站长已收走）'
+                        : r.message.status === 'removed'
+                          ? '（AI 已收起·前台留一行占位）'
+                          : ''}
                     </p>
                   </>
                 ) : (
@@ -392,13 +434,16 @@ export default function AdminChat() {
                   **它只是建议** —— 删和封仍然是下面那两个按钮。
                 */}
                 {r.ai ? (
-                  <div className={`q-chat-adm__ai is-${adviseOf(r.ai.verdict, r.ai.score, threshold)}`}>
+                  // 「已收起」沿用红条（它确实动过手），其余按建议分色
+                  <div
+                    className={`q-chat-adm__ai is-${adviceFor(r) === 'removed' ? 'delete' : adviceFor(r)}`}
+                  >
                     <div className="q-chat-adm__aihead">
                       <span className="q-chat-adm__aiv">
                         {VERDICT_LABEL[r.ai.verdict] || r.ai.verdict}
                       </span>
                       <span className="q-chat-adm__aiscore">{r.ai.score}%</span>
-                      <b>{ADVISE_LABEL[adviseOf(r.ai.verdict, r.ai.score, threshold)]}</b>
+                      <b>{ADVISE_LABEL[adviceFor(r)]}</b>
                       <button
                         type="button"
                         className="q-chat-adm__cancel"
@@ -447,6 +492,17 @@ export default function AdminChat() {
                 ) : null}
 
                 <div className="q-chat-adm__acts">
+                  {r.message && r.message.status === 'removed' ? (
+                    <button
+                      type="button"
+                      className="q-admin-btn q-admin-btn--primary q-admin-btn--sm"
+                      disabled={busy === `restore:${r.message.id}`}
+                      onClick={() => void restore(r.message!.id)}
+                    >
+                      {busy === `restore:${r.message.id}` ? '正在放回…' : '恢复这条'}
+                    </button>
+                  ) : null}
+
                   {r.message && r.message.status !== 'deleted' ? (
                     <button
                       type="button"

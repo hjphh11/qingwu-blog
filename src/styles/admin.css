@@ -3454,6 +3454,13 @@ html.q-route-done .q-admin-route i {
   color: var(--qa-warn-fg);
 }
 
+/* 巡查列表里「AI 已收起」——和「待审」一样需要一眼挑出来，但它已经是既成事实，
+   所以用红字不用底色 */
+.q-chat-adm__tags em.is-removed {
+  background: #fdecea;
+  color: #b3261e;
+}
+
 .q-chat-adm__tags em.is-report {
   background: #fdecea;
   color: #b3261e;

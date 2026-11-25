@@ -63,7 +63,12 @@ export async function editMessage(
   if (!row || row.account_id !== me.id) {
     return json({ ok: false, reason: 'forbidden', message: '这条改不了' }, 403);
   }
-  if (row.status === 'recalled' || row.status === 'deleted' || row.status === 'spam') {
+  if (
+    row.status === 'recalled' ||
+    row.status === 'deleted' ||
+    row.status === 'removed' ||
+    row.status === 'spam'
+  ) {
     return json({ ok: false, reason: 'not_editable', message: '这条已经改不了了' }, 400);
   }
 

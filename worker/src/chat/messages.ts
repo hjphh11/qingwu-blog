@@ -125,13 +125,16 @@ const COLS = `m.id, m.account_id, m.body, m.status, m.ts, m.edited_at, m.origin,
 /**
  * 一条消息「能不能被看见」。
  *
- * `deleted`（站长在后台收走的那条）**要留一行占位**：直接消失会让对话出现断层 ——
- * 后面有人回「你刚说什么」就变得莫名其妙。占位只说明「被收走了」，不含正文。
- * `pending`（待审）只有作者自己看得见。
+ * 三种「不见了」都要留一行占位：直接消失会让对话出现断层 —— 后面有人回
+ * 「你刚说什么」就变得莫名其妙。占位只说明发生了什么，不含正文：
+ *   · `recalled` —— 作者自己撤回；
+ *   · `deleted`  —— 站长在后台收走；
+ *   · `removed`  —— AI 判定违规、自动收起来（2026-11-25 加）。
+ * `spam`（发送时就被拦下、从没露过面）与 `pending`（待审，只有作者自己看得见）另算。
  */
 function visibleClause(me: string | number): { sql: string; params: Array<string | number> } {
   return {
-    sql: `(m.status IN ('visible','recalled','deleted') OR (m.status = 'pending' AND m.account_id = ?))`,
+    sql: `(m.status IN ('visible','recalled','deleted','removed') OR (m.status = 'pending' AND m.account_id = ?))`,
     params: [me],
   };
 }
@@ -324,7 +327,9 @@ function toItem(
           ? 'pending'
           : r.status === 'deleted'
             ? 'deleted'
-            : 'visible',
+            : r.status === 'removed'
+              ? 'removed'
+              : 'visible',
     mine: meId !== null && r.account_id === meId,
     origin: remote ? 'remote' : 'local',
     reactions,
@@ -490,7 +495,7 @@ export async function pollChat(request: Request, env: Env): Promise<Response> {
     const changed = await env.DB.prepare(
       `SELECT ${COLS} FROM chat_messages m LEFT JOIN accounts a ON a.id = m.account_id
         WHERE m.updated_at > ? AND m.id <= ?
-          AND (m.status IN ('visible','recalled','deleted') OR (m.status='pending' AND m.account_id = ?))
+          AND (m.status IN ('visible','recalled','deleted','removed') OR (m.status='pending' AND m.account_id = ?))
         ORDER BY m.id ASC LIMIT 50`,
     )
       .bind(now - RELEASE_WINDOW, after, meId ?? -1)
@@ -503,9 +508,17 @@ export async function pollChat(request: Request, env: Env): Promise<Response> {
     const freshIds = new Set(freshList.map((r) => r.id));
     const released: MessageRow[] = [];
     const recalled: number[] = [];
+    /**
+     * `removed` 与 `recalled` 分开发：前端要画两种不同的占位
+     * （「你撤回了一条消息」vs「这条被收起来了」）。
+     * 混在一个数组里，前端只能猜，最后一定会写成「XX 撤回了一条消息」——
+     * 那是在替人说话。
+     */
+    const removed: number[] = [];
     for (const r of changedList) {
       if (freshIds.has(r.id)) continue;
       if (r.status === 'visible' || r.status === 'pending') released.push(r);
+      else if (r.status === 'removed') removed.push(r.id);
       else recalled.push(r.id);
     }
 
@@ -594,6 +607,7 @@ export async function pollChat(request: Request, env: Env): Promise<Response> {
         ),
       ),
       recalled,
+      removed,
       online: await onlineOf(env, now),
       /** 每次 poll 都带 —— 一百来个字节，换取「站长一置顶，所有人两秒内看见」 */
       pin: await getPin(env),
@@ -604,7 +618,7 @@ export async function pollChat(request: Request, env: Env): Promise<Response> {
   } catch (err) {
     console.error('[chat] poll 失败:', err instanceof Error ? err.message : err);
     // poll 失败不弹错误：下一次 2.5 秒后就会重试，弹窗只会让人以为聊天坏了
-    return json({ ok: false, reason: 'storage', messages: [], recalled: [] }, 502);
+    return json({ ok: false, reason: 'storage', messages: [], recalled: [], removed: [] }, 502);
   }
 }
 
