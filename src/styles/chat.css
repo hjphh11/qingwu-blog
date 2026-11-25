@@ -2481,7 +2481,13 @@
     color: var(--color-subtle);
   }
 
-  /* 个人主页：居中小窗（点成员行的任意一行） */
+  /**
+   * 个人主页：居中小窗。
+   *
+   * 结构照站长的参考（听雨茶室的个人页）：头图 + 叠在上面的头像 + 名字，
+   * 下面分「关于这位茶友」和两格数字。**没有简介就不编**：账号表里没有 bio，
+   * 「关于」那句由首/末发言时间拼出来，数字也都是真的。
+   */
   .q-person {
     position: fixed;
     inset: 0;
@@ -2503,9 +2509,9 @@
     position: relative;
     display: flex;
     flex-direction: column;
-    align-items: center;
-    width: min(19rem, 100%);
-    padding: 1.55rem 1.25rem 1.1rem;
+    width: min(21rem, 100%);
+    max-height: min(36rem, 86vh);
+    overflow: hidden;
     border: 1px solid rgba(255, 255, 255, 0.92);
     border-radius: 1.35rem;
     background: #fffdfb;
@@ -2517,18 +2523,47 @@
     outline: none;
   }
 
+  /* 头图：玫瑰 → 琥珀的暖光，和页面同一族 */
+  .q-person__hero {
+    flex: none;
+    height: 4.75rem;
+    background:
+      radial-gradient(
+        130% 130% at 12% 0%,
+        color-mix(in srgb, var(--color-rose) 62%, transparent),
+        transparent 72%
+      ),
+      radial-gradient(
+        120% 120% at 92% 8%,
+        color-mix(in srgb, var(--color-amber) 46%, transparent),
+        transparent 70%
+      ),
+      #fdf4ee;
+  }
+
   .q-person__x {
     position: absolute;
     top: 0.5rem;
     right: 0.5rem;
+    z-index: 2;
+    background: rgba(255, 255, 255, 0.82);
+    border-radius: 0.6rem;
+  }
+
+  .q-person__id {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    margin-top: -2.3rem;
+    padding: 0 1.1rem;
   }
 
   .q-person__av {
     position: relative;
     display: grid;
     place-items: center;
-    width: 4.25rem;
-    height: 4.25rem;
+    width: 4.5rem;
+    height: 4.5rem;
     overflow: hidden;
     border-radius: 9999px;
     background: var(--color-rose);
@@ -2536,7 +2571,7 @@
     font-size: 1.5rem;
     font-weight: 700;
     color: var(--color-ink);
-    box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.9);
+    box-shadow: 0 0 0 4px #fffdfb;
   }
 
   .q-person__av img {
@@ -2551,9 +2586,9 @@
     display: flex;
     align-items: center;
     gap: 0.4rem;
-    margin-top: 0.6rem;
+    margin-top: 0.5rem;
     font-family: var(--font-display);
-    font-size: 1.0625rem;
+    font-size: 1.125rem;
     font-weight: 700;
     color: var(--color-ink);
   }
@@ -2572,7 +2607,7 @@
     display: flex;
     align-items: center;
     gap: 0.3rem;
-    margin-top: 0.3rem;
+    margin-top: 0.28rem;
     font-size: 0.75rem;
     color: var(--color-subtle);
   }
@@ -2584,40 +2619,79 @@
     background: var(--color-crimson);
   }
 
-  .q-person__facts {
+  .q-person__body {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    padding: 1rem 1.1rem 1.15rem;
+    overscroll-behavior: contain;
+  }
+
+  .q-person__h {
+    font-size: 0.8125rem;
+    font-weight: 700;
+    color: var(--color-ink);
+  }
+
+  .q-person__about {
+    margin-top: 0.4rem;
+    font-size: 0.78125rem;
+    line-height: 1.85;
+    color: var(--color-muted);
+  }
+
+  .q-person__link {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.2rem;
+    margin-top: 0.55rem;
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: var(--color-crimson);
+    text-decoration: underline;
+    text-underline-offset: 2px;
+    text-decoration-thickness: 1px;
+  }
+
+  .q-person__link:hover {
+    color: var(--color-accent);
+  }
+
+  .q-person__stats {
     display: grid;
     grid-template-columns: 1fr 1fr;
     gap: 0.5rem;
-    width: 100%;
     margin-top: 1rem;
     padding-top: 0.9rem;
     border-top: 1px solid color-mix(in srgb, var(--color-ink) 7%, transparent);
   }
 
-  .q-person__facts > div {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 0.15rem;
-  }
-
-  .q-person__facts dt {
+  .q-person__stats dt {
     font-size: 0.6875rem;
     color: var(--color-subtle);
   }
 
-  .q-person__facts dd {
-    font-size: 0.8125rem;
-    font-weight: 600;
+  .q-person__stats dd {
+    margin-top: 0.2rem;
+    font-size: 1rem;
+    font-weight: 700;
     color: var(--color-ink);
     font-variant-numeric: tabular-nums;
   }
 
-  .q-person__facts a {
-    color: var(--color-crimson);
-    text-decoration: underline;
-    text-underline-offset: 2px;
-    text-decoration-thickness: 1px;
+  /* 日期不跟数字一样大：它是一句话，不是一记数字 */
+  .q-person__stats dd.q-person__when {
+    padding-top: 0.15rem;
+    font-size: 0.8125rem;
+    font-weight: 600;
+  }
+
+  .q-person__stats em {
+    margin-left: 0.15rem;
+    font-style: normal;
+    font-size: 0.6875rem;
+    font-weight: 500;
+    color: var(--color-subtle);
   }
 
   .q-members--all {
@@ -2806,6 +2880,8 @@
     min-height: 0;
     overflow-y: auto;
     padding: 0.4rem;
+    /* 滚到结果尽头就停住：不把滚动传给背后那一页（否则看着像「还能往下」） */
+    overscroll-behavior: contain;
   }
 
   .q-chatsearch__hint {

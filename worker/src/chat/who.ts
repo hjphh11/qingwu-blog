@@ -36,6 +36,9 @@ interface PeopleRow extends WhoRow {
   seen: number | null;
   /** 在这间屋子里说过多少句（只数 visible，撤回到的不算） */
   posts: number | null;
+  /** 第一句 / 最后一句的时间戳；没说过话为 null */
+  first_post: number | null;
+  last_post: number | null;
 }
 
 /**
@@ -55,7 +58,11 @@ async function listPeople(env: Env, now: number): Promise<PeopleRow[]> {
             substr(a.email, 1, instr(a.email, '@') - 1) AS prefix,
             (SELECT MAX(last_seen) FROM chat_presence p WHERE p.account_id = a.id) AS seen,
             (SELECT COUNT(*) FROM chat_messages m
-              WHERE m.account_id = a.id AND m.status = 'visible') AS posts
+              WHERE m.account_id = a.id AND m.status = 'visible') AS posts,
+            (SELECT MIN(ts) FROM chat_messages m WHERE m.account_id = a.id
+              AND m.status = 'visible') AS first_post,
+            (SELECT MAX(ts) FROM chat_messages m WHERE m.account_id = a.id
+              AND m.status = 'visible') AS last_post
        FROM accounts a
       WHERE EXISTS (SELECT 1 FROM chat_presence p2 WHERE p2.account_id = a.id)
          OR EXISTS (SELECT 1 FROM chat_messages m
@@ -85,6 +92,8 @@ function peopleOf(rows: PeopleRow[], now: number) {
     online: (r.seen ?? 0) > now - ONLINE_WINDOW,
     seen: r.seen ?? 0,
     posts: r.posts ?? 0,
+    firstPost: r.first_post ?? 0,
+    lastPost: r.last_post ?? 0,
   }));
 }
 

@@ -478,6 +478,9 @@ export interface ChatMember {
   seen?: number;
   /** 在这间屋子里说过多少句；同上，只有 people 带 */
   posts?: number;
+  /** 第一句 / 最后一句的时间戳（毫秒）；同上 */
+  firstPost?: number;
+  lastPost?: number;
 }
 
 /** 「空间成员」那张卡要的两份名单：在线的人 + 所有来过的人 */

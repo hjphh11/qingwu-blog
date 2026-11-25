@@ -92,6 +92,17 @@ function relTime(ms?: number): string {
   return `${Math.round(d / 86_400_000)} 天前`;
 }
 
+/** 时间戳 → 「11/24 21:40」（人卡里报时间用，年不显示：这间屋子不会跨年还挂着） */
+function stampOf(ms?: number): string {
+  if (!ms) return '某天';
+  return new Date(ms).toLocaleString('zh-CN', {
+    month: 'numeric',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+}
+
 /**
  * 个人主页：居中小窗。
  *
@@ -104,6 +115,7 @@ function PersonCard({ m, onClose }: { m: ChatMember; onClose: () => void }) {
   const boxRef = useDialogFocus<HTMLDivElement>(true, onClose);
   const site = hostOf(m.site);
   const avatar = m.avatar || avatarFromHash('');
+  const posts = m.posts ?? 0;
 
   // 焦点落在盒子上而不是右上角那个 ×：一打开就给 × 画一圈焦点框，
   // 看着像报错。落在盒子上读屏一样会念标题，Tab 再进 ×。
@@ -111,67 +123,81 @@ function PersonCard({ m, onClose }: { m: ChatMember; onClose: () => void }) {
     boxRef.current?.focus({ preventScroll: true });
   }, [boxRef]);
 
+  /** 「关于」那句话只用真实数据拼，不编简介（账号没有 bio 字段）。
+      「最后发言」放在下面的数字格里，这里只报第一次，免得同一句话出现两遍。 */
+  const about =
+    posts > 0
+      ? `${stampOf(m.firstPost)} 在这里说了第一句。`
+      : '还没在这间屋子里说过话，大概只是路过。';
+
   return createPortal(
     <div className="q-person" role="dialog" aria-modal="true" aria-label={`${m.name} 的个人主页`}>
-      <button
-        type="button"
-        className="q-person__mask"
-        aria-label="关掉个人主页"
-        onClick={onClose}
-      />
+      <button type="button" className="q-person__mask" aria-label="关掉个人主页" onClick={onClose} />
       <div className="q-person__box" ref={boxRef} tabIndex={-1}>
+        <div className="q-person__hero" aria-hidden="true" />
         <button type="button" className="q-person__x" onClick={onClose} aria-label="关闭">
           <MorphIcon icon={X} size={15} color="currentColor" />
         </button>
 
-        <span className="q-person__av" aria-hidden="true">
-          {m.name.slice(0, 1)}
-          {avatar && (
-            <img
-              src={avatar}
-              alt=""
-              loading="lazy"
-              decoding="async"
-              onError={(e) => {
-                e.currentTarget.style.display = 'none';
-              }}
-            />
-          )}
-        </span>
+        <div className="q-person__id">
+          <span className="q-person__av" aria-hidden="true">
+            {m.name.slice(0, 1)}
+            {avatar && (
+              <img
+                src={avatar}
+                alt=""
+                loading="lazy"
+                decoding="async"
+                onError={(e) => {
+                  e.currentTarget.style.display = 'none';
+                }}
+              />
+            )}
+          </span>
+          <p className="q-person__name">
+            {m.name}
+            {m.admin && <span className="q-person__tag">站长</span>}
+          </p>
+          <p className={`q-person__state${m.online ? ' is-on' : ''}`}>
+            {m.online ? (
+              <>
+                <i aria-hidden="true" />
+                此刻在长亭
+              </>
+            ) : (
+              `最近来过 · ${relTime(m.seen)}`
+            )}
+          </p>
+        </div>
 
-        <p className="q-person__name">
-          {m.name}
-          {m.admin && <span className="q-person__tag">站长</span>}
-        </p>
-        <p className={`q-person__state${m.online ? ' is-on' : ''}`}>
-          {m.online ? (
-            <>
-              <i aria-hidden="true" />
-              此刻在长亭
-            </>
-          ) : (
-            `最近来过 · ${relTime(m.seen)}`
+        <div className="q-person__body">
+          <h3 className="q-person__h">关于这位茶友</h3>
+          <p className="q-person__about">{about}</p>
+          {site && (
+            <a
+              className="q-person__link"
+              href={`https://${site}`}
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              访问 {site} ↗
+            </a>
           )}
-        </p>
 
-        <dl className="q-person__facts">
-          <div>
-            <dt>来自</dt>
-            <dd>
-              {site ? (
-                <a href={`https://${site}`} target="_blank" rel="noopener noreferrer">
-                  {site}
-                </a>
-              ) : (
-                '本站'
-              )}
-            </dd>
-          </div>
-          <div>
-            <dt>说过</dt>
-            <dd>{m.posts ?? 0} 句</dd>
-          </div>
-        </dl>
+          <dl className="q-person__stats">
+            <div>
+              <dt>发言</dt>
+              <dd>
+                {posts}
+                <em>条</em>
+              </dd>
+            </div>
+            <div>
+              <dt>最后发言</dt>
+              <dd className="q-person__when">{posts > 0 ? stampOf(m.lastPost) : '—'}</dd>
+            </div>
+          </dl>
+        </div>
       </div>
     </div>,
     document.body,
