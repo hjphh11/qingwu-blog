@@ -974,16 +974,8 @@
     }
   }
 
-  /* 字数提示 */
-  .q-chat__count {
-    display: block;
-    padding: 0.2rem 0.4rem 0;
-    text-align: right;
-    font-size: 0.6875rem;
-    color: var(--color-subtle);
-    font-variant-numeric: tabular-nums;
-  }
-
+  /* 字数提示：现在住在底栏里，被 margin-left:auto 推到发送键左边（见 .q-chat__count 在
+     .q-chat__inputwrap 里的那条），这里不再需要 block + 右对齐 */
   /* 未登录时输入区的位置 */
   .q-chat__guest {
     display: flex;
@@ -2087,15 +2079,21 @@
     padding: 0.5rem 1rem 0.9rem;
   }
 
-  /* 玻璃输入容器（设计稿的 glass-float） */
+  /* 玻璃输入容器（设计稿的 glass-float）
+     ⚠️ 这是「上下两层」布局，靠 flex-wrap + order 排的：textarea 独占第一行（order:1、
+     flex-basis:100%），底栏的 工具 → 提示 → 字数 → 发送 排在第二行（order 2~5）。
+     别为了「看起来顺序对」去挪 JSX —— DOM 里 textarea 在工具后面，是因为 @ 弹层和
+     输入法的高度计算都依赖这个结构，挪了会牵一片。 */
   .q-chat__inputwrap {
     /* @ 弹层以它为参照往上浮（见 .q-chat__mentions） */
     position: relative;
     display: flex;
-    align-items: flex-end;
-    gap: 0.5rem;
+    flex-wrap: wrap;
+    align-items: center;
+    /* 行间距（上下两行）0.4、列间距 0.4 */
+    gap: 0.4rem;
     min-width: 0;
-    padding: 0.5rem 0.5rem 0.5rem 0.55rem;
+    padding: 0.55rem 0.55rem 0.5rem 0.6rem;
     border: 1px solid rgba(255, 255, 255, 0.92);
     border-radius: 1.375rem;
     background: rgba(255, 252, 249, 0.86);
@@ -2125,7 +2123,7 @@
     align-items: center;
     gap: 0.3rem;
     flex: none;
-    padding-bottom: 0.1rem;
+    order: 2;
   }
 
   .q-chat__tool {
@@ -2149,7 +2147,9 @@
   }
 
   .q-chat__input {
-    flex: 1;
+    /* 第一行独占：不管工具条多宽，输入区永远是一整行 */
+    order: 1;
+    flex: 1 0 100%;
     width: 100%;
     min-width: 0;
     /* 内容高度 = 行高(1.6×14px≈22.4) + 上下 padding(9.6) ≈ 32px，min-height 要盖住它，
@@ -2178,17 +2178,52 @@
     color: var(--color-subtle);
   }
 
+  /* 底栏里的快捷键提示：宽度不够时整条隐藏，不要让它把工具条挤成省略号 */
+  .q-chat__hint {
+    order: 3;
+    min-width: 0;
+    font-size: 0.71875rem;
+    line-height: 1.4;
+    color: var(--color-subtle);
+    white-space: nowrap;
+  }
+
+  /* 字数：常显（打超 500 会被截断，得让人提前看见余量），弱到不抢注意力 */
+  .q-chat__count {
+    order: 4;
+    /* 推到右边，把「工具…字数 发送」拉成一条 */
+    margin-left: auto;
+    padding-right: 0.1rem;
+    font-size: 0.71875rem;
+    color: var(--color-subtle);
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* 触屏和窄屏都没有 Enter / Shift 这个概念 */
+  @media (max-width: 1279px) {
+    .q-chat__hint {
+      display: none;
+    }
+  }
+
+  @media (hover: none) {
+    .q-chat__hint {
+      display: none;
+    }
+  }
+
   /* 发送：实心绯红 + 米白字（设计稿的 btn-crimson） */
   .q-chat__send {
     flex: none;
+    order: 5;
     display: inline-flex;
     align-items: center;
     justify-content: center;
     gap: 0.35rem;
-    min-width: 2.75rem;
-    height: 2.5rem;
-    padding: 0 0.9rem;
-    border-radius: 1rem;
+    min-width: 2.5rem;
+    height: 2.25rem;
+    padding: 0 0.8rem;
+    border-radius: 0.8rem;
     background: var(--color-crimson);
     font-size: 0.84375rem;
     font-weight: 600;

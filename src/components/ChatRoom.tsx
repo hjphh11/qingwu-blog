@@ -2348,11 +2348,24 @@ export default function ChatRoom() {
                     }
                   }}
                   rows={1}
-                  /* 占位符要能在 390px 宽下一行放完，否则输入框一进页面就变高 */
-                  placeholder={editing ? '改这句话…' : '写点什么吧…'}
+                  /* 占位符要能在 390px 宽下一行放完，否则输入框一进页面就变高
+                     （placeholder 换行会抬高 scrollHeight，自动增高逻辑把它当真内容） */
+                  placeholder={editing ? '改这句话…' : '写点什么吧…支持 Markdown'}
                   title="Enter 发送，Shift + Enter 换行，@ 提及"
                   aria-label="说点什么，@ 可以提及在场的人"
                 />
+
+                {/*
+                  底栏：工具在左，快捷键提示跟在后面，字数被 margin-left:auto 推到右边，
+                  发送键单独贴在末尾 —— 它不跟工具挤在一起，手指不会误触。
+                  窄屏（≤1279）和触屏会把提示藏掉：那里既没有 Enter 键、也没有 Shift。
+                */}
+                <span className="q-chat__hint" aria-hidden="true">
+                  Enter 发送 · Shift + Enter 换行
+                </span>
+                <span className="q-chat__count" aria-hidden="true">
+                  {draft.length}/500
+                </span>
 
                 <button
                   type="button"
@@ -2372,7 +2385,6 @@ export default function ChatRoom() {
                   )}
                 </button>
               </div>
-              {draft.length > 380 && <span className="q-chat__count">{draft.length}/500</span>}
             </div>
           ) : (
             <div className="q-chat__composer">
