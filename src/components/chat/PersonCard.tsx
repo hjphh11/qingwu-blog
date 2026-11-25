@@ -120,8 +120,12 @@ export default function PersonCard({
             )}
           </span>
           <p className="q-person__name">
-            {m.name}
+            {/*
+              标签在名字前面：「站长 清吾」是正式署名写法。
+              「是你」留在名字后面 —— 它是对「这条记录属于你」的注释，不是头衔。
+            */}
             {m.admin && <span className="q-person__tag">站长</span>}
+            {m.name}
             {self && <span className="q-person__tag q-person__tag--me">是你</span>}
           </p>
           <p className={`q-person__state${m.online ? ' is-on' : ''}`}>

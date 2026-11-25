@@ -79,6 +79,10 @@
     animation: none !important;
     opacity: 0.6;
   }
+  /* 提示小框的入场位移：只保留出现，不做上浮 */
+  .q-chat__toast {
+    animation: none !important;
+  }
   /* 光扫停下之后留着会是一道静止的亮带，反而更扎眼 —— 直接藏掉 */
   .q-proj-sweep {
     opacity: 0;

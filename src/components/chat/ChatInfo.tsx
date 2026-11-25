@@ -64,8 +64,8 @@ function MemberRow({ m, onPick }: { m: ChatMember; onPick: (m: ChatMember) => vo
         </span>
         <span className="q-member__body">
           <span className="q-member__name">
-            {m.name}
             {m.admin && <span className="q-member__tag">站长</span>}
+            {m.name}
           </span>
           {site && <span className="q-member__site">来自 {site}</span>}
         </span>

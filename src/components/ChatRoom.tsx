@@ -1872,8 +1872,13 @@ export default function ChatRoom() {
                   <i />
                 </p>
               )}
+              {/*
+                提示是**浮起来的小框**，不是占一行的高条。
+                它绝对定位在 `.q-chat__above` 上方 —— 那一层没有别的子项时高度是 0，
+                所以既不会把输入区顶下去，也不会把最后一条消息挤走。
+              */}
               {tip && (
-                <p className={`q-chat__tip${tip.kind === 'ok' ? ' is-ok' : ''}`} role="status">
+                <p className={`q-chat__toast${tip.kind === 'ok' ? ' is-ok' : ''}`} role="status">
                   {tip.text}
                 </p>
               )}
@@ -2339,8 +2344,9 @@ function MessageRow({
       <div className="q-chat__body">
         {!grouped && (
           <div className="q-chat__meta">
-            <span className="q-chat__name">{m.name}</span>
+            {/* 站长标在名字**前面**：「站长 清吾」是正式署名写法，也先说明身份 */}
             {m.admin && <span className="q-chat__tag">站长</span>}
+            <span className="q-chat__name">{m.name}</span>
             {m.mentionedMe && <span className="q-chat__tag q-chat__tag--at">@了你</span>}
             {m.origin === 'remote' && m.site && (
               <span className="q-chat__site">来自 {m.site}</span>

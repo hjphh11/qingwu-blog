@@ -325,8 +325,8 @@ export default function ChatAside({
             </span>
             <div className="q-me__id">
               <p className="q-me__name">
-                {account.name}
                 {account.role === 'admin' && <span className="q-member__tag">站长</span>}
+                {account.name}
               </p>
               <p className="q-me__sub">{host ? `来自 ${host}` : '在长亭里'}</p>
             </div>

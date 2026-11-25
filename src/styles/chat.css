@@ -1852,6 +1852,8 @@
 
   /* 输入区上方那些条：引用 / 待发附件 / 编辑 / 提示 / 连接断开 */
   .q-chat__above {
+    /* 提示小框绝对定位在它上沿之上（见 .q-chat__toast） */
+    position: relative;
     display: flex;
     flex-direction: column;
     gap: 0.35rem;
@@ -2190,17 +2192,61 @@
     animation-delay: 0.36s;
   }
 
-  /* 提示条（成功 / 警告） */
-  .q-chat__tip {
-    padding: 0.4rem 0.7rem;
-    border-radius: 0.7rem;
-    background: color-mix(in srgb, var(--color-amber) 18%, transparent);
+  /**
+   * 提示小框（成功 / 警告）。
+   *
+   * 原来是一条占满宽的横条，挂在 `__above` 的流里 —— 一句「开着页面放后台…」
+   * 就把输入区顶下去 40px，而且一直占着（警告类不自动收）。
+   * 现在浮起来：绝对定位于 `__above` 上沿之上，高度 0 不参与布局，
+   * `pointer-events: none` 也不挡下面的消息。
+   */
+  .q-chat__toast {
+    position: absolute;
+    left: 50%;
+    bottom: calc(100% + 0.45rem);
+    transform: translateX(-50%);
+    z-index: 12;
+    display: inline-flex;
+    align-items: flex-start;
+    gap: 0.4rem;
+    width: max-content;
+    max-width: min(26rem, calc(100vw - 3rem));
+    padding: 0.42rem 0.7rem;
+    border: 1px solid rgba(255, 255, 255, 0.95);
+    border-radius: 0.8rem;
+    background: rgba(255, 252, 249, 0.97);
+    box-shadow: 0 14px 30px -14px rgba(74, 55, 40, 0.34);
     font-size: 0.75rem;
+    line-height: 1.55;
     color: var(--color-ink);
+    pointer-events: none;
+    animation: q-toast-in 0.18s ease-out;
   }
 
-  .q-chat__tip.is-ok {
-    background: color-mix(in srgb, var(--color-rose) 30%, transparent);
+  /* 左边一枚小小的状态点：警告是琥珀，成功是绯红（和站内的「已生效」同色） */
+  .q-chat__toast::before {
+    content: '';
+    flex: none;
+    width: 0.4rem;
+    height: 0.4rem;
+    margin-top: 0.42rem;
+    border-radius: 9999px;
+    background: var(--color-amber);
+  }
+
+  .q-chat__toast.is-ok::before {
+    background: var(--color-crimson);
+  }
+
+  @keyframes q-toast-in {
+    from {
+      opacity: 0;
+      transform: translate(-50%, 6px);
+    }
+    to {
+      opacity: 1;
+      transform: translate(-50%, 0);
+    }
   }
 
   /* 连接断了 */
