@@ -55,6 +55,8 @@ export function stampOf(ms?: number): string {
 export default function PersonCard({
   m,
   self,
+  blocked,
+  onToggleBlock,
   account,
   onAccount,
   onClose,
@@ -62,6 +64,10 @@ export default function PersonCard({
   m: ChatMember;
   /** 这张卡是不是在看自己（多一枚「是你」标 + 一个「编辑资料」） */
   self?: boolean;
+  /** 我屏蔽了他没有（只有我看不见，他那边一无所知） */
+  blocked?: boolean;
+  /** 屏蔽 / 取消屏蔽。传了才渲染那颗按钮 */
+  onToggleBlock?: (m: ChatMember) => void | Promise<void>;
   /** 自己的会话账号；self 时才有，编辑资料要用它 */
   account?: SessionAccount | null;
   /** 资料存成功：把新账号抛给页面（同步会话、刷新成员名单） */
@@ -127,6 +133,7 @@ export default function PersonCard({
             {m.admin && <span className="q-person__tag">站长</span>}
             {m.name}
             {self && <span className="q-person__tag q-person__tag--me">是你</span>}
+            {blocked && <span className="q-person__tag q-person__tag--off">已屏蔽</span>}
           </p>
           <p className={`q-person__state${m.online ? ' is-on' : ''}`}>
             {m.online ? (
@@ -179,6 +186,26 @@ export default function PersonCard({
               {self && account && (
                 <button type="button" className="q-person__edit" onClick={() => setEditing(true)}>
                   编辑资料
+                </button>
+              )}
+
+              {/*
+                屏蔽：别人看不到这颗按钮，被屏蔽的人也不会收到任何通知。
+                文案刻意不用「拉黑」—— 这里是「我暂时不想看见他的消息」，
+                不是社交关系上的判决，所以取消也一样容易。
+              */}
+              {!self && onToggleBlock && (
+                <button
+                  type="button"
+                  className={`q-person__block${blocked ? ' is-on' : ''}`}
+                  onClick={() => void onToggleBlock(m)}
+                  title={
+                    blocked
+                      ? '取消之后他的消息会重新出现'
+                      : '只在你的长亭里生效，他那边不会有任何提示'
+                  }
+                >
+                  {blocked ? '取消屏蔽' : '屏蔽此人'}
                 </button>
               )}
             </>

@@ -66,6 +66,13 @@ export interface LinkPreview {
 
 export interface ChatMessage {
   id: number;
+  /**
+   * 作者账号 id（跨站消息是 0）。
+   *
+   * 前端「当场屏蔽」要靠它把这个人已经加载的消息立刻滤掉；按名字匹配会误伤重名，
+   * 而且对方一改名就对不上了。
+   */
+  authorId: number;
   name: string;
   avatar: string;
   /** 站点地址（本地的取账号档案，跨站的取来源站） */
@@ -174,6 +181,8 @@ function asMessage(raw: unknown): ChatMessage | null {
             : 'visible';
   return {
     id,
+    /** 作者账号 id；跨站消息是 0（屏蔽只对本站账号生效） */
+    authorId: Number(r.authorId) || 0,
     name: String(r.name ?? ''),
     avatar: String(r.avatar ?? ''),
     site: String(r.site ?? ''),
@@ -468,6 +477,8 @@ export async function typing(): Promise<void> {
 
 export interface SearchHit {
   id: number;
+  /** 作者账号 id（跨站消息是 0） */
+  authorId: number;
   name: string;
   avatar: string;
   body: string;
@@ -577,6 +588,18 @@ export interface ChatMember {
 export interface WhoResult {
   members: ChatMember[];
   people: ChatMember[];
+  /** 我屏蔽了谁（单向：只有我看不见他们） */
+  blocks: BlockedUser[];
+}
+
+/** 屏蔽名单里的一行。比 ChatMember 轻：这些人对我而言只剩「取消屏蔽」一个动作 */
+export interface BlockedUser {
+  id: number;
+  name: string;
+  avatar: string;
+  site: string;
+  /** 屏蔽的时刻（毫秒） */
+  at: number;
 }
 
 /**
@@ -589,7 +612,7 @@ export interface WhoResult {
  *    「我是谁」由前端从会话里拿（头像 + 昵称），不必服务端再算一遍。
  */
 export async function fetchWho(): Promise<WhoResult> {
-  const empty: WhoResult = { members: [], people: [] };
+  const empty: WhoResult = { members: [], people: [], blocks: [] };
   try {
     const res = await fetch(`${BASE}/chat/who`, {
       headers: { accept: 'application/json' },
@@ -597,15 +620,61 @@ export async function fetchWho(): Promise<WhoResult> {
       signal: AbortSignal.timeout(8000),
     });
     if (!res.ok) return empty;
-    const data = (await res.json()) as { members?: ChatMember[]; people?: ChatMember[] };
+    const data = (await res.json()) as {
+      members?: ChatMember[];
+      people?: ChatMember[];
+      blocks?: BlockedUser[];
+    };
     const members = Array.isArray(data.members) ? data.members : [];
     return {
       members,
       // 服务端没给 people（老版本 worker / 查询失败）时退回在线名单，卡片不至于空着
       people: Array.isArray(data.people) && data.people.length ? data.people : members,
+      blocks: Array.isArray(data.blocks) ? data.blocks : [],
     };
   } catch {
     return empty;
+  }
+}
+
+// ——————————————————————————————————————————————————————————
+// 屏蔽
+// ——————————————————————————————————————————————————————————
+
+export type BlockResult =
+  | { ok: true; blocked: boolean; blocks: BlockedUser[] }
+  | { ok: false; reason: string; message: string };
+
+/**
+ * 屏蔽 / 取消屏蔽。
+ *
+ * 服务端把**整份名单**一起回：前端不用再问一次，也不会出现
+ * 「成员里已经没他、屏蔽名单里还有他」这种中间态。
+ */
+export async function setBlock(id: number, on: boolean): Promise<BlockResult> {
+  try {
+    const res = await fetch(`${BASE}/chat/${id}/block`, {
+      method: on ? 'POST' : 'DELETE',
+      headers: { accept: 'application/json' },
+      credentials: 'include',
+      signal: AbortSignal.timeout(10_000),
+    });
+    const data = (await res.json().catch(() => ({}))) as {
+      ok?: boolean;
+      reason?: string;
+      message?: string;
+      blocks?: BlockedUser[];
+    };
+    if (!res.ok || !data.ok) {
+      return {
+        ok: false,
+        reason: data.reason || 'error',
+        message: data.message || '没成功，稍后再试',
+      };
+    }
+    return { ok: true, blocked: on, blocks: Array.isArray(data.blocks) ? data.blocks : [] };
+  } catch {
+    return { ok: false, reason: 'network', message: '网好像断了一下，再试一次' };
   }
 }
 

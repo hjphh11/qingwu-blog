@@ -142,6 +142,28 @@ function visibleClause(me: string | number): { sql: string; params: Array<string
   };
 }
 
+/**
+ * 屏蔽：把我屏蔽掉的人整条滤掉。
+ *
+ * 和「撤回 / 收走」不同，**这里不留占位**。那三种是「这条消息不见了」，
+ * 而屏蔽是「这个人对我不存在了」—— 留一行「某条消息被屏蔽」只会让消息流
+ * 每隔几句出现一条空行，还得让人反复想起自己屏蔽过谁。
+ *
+ * 用 `NOT EXISTS` 而不是先查 id 再拼 `NOT IN (…)`：屏蔽名单可能几十条，
+ * 拼占位符既难看也有参数上限；子查询走 (blocker_id, blocked_id) 主键，成本一样。
+ *
+ * 未登录（`me = -1`）时子查询永远空，`NOT EXISTS` 恒真 —— 不需要额外分支。
+ */
+function blockClause(me: string | number): { sql: string; params: Array<string | number> } {
+  return {
+    sql: ` AND NOT EXISTS (
+             SELECT 1 FROM chat_blocks b
+              WHERE b.blocker_id = ? AND b.blocked_id = m.account_id
+           )`,
+    params: [me],
+  };
+}
+
 /** 一张图 / 一段视频的元信息（二进制不在这里，走 url 或 /chat/media/:id） */
 export interface MediaInfo {
   id: number;
@@ -325,6 +347,12 @@ function toItem(
 
   return {
     id: r.id,
+    /**
+     * 作者账号 id。前端「当场屏蔽」要用它把这个人已加载的消息立刻滤掉 ——
+     * 只靠名字会误伤重名，而且改名之后就对不上了。
+     * 跨站消息没有本地账号，给 0。
+     */
+    authorId: remote ? 0 : (r.account_id ?? 0),
     name,
     avatar,
     site: remote ? r.remote_site || '' : r.acc_site || '',
@@ -403,17 +431,18 @@ export async function getHistory(request: Request, env: Env): Promise<Response> 
   const me = await currentAccount(request, env);
   const meId = me?.id ?? null;
   const vis = visibleClause(meId ?? -1);
+  const blk = blockClause(meId ?? -1);
 
   try {
     const older = before > 0 ? ' AND m.id < ?' : '';
     const stmt = env.DB.prepare(
       `SELECT ${COLS} FROM chat_messages m LEFT JOIN accounts a ON a.id = m.account_id
-        WHERE ${vis.sql}${older}
+        WHERE ${vis.sql}${blk.sql}${older}
         ORDER BY m.id DESC LIMIT ?`,
     );
     const rows = before > 0
-      ? await stmt.bind(...vis.params, before, limit + 1).all<MessageRow>()
-      : await stmt.bind(...vis.params, limit + 1).all<MessageRow>();
+      ? await stmt.bind(...vis.params, ...blk.params, before, limit + 1).all<MessageRow>()
+      : await stmt.bind(...vis.params, ...blk.params, limit + 1).all<MessageRow>();
 
     const fetched = rows.results ?? [];
     const hasMore = fetched.length > limit;
@@ -480,6 +509,7 @@ export async function pollChat(request: Request, env: Env): Promise<Response> {
   const me = await currentAccount(request, env);
   const meId = me?.id ?? null;
   const vis = visibleClause(meId ?? -1);
+  const blk = blockClause(meId ?? -1);
 
   try {
     /**
@@ -500,10 +530,10 @@ export async function pollChat(request: Request, env: Env): Promise<Response> {
     // ① 新消息
     const fresh = await env.DB.prepare(
       `SELECT ${COLS} FROM chat_messages m LEFT JOIN accounts a ON a.id = m.account_id
-        WHERE m.id > ? AND ${vis.sql}
+        WHERE m.id > ? AND ${vis.sql}${blk.sql}
         ORDER BY m.id ASC LIMIT ?`,
     )
-      .bind(after, ...vis.params, POLL_MAX)
+      .bind(after, ...vis.params, ...blk.params, POLL_MAX)
       .all<MessageRow>();
 
     /**
@@ -518,10 +548,10 @@ export async function pollChat(request: Request, env: Env): Promise<Response> {
     const changed = await env.DB.prepare(
       `SELECT ${COLS} FROM chat_messages m LEFT JOIN accounts a ON a.id = m.account_id
         WHERE m.updated_at > ? AND m.id <= ?
-          AND (m.status IN ('visible','recalled','deleted','removed') OR (m.status='pending' AND m.account_id = ?))
+          AND (m.status IN ('visible','recalled','deleted','removed') OR (m.status='pending' AND m.account_id = ?))${blk.sql}
         ORDER BY m.id ASC LIMIT 50`,
     )
-      .bind(now - RELEASE_WINDOW, after, meId ?? -1)
+      .bind(now - RELEASE_WINDOW, after, meId ?? -1, ...blk.params)
       .all<MessageRow>();
 
     const freshList = fresh.results ?? [];
@@ -574,9 +604,12 @@ export async function pollChat(request: Request, env: Env): Promise<Response> {
               substr(a.email, 1, instr(a.email, '@') - 1) AS prefix
          FROM chat_presence p JOIN accounts a ON a.id = p.account_id
         WHERE p.typing_at > ? AND p.account_id != ?
+          AND NOT EXISTS (
+            SELECT 1 FROM chat_blocks b WHERE b.blocker_id = ? AND b.blocked_id = p.account_id
+          )
         LIMIT 5`,
     )
-      .bind(now - TYPING_WINDOW, meId ?? -1)
+      .bind(now - TYPING_WINDOW, meId ?? -1, meId ?? -1)
       .all<{ id: number; name: string | null; prefix: string | null }>()
       .catch(() => ({ results: [] as Array<{ id: number; name: string | null; prefix: string | null }> }));
 
@@ -607,10 +640,13 @@ export async function pollChat(request: Request, env: Env): Promise<Response> {
           `SELECT COALESCE(NULLIF(a.display_name, ''), substr(a.email, 1, instr(a.email, '@') - 1)) AS name
              FROM chat_reads r JOIN accounts a ON a.id = r.account_id
             WHERE r.last_read_id >= ? AND r.account_id != ?
+              AND NOT EXISTS (
+                SELECT 1 FROM chat_blocks b WHERE b.blocker_id = ? AND b.blocked_id = r.account_id
+              )
             ORDER BY r.updated_at DESC
             LIMIT 200`,
         )
-          .bind(last.id, meId)
+          .bind(last.id, meId, meId)
           .all<{ name: string | null }>()
           .catch(() => ({ results: [] as Array<{ name: string | null }> }));
         const list = (who.results ?? []) as Array<{ name: string | null }>;
@@ -902,6 +938,8 @@ export async function sendMessage(
       ok: true,
       message: {
         id,
+        /** 作者账号 id：前端「当场屏蔽」靠它把屏上已加载的消息摘掉 */
+        authorId: me.id,
         // 和 toItem 的兜底顺序一致，否则「刚发的这条」和「刷新后看到的那条」署名不一样
         name: me.display_name || me.email.split('@')[0] || `茶客#${me.id}`,
         avatar: me.avatar_url || avatarFromEmail(me.email),

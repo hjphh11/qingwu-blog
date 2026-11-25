@@ -4,13 +4,13 @@ import { MorphIcon } from 'morphicons/react';
 import { Bell, X } from '../../lib/icons';
 import { avatarFromHash } from '../../lib/avatar';
 import { useDialogFocus } from '../../lib/useDialogFocus';
-import type { ChatMember, PinInfo } from '../../lib/chat';
+import type { BlockedUser, ChatMember, PinInfo } from '../../lib/chat';
 import { hostOf } from './PersonCard';
 
 /**
  * 长亭 · 右侧「空间详情」
  *
- * 三块：频道公告 / 空间成员 / 长亭的话。
+ * 三块：频道公告 / 空间成员 / 长亭的话；屏蔽过人才会多出第四块「已屏蔽」。
  * 设计稿里第四块是「爱弥斯色板速览」—— 那是给设计核对用的，
  * 站长明确说不放，所以这里没有。
  *
@@ -80,16 +80,20 @@ export default function ChatInfo({
   people,
   online,
   pin,
+  blocks,
   loading,
   open,
   collapsed,
   onClose,
   onPick,
+  onUnblock,
 }: {
   /** 在线的人（用于标题里的计数兜底） */
   members: ChatMember[];
   /** 所有来过的人（进过门或说过话）；空数组时退回在线名单 */
   people: ChatMember[];
+  /** 我屏蔽了谁（单向：他们不在上面两份名单里，只在这张卡里） */
+  blocks: BlockedUser[];
   /** -1 = 还在数人 */
   online: number;
   /** 站长置顶的那条；null = 没有置顶 */
@@ -107,6 +111,8 @@ export default function ChatInfo({
   onClose: () => void;
   /** 点了某个人：把「看谁」交给页面层，人卡在那儿统一渲染 */
   onPick: (m: ChatMember) => void;
+  /** 取消屏蔽（只在这一张卡里出现） */
+  onUnblock: (u: BlockedUser) => void | Promise<void>;
 }) {
   const [allOpen, setAllOpen] = useState(false);
   const allBoxRef = useDialogFocus<HTMLDivElement>(allOpen, () => setAllOpen(false));
@@ -196,6 +202,49 @@ export default function ChatInfo({
             </>
           )}
         </section>
+
+        {/* ——— ②b 已屏蔽（没屏蔽过就不占位置） ——— */}
+        {blocks.length > 0 && (
+          <section className="q-card">
+            <div className="q-card__head">
+              <span className="q-card__t">已屏蔽</span>
+              <span className="q-card__n">{blocks.length} 人</span>
+            </div>
+            {/*
+              这张卡只做一件事：让人找得到「我到底屏蔽了谁」。
+              被屏蔽的人不在上面那份成员名单里，不列出来就再也没法取消 ——
+              那才是屏蔽最糟的形态（点错了就永远找不回来）。
+            */}
+            <ul className="q-blocked">
+              {blocks.map((b) => (
+                <li key={b.id} className="q-blocked__row">
+                  <span className="q-blocked__av" aria-hidden="true">
+                    {b.name.slice(0, 1)}
+                    {b.avatar && (
+                      <img
+                        src={b.avatar}
+                        alt=""
+                        loading="lazy"
+                        decoding="async"
+                        onError={(e) => {
+                          e.currentTarget.style.display = 'none';
+                        }}
+                      />
+                    )}
+                  </span>
+                  <span className="q-blocked__name">{b.name}</span>
+                  <button
+                    type="button"
+                    className="q-blocked__undo"
+                    onClick={() => void onUnblock(b)}
+                  >
+                    取消屏蔽
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </section>
+        )}
 
         {/* ——— ③ 规矩 ——— */}
         <section className="q-card">

@@ -49,10 +49,13 @@ export async function searchChat(request: Request, env: Env): Promise<Response> 
         WHERE m.body LIKE ? ESCAPE '\\'
           AND (m.status IN ('visible','recalled')
                OR (m.status = 'pending' AND m.account_id = ?))
+          AND NOT EXISTS (
+            SELECT 1 FROM chat_blocks b WHERE b.blocker_id = ? AND b.blocked_id = m.account_id
+          )
         ORDER BY m.id DESC
         LIMIT ?`,
     )
-      .bind(like, meId ?? -1, limit)
+      .bind(like, meId ?? -1, meId ?? -1, limit)
       .all<{
         id: number;
         body: string;
@@ -73,6 +76,8 @@ export async function searchChat(request: Request, env: Env): Promise<Response> 
       const remote = r.origin === 'remote';
       return {
         id: r.id,
+        /** 前端跳过去时要用它判断这条是不是被屏蔽的人发的（0 = 跨站） */
+        authorId: remote ? 0 : (r.account_id ?? 0),
         name: remote
           ? r.remote_nick || '远方的茶客'
           : r.acc_name || r.prefix || `茶客#${r.account_id ?? 0}`,

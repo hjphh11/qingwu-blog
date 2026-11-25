@@ -38,10 +38,12 @@ import {
   recall,
   report as reportApi,
   send,
+  setBlock,
   setPin as setPinApi,
   typing,
   uploadMedia,
   edit as editApi,
+  type BlockedUser,
   type ChatMedia,
   type ChatMember,
   type ChatMessage,
@@ -296,7 +298,12 @@ function clampNum(v: number, lo: number, hi: number): number {
 }
 
 interface Snapshot {
-  v: 1;
+  /**
+   * 快照结构版本。**改消息字段就升一号**（不适配旧结构，直接丢弃重拉）：
+   * v2 起消息带 `authorId`（屏蔽要按账号 id 摘消息），v1 的旧快照没有这个字段，
+   * 留着它会让「刚屏蔽的人」继续挂在屏幕上，直到下一次整页刷新。
+   */
+  v: 2;
   at: number;
   /** 写快照时的账号 id。换人登录时靠它判断「这份不是我看到的」 */
   accountId: number | null;
@@ -319,7 +326,7 @@ function readSnapshot(): Snapshot | null {
     const raw = window.sessionStorage.getItem(SNAP_KEY);
     if (!raw) return null;
     const s = JSON.parse(raw) as Snapshot;
-    if (s?.v !== 1 || !Array.isArray(s.messages) || s.messages.length === 0) return null;
+    if (s?.v !== 2 || !Array.isArray(s.messages) || s.messages.length === 0) return null;
     if (!Number.isFinite(s.at) || Date.now() - s.at > SNAP_TTL) return null;
     return s;
   } catch {
@@ -331,7 +338,7 @@ function writeSnapshot(s: Omit<Snapshot, 'v' | 'at'>): void {
   try {
     window.sessionStorage.setItem(
       SNAP_KEY,
-      JSON.stringify({ v: 1, at: Date.now(), ...s, messages: s.messages.slice(-SNAP_MAX) }),
+      JSON.stringify({ v: 2, at: Date.now(), ...s, messages: s.messages.slice(-SNAP_MAX) }),
     );
   } catch {
     /* 隐私模式 / 配额满：加速失效而已，功能不受影响 */
@@ -364,6 +371,8 @@ export default function ChatRoom() {
   const [members, setMembers] = useState<ChatMember[]>([]);
   /** 所有来过这间屋子的人（进过门或说过话）—— 右栏「空间成员」用这份，在线那份在上边 */
   const [people, setPeople] = useState<ChatMember[]>([]);
+  /** 我屏蔽了谁（单向、只有我看不见）。服务端在 who 与屏蔽接口里一起回 */
+  const [blocks, setBlocks] = useState<BlockedUser[]>([]);
   /** 正在看谁的个人主页（null = 没开）。左栏头像 / 左栏「我」/ 右栏成员行共用 */
   const [peek, setPeek] = useState<ChatMember | null>(null);
 
@@ -729,6 +738,7 @@ export default function ChatRoom() {
     const w = await fetchWho();
     setMembers(w.members);
     setPeople(w.people);
+    setBlocks(w.blocks);
   }, []);
 
   /**
@@ -756,6 +766,7 @@ export default function ChatRoom() {
         setIdentityReady(true);
         setMembers(list.members);
         setPeople(list.people);
+        setBlocks(list.blocks);
         setPinState(page.pin);
         lastIdRef.current = page.messages.reduce((max, m) => Math.max(max, m.id), 0);
         readMarkRef.current = page.lastRead;
@@ -1530,6 +1541,7 @@ export default function ChatRoom() {
         [
           {
             id: hit.id,
+            authorId: hit.authorId,
             name: hit.name,
             avatar: hit.avatar,
             site: '',
@@ -1589,6 +1601,38 @@ export default function ChatRoom() {
     setPeek(m);
   };
 
+  /**
+   * 屏蔽 / 取消屏蔽。
+   *
+   * 屏蔽要**当场生效**：服务端下一次 poll 起就不再给这个人的消息了，但屏幕上
+   * 已经加载的那些得立刻摘掉 —— 否则要等刷新，用户会以为没成功，再点一次。
+   *
+   * 取消屏蔽相反：服务端不再过滤，可本地列表里并没有那些旧消息，
+   * 所以走一次安静的重载把它们拉回来（也顺手校正了屏蔽期间的遗漏）。
+   */
+  const toggleBlock = async (target: { id: number; name: string }) => {
+    const on = !blocks.some((b) => b.id === target.id);
+    const r = await setBlock(target.id, on);
+    if (!r.ok) {
+      setTip({ kind: 'warn', text: r.message });
+      if (r.reason === 'login') setLoginOpen(true);
+      return;
+    }
+    setBlocks(r.blocks);
+    if (on) {
+      // `?? 0` 只是兜底（快照已升到 v2，正常消息都带 authorId），别让 undefined 漏过判断
+      setMessages((prev) => prev.filter((m) => (m.authorId ?? 0) !== target.id || m.mine));
+      // 名单里也立刻摘掉：右栏那张卡还要显示「N 人来过」，不能等他下次刷新
+      setMembers((prev) => prev.filter((m) => m.id !== target.id));
+      setPeople((prev) => prev.filter((m) => m.id !== target.id));
+      setTypingNames((prev) => prev.filter((n) => n !== target.name));
+      setTip({ kind: 'ok', text: `已屏蔽 ${target.name}` });
+    } else {
+      setTip({ kind: 'ok', text: `已取消屏蔽 ${target.name}` });
+      void init({ quiet: true });
+    }
+  };
+
   const side = (
     <ChatAside
       account={account}
@@ -1613,6 +1657,7 @@ export default function ChatRoom() {
     <ChatInfo
       members={members}
       people={people}
+      blocks={blocks}
       online={loading ? -1 : online}
       pin={pin}
       loading={loading}
@@ -1620,6 +1665,7 @@ export default function ChatRoom() {
       collapsed={wide && infoHidden}
       onClose={closeInfo}
       onPick={openPeek}
+      onUnblock={toggleBlock}
     />
   );
 
@@ -2437,6 +2483,8 @@ export default function ChatRoom() {
         <PersonCard
           m={peek}
           self={!!account && peek.id === account.id}
+          blocked={blocks.some((b) => b.id === peek.id)}
+          onToggleBlock={toggleBlock}
           account={account}
           /**
            * 刚存完资料：会话立刻换成新的（左栏「我」跟着改名换头像），

@@ -15,6 +15,8 @@
 //   POST /chat/:id/react                      表情回应（再点一次取消）
 //   POST /chat/:id/edit                       5 分钟内改自己的话（重新过清单）
 //   POST /chat/:id/report                     举报一条（只落库，不自动隐藏）
+//   POST /chat/:id/block                      屏蔽某人（单向、只影响我自己看到的）
+//   DELETE /chat/:id/block                    取消屏蔽
 //   POST /chat/pin                            站长置顶 / 取消置顶
 //
 // v2 再加桥接状态与 /admin 那两页；路由先不占位 —— 开着口子却没实现，
@@ -31,6 +33,7 @@ import { markTyping } from './typing';
 import { getWho } from './who';
 import { editMessage } from './edit';
 import { reportMessage } from './report';
+import { setBlock } from './block';
 import { setPin } from './pin';
 
 const NOT_ALLOWED = () => json({ ok: false, reason: 'method_not_allowed' }, 405);
@@ -105,6 +108,14 @@ export async function handleChat(
   const report = path.match(/^\/chat\/(\d+)\/report$/);
   if (report) {
     return method === 'POST' ? reportMessage(request, env, ctx, report[1]!) : NOT_ALLOWED();
+  }
+
+  // /chat/:id/block —— 屏蔽 / 取消屏蔽（单向：只有我看不见他）
+  const block = path.match(/^\/chat\/(\d+)\/block$/);
+  if (block) {
+    if (method === 'POST') return setBlock(request, env, block[1]!, true);
+    if (method === 'DELETE') return setBlock(request, env, block[1]!, false);
+    return NOT_ALLOWED();
   }
 
   // 置顶（站长）

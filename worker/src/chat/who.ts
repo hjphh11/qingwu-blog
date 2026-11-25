@@ -16,6 +16,7 @@ import { json } from '../util';
 import { avatarFromHash } from '../auth/avatar';
 import { sessionUser, type AccountRow } from '../auth/store';
 import { touchPresence } from './messages';
+import { listBlocks } from './block';
 
 /** 在线判定窗口。与 messages.ts 的 ONLINE_WINDOW 保持一致 */
 const ONLINE_WINDOW = 5 * 60 * 1000;
@@ -52,7 +53,7 @@ interface PeopleRow extends WhoRow {
  *
  * 上限 200：这间屋子不大，真到几百人时这个名单也该分页了。
  */
-async function listPeople(env: Env, now: number): Promise<PeopleRow[]> {
+async function listPeople(env: Env, now: number, meId: number): Promise<PeopleRow[]> {
   const rows = await env.DB.prepare(
     `SELECT a.id AS id,
             a.display_name AS name, a.avatar_url AS avatar,
@@ -67,12 +68,17 @@ async function listPeople(env: Env, now: number): Promise<PeopleRow[]> {
             (SELECT MAX(ts) FROM chat_messages m WHERE m.account_id = a.id
               AND m.status = 'visible') AS last_post
        FROM accounts a
-      WHERE EXISTS (SELECT 1 FROM chat_presence p2 WHERE p2.account_id = a.id)
+      WHERE (EXISTS (SELECT 1 FROM chat_presence p2 WHERE p2.account_id = a.id)
          OR EXISTS (SELECT 1 FROM chat_messages m
-                     WHERE m.account_id = a.id AND m.status <> 'deleted')
+                     WHERE m.account_id = a.id AND m.status <> 'deleted'))
+        AND NOT EXISTS (
+          SELECT 1 FROM chat_blocks b WHERE b.blocker_id = ? AND b.blocked_id = a.id
+        )
       ORDER BY (a.role = 'admin') DESC, seen DESC, a.id DESC
       LIMIT 200`,
-  ).all<PeopleRow>();
+  )
+    .bind(meId)
+    .all<PeopleRow>();
   return (rows.results ?? []) as PeopleRow[];
 }
 
@@ -118,10 +124,13 @@ export async function getWho(request: Request, env: Env): Promise<Response> {
               substr(a.email, 1, instr(a.email, '@') - 1) AS prefix
          FROM chat_presence p JOIN accounts a ON a.id = p.account_id
         WHERE p.last_seen > ?
+          AND NOT EXISTS (
+            SELECT 1 FROM chat_blocks b WHERE b.blocker_id = ? AND b.blocked_id = p.account_id
+          )
         ORDER BY (a.role = 'admin') DESC, p.last_seen DESC
         LIMIT 60`,
     )
-      .bind(now - ONLINE_WINDOW)
+      .bind(now - ONLINE_WINDOW, me?.id ?? -1)
       .all<WhoRow>();
 
     const raw = (rows.results ?? []) as WhoRow[];
@@ -162,12 +171,26 @@ export async function getWho(request: Request, env: Env): Promise<Response> {
      */
     let people: ReturnType<typeof peopleOf> = [];
     try {
-      people = peopleOf(await listPeople(env, now), now);
+      people = peopleOf(await listPeople(env, now, me?.id ?? -1), now);
     } catch (e) {
       console.error('[chat] people 失败:', e instanceof Error ? e.message : e);
     }
 
-    return json({ ok: true, members, people });
+    /**
+     * 屏蔽名单。
+     *
+     * 一起回是为了省一次请求：右栏那张「已屏蔽」卡片要和成员名单同时刷新，
+     * 分两个接口就会出现「成员里已经没他、屏蔽名单里还没他」的一瞬间。
+     * 失败不影响 who 本身（名单挂了不该让聊天页没侧栏）。
+     */
+    let blocks: Awaited<ReturnType<typeof listBlocks>> = [];
+    try {
+      if (me) blocks = await listBlocks(env, me.id);
+    } catch (e) {
+      console.error('[chat] blocks 失败:', e instanceof Error ? e.message : e);
+    }
+
+    return json({ ok: true, members, people, blocks });
   } catch (err) {
     console.error('[chat] who 失败:', err instanceof Error ? err.message : err);
     // 侧栏挂了不该影响聊天：回空列表，页面照常用

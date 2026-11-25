@@ -3158,6 +3158,114 @@
     color: var(--color-ink);
   }
 
+  /* 「已屏蔽」：不抢眼，但一眼找得到 —— 它解释了这个人的消息为什么看不见 */
+  .q-person__tag--off {
+    background: color-mix(in srgb, var(--color-ink) 9%, transparent);
+    color: var(--color-muted);
+  }
+
+  /* ——— 人卡上的「屏蔽此人 / 取消屏蔽」 ———
+     和上面那颗「编辑资料」同一尺寸，但用**中性描边**而不是绯红虚线：
+     屏蔽不是这一页的主行动，不该比「编辑资料」还显眼。 */
+  .q-person__block {
+    display: block;
+    width: 100%;
+    min-height: 2.25rem;
+    margin-top: 0.55rem;
+    border: 1px solid color-mix(in srgb, var(--color-ink) 13%, transparent);
+    border-radius: 0.7rem;
+    background: transparent;
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: var(--color-muted);
+    transition:
+      border-color var(--dur-micro) ease,
+      color var(--dur-micro) ease,
+      background-color var(--dur-micro) ease;
+  }
+
+  .q-person__block:hover {
+    border-color: color-mix(in srgb, var(--color-crimson) 40%, transparent);
+    color: var(--color-crimson);
+  }
+
+  /* 已屏蔽态：换成虚线，和「编辑资料」那颗一样表示「这一步可以还原」 */
+  .q-person__block.is-on {
+    border-style: dashed;
+    border-color: color-mix(in srgb, var(--color-crimson) 34%, transparent);
+    background: color-mix(in srgb, var(--color-rose) 16%, transparent);
+    color: var(--color-crimson);
+  }
+
+  /* ——— 右栏「已屏蔽」那张卡 ——— */
+  .q-blocked {
+    display: flex;
+    flex-direction: column;
+    gap: 0.05rem;
+    padding-bottom: 0.25rem;
+  }
+
+  .q-blocked__row {
+    display: flex;
+    align-items: center;
+    gap: 0.45rem;
+    min-height: 2.25rem;
+    padding: 0.1rem 0.35rem;
+  }
+
+  .q-blocked__av {
+    position: relative;
+    flex: none;
+    display: grid;
+    place-items: center;
+    width: 1.5rem;
+    height: 1.5rem;
+    overflow: hidden;
+    border-radius: 9999px;
+    background: color-mix(in srgb, var(--color-ink) 10%, transparent);
+    font-size: 0.625rem;
+    font-weight: 700;
+    color: var(--color-muted);
+  }
+
+  .q-blocked__av img {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  }
+
+  .q-blocked__name {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    font-size: 0.75rem;
+    color: var(--color-muted);
+  }
+
+  /* 取消屏蔽给足 24px 高：这是这张卡唯一有用的按钮，手指要够得到 */
+  .q-blocked__undo {
+    flex: none;
+    min-height: 1.5rem;
+    padding: 0 0.45rem;
+    border-radius: var(--radius-pill);
+    background: color-mix(in srgb, var(--color-ink) 6%, transparent);
+    font-size: 0.6875rem;
+    font-weight: 600;
+    color: var(--color-muted);
+    transition:
+      background-color var(--dur-micro) ease,
+      color var(--dur-micro) ease;
+  }
+
+  .q-blocked__undo:hover {
+    background: color-mix(in srgb, var(--color-rose) 34%, transparent);
+    color: var(--color-crimson);
+  }
+
   /* 进编辑态：顶部那张大头像压小一半 —— 表单里已经有一个「当前头像」，
      两张等大的圆对着摆像重复贴了一遍 */
   .q-person__box.is-editing .q-person__hero {
