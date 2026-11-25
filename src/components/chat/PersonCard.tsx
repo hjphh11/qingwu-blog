@@ -1,10 +1,12 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { MorphIcon } from 'morphicons/react';
 import { X } from '../../lib/icons';
 import { avatarFromHash } from '../../lib/avatar';
 import { useDialogFocus } from '../../lib/useDialogFocus';
+import type { SessionAccount } from '../../lib/auth';
 import type { ChatMember } from '../../lib/chat';
+import PersonEditor from './PersonEditor';
 
 /**
  * 长亭 · 个人主页（居中小窗）
@@ -53,17 +55,25 @@ export function stampOf(ms?: number): string {
 export default function PersonCard({
   m,
   self,
+  account,
+  onAccount,
   onClose,
 }: {
   m: ChatMember;
-  /** 这张卡是不是在看自己（只能说一句「这是你」，别的不多做） */
+  /** 这张卡是不是在看自己（多一枚「是你」标 + 一个「编辑资料」） */
   self?: boolean;
+  /** 自己的会话账号；self 时才有，编辑资料要用它 */
+  account?: SessionAccount | null;
+  /** 资料存成功：把新账号抛给页面（同步会话、刷新成员名单） */
+  onAccount?: (a: SessionAccount | null) => void;
   onClose: () => void;
 }) {
   const boxRef = useDialogFocus<HTMLDivElement>(true, onClose);
   const site = hostOf(m.site);
   const avatar = m.avatar || avatarFromHash('');
   const posts = m.posts ?? 0;
+  /** 正在编辑自己的资料（只在 self + 有 account 时可能为 true） */
+  const [editing, setEditing] = useState(false);
 
   // 焦点落在盒子上而不是右上角那个 ×：一打开就给 × 画一圈焦点框，
   // 看着像报错。落在盒子上读屏一样会念标题，Tab 再进 ×。
@@ -71,18 +81,24 @@ export default function PersonCard({
     boxRef.current?.focus({ preventScroll: true });
   }, [boxRef]);
 
-  /** 「关于」那句话只用真实数据拼。最后发言在下面的数字格里，这里只报第一次。 */
+  /**
+   * 「关于」优先用他自己写的那句（bio）。
+   *
+   * 没写的时候才退回自动文案 —— 只用真实数据拼，不编：说过话就报第一次的时间，
+   * 没说过就直说没说过。
+   */
   const about =
-    posts > 0
+    (m.bio || '').trim() ||
+    (posts > 0
       ? `${stampOf(m.firstPost)} 在这里说了第一句。`
       : self
-        ? '还没在这间屋子里说过话。下面那个输入框等你。'
-        : '还没在这间屋子里说过话，大概只是路过。';
+        ? '还没在这间屋子里说过话，也没写简介。'
+        : '还没在这间屋子里说过话，大概只是路过。');
 
   return createPortal(
     <div className="q-person" role="dialog" aria-modal="true" aria-label={`${m.name} 的个人主页`}>
       <button type="button" className="q-person__mask" aria-label="关掉个人主页" onClick={onClose} />
-      <div className="q-person__box" ref={boxRef} tabIndex={-1}>
+      <div className={`q-person__box${editing ? ' is-editing' : ''}`} ref={boxRef} tabIndex={-1}>
         <div className="q-person__hero" aria-hidden="true" />
         <button type="button" className="q-person__x" onClick={onClose} aria-label="关闭">
           <MorphIcon icon={X} size={15} color="currentColor" />
@@ -121,35 +137,47 @@ export default function PersonCard({
         </div>
 
         <div className="q-person__body">
-          <h3 className="q-person__h">{self ? '关于你' : '关于这位茶友'}</h3>
-          <p className="q-person__about">{about}</p>
-          {site && (
-            <a
-              className="q-person__link"
-              href={`https://${site}`}
-              target="_blank"
-              rel="noopener noreferrer"
-            >
-              访问 {site} ↗
-            </a>
-          )}
+          {editing && account ? (
+            <PersonEditor
+              account={account}
+              onAccount={(a) => onAccount?.(a)}
+              onDone={() => setEditing(false)}
+            />
+          ) : (
+            <>
+              <h3 className="q-person__h">{self ? '关于你' : '关于这位茶友'}</h3>
+              <p className="q-person__about">{about}</p>
+              {site && (
+                <a
+                  className="q-person__link"
+                  href={`https://${site}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  访问 {site} ↗
+                </a>
+              )}
 
-          <dl className="q-person__stats">
-            <div>
-              <dt>发言</dt>
-              <dd>
-                {posts}
-                <em>条</em>
-              </dd>
-            </div>
-            <div>
-              <dt>最后发言</dt>
-              <dd className="q-person__when">{posts > 0 ? stampOf(m.lastPost) : '—'}</dd>
-            </div>
-          </dl>
+              <dl className="q-person__stats">
+                <div>
+                  <dt>发言</dt>
+                  <dd>
+                    {posts}
+                    <em>条</em>
+                  </dd>
+                </div>
+                <div>
+                  <dt>最后发言</dt>
+                  <dd className="q-person__when">{posts > 0 ? stampOf(m.lastPost) : '—'}</dd>
+                </div>
+              </dl>
 
-          {self && (
-            <p className="q-person__hint">别人点你的头像，看到的就是这一页。</p>
+              {self && account && (
+                <button type="button" className="q-person__edit" onClick={() => setEditing(true)}>
+                  编辑资料
+                </button>
+              )}
+            </>
           )}
         </div>
       </div>

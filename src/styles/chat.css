@@ -2582,13 +2582,29 @@
       #fdf4ee;
   }
 
+  /**
+   * 右上角那颗 ×。
+   *
+   * ⚠️ 必须自带尺寸：它没有挂 `.q-iconbtn`（那颗按钮的样式是给侧栏头部用的），
+   * 只写 position 的话按钮会被 15px 的图标撑成 15×15 —— 低于 WCAG 2.5.8 的 24。
+   */
   .q-person__x {
     position: absolute;
     top: 0.5rem;
     right: 0.5rem;
     z-index: 2;
-    background: rgba(255, 255, 255, 0.82);
+    display: grid;
+    place-items: center;
+    width: 1.75rem;
+    height: 1.75rem;
     border-radius: 0.6rem;
+    background: rgba(255, 255, 255, 0.82);
+    color: var(--color-muted);
+    transition: color var(--dur-micro) ease;
+  }
+
+  .q-person__x:hover {
+    color: var(--color-crimson);
   }
 
   .q-person__id {
@@ -2681,11 +2697,13 @@
     color: var(--color-muted);
   }
 
+  /* 链接也按 24px 的命中区给：这是人卡里唯一的外链，手指要够得到 */
   .q-person__link {
     display: inline-flex;
     align-items: center;
     gap: 0.2rem;
-    margin-top: 0.55rem;
+    min-height: 1.5rem;
+    margin-top: 0.4rem;
     font-size: 0.75rem;
     font-weight: 600;
     color: var(--color-crimson);
@@ -2733,11 +2751,210 @@
     color: var(--color-ink);
   }
 
-  .q-person__hint {
+  /* 进编辑态：顶部那张大头像压小一半 —— 表单里已经有一个「当前头像」，
+     两张等大的圆对着摆像重复贴了一遍 */
+  .q-person__box.is-editing .q-person__hero {
+    height: 2.9rem;
+  }
+
+  .q-person__box.is-editing .q-person__id {
+    margin-top: -1.6rem;
+  }
+
+  .q-person__box.is-editing .q-person__av {
+    width: 3.2rem;
+    height: 3.2rem;
+    font-size: 1.1rem;
+  }
+
+  /* 自己的卡上那颗「编辑资料」：整宽虚线，像一张还没填的表 */
+  .q-person__edit {
+    display: block;
+    width: 100%;
+    min-height: 2.25rem;
     margin-top: 0.85rem;
+    border: 1px dashed color-mix(in srgb, var(--color-crimson) 34%, transparent);
+    border-radius: 0.7rem;
+    background: color-mix(in srgb, var(--color-rose) 16%, transparent);
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: var(--color-crimson);
+    transition: background-color var(--dur-micro) ease;
+  }
+
+  .q-person__edit:hover {
+    background: color-mix(in srgb, var(--color-rose) 34%, transparent);
+  }
+
+  /* ——— 编辑资料（人卡里的第二种形态） ——— */
+  .q-pedit {
+    display: flex;
+    flex-direction: column;
+    gap: 0.55rem;
+  }
+
+  .q-pedit__av {
+    display: flex;
+    align-items: center;
+    gap: 0.65rem;
+    padding-bottom: 0.15rem;
+  }
+
+  .q-pedit__avimg {
+    position: relative;
+    flex: none;
+    display: grid;
+    place-items: center;
+    width: 3rem;
+    height: 3rem;
+    overflow: hidden;
+    border-radius: 9999px;
+    background: var(--color-rose);
+    font-family: var(--font-display);
+    font-size: 1.05rem;
+    font-weight: 700;
+    color: var(--color-ink);
+  }
+
+  .q-pedit__avimg img {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  }
+
+  .q-pedit__avacts {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.35rem;
+  }
+
+  .q-pedit__mini {
+    min-height: 1.75rem;
+    padding: 0.15rem 0.6rem;
+    border-radius: var(--radius-pill);
+    background: color-mix(in srgb, var(--color-crimson) 12%, transparent);
+    font-size: 0.71875rem;
+    font-weight: 600;
+    color: var(--color-crimson);
+  }
+
+  .q-pedit__mini--ghost {
+    background: color-mix(in srgb, var(--color-ink) 6%, transparent);
+    color: var(--color-muted);
+  }
+
+  .q-pedit__mini:disabled {
+    opacity: 0.55;
+  }
+
+  .q-pedit__field {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
     font-size: 0.6875rem;
-    line-height: 1.7;
+    font-weight: 600;
+    color: var(--color-muted);
+  }
+
+  /* 标签行：左边是名字，右边是字数（简介专用） */
+  .q-pedit__field > span {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 0.5rem;
+  }
+
+  .q-pedit__field em {
+    font-style: normal;
+    font-weight: 500;
     color: var(--color-subtle);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .q-pedit__field input,
+  .q-pedit__field textarea {
+    width: 100%;
+    padding: 0.4rem 0.55rem;
+    border: 1px solid color-mix(in srgb, var(--color-ink) 12%, transparent);
+    border-radius: 0.6rem;
+    background: rgba(255, 255, 255, 0.9);
+    font-family: inherit;
+    font-size: 0.8125rem;
+    font-weight: 400;
+    line-height: 1.6;
+    color: var(--color-ink);
+    outline: 0;
+    transition: border-color var(--dur-micro) ease;
+  }
+
+  .q-pedit__field textarea {
+    resize: vertical;
+    min-height: 3.6rem;
+  }
+
+  .q-pedit__field input:focus-visible,
+  .q-pedit__field textarea:focus-visible {
+    border-color: color-mix(in srgb, var(--color-crimson) 55%, transparent);
+  }
+
+  .q-pedit__field input::placeholder,
+  .q-pedit__field textarea::placeholder {
+    color: var(--color-subtle);
+  }
+
+  /* iOS 上 <16px 的输入框会放大整页 —— 手机端提到 16 */
+  @media (max-width: 768px) {
+    .q-pedit__field input,
+    .q-pedit__field textarea {
+      font-size: 1rem;
+    }
+  }
+
+  .q-pedit__msg {
+    font-size: 0.71875rem;
+    line-height: 1.6;
+  }
+
+  /* 成功是中性灰（「存好了」不需要再喊一遍）；出错才用 crimson */
+  .q-pedit__msg.is-ok {
+    color: var(--color-muted);
+  }
+
+  .q-pedit__msg.is-warn {
+    color: var(--color-crimson);
+  }
+
+  .q-pedit__acts {
+    display: flex;
+    gap: 0.4rem;
+    margin-top: 0.15rem;
+  }
+
+  .q-pedit__ghost,
+  .q-pedit__save {
+    flex: 1;
+    min-height: 2.1rem;
+    border-radius: 0.65rem;
+    font-size: 0.78125rem;
+    font-weight: 600;
+  }
+
+  .q-pedit__ghost {
+    border: 1px solid color-mix(in srgb, var(--color-ink) 12%, transparent);
+    background: rgba(255, 255, 255, 0.9);
+    color: var(--color-muted);
+  }
+
+  .q-pedit__save {
+    background: var(--color-crimson);
+    color: var(--color-cream);
+  }
+
+  .q-pedit__save:disabled,
+  .q-pedit__ghost:disabled {
+    opacity: 0.6;
   }
 
   .q-person__stats em {

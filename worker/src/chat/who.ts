@@ -28,6 +28,8 @@ interface WhoRow {
   hash: string | null;
   role: string;
   site: string | null;
+  /** 自己写的一句简介（人卡用） */
+  bio: string | null;
   prefix: string | null;
 }
 
@@ -55,6 +57,7 @@ async function listPeople(env: Env, now: number): Promise<PeopleRow[]> {
     `SELECT a.id AS id,
             a.display_name AS name, a.avatar_url AS avatar,
             a.email_hash AS hash, a.role AS role, a.site_url AS site,
+            a.bio AS bio,
             substr(a.email, 1, instr(a.email, '@') - 1) AS prefix,
             (SELECT MAX(last_seen) FROM chat_presence p WHERE p.account_id = a.id) AS seen,
             (SELECT COUNT(*) FROM chat_messages m
@@ -88,6 +91,7 @@ function peopleOf(rows: PeopleRow[], now: number) {
     name: r.name || r.prefix || `茶客#${r.id}`,
     avatar: r.avatar || avatarFromHash(r.hash || ''),
     site: r.site || '',
+    bio: r.bio || '',
     admin: (r.role ?? '') === 'admin',
     online: (r.seen ?? 0) > now - ONLINE_WINDOW,
     seen: r.seen ?? 0,
@@ -110,6 +114,7 @@ export async function getWho(request: Request, env: Env): Promise<Response> {
       `SELECT p.account_id AS id,
               a.display_name AS name, a.avatar_url AS avatar,
               a.email_hash AS hash, a.role AS role, a.site_url AS site,
+              a.bio AS bio,
               substr(a.email, 1, instr(a.email, '@') - 1) AS prefix
          FROM chat_presence p JOIN accounts a ON a.id = p.account_id
         WHERE p.last_seen > ?
@@ -125,6 +130,7 @@ export async function getWho(request: Request, env: Env): Promise<Response> {
       name: r.name || r.prefix || `茶客#${r.id}`,
       avatar: r.avatar || avatarFromHash(r.hash || ''),
       site: r.site || '',
+      bio: r.bio || '',
       admin: (r.role ?? '') === 'admin',
       online: true,
     }));
@@ -144,6 +150,7 @@ export async function getWho(request: Request, env: Env): Promise<Response> {
           name: me.display_name || me.email.split('@')[0] || `茶客#${me.id}`,
           avatar: me.avatar_url || avatarFromHash(me.email_hash || ''),
           site: me.site_url || '',
+          bio: me.bio || '',
           admin: (me.role ?? '') === 'admin',
           online: true,
         });

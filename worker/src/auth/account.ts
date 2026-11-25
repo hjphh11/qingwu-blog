@@ -33,6 +33,8 @@ export interface PublicAccount {
   /** 头像是自己传的（true）还是按邮箱算出来的（false）—— 前端据此决定输入框里要不要回填 */
   avatarCustom: boolean;
   site: string;
+  /** 自己写的一句简介；空串 = 没写 */
+  bio: string;
   role: 'visitor' | 'admin';
   since: number;
   identities: PublicIdentity[];
@@ -72,6 +74,7 @@ export async function publicAccount(env: Env, account: AccountRow): Promise<Publ
     avatar: account.avatar_url || avatarFromEmail(account.email),
     avatarCustom: Boolean(account.avatar_url),
     site: account.site_url || '',
+    bio: account.bio || '',
     role: account.role === 'admin' ? 'admin' : 'visitor',
     since: account.created_at,
     identities,

@@ -34,6 +34,8 @@ import { claimLikes, visitorKey } from '../visitor';
 
 const NAME_MAX = 30;
 const URL_MAX = 300;
+/** 一句简介。120 字够写「在哪儿念书 / 做什么 / 常聊什么」，再长就不是人卡了 */
+const BIO_MAX = 120;
 
 async function readJson(request: Request): Promise<Record<string, unknown>> {
   try {
@@ -153,6 +155,14 @@ async function patchProfile(request: Request, env: Env): Promise<Response> {
   const body = await readJson(request);
   const name = str(body.display_name, NAME_MAX);
   const site = normalizeUrl(str(body.site_url, URL_MAX));
+  /**
+   * 简介：**只有请求里带了 `bio` 这个键才动它**。
+   *
+   * `/account/` 那边的表单是「名字 + 站点」两条，若这里一律写 bio，
+   * 在那儿改个名字就会把简介清空 —— 一次无声的数据丢失。
+   */
+  const bioGiven = Object.prototype.hasOwnProperty.call(body, 'bio');
+  const bio = str(body.bio, BIO_MAX);
 
   if (site && !/^https?:\/\/[^\s/]+\.[^\s]+$/i.test(site)) {
     return json({ ok: false, reason: 'bad_site', message: '站点网址看起来不太对' }, 400, headers);
@@ -161,9 +171,19 @@ async function patchProfile(request: Request, env: Env): Promise<Response> {
   // 头像走独立接口（上传见 postAvatar）—— 这里**不碰** avatar_url。
   // 曾经把「署名 + 站点 + 头像」写进同一个 UPDATE，结果「只改署名」也会把
   // 头像一起覆盖掉；分开之后各自说得清。
-  await env.DB.prepare('UPDATE accounts SET display_name = ?, site_url = ? WHERE id = ?')
-    .bind(name || null, site || null, me.account.id)
-    .run();
+  await (bioGiven
+    ? env.DB.prepare('UPDATE accounts SET display_name = ?, site_url = ?, bio = ? WHERE id = ?').bind(
+        name || null,
+        site || null,
+        bio || null,
+        me.account.id,
+      )
+    : env.DB.prepare('UPDATE accounts SET display_name = ?, site_url = ? WHERE id = ?').bind(
+        name || null,
+        site || null,
+        me.account.id,
+      )
+  ).run();
 
   const fresh = await findAccountById(env, me.account.id);
   return json({ ok: true, account: fresh ? await publicAccount(env, fresh) : null }, 200, headers);

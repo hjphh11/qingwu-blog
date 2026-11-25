@@ -25,6 +25,8 @@ export interface AccountRow {
   display_name: string | null;
   site_url: string | null;
   avatar_url: string | null;
+  /** 自己写的一句简介（人卡上那句「关于」）。空 = 没写 */
+  bio: string | null;
   role: string;
   status: string;
   created_at: number;
@@ -32,7 +34,7 @@ export interface AccountRow {
 }
 
 const ACCOUNT_COLS =
-  'id, email, email_hash, display_name, site_url, avatar_url, role, status, created_at, last_seen_at';
+  'id, email, email_hash, display_name, site_url, avatar_url, bio, role, status, created_at, last_seen_at';
 
 export async function findAccountByEmail(env: Env, email: string): Promise<AccountRow | null> {
   const e = normalizeEmail(email);
@@ -141,7 +143,8 @@ export async function sessionUser(request: Request, env: Env): Promise<SessionUs
 
   const row = await env.DB.prepare(
     `SELECT a.id AS id, a.email AS email, a.email_hash AS email_hash, a.display_name AS display_name,
-            a.site_url AS site_url, a.avatar_url AS avatar_url, a.role AS role, a.status AS status,
+            a.site_url AS site_url, a.avatar_url AS avatar_url, a.bio AS bio,
+            a.role AS role, a.status AS status,
             a.created_at AS created_at, a.last_seen_at AS last_seen_at,
             s.kind AS s_kind, s.expires_at AS s_exp, s.ua AS s_ua
        FROM auth_sessions s JOIN accounts a ON a.id = s.account_id

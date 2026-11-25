@@ -2111,6 +2111,31 @@ export default function ChatRoom() {
         <PersonCard
           m={peek}
           self={!!account && peek.id === account.id}
+          account={account}
+          /**
+           * 刚存完资料：会话立刻换成新的（左栏「我」跟着改名换头像），
+           * 名单也重新拉一遍；人卡手里的 `peek` 是一份快照，得手动并一下 ——
+           * 否则名字要等 30 秒后的下次轮询才变。
+           */
+          onAccount={(a) => {
+            setAccount(a);
+            void refreshWho();
+            if (a) {
+              setPeek((p) =>
+                p && p.id === a.id
+                  ? {
+                      ...p,
+                      name: a.name,
+                      avatar: a.avatar,
+                      site: a.site,
+                      bio: a.bio,
+                      admin: a.role === 'admin',
+                      online: true,
+                    }
+                  : p,
+              );
+            }
+          }}
           onClose={() => setPeek(null)}
         />
       )}

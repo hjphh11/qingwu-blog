@@ -472,6 +472,8 @@ export interface ChatMember {
   name: string;
   avatar: string;
   site: string;
+  /** 自己写的一句简介；空串 = 没写 */
+  bio?: string;
   admin: boolean;
   online: boolean;
   /** 最后一次在场的时间戳（毫秒）；只有「来过的人」这份名单带 */

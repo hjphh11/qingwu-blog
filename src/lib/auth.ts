@@ -28,6 +28,8 @@ export interface SessionAccount {
   /** 头像是不是自己设的（false = 按邮箱算出来的，QQ 邮箱就是 QQ 头像） */
   avatarCustom: boolean;
   site: string;
+  /** 自己写的一句简介；空串 = 没写（人卡会退回自动生成的那句） */
+  bio: string;
   role: 'visitor' | 'admin';
   since: number;
   identities: Identity[];
@@ -146,6 +148,8 @@ export async function logout(): Promise<void> {
 export async function saveProfile(input: {
   display_name: string;
   site_url: string;
+  /** 一句简介；不传 = 不动它（改名字不该顺手清空简介） */
+  bio?: string;
   avatar_url?: string;
 }): Promise<Result<{ account: SessionAccount | null }>> {
   try {

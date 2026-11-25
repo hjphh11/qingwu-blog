@@ -51,6 +51,7 @@ export default function AccountCenter() {
   const [items, setItems] = useState<MyComment[] | null>(null);
 
   const [name, setName] = useState('');
+  const [bio, setBio] = useState('');
   const [site, setSite] = useState('');
   const [saving, setSaving] = useState(false);
   const [avatarBusy, setAvatarBusy] = useState(false);
@@ -72,6 +73,7 @@ export default function AccountCenter() {
       if (r.account) {
         setName(r.account.name);
         setSite(r.account.site);
+        setBio(r.account.bio || '');
       }
     });
     return () => {
@@ -99,6 +101,7 @@ export default function AccountCenter() {
     if (next) {
       setName(next.name);
       setSite(next.site);
+      setBio(next.bio || '');
     }
   }
 
@@ -111,7 +114,12 @@ export default function AccountCenter() {
 
   async function save() {
     setSaving(true);
-    const r = await saveProfile({ display_name: name.trim(), site_url: site.trim() });
+    const r = await saveProfile({
+      display_name: name.trim(),
+      site_url: site.trim(),
+      // 带 bio：这一页和长亭人卡用的是同一份资料，两边谁改都算
+      bio: bio.trim(),
+    });
     setSaving(false);
     if (!r.ok) {
       setMsg({ kind: 'warn', text: r.message });
@@ -364,6 +372,19 @@ export default function AccountCenter() {
               maxLength={30}
               onChange={(ev) => setName(ev.target.value)}
               className="w-full rounded-lg border border-rose/25 bg-white px-2.5 py-2 text-xs text-ink outline-none focus:border-crimson/50"
+            />
+          </label>
+          <label className="block sm:col-span-2">
+            <span className="mb-1 block text-[10.5px] text-subtle">
+              一句话简介（可不填，长亭的个人主页上会显示）
+            </span>
+            <textarea
+              value={bio}
+              maxLength={120}
+              rows={2}
+              onChange={(ev) => setBio(ev.target.value)}
+              placeholder="在哪儿、做什么、常聊什么"
+              className="w-full resize-y rounded-lg border border-rose/25 bg-white px-2.5 py-2 text-xs leading-relaxed text-ink outline-none focus:border-crimson/50"
             />
           </label>
           <label className="block">

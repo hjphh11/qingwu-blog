@@ -75,16 +75,18 @@ export default function ChatAside({
   onPick: (m: ChatMember) => void;
 }) {
   /**
-   * 头像统一走 `avatarFromHash`（cravatar）。
+   * 头像：自己传的那张 > cravatar（按邮箱算）。
    *
-   * `account.avatar` 是 `avatar_url || avatarFromEmail(email)`，QQ 邮箱会走
-   * `q.qlogo.cn` —— 和在线名单用的 cravatar 是两个域名，同一账号会出现
-   * 「我这儿空白、名单里却有头像」。cravatar 对 QQ 邮箱同样回 QQ 头像。
+   * 不用 `account.avatar` 兜底里的 `avatarFromEmail`：QQ 邮箱会走 `q.qlogo.cn`，
+   * 和在线名单用的 cravatar 是两个域名，同一账号会出现「我这儿空白、名单里却有头像」。
+   * 但**自己传的头像优先** —— 换完之后左栏要跟着变，否则看着像没换成功。
    */
   const meAvatar = account
-    ? account.emailHash
-      ? avatarFromHash(account.emailHash)
-      : account.avatar
+    ? account.avatarCustom
+      ? account.avatar
+      : account.emailHash
+        ? avatarFromHash(account.emailHash)
+        : account.avatar
     : '';
 
   const host = hostOf(account?.site || '');
