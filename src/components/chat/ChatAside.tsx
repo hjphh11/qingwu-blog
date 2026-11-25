@@ -170,7 +170,7 @@ export default function ChatAside({
       <div className="q-side__scroll">
         <section className="q-side__group">
           <div className="q-side__grouphead">
-            <span>茶室频道</span>
+            <span>长亭频道</span>
             <span>1 个</span>
           </div>
           <button type="button" className="q-channel is-active" aria-current="true">
@@ -289,9 +289,9 @@ export default function ChatAside({
                 {account.name}
                 {account.role === 'admin' && <span className="q-member__tag">站长</span>}
               </p>
-              <p className="q-me__sub">{host ? `来自 ${host}` : '在这间茶室里'}</p>
+              <p className="q-me__sub">{host ? `来自 ${host}` : '在长亭里'}</p>
             </div>
-            <span className="q-me__pill" title="你正在这间茶室里">
+            <span className="q-me__pill" title="你正在长亭里">
               <i aria-hidden="true" />
               在线
             </span>

@@ -2378,14 +2378,26 @@
     background: var(--color-crimson);
   }
 
-  /* 成员行。**不设 hover**：它不是按钮，悬停变色会让人以为点得进去 */
+  /* 成员行。现在点得进去（个人主页），所以有 hover / 焦点态 */
   .q-member {
     display: flex;
     align-items: center;
     gap: 0.5rem;
+    width: 100%;
     min-height: 2.5rem;
     padding: 0.3rem 0.35rem;
     border-radius: 0.7rem;
+    text-align: left;
+    transition: background-color var(--dur-micro) ease;
+  }
+
+  .q-member:hover {
+    background: color-mix(in srgb, var(--color-rose) 24%, transparent);
+  }
+
+  .q-member:focus-visible {
+    outline: 2px solid var(--color-crimson);
+    outline-offset: -2px;
   }
 
   /* 卡片里先摆 5 个（CARD_SLOTS），再多就去「显示全部」的小窗 */
@@ -2467,6 +2479,145 @@
     margin-left: auto;
     font-size: 0.6875rem;
     color: var(--color-subtle);
+  }
+
+  /* 个人主页：居中小窗（点成员行的任意一行） */
+  .q-person {
+    position: fixed;
+    inset: 0;
+    z-index: 84;
+    display: grid;
+    place-items: center;
+    padding: 1rem;
+  }
+
+  .q-person__mask {
+    position: absolute;
+    inset: 0;
+    border: 0;
+    background: color-mix(in srgb, var(--color-ink) 32%, transparent);
+    backdrop-filter: blur(4px);
+  }
+
+  .q-person__box {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    width: min(19rem, 100%);
+    padding: 1.55rem 1.25rem 1.1rem;
+    border: 1px solid rgba(255, 255, 255, 0.92);
+    border-radius: 1.35rem;
+    background: #fffdfb;
+    box-shadow: 0 26px 64px -22px rgba(74, 55, 40, 0.36);
+  }
+
+  /* 打开时焦点落在这个盒子上（读屏先念内容），别给它画焦点框 */
+  .q-person__box:focus {
+    outline: none;
+  }
+
+  .q-person__x {
+    position: absolute;
+    top: 0.5rem;
+    right: 0.5rem;
+  }
+
+  .q-person__av {
+    position: relative;
+    display: grid;
+    place-items: center;
+    width: 4.25rem;
+    height: 4.25rem;
+    overflow: hidden;
+    border-radius: 9999px;
+    background: var(--color-rose);
+    font-family: var(--font-display);
+    font-size: 1.5rem;
+    font-weight: 700;
+    color: var(--color-ink);
+    box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.9);
+  }
+
+  .q-person__av img {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  }
+
+  .q-person__name {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    margin-top: 0.6rem;
+    font-family: var(--font-display);
+    font-size: 1.0625rem;
+    font-weight: 700;
+    color: var(--color-ink);
+  }
+
+  .q-person__tag {
+    padding: 0.02rem 0.35rem;
+    border-radius: var(--radius-pill);
+    background: color-mix(in srgb, var(--color-crimson) 14%, transparent);
+    font-family: var(--font-body);
+    font-size: 0.625rem;
+    font-weight: 600;
+    color: var(--color-accent-soft);
+  }
+
+  .q-person__state {
+    display: flex;
+    align-items: center;
+    gap: 0.3rem;
+    margin-top: 0.3rem;
+    font-size: 0.75rem;
+    color: var(--color-subtle);
+  }
+
+  .q-person__state i {
+    width: 0.4rem;
+    height: 0.4rem;
+    border-radius: 9999px;
+    background: var(--color-crimson);
+  }
+
+  .q-person__facts {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.5rem;
+    width: 100%;
+    margin-top: 1rem;
+    padding-top: 0.9rem;
+    border-top: 1px solid color-mix(in srgb, var(--color-ink) 7%, transparent);
+  }
+
+  .q-person__facts > div {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.15rem;
+  }
+
+  .q-person__facts dt {
+    font-size: 0.6875rem;
+    color: var(--color-subtle);
+  }
+
+  .q-person__facts dd {
+    font-size: 0.8125rem;
+    font-weight: 600;
+    color: var(--color-ink);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .q-person__facts a {
+    color: var(--color-crimson);
+    text-decoration: underline;
+    text-underline-offset: 2px;
+    text-decoration-thickness: 1px;
   }
 
   .q-members--all {

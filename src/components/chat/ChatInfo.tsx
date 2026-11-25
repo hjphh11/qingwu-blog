@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { MorphIcon } from 'morphicons/react';
 import { Bell, X } from '../../lib/icons';
@@ -9,7 +9,7 @@ import type { ChatMember, PinInfo } from '../../lib/chat';
 /**
  * 长亭 · 右侧「空间详情」
  *
- * 三块：频道公告 / 空间成员 / 茶室规矩。
+ * 三块：频道公告 / 空间成员 / 长亭的话。
  * 设计稿里第四块是「爱弥斯色板速览」—— 那是给设计核对用的，
  * 站长明确说不放，所以这里没有。
  *
@@ -32,34 +32,44 @@ const RULES = [
  */
 const CARD_SLOTS = 5;
 
-/** 一个人一行。在线的是实心点，不在线的不画点 —— 空心点容易被当成「加载中」 */
-function MemberRow({ m }: { m: ChatMember }) {
+/**
+ * 一个人一行。点一下看他的个人主页（居中小窗）。
+ * 在线的是实心点，不在线的不画点 —— 空心点容易被当成「加载中」。
+ */
+function MemberRow({ m, onPick }: { m: ChatMember; onPick: (m: ChatMember) => void }) {
   const site = hostOf(m.site);
   const avatar = m.avatar || avatarFromHash('');
   return (
-    <li className={`q-member${m.online ? ' is-on' : ''}`}>
-      <span className="q-member__av" aria-hidden="true">
-        {m.name.slice(0, 1)}
-        {avatar && (
-          <img
-            src={avatar}
-            alt=""
-            loading="lazy"
-            decoding="async"
-            onError={(e) => {
-              e.currentTarget.style.display = 'none';
-            }}
-          />
-        )}
-      </span>
-      <span className="q-member__body">
-        <span className="q-member__name">
-          {m.name}
-          {m.admin && <span className="q-member__tag">站长</span>}
+    <li>
+      <button
+        type="button"
+        className={`q-member${m.online ? ' is-on' : ''}`}
+        onClick={() => onPick(m)}
+        aria-label={`看 ${m.name} 的个人主页`}
+      >
+        <span className="q-member__av" aria-hidden="true">
+          {m.name.slice(0, 1)}
+          {avatar && (
+            <img
+              src={avatar}
+              alt=""
+              loading="lazy"
+              decoding="async"
+              onError={(e) => {
+                e.currentTarget.style.display = 'none';
+              }}
+            />
+          )}
         </span>
-        {site && <span className="q-member__site">来自 {site}</span>}
-      </span>
-      {m.online && <i className="q-member__dot" aria-label="在线" />}
+        <span className="q-member__body">
+          <span className="q-member__name">
+            {m.name}
+            {m.admin && <span className="q-member__tag">站长</span>}
+          </span>
+          {site && <span className="q-member__site">来自 {site}</span>}
+        </span>
+        {m.online && <i className="q-member__dot" aria-label="在线" />}
+      </button>
     </li>
   );
 }
@@ -70,6 +80,102 @@ function hostOf(url: string): string {
     .replace(/^www\./i, '')
     .split('/')[0]!
     .toLowerCase();
+}
+
+/** 毫秒时间戳 → 「刚刚 / 12 分钟前 / 3 小时前 / 5 天前」 */
+function relTime(ms?: number): string {
+  if (!ms) return '很久以前';
+  const d = Math.max(0, Date.now() - ms);
+  if (d < 60_000) return '刚刚';
+  if (d < 3_600_000) return `${Math.round(d / 60_000)} 分钟前`;
+  if (d < 86_400_000) return `${Math.round(d / 3_600_000)} 小时前`;
+  return `${Math.round(d / 86_400_000)} 天前`;
+}
+
+/**
+ * 个人主页：居中小窗。
+ *
+ * 站内没有「账号主页」这种页面（账号不是文章作者，没有作品列表可看），
+ * 所以把「他在这间屋子里的痕迹」摆出来就够：头像、名字、站长标、
+ * 从哪个站来、在不在、说过几句、最近一次什么时候来过。
+ * 挂 portal 是因为右栏是 `overflow: hidden` 的卡片，弹层留在里面会被裁。
+ */
+function PersonCard({ m, onClose }: { m: ChatMember; onClose: () => void }) {
+  const boxRef = useDialogFocus<HTMLDivElement>(true, onClose);
+  const site = hostOf(m.site);
+  const avatar = m.avatar || avatarFromHash('');
+
+  // 焦点落在盒子上而不是右上角那个 ×：一打开就给 × 画一圈焦点框，
+  // 看着像报错。落在盒子上读屏一样会念标题，Tab 再进 ×。
+  useEffect(() => {
+    boxRef.current?.focus({ preventScroll: true });
+  }, [boxRef]);
+
+  return createPortal(
+    <div className="q-person" role="dialog" aria-modal="true" aria-label={`${m.name} 的个人主页`}>
+      <button
+        type="button"
+        className="q-person__mask"
+        aria-label="关掉个人主页"
+        onClick={onClose}
+      />
+      <div className="q-person__box" ref={boxRef} tabIndex={-1}>
+        <button type="button" className="q-person__x" onClick={onClose} aria-label="关闭">
+          <MorphIcon icon={X} size={15} color="currentColor" />
+        </button>
+
+        <span className="q-person__av" aria-hidden="true">
+          {m.name.slice(0, 1)}
+          {avatar && (
+            <img
+              src={avatar}
+              alt=""
+              loading="lazy"
+              decoding="async"
+              onError={(e) => {
+                e.currentTarget.style.display = 'none';
+              }}
+            />
+          )}
+        </span>
+
+        <p className="q-person__name">
+          {m.name}
+          {m.admin && <span className="q-person__tag">站长</span>}
+        </p>
+        <p className={`q-person__state${m.online ? ' is-on' : ''}`}>
+          {m.online ? (
+            <>
+              <i aria-hidden="true" />
+              此刻在长亭
+            </>
+          ) : (
+            `最近来过 · ${relTime(m.seen)}`
+          )}
+        </p>
+
+        <dl className="q-person__facts">
+          <div>
+            <dt>来自</dt>
+            <dd>
+              {site ? (
+                <a href={`https://${site}`} target="_blank" rel="noopener noreferrer">
+                  {site}
+                </a>
+              ) : (
+                '本站'
+              )}
+            </dd>
+          </div>
+          <div>
+            <dt>说过</dt>
+            <dd>{m.posts ?? 0} 句</dd>
+          </div>
+        </dl>
+      </div>
+    </div>,
+    document.body,
+  );
 }
 
 export default function ChatInfo({
@@ -103,8 +209,15 @@ export default function ChatInfo({
   onClose: () => void;
 }) {
   const [allOpen, setAllOpen] = useState(false);
+  /** 正在看谁的个人主页（null = 没开） */
+  const [picked, setPicked] = useState<ChatMember | null>(null);
   const allBoxRef = useDialogFocus<HTMLDivElement>(allOpen, () => setAllOpen(false));
   const list = people.length ? people : members;
+  /** 点一个人：个人主页替代名单小窗（两个弹层叠着按 Esc 会一次关两层） */
+  const openPerson = (m: ChatMember) => {
+    setAllOpen(false);
+    setPicked(m);
+  };
   const shown = list.slice(0, CARD_SLOTS);
 
   return (
@@ -168,7 +281,7 @@ export default function ChatInfo({
             <>
               <ul className="q-members">
                 {shown.map((m) => (
-                  <MemberRow key={m.id} m={m} />
+                  <MemberRow key={m.id} m={m} onPick={openPerson} />
                 ))}
               </ul>
               {list.length > shown.length && (
@@ -220,13 +333,15 @@ export default function ChatInfo({
               </div>
               <ul className="q-members q-members--all">
                 {list.map((m) => (
-                  <MemberRow key={m.id} m={m} />
+                  <MemberRow key={m.id} m={m} onPick={openPerson} />
                 ))}
               </ul>
             </div>
           </div>,
           document.body,
         )}
+
+      {picked && <PersonCard m={picked} onClose={() => setPicked(null)} />}
     </aside>
   );
 }
