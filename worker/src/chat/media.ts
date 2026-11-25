@@ -463,3 +463,112 @@ export async function getMedia(env: Env, idParam: string): Promise<Response> {
     return new Response(null, { status: 502 });
   }
 }
+
+// ——————————————————————————————————————————————————————————
+// 孤儿媒体清理（scheduled 每天 03:00 跑一次，见 index.ts）
+// ——————————————————————————————————————————————————————————
+
+/**
+ * DELETE 一个对象。签名与 putToR2 同构，只是方法换成 DELETE、payload 是空串。
+ *
+ * 不用 `?delete` 批量接口：一次只清几十个，逐个删更好定位失败；而且批量接口要额外的
+ * XML body 参与签名，多一处能错的地方。
+ */
+async function deleteFromR2(cfg: R2Cfg, key: string): Promise<boolean> {
+  const host = `${cfg.account}.r2.cloudflarestorage.com`;
+  const region = 'auto';
+  const amzDate = new Date().toISOString().replace(/[:-]|\.\d{3}/g, '');
+  const dateStamp = amzDate.slice(0, 8);
+  const payloadHash = await sha256Hex(''); // DELETE 没有 body，哈希空串
+
+  const canonicalUri = `/${cfg.bucket}/${key}`;
+  const signedHeaders = 'host;x-amz-content-sha256;x-amz-date';
+  const canonicalHeaders =
+    `host:${host}\n` + `x-amz-content-sha256:${payloadHash}\n` + `x-amz-date:${amzDate}\n`;
+  const canonicalRequest = `DELETE\n${canonicalUri}\n\n${canonicalHeaders}\n${signedHeaders}\n${payloadHash}`;
+
+  const scope = `${dateStamp}/${region}/s3/aws4_request`;
+  const stringToSign = `AWS4-HMAC-SHA256\n${amzDate}\n${scope}\n${await sha256Hex(canonicalRequest)}`;
+
+  let k = await hmac(new TextEncoder().encode(`AWS4${cfg.secret}`), dateStamp);
+  k = await hmac(k, region);
+  k = await hmac(k, 's3');
+  k = await hmac(k, 'aws4_request');
+  const signature = hexOf(await hmac(k, stringToSign));
+
+  try {
+    const res = await fetch(`https://${host}${canonicalUri}`, {
+      method: 'DELETE',
+      headers: {
+        'x-amz-content-sha256': payloadHash,
+        'x-amz-date': amzDate,
+        authorization: `AWS4-HMAC-SHA256 Credential=${cfg.accessKey}/${scope}, SignedHeaders=${signedHeaders}, Signature=${signature}`,
+      },
+    });
+    // 404 也算成功：对象已经不在了，正是我们要的结果
+    return res.ok || res.status === 404;
+  } catch (err) {
+    console.error('[chat] R2 DELETE 抛错:', err instanceof Error ? err.message : err);
+    return false;
+  }
+}
+
+/**
+ * 清掉「没有任何可见消息引用」的媒体。
+ *
+ * 为什么需要：撤回 / 站长收走 / AI 收起 都只改消息状态、不动图。R2 是永久存储，
+ * 一张被撤回的图会永远躺在桶里；上传了却没发出去的残留更是纯垃圾。
+ *
+ * ⚠️ 为什么不给整个 `chat/` 前缀挂一条 R2 lifecycle（比如 90 天自动删）：
+ * 那条规则不认识数据库，会把**正在用的**历史图一起删掉 —— 一年前的聊天记录全变破图。
+ * 这里按「引用」判断，只动真正没人要的。
+ *
+ * 为什么留 7 天宽限：后台有 `restoreChatMessage`（removed → visible），站长可能过几天
+ * 才反应过来是误判。窗口太短就等于把「可恢复」变成「恢复后没图」。
+ */
+export async function purgeOrphanMedia(
+  env: Env,
+  opts: { graceMs?: number; limit?: number } = {},
+): Promise<{ removed: number; failed: number }> {
+  const graceMs = opts.graceMs ?? 7 * 24 * 60 * 60 * 1000;
+  const limit = opts.limit ?? 200;
+  const cutoff = Date.now() - graceMs;
+  const cfg = r2Of(env);
+
+  const rows = await env.DB.prepare(
+    `SELECT m.id, m.url FROM chat_media m
+      WHERE m.ts < ?
+        AND NOT EXISTS (
+          SELECT 1 FROM chat_messages c
+           WHERE c.image_id = m.id AND c.status IN ('visible', 'pending')
+        )
+      ORDER BY m.id
+      LIMIT ?`,
+  )
+    .bind(cutoff, limit)
+    .all();
+
+  const list = (rows.results ?? []) as { id: number; url: string | null }[];
+  let removed = 0;
+  let failed = 0;
+
+  for (const r of list) {
+    // 先删对象、后删行：反过来的话「行删了、对象没删掉」就成了查不到也删不掉的永久垃圾
+    if (cfg && r.url && r.url.startsWith(`${cfg.publicBase}/`)) {
+      const key = r.url.slice(cfg.publicBase.length + 1);
+      if (!(await deleteFromR2(cfg, key))) {
+        failed += 1;
+        continue;
+      }
+    }
+    try {
+      await env.DB.prepare('DELETE FROM chat_media WHERE id = ?').bind(r.id).run();
+      removed += 1;
+    } catch (err) {
+      console.error('[chat] 删媒体行失败:', r.id, err instanceof Error ? err.message : err);
+      failed += 1;
+    }
+  }
+
+  return { removed, failed };
+}

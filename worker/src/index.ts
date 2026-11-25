@@ -21,6 +21,7 @@ import { getApply, patchApply, postApply } from './apply';
 import { handleAuth } from './auth/index';
 import { handleAdmin } from './admin/index';
 import { handleChat } from './chat/index';
+import { purgeOrphanMedia } from './chat/media';
 import { runBacklinkCheck } from './admin/friends';
 import { deleteFriendComment, getFriendsBoard, postFriendLike, postFriendReply, postFriendsBoard } from './friends-board';
 import { deletePostComment, getPostComments, postPostComment, postPostLike, postPostReply } from './post-comments';
@@ -257,6 +258,15 @@ export default {
       runBacklinkCheck(env)
         .then((s) => console.log(`[cron] 回链检查：${s.ok}/${s.total} 仍挂着回链`))
         .catch((err) => console.error('[cron] 回链检查失败:', err instanceof Error ? err.message : err)),
+    );
+    // 长亭媒体清理：只清「没有 visible/pending 消息引用」且超过 7 天的图/语音。
+    // 别改成按前缀的 R2 lifecycle —— 那条规则不认识库，会把在用的历史图一起删成破图。
+    ctx.waitUntil(
+      purgeOrphanMedia(env)
+        .then((s) => {
+          if (s.removed || s.failed) console.log(`[cron] 长亭媒体清理：删 ${s.removed} 个，失败 ${s.failed}`);
+        })
+        .catch((err) => console.error('[cron] 长亭媒体清理失败:', err instanceof Error ? err.message : err)),
     );
   },
 } satisfies ExportedHandler<Env>;
