@@ -21,7 +21,7 @@ import LoginDialog from './auth/LoginDialog';
 import ChatAside from './chat/ChatAside';
 import ChatInfo from './chat/ChatInfo';
 import ChatSearch from './chat/ChatSearch';
-import PersonCard from './chat/PersonCard';
+import PersonCard, { hostOf } from './chat/PersonCard';
 import { useDialogFocus } from '../lib/useDialogFocus';
 import { renderRich } from '../lib/richText';
 import { EMOJI_MAP } from '../lib/emojis';
@@ -351,6 +351,10 @@ export default function ChatRoom() {
   const [mentionIds, setMentionIds] = useState<number[]>([]);
   /** 输入框里正在打的那个 @（null = 没在选人） */
   const [mention, setMention] = useState<{ at: number; q: string } | null>(null);
+  /** @ 弹层里「展开全部成员」了没 */
+  const [mentionAllOpen, setMentionAllOpen] = useState(false);
+  /** @ 弹层里键盘选中的第几个（↑↓ 移动，Enter 选） */
+  const [mentionIdx, setMentionIdx] = useState(0);
 
   /** 别人正在打字 */
   const [typingNames, setTypingNames] = useState<string[]>([]);
@@ -782,10 +786,26 @@ export default function ChatRoom() {
       if (!others.length) return;
       const last = others[others.length - 1]!;
       const plain = last.body.replace(/\s+/g, ' ').trim();
-      const excerpt = plain || (last.media ? (last.media.kind === 'video' ? '[视频]' : '[图片]') : '');
-      const title = others.length === 1 ? `长亭 · ${last.name}` : `长亭 · ${others.length} 条新消息`;
-      const body =
-        others.length === 1 ? excerpt.slice(0, 60) : `最后一条来自 ${last.name}：${excerpt.slice(0, 40)}`;
+      const excerptOf = (m: ChatMessage) =>
+        m.body.replace(/\s+/g, ' ').trim() ||
+        (m.media ? (m.media.kind === 'video' ? '[视频]' : m.media.kind === 'file' ? '[文件]' : '[图片]') : '');
+      /**
+       * 被 @ 的那条优先当标题。
+       *
+       * 通知只露一行时，「XX @ 了你」比「长亭 · 3 条新消息」有用得多 ——
+       * 前者是叫我，后者只是「有人说话」，而群里一直有人说话。
+       */
+      const atMe = others.filter((m) => m.mentionedMe).pop();
+      const title = atMe
+        ? `长亭 · ${atMe.name} @ 了你`
+        : others.length === 1
+          ? `长亭 · ${last.name}`
+          : `长亭 · ${others.length} 条新消息`;
+      const body = atMe
+        ? excerptOf(atMe).slice(0, 60)
+        : others.length === 1
+          ? excerptOf(last).slice(0, 60)
+          : `最后一条来自 ${last.name}：${excerptOf(last).slice(0, 40)}`;
       try {
         const n = new Notification(title, {
           body,
@@ -1274,6 +1294,8 @@ export default function ChatRoom() {
     setDraft(next);
     setMentionIds((ids) => [...new Set([...ids, m.id])]);
     setMention(null);
+    setMentionAllOpen(false);
+    setMentionIdx(0);
     requestAnimationFrame(() => {
       el?.focus();
       const p = Math.min(mention.at + insert.length, next.length);
@@ -1281,13 +1303,22 @@ export default function ChatRoom() {
     });
   };
 
-  /** @ 候选：在线的人里名字包含当前输入的那几个字 */
-  const mentionList =
-    mention && members.length
-      ? members
-          .filter((m) => !mention.q || m.name.toLowerCase().includes(mention.q.toLowerCase()))
-          .slice(0, 5)
-      : [];
+  /**
+   * @ 候选：**所有来过这间屋子的人**，不只是此刻在线的。
+   *
+   * 原来只从 `members`（在线）里取 —— 想 @ 一个刚走开两分钟的人就找不到，
+   * 而草稿里那句「@他一下」其实等他在线了再发也来得及。
+   * 排序：在线的在前，其次是站长，其余按后端给的「最近在场」顺序。
+   *
+   * 先摆 6 个（弹层不挡输入区），要更全就点底部那颗「查看全部」。
+   */
+  const mentionPool = people.length ? people : members;
+  const mentionList = mention
+    ? mentionPool
+        .filter((m) => !mention.q || m.name.toLowerCase().includes(mention.q.toLowerCase()))
+        .sort((a, b) => (b.online ? 1 : 0) - (a.online ? 1 : 0) || (b.admin ? 1 : 0) - (a.admin ? 1 : 0))
+        .slice(0, mentionAllOpen ? 200 : 6)
+    : [];
 
   /**
    * 跳到置顶那条。
@@ -1889,14 +1920,20 @@ export default function ChatRoom() {
             <div className="q-chat__composer">
               <div className="q-chat__inputwrap">
                 {mention && mentionList.length > 0 && (
-                  <div className="q-chat__mentions" role="listbox" aria-label="选一个人">
-                    {mentionList.map((p) => (
+                  <div className="q-chat__mentions" role="listbox" aria-label="选择要提及的人">
+                    <div className="q-chat__mentions__head" aria-hidden="true">
+                      <span>提及</span>
+                      <i>对方开着提醒时会收到通知</i>
+                    </div>
+                    {mentionList.map((p, i) => (
                       <button
                         key={p.id}
                         type="button"
                         role="option"
-                        aria-selected={false}
+                        aria-selected={i === mentionIdx}
+                        className={i === mentionIdx ? 'is-active' : ''}
                         onClick={() => pickMention(p)}
+                        onMouseEnter={() => setMentionIdx(i)}
                       >
                         <span
                           className="q-chat__mentions__av"
@@ -1906,9 +1943,25 @@ export default function ChatRoom() {
                           {p.name.slice(0, 1)}
                         </span>
                         <span className="q-chat__mentions__n">{p.name}</span>
-                        {p.admin && <em>站长</em>}
+                        {/* 右侧一行小字交代「他是谁」：在不在、从哪个站来、是不是站长 */}
+                        <span className="q-chat__mentions__meta">
+                          {p.online ? '此刻在长亭' : hostOf(p.site) || '本站'}
+                          {p.admin ? ' · 站长' : ''}
+                        </span>
                       </button>
                     ))}
+                    {!mentionAllOpen && mentionPool.length > mentionList.length && (
+                      <button
+                        type="button"
+                        className="q-chat__mentions__all"
+                        onClick={() => {
+                          setMentionAllOpen(true);
+                          setMentionIdx(mentionList.length);
+                        }}
+                      >
+                        查看全部 {mentionPool.length} 位成员并 @ 提及
+                      </button>
+                    )}
                   </div>
                 )}
 
@@ -1968,7 +2021,14 @@ export default function ChatRoom() {
                     // 光标前是不是一个「刚打了一半的 @」
                     const pos = e.target.selectionStart ?? v.length;
                     const hit = /@([^\s@]{0,20})$/.exec(v.slice(0, pos));
-                    setMention(hit ? { at: pos - hit[0].length, q: hit[1] ?? '' } : null);
+                    if (hit) {
+                      // 关键词变了就回到第一个，别让人按键时选中项还停在老的
+                      if (mention?.q !== (hit[1] ?? '')) setMentionIdx(0);
+                      setMention({ at: pos - hit[0].length, q: hit[1] ?? '' });
+                    } else {
+                      setMention(null);
+                      setMentionAllOpen(false);
+                    }
                     // 「正在输入」上报：3 秒一次，别把接口打成 DoS
                     if (v.trim() && Date.now() - lastTypingRef.current > 3000) {
                       lastTypingRef.current = Date.now();
@@ -1976,6 +2036,13 @@ export default function ChatRoom() {
                     }
                   }}
                   onKeyDown={(e) => {
+                    // @ 弹层开着：↑↓ 在候选里走，Enter 选中的那个（见下面那一段）
+                    if (mention && mentionList.length > 0 && (e.key === 'ArrowDown' || e.key === 'ArrowUp')) {
+                      e.preventDefault();
+                      const n = mentionList.length;
+                      setMentionIdx((i) => (i + (e.key === 'ArrowDown' ? 1 : -1) + n) % n);
+                      return;
+                    }
                     if (e.key === 'Escape') {
                       if (mention) {
                         e.preventDefault();
@@ -1993,7 +2060,7 @@ export default function ChatRoom() {
                       // 选人弹层开着时，Enter 先当作「选第一个」
                       if (mention && mentionList.length > 0) {
                         e.preventDefault();
-                        pickMention(mentionList[0]!);
+                        pickMention(mentionList[Math.min(mentionIdx, mentionList.length - 1)]!);
                         return;
                       }
                       e.preventDefault();
@@ -2276,6 +2343,10 @@ function MessageRow({
         {m.mine ? '你' : m.name} 撤回了一条消息
       </p>
     );
+  }
+
+  if (m.status === 'deleted') {
+    return <p className="q-chat__recalled">这条被站长收走了</p>;
   }
 
   const mine = m.mine;

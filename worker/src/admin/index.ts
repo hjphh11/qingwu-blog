@@ -13,6 +13,13 @@ import { getThread, listComments, replyToComment, setCommentStatus } from './com
 import { getBlockedLog } from './moderation';
 import { getPublishLog } from './publish';
 import { getSettings, patchSettings } from './settings';
+import {
+  clearChatBan,
+  deleteChatMessage,
+  getChatOverview,
+  setChatBan,
+  setChatReportStatus,
+} from './chat';
 import { getStats } from './stats';
 import { getStatus, postStatusPing, getAutoReplyLog } from './status';
 import {
@@ -101,6 +108,33 @@ export async function handleAdmin(request: Request, env: Env, path: string): Pro
   }
   if (path === '/admin/settings' && m === 'PATCH') {
     return requireAdmin(request, env, (admin) => patchSettings(request, env, admin));
+  }
+
+  // —— 长亭：举报 / 删消息 / 封人 ——
+  if (path === '/admin/chat' && m === 'GET') {
+    return requireAdmin(request, env, (admin) => getChatOverview(request, env, admin));
+  }
+
+  const chatReport = path.match(/^\/admin\/chat\/reports\/(\d+)$/);
+  if (chatReport && m === 'PATCH') {
+    const id = Number(chatReport[1]);
+    return requireAdmin(request, env, (admin) => setChatReportStatus(request, env, admin, id));
+  }
+
+  const chatDelete = path.match(/^\/admin\/chat\/messages\/(\d+)\/delete$/);
+  if (chatDelete && m === 'POST') {
+    const id = Number(chatDelete[1]);
+    return requireAdmin(request, env, (admin) => deleteChatMessage(request, env, admin, id));
+  }
+
+  if (path === '/admin/chat/ban' && m === 'POST') {
+    return requireAdmin(request, env, (admin) => setChatBan(request, env, admin));
+  }
+
+  const chatUnban = path.match(/^\/admin\/chat\/ban\/(\d+)$/);
+  if (chatUnban && m === 'DELETE') {
+    const accountId = Number(chatUnban[1]);
+    return requireAdmin(request, env, (admin) => clearChatBan(request, env, admin, accountId));
   }
 
   // —— 友链（P2 审核 / P3 回链）——

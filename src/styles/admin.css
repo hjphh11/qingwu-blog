@@ -3167,3 +3167,166 @@ html.q-route-done .q-admin-route i {
     transition: none;
   }
 }
+
+/* ————————————————————————————————————————————————
+   长亭 · 举报与封禁（2026-11-25）
+   后台是黑白点阵，不做暖化 —— 和其余六页同一套 --qa-* 色。
+   ———————————————————————————————————————————————— */
+/* 一张举报一张卡，卡之间留缝（其余后台页的 panel 是靠外层 gap 排的，
+   这一页是直接铺在 main 里，得自己给） */
+.q-chat-adm {
+  margin-bottom: 10px;
+}
+
+.q-chat-adm__count {
+  padding: 3px 9px;
+  border-radius: 999px;
+  background: var(--qa-accent-soft);
+  font-size: 11.5px;
+  font-variant-numeric: tabular-nums;
+  color: var(--qa-accent);
+}
+
+.q-chat-adm__head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--qa-line);
+}
+
+.q-chat-adm__h {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: 15px;
+  font-weight: 400;
+  color: var(--color-ink);
+}
+
+.q-chat-adm__head .q-chat-adm__count {
+  margin-left: auto;
+}
+
+.q-chat-adm__badge {
+  flex: none;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+  background: var(--qa-accent-soft);
+  color: rgba(17, 17, 17, 0.62);
+}
+
+/* 待处理：实心黑 —— 一屏里最先看到的就是还没处理的 */
+.q-chat-adm__badge.is-open {
+  background: var(--qa-accent);
+  color: #fff;
+}
+
+.q-chat-adm__badge.is-handled {
+  background: var(--qa-ok-bg);
+  color: var(--qa-ok-fg);
+}
+
+.q-chat-adm__reason {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--color-ink);
+}
+
+.q-chat-adm__meta {
+  margin-left: auto;
+  font-size: 11.5px;
+  color: rgba(17, 17, 17, 0.5);
+}
+
+/* 被举报的原文：整段照抄，不截断 —— 判断得看全文 */
+.q-chat-adm__quote {
+  margin: 0;
+  padding: 14px;
+  font-size: 13.5px;
+  line-height: 1.75;
+  color: var(--color-ink);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.q-chat-adm__from {
+  margin: 0;
+  padding: 0 14px 12px;
+  font-size: 11.5px;
+  color: rgba(17, 17, 17, 0.5);
+}
+
+.q-chat-adm__acts {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding: 10px 14px;
+  border-top: 1px solid var(--qa-line);
+  background: #fcfcfc;
+}
+
+/* ⚠️ `.q-admin-btn--primary` 自带 width:100%（那是给列表底部整行「保存」用的），
+   在这一行里会把「删掉这条」拉成通栏，把另外两个按钮挤到下一行 */
+.q-chat-adm__acts .q-admin-btn {
+  width: auto;
+  flex: none;
+}
+
+.q-chat-adm__banopts {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  font-size: 11.5px;
+  color: rgba(17, 17, 17, 0.6);
+}
+
+.q-chat-adm__cancel {
+  padding: 0 4px;
+  font-size: 11.5px;
+  color: rgba(17, 17, 17, 0.45);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.q-chat-adm__bans {
+  list-style: none;
+  margin: 0;
+  padding: 4px 14px 12px;
+}
+
+.q-chat-adm__bans li {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding: 9px 0;
+  border-bottom: 1px solid var(--qa-line);
+  font-size: 12.5px;
+}
+
+.q-chat-adm__bans li:last-child {
+  border-bottom: 0;
+}
+
+.q-chat-adm__bans b {
+  font-weight: 600;
+  color: var(--color-ink);
+}
+
+.q-chat-adm__bans span {
+  color: rgba(17, 17, 17, 0.55);
+  font-variant-numeric: tabular-nums;
+}
+
+.q-chat-adm__bansr {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}

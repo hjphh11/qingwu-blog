@@ -1,0 +1,17 @@
+---
+/*
+ * /admin/chat —— 长亭：举报与封禁
+ *
+ * 和别的后台页一样静态预渲染：组件先打 /api/admin/chat，401 就跳回 /admin。
+ * 动作三个（删消息 / 忽略举报 / 封人解封），口径全在 worker/src/admin/chat.ts。
+ *
+ * 这一页的存在是为了把前台那颗「举报」按钮接上 —— 在此之前举报只落库，
+ * 没有任何读取方。
+ */
+import AdminLayout from '../../layouts/AdminLayout.astro';
+import AdminChat from '../../components/admin/AdminChat.tsx';
+---
+
+<AdminLayout title="长亭">
+  <AdminChat client:load />
+</AdminLayout>

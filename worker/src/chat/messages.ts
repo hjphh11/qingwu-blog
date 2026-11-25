@@ -122,9 +122,16 @@ const COLS = `m.id, m.account_id, m.body, m.status, m.ts, m.edited_at, m.origin,
  * 可见性：正常消息人人可见；pending **只有发送者自己**可见。
  * spam / deleted 谁都不给（后台另走 /admin）。
  */
+/**
+ * 一条消息「能不能被看见」。
+ *
+ * `deleted`（站长在后台收走的那条）**要留一行占位**：直接消失会让对话出现断层 ——
+ * 后面有人回「你刚说什么」就变得莫名其妙。占位只说明「被收走了」，不含正文。
+ * `pending`（待审）只有作者自己看得见。
+ */
 function visibleClause(me: string | number): { sql: string; params: Array<string | number> } {
   return {
-    sql: `(m.status IN ('visible','recalled') OR (m.status = 'pending' AND m.account_id = ?))`,
+    sql: `(m.status IN ('visible','recalled','deleted') OR (m.status = 'pending' AND m.account_id = ?))`,
     params: [me],
   };
 }
@@ -305,7 +312,19 @@ function toItem(
     admin: !remote && (r.acc_role ?? '') === 'admin',
     body: r.body,
     at: new Date(r.ts).toISOString(),
-    status: r.status === 'recalled' ? 'recalled' : r.status === 'pending' ? 'pending' : 'visible',
+    /**
+     * 状态映射（**前后端各有一处，改一边不够**）。
+     * `deleted` 是站长在后台收走的那条 —— 漏了它就会被当成 visible，
+     * 前台照样显示正文，「删掉」等于没删。
+     */
+    status:
+      r.status === 'recalled'
+        ? 'recalled'
+        : r.status === 'pending'
+          ? 'pending'
+          : r.status === 'deleted'
+            ? 'deleted'
+            : 'visible',
     mine: meId !== null && r.account_id === meId,
     origin: remote ? 'remote' : 'local',
     reactions,
@@ -632,6 +651,33 @@ export async function sendMessage(
         message: '登录之后才能一起聊 —— 用邮箱收个验证码就行',
       },
       401,
+    );
+  }
+
+  /**
+   * 封禁检查。
+   *
+   * `chat_bans` 原来只有写入（清单判了 banMinutes 就插一行）却从来没人读 ——
+   * 「封」这件事在代码里等于不存在：换一句干净的话照样能发。
+   * 这里放在最前面，比清单更早：封了就什么都别发。
+   */
+  const now0 = Date.now();
+  const ban = await env.DB.prepare(
+    'SELECT until, reason FROM chat_bans WHERE account_id = ? AND until > ? ORDER BY until DESC LIMIT 1',
+  )
+    .bind(me.id, now0)
+    .first<{ until: number; reason: string | null }>()
+    .catch(() => null);
+  if (ban) {
+    const mins = Math.max(1, Math.ceil((ban.until - now0) / 60_000));
+    return json(
+      {
+        ok: false,
+        reason: 'banned',
+        until: ban.until,
+        message: `先歇一会儿吧，还有 ${mins} 分钟才能说话`,
+      },
+      403,
     );
   }
 

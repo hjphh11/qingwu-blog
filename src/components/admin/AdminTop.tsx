@@ -40,6 +40,13 @@ const ICONS = {
       <path d="m8.5 11.5 2.5 2.5 4.5-4.5" />
     </>
   ),
+  /* 对话气泡 + 两行字：长亭。别用杯子 —— 22px 下线描的杯子认不出来 */
+  chat: (
+    <>
+      <path d="M21 11.5a8.4 8.4 0 0 1-8.5 8.5 9 9 0 0 1-3.9-.9L3 21l1.9-5.6A8.5 8.5 0 0 1 12.5 3 8.4 8.4 0 0 1 21 11.5Z" />
+      <path d="M8.5 10.5h7M8.5 14h4" />
+    </>
+  ),
   /* 柱状 + 折线：统计 */
   chart: (
     <>
@@ -84,6 +91,7 @@ const NAV = [
   { key: 'comments', label: '评论收件箱', href: '/admin/console', icon: 'comments' },
   { key: 'review', label: '评论审核', href: '/admin/review', icon: 'shield' },
   { key: 'friends', label: '友链审核', href: '/admin/friends', icon: 'friends' },
+  { key: 'chat', label: '长亭', href: '/admin/chat', icon: 'chat' },
   { key: 'stats', label: '统计', href: '/admin/stats', icon: 'chart' },
   { key: 'status', label: '运行状态', href: '/admin/status', icon: 'pulse' },
   { key: 'settings', label: '设置', href: '/admin/settings', icon: 'sliders' },

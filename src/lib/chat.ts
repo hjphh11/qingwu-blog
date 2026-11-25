@@ -65,7 +65,7 @@ export interface ChatMessage {
   /** ISO 字符串 */
   at: string;
   /** pending = 审核中，只有自己看得见；recalled = 已撤回，只留一行提示 */
-  status: 'visible' | 'pending' | 'recalled';
+  status: 'visible' | 'pending' | 'recalled' | 'deleted';
   mine: boolean;
   origin: 'local' | 'remote';
   reactions: Reaction[];
@@ -134,7 +134,20 @@ function asMessage(raw: unknown): ChatMessage | null {
   const r = raw as Record<string, unknown>;
   const id = Number(r.id);
   if (!Number.isFinite(id) || id <= 0) return null;
-  const status = r.status === 'pending' ? 'pending' : r.status === 'recalled' ? 'recalled' : 'visible';
+  /**
+   * 状态映射。
+   *
+   * ⚠️ `deleted` 必须单独认出来：站长在后台删掉一条后，后端把 status 改成 'deleted'，
+   * 如果不认，这里会落进 'visible' —— 删了个寂寞，正文照常显示。
+   */
+  const status =
+    r.status === 'pending'
+      ? 'pending'
+      : r.status === 'recalled'
+        ? 'recalled'
+        : r.status === 'deleted'
+          ? 'deleted'
+          : 'visible';
   return {
     id,
     name: String(r.name ?? ''),
@@ -270,7 +283,7 @@ export async function poll(after: number): Promise<PollResult> {
 
 export type SendResult =
   | { ok: true; message: ChatMessage; screened: boolean }
-  | { ok: false; reason: 'login' | 'limited' | 'screened' | 'error'; message: string };
+  | { ok: false; reason: 'login' | 'limited' | 'screened' | 'banned' | 'error'; message: string };
 
 export async function send(
   body: string,
@@ -313,6 +326,8 @@ export async function send(
 
     if (res.status === 401) return { ok: false, reason: 'login', message: text };
     if (res.status === 429) return { ok: false, reason: 'limited', message: text };
+    // 被封了：后端 403 + reason:'banned'，文案里带剩余分钟
+    if (res.status === 403 && data.reason === 'banned') return { ok: false, reason: 'banned', message: text };
     // 200 + ok:false + reason:'screened' 走的是上面分支；这里兜的是 400 的 too_long 等
     if (data.reason === 'screened') return { ok: false, reason: 'screened', message: text };
     return { ok: false, reason: 'error', message: text };
