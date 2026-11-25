@@ -17,6 +17,9 @@ import ChatRoom from '../../components/ChatRoom.tsx';
  * 挂在 body 上，导航和页脚才会跟着一起变宽 —— 详见 chat.css ① 的说明。
  *
  * 和其他页的分工：留言是「一次性招呼」，长亭是「在场」。
+ *
+ * `bare` 关掉页脚（和画市同理）：聊天室是整屏的应用，滚到底还挂一条
+ * 「© 清吾 · 由 Astro 构建」既没用、又给页面多出一截可滚动高度。
  */
 ---
 
@@ -24,6 +27,7 @@ import ChatRoom from '../../components/ChatRoom.tsx';
   title="长亭 · 清吾"
   description="清吾的长亭，路过就进来坐坐。聊两句、发个表情，或者只是看看别人在说什么。"
   bodyClass="q-chat-wide"
+  bare
 >
   <div class="page-shell q-chat-page">
     <ChatRoom client:only="react" />

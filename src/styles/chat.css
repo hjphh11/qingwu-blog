@@ -2193,9 +2193,37 @@
       padding: 0.55rem 0.3rem 0.5rem;
     }
 
+    /* 手机上不要那张浮起的玻璃卡：没有圆角、没有边框、没有投影，通栏贴在屏幕底边。
+       留着顶部一条细分隔线交代边界 —— 完全透明会和聊天背景糊在一起。
+       composer 的左右 padding 也归零，否则「通栏」两侧会各留一道缝。 */
+    .q-chat__composer {
+      padding: 0;
+    }
+
+    /* 页面底那 1.5rem 是给浮起卡片留的落点；卡片没了，它就成了输入条下面的一道空缝 */
+    .q-chat-wide .page-shell {
+      padding-bottom: 0;
+    }
+
+    /* 未登录那条（「登录之后就能一起聊了」）本身是圆角卡片，补回外边距，
+       别跟着输入条一起贴到屏幕边角上 */
+    .q-chat__guest {
+      margin: 0.5rem 0.75rem 0.75rem;
+    }
+
     .q-chat__inputwrap {
-      padding: 0.6rem 0.6rem 0.55rem;
+      border: 0;
+      border-radius: 0;
+      background: rgba(255, 252, 249, 0.95);
+      box-shadow: 0 -1px 0 color-mix(in srgb, var(--color-ink) 8%, transparent);
+      backdrop-filter: blur(12px);
+      padding: 0.5rem 0.75rem 0.55rem;
       gap: 0.45rem;
+    }
+
+    /* 焦点态落到那条线上：容器已经没有边框，再画 3px 的 ring 会浮在屏幕边上 */
+    .q-chat__inputwrap:focus-within {
+      box-shadow: 0 -1px 0 color-mix(in srgb, var(--color-crimson) 38%, transparent);
     }
   }
 
