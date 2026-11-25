@@ -2182,9 +2182,20 @@
     caret-color: var(--color-crimson);
   }
 
+  /* iOS 上 <16px 的输入框会放大整页 —— 手机端提到 16。
+     顺带把输入区拔高一档：单行 34px 在手机上只够露出一行字，写字时看不到上下文，
+     字还贴在框顶。46px ≈ 一行字(25.6) + 上下各 10 的呼吸，视觉上才是「一块输入区」。 */
   @media (max-width: 768px) {
     .q-chat__input {
       font-size: 1rem;
+      min-height: 2.875rem;
+      max-height: 9rem;
+      padding: 0.55rem 0.3rem 0.5rem;
+    }
+
+    .q-chat__inputwrap {
+      padding: 0.6rem 0.6rem 0.55rem;
+      gap: 0.45rem;
     }
   }
 
