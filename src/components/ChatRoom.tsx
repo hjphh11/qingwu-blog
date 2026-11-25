@@ -2968,6 +2968,11 @@ function MessageRow({
         {/*
           已读回执：对勾 + 人数。对勾不是装饰 —— 它比「已读」两个字更早被扫到，
           而人数和「谁读的」放在悬停提示里，不占行宽。
+
+          ⚠️ 用**单勾**，不要改成双勾。原先是照 WhatsApp 画的双勾，但那边双勾的含义
+          是「对方已读」、单勾是「已送达」，是两级；我们只有「已读」一级，
+          用双勾等于许诺了一个不存在的状态。而且 13px 底下两条 path 会交叉糊成一坨，
+          放大看是个分叉的粗勾 —— 站长第一眼就是问「怎么两个勾」。
         */}
         {readCount > 0 && (
           <span
@@ -2984,13 +2989,12 @@ function MessageRow({
               viewBox="0 0 24 24"
               fill="none"
               stroke="currentColor"
-              strokeWidth="2.6"
+              strokeWidth="2.5"
               strokeLinecap="round"
               strokeLinejoin="round"
               aria-hidden="true"
             >
-              <path d="M1.8 12.6l4.4 4.4L14.6 8.6" />
-              <path d="M9.4 14.6l2.4 2.4L22 8.6" />
+              <path d="M20 6.5 9.2 17.3 4 12.1" />
             </svg>
             已读 {readCount}
           </span>

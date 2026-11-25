@@ -10,6 +10,9 @@
  *   ```js          代码块（也可以只用 ``` 收尾）
  *   `code`         行内代码
  *   **粗体**
+ *   *斜体*         只有单星号；`2*3` 这类两边都是字母数字的不算
+ *   ~~删除线~~
+ *   ## 小标题       `###` 再小一级；单个 `#` 不认（消息里不该出现 h1）
  *   [文字](https://链接)
  *   https://裸链接  自动成链
  *   - 项 / * 项     无序列表
@@ -38,7 +41,7 @@ function esc(s: string): string {
 
 const SAFE_URL = /^https?:\/\//i;
 
-/** 行内：代码 → 粗体 → 链接 → 裸链 → 表情 */
+/** 行内：代码 → 斜体 → 粗体 → 删除线 → 链接 → 裸链 → 表情 */
 function inline(raw: string): string {
   return raw
     .split(/(`[^`\n]+`)/g)
@@ -52,7 +55,25 @@ function inline(raw: string): string {
 function inlineText(raw: string): string {
   let t = esc(raw);
 
+  /**
+   * 斜体必须在粗体**之前**处理，而且必须带 flanking 限制。
+   *
+   * 为什么不能直接 `\*([^*]+)\*`：聊天里 `2*3*4`、`a*b*c` 太常见，
+   * 那样写会把半条消息变成斜体。这里照 Markdown 的左右边界规则取了个简化版：
+   * 开头那颗星前面不能紧跟字母数字（`2*` 排除），结尾那颗星后面同理，
+   * 且两侧都不能是空白（`* 星号 *` 这种排版写法不当斜体）。
+   *
+   * `**粗**` 不受影响：开星后紧跟的仍是 `*`，`[^*\n]` 至少要吃一个非星字符，匹配不上。
+   */
+  t = t.replace(
+    /(^|[^\w*])\*(?!\s)([^*\n]{1,200}?)(?<!\s)\*(?![\w*])/g,
+    (_m, pre: string, body: string) => `${pre}<em>${body}</em>`,
+  );
+
   t = t.replace(/\*\*([^*\n]{1,200})\*\*/g, '<strong>$1</strong>');
+
+  // 删除线：`~~` 在日常输入里几乎没有歧义，不需要额外边界
+  t = t.replace(/~~([^~\n]{1,200})~~/g, '<del>$1</del>');
 
   // [文字](url) —— 只认 http(s)；非法的一律原样留着
   t = t.replace(/\[([^\]\n]{1,80})\]\((https?:\/\/[^\s)]+)\)/gi, (m, text, url) =>
@@ -92,6 +113,8 @@ const FENCE = /^```\s*([a-z0-9+#.-]*)\s*$/i;
 const UL = /^\s*[-*+]\s+/;
 const OL = /^\s*\d+[.)]\s+/;
 const QUOTE = /^\s*>\s?/;
+/** 小标题：`##` → h3、`###` → h4。单个 `#` 故意不认 —— 一条消息里出现 h1 会把整页大纲弄乱 */
+const HEAD = /^(#{2,3})\s+(.+)$/;
 
 /** 正文 → HTML（已转义，可安全交给 dangerouslySetInnerHTML） */
 export function renderRich(raw: string): string {
@@ -136,7 +159,17 @@ export function renderRich(raw: string): string {
       continue;
     }
 
-    // ③ 引用（连续 > 行合成一段）
+    // ③ 小标题（单行，不吃后续行 —— 标题后面该是空行或正文，不该被吞成一段）
+    if (HEAD.test(line)) {
+      flush();
+      const hm = line.match(HEAD)!;
+      const level = hm[1]!.length === 2 ? 3 : 4;
+      out.push(`<h${level}>${inline(hm[2]!.trim())}</h${level}>`);
+      i += 1;
+      continue;
+    }
+
+    // ④ 引用（连续 > 行合成一段）
     if (QUOTE.test(line)) {
       flush();
       const buf: string[] = [];
@@ -148,7 +181,7 @@ export function renderRich(raw: string): string {
       continue;
     }
 
-    // ④ 列表（连续同类行合成一个 ul/ol，不嵌套）
+    // ⑤ 列表（连续同类行合成一个 ul/ol，不嵌套）
     if (UL.test(line) || OL.test(line)) {
       flush();
       const ordered = OL.test(line);
@@ -180,6 +213,10 @@ export function toPlain(raw: string): string {
     .replace(/```[a-z0-9+#.-]*\n?/gi, '')
     .replace(/`([^`]*)`/g, '$1')
     .replace(/\*\*([^*]*)\*\*/g, '$1')
+    // 单星斜体：和渲染侧用同一条边界规则，别把 `2*3*4` 剥成 `234`
+    .replace(/(^|[^\w*])\*([^*\n]{1,200}?)\*(?![\w*])/g, '$1$2')
+    .replace(/~~([^~]*)~~/g, '$1')
+    .replace(/^\s*#{2,3}\s+/gm, '')
     .replace(/\[([^\]]{1,80})\]\((https?:\/\/[^\s)]+)\)/gi, '$1（$2）')
     .replace(/^\s*>\s?/gm, '')
     .replace(/^\s*[-*+]\s+/gm, '· ')

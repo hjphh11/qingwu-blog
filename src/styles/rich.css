@@ -35,6 +35,36 @@
     color: var(--color-ink);
   }
 
+  /* 斜体：中文没有真正的斜体字形，浏览器是合成倾斜，所以只倾斜不加别的变化，
+     免得「斜 + 加粗 + 变色」三件事叠起来太吵 */
+  .q-rich em {
+    font-style: italic;
+  }
+
+  /* 删除线：把线压弱一点、颜色退到 muted，让「划掉」读起来像旁注而不是正文 */
+  .q-rich del {
+    color: var(--color-muted);
+    text-decoration-thickness: 1px;
+    text-decoration-color: color-mix(in srgb, var(--color-muted) 70%, transparent);
+  }
+
+  /* 小标题：尺寸用 em 跟着正文走 —— 聊天气泡和留言区字号不同，写死 px 会一大一小 */
+  .q-rich h3,
+  .q-rich h4 {
+    margin: 0.7em 0 0.3em;
+    font-weight: 600;
+    line-height: 1.4;
+    color: var(--color-ink);
+  }
+
+  .q-rich h3 {
+    font-size: 1.08em;
+  }
+
+  .q-rich h4 {
+    font-size: 1em;
+  }
+
   /* 行内代码：底色比正文略浅，别用纯灰 —— 这个站没有纯灰 */
   .q-rich code {
     font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
