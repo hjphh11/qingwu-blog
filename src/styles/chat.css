@@ -1,450 +1,911 @@
-/* 长亭（聊天室）—— 只作用于 .q-chat 前缀，不碰任何现有页面的类。
-   形状参考评论区（暖白卡片 + 发丝边），但气泡是「对话」而不是「楼」：
-   自己靠右、别人靠左，和 IM 的肌肉记忆一致；不做冷蓝灰那套。 */
+/*
+ * 长亭 · 聊天室
+ *
+ * 2026-11-25 换版：暖光茶室 / 玻璃 Bento 三栏（站长给的设计稿）。
+ * 左：「我 + 频道」　中：消息流与输入区　右：空间详情。
+ *
+ * 四处故意偏离设计稿，都是为了达标，不是走样：
+ *   ① 设计稿的次要文字是 rgba(ink,.62)/.44，奶油底上只有约 4.0 / 3.2:1，正文级不够 AA；
+ *      这里用站内已校准的 --color-muted(.9)=5.8:1 / --color-subtle(.75)=4.85:1。
+ *   ② 气泡正文 14px，但手机端 <16px 会触发 iOS 聚焦缩放整页 —— ≤768 提到 16px。
+ *   ③ 悬停操作条浮在气泡上方 16px 处，那是一条 hover 死带（指针离开行盒子就掉）。
+ *      这里让它与气泡上沿重叠、视觉间距用 padding 假装，指针路径始终在同一盒子里。
+ *   ④ 设计稿没有「键盘入口」。紧凑形态（窄屏/触屏）下操作条默认 hidden，
+ *      所以保留一枚 28px 的角标按钮：平时透明，聚焦或展开时现形。
+ *
+ * 层叠顺序即分组顺序：
+ *   ① 壳与氛围 → ② 三栏骨架 → ③ 侧栏 → ④ 顶栏 → ⑤ 消息流
+ *   → ⑥ 输入区 → ⑦ 右侧详情 → ⑧ 浮层 → ⑨ 状态与无障碍
+ */
 
 @layer components {
-  /* ——— 页面级：页头压薄、整体上移 ———
-     这一页的正文就是聊天区，标题只负责交代「这是哪儿」，不该占掉首屏五分之一的呼吸。
+  /* ═══════════════════════════════════════════════════════════════════
+     ① 页面壳与氛围层
+     ═══════════════════════════════════════════════════════════════════ */
 
-     ⚠️ 这些规则原来写在 `chat/index.astro` 的 `<style>` 里，**实测一条都没生效**：
-        dev 下页面只有 4 个内联 <style>，没有一条包含 `.q-chat-page`，
-        于是页头一直挂着 `--space-section`(3.5rem) 的下边距、标题也还是文章页字号。
-        挪进全局样式表 —— 顺序在 layout.css 之后，同权重也能盖住；
-        `.q-chat-page.page-shell` 用双类名，免得分层顺序哪天变了又被顶掉。 */
-  .q-chat-page.page-shell {
-    /* 导航 68px + 一点呼吸。比全站的 clamp(6rem, 5rem + 3vw, 7.5rem) 矮 24px */
-    padding-top: clamp(5.25rem, 4.4rem + 2.2vw, 6rem);
-  }
-
-  .q-chat-page .page-head {
-    margin-bottom: 0.9rem;
-  }
-
-  /* --text-page 是给文章页那种大标题的，这里降一档 */
-  .q-chat-page .page-head__title {
-    font-size: clamp(1.5rem, 2.2vw, 1.75rem);
-  }
-
-  .q-chat-page .page-head__sub {
-    margin-top: 0.1rem;
-    font-size: 0.875rem;
-    line-height: 1.5;
+  /* 氛围光斑关在自己的盒子里，不染导航和页脚 */
+  .q-chatpage {
+    position: relative;
+    isolation: isolate;
   }
 
   /**
-   * 岛的占位高度（见 pages/chat/index.astro 的注释）。
+   * 这一页统一 border-box。
    *
-   * 必须和 `.q-chat` 的 height 用**同一个 clamp**，否则占位本身又成了新的跳动源。
-   * 桌面：这个高度就是网格的高度（聊天卡比侧栏高），页脚位置分毫不动。
-   * 窄屏：聊天下方还会接侧栏，但那时页脚已经在视口外，增长不计入 CLS。
+   * 站内没有全局 `box-sizing`（Tailwind 的 preflight 在这套构建里没生效）。
+   * 内容盒模型下，带 padding + 2.5px 左边框的引用块会多出 8px，
+   * 窄屏实测把滚动区撑出横向滚动条、整个消息流被推歪 7px。
    */
-  .q-chat-slot {
-    min-height: clamp(28rem, calc(100svh - 13rem), 58rem);
+  .q-chatpage,
+  .q-chatpage *,
+  .q-chatpage *::before,
+  .q-chatpage *::after {
+    box-sizing: border-box;
   }
 
-  /* ——— 整页布局：左栏 + 聊天 ——— */
-  .q-chat-layout {
-    display: grid;
-    /* 14rem：够放「昵称 + 来自某站」两行，又不从聊天区手里抢宽度。
-       原来 17.5rem 是按「有称号、有进度条」设计的，那套已经删掉了（见 §15.2），
-       侧栏只剩头像和名字，280px 是浪费 —— 让给聊天区。 */
-    grid-template-columns: 14rem minmax(0, 1fr);
-    gap: 1rem;
-    align-items: start;
+  .q-chatpage__amb {
+    position: absolute;
+    inset: -1.25rem -0.75rem;
+    z-index: 0;
+    overflow: hidden;
+    pointer-events: none;
+    border-radius: 2.5rem;
   }
 
-  /* 窄屏：聊天优先，侧栏挪到下面。
-     挪而不是藏 —— 在线名单和公告在手机上一样有人想看，只是不该占首屏。 */
-  @media (max-width: 1023px) {
-    .q-chat-layout {
-      grid-template-columns: 1fr;
-      gap: 1rem;
-    }
+  .q-amb {
+    position: absolute;
+    border-radius: 9999px;
+    filter: blur(76px);
+    will-change: transform;
+  }
 
-    .q-chat-layout > .q-chat {
-      order: 1;
-    }
+  .q-amb--rose-a {
+    width: 46vw;
+    height: 46vw;
+    max-width: 560px;
+    max-height: 560px;
+    top: -14%;
+    left: -8%;
+    background: radial-gradient(
+      circle,
+      color-mix(in srgb, var(--color-rose) 50%, transparent) 0%,
+      color-mix(in srgb, var(--color-rose) 13%, transparent) 52%,
+      transparent 74%
+    );
+    animation: q-amb-a 26s ease-in-out infinite alternate;
+  }
 
-    .q-chat-layout > .q-aside {
-      order: 2;
-    }
+  .q-amb--rose-b {
+    width: 42vw;
+    height: 42vw;
+    max-width: 500px;
+    max-height: 500px;
+    right: -10%;
+    bottom: -16%;
+    background: radial-gradient(
+      circle,
+      color-mix(in srgb, var(--color-rose) 42%, transparent) 0%,
+      color-mix(in srgb, var(--color-rose) 11%, transparent) 55%,
+      transparent 75%
+    );
+    animation: q-amb-b 30s ease-in-out infinite alternate;
+  }
 
+  .q-amb--amber-a {
+    width: 32vw;
+    height: 32vw;
+    max-width: 380px;
+    max-height: 380px;
+    top: 8%;
+    right: 14%;
+    background: radial-gradient(
+      circle,
+      color-mix(in srgb, var(--color-amber) 30%, transparent) 0%,
+      color-mix(in srgb, var(--color-amber) 8%, transparent) 50%,
+      transparent 74%
+    );
+    animation: q-amb-c 22s ease-in-out infinite alternate;
+  }
+
+  .q-amb--amber-b {
+    width: 28vw;
+    height: 28vw;
+    max-width: 340px;
+    max-height: 340px;
+    bottom: 4%;
+    left: 22%;
+    background: radial-gradient(
+      circle,
+      color-mix(in srgb, var(--color-amber) 24%, transparent) 0%,
+      color-mix(in srgb, var(--color-amber) 6%, transparent) 52%,
+      transparent 74%
+    );
+    animation: q-amb-d 28s ease-in-out infinite alternate;
+  }
+
+  @keyframes q-amb-a {
+    from { transform: translate3d(0, 0, 0) scale(1); }
+    to { transform: translate3d(4%, 6%, 0) scale(1.08); }
+  }
+
+  @keyframes q-amb-b {
+    from { transform: translate3d(0, 0, 0) scale(1.04); }
+    to { transform: translate3d(-5%, -4%, 0) scale(0.96); }
+  }
+
+  @keyframes q-amb-c {
+    from { transform: translate3d(0, 0, 0) scale(0.96); }
+    to { transform: translate3d(-6%, 8%, 0) scale(1.1); }
+  }
+
+  @keyframes q-amb-d {
+    from { transform: translate3d(0, 0, 0) scale(1); }
+    to { transform: translate3d(7%, -5%, 0) scale(1.06); }
+  }
+
+  /* ═══════════════════════════════════════════════════════════════════
+     ② 三栏骨架
+     ═══════════════════════════════════════════════════════════════════ */
+
+  /**
+   * 高度不写死 100vh：站内还有导航和页脚，抢满整屏会把它们挤出去。
+   * 12rem 是「导航 + 页脚呼吸」在 1440×940 下的实测值。
+   */
+  .q-bento {
+    position: relative;
     /**
-     * 窄屏放开滚动链。
+     * ⚠️ 这里不能有 z-index。
      *
-     * 桌面用 `overscroll-behavior: contain` 是对的（在聊天区滚到底不该把整页带跑），
-     * 但窄屏侧栏就在聊天卡**下面**：手势在聊天卡上滑动时，滚到边界就被 contain 吃掉，
-     * 手指在卡片区域里再也划不到「长亭的话」——而聊天卡占了大半屏。
-     * 手机上「划到底继续划，页面跟着动」才是肌肉记忆。
+     * 一旦写了（哪怕 1），整栏就成了独立层叠上下文：抽屉里的 `z-index: 60`
+     * 只在栏内比较，永远压不过遮罩的 55 —— 实测抽屉被磨砂盖住、字全糊。
+     * 不写也没问题：光斑层是 z-index:0，本层在 DOM 里排它后面，自然在上面。
      */
-    .q-chat__scroll {
-      overscroll-behavior-y: auto;
-    }
+    display: grid;
+    grid-template-columns: 272px minmax(0, 1fr) 312px;
+    gap: 0.875rem;
+    height: clamp(32rem, calc(100svh - 12rem), 62rem);
   }
 
-  /* ——— 窄屏微调 ———
-     侧栏挪到下面之后，它离视线更远、字更该大一点：
-     0.72rem 在 390px 宽的手机上偏小，加上卡片内边距大，整体会显得「空而碎」。 */
-  @media (max-width: 1023px) {
-    .q-aside-card {
-      padding: 1rem;
-    }
-
-    .q-aside-head__t {
-      font-size: 0.85rem;
-    }
-
-    .q-aside-head__n {
-      font-size: 0.75rem;
-    }
-
-    .q-aside-me__avatar {
-      width: 3rem;
-      height: 3rem;
-    }
-
-    .q-aside-me__name {
-      font-size: 1rem;
-    }
-
-    .q-aside-me__site {
-      font-size: 0.72rem;
-    }
-
-    .q-aside-person__name {
-      font-size: 0.85rem;
-    }
-
-    .q-aside-person__site {
-      font-size: 0.7rem;
-    }
-
-    .q-aside-notice__list li {
-      font-size: 0.78rem;
-    }
-
-    /* 移动端别套内滚动：外层页面本来就在滚，
-       列表再来一层 max-height + overflow，手势会打架（划一半卡住最难受） */
-    .q-aside-list {
-      max-height: none;
-      overflow-y: visible;
-    }
-  }
-
-  /* ——— 侧栏 ——— */
-  .q-aside {
+  /* 三栏共用的玻璃卡 */
+  .q-glass {
+    position: relative;
     display: flex;
     flex-direction: column;
-    gap: 0.85rem;
+    min-height: 0;
+    overflow: hidden;
+    border: 1px solid rgba(255, 255, 255, 0.86);
+    border-radius: 1.5rem;
+    background: rgba(255, 251, 247, 0.72);
+    box-shadow:
+      0 14px 40px -14px rgba(74, 55, 40, 0.1),
+      0 2px 8px -2px rgba(74, 55, 40, 0.04),
+      inset 0 1px 0 rgba(255, 255, 255, 0.92);
+    backdrop-filter: blur(18px) saturate(140%);
+  }
+
+  /* 卡片角落的极淡反光，让玻璃有厚度（不是装饰条纹） */
+  .q-glass::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    z-index: 0;
+    border-radius: inherit;
+    pointer-events: none;
+    background:
+      radial-gradient(
+        340px circle at 92% 3%,
+        color-mix(in srgb, var(--color-amber) 12%, transparent),
+        transparent 55%
+      ),
+      radial-gradient(
+        300px circle at 6% 97%,
+        color-mix(in srgb, var(--color-rose) 13%, transparent),
+        transparent 55%
+      );
+  }
+
+  .q-glass > * {
+    position: relative;
+    z-index: 1;
+  }
+
+  /* 1200 以下：详情栏收成右侧抽屉，由顶栏「信息栏」按钮唤出 */
+  @media (max-width: 1199px) {
+    .q-bento {
+      grid-template-columns: 264px minmax(0, 1fr);
+    }
+
+    .q-info {
+      position: fixed;
+      /* 让开站内导航（约 64px）：抽屉压在导航上会露出半截白胶囊，很难看 */
+      top: 4.75rem;
+      right: 0.75rem;
+      bottom: 0.75rem;
+      z-index: 60;
+      width: min(20rem, calc(100vw - 1.5rem));
+      transform: translateX(calc(100% + 1.25rem));
+      transition: transform var(--dur-state) cubic-bezier(0.22, 1, 0.36, 1);
+    }
+
+    .q-info.is-open {
+      transform: translateX(0);
+    }
+  }
+
+  /* 1023 以下：侧栏也变抽屉，聊天区独占整宽 */
+  @media (max-width: 1023px) {
+    .q-bento {
+      grid-template-columns: minmax(0, 1fr);
+      height: clamp(30rem, calc(100svh - 9rem), 52rem);
+    }
+
+    .q-side {
+      position: fixed;
+      top: 4.75rem;
+      bottom: 0.75rem;
+      left: 0.75rem;
+      /* 必须高于遮罩（55）：抽屉盖在磨砂之上，字才读得清 */
+      z-index: 60;
+      width: min(17.5rem, calc(100vw - 1.5rem));
+      transform: translateX(calc(-100% - 1.25rem));
+      transition: transform var(--dur-state) cubic-bezier(0.22, 1, 0.36, 1);
+    }
+
+    .q-side.is-open {
+      transform: translateX(0);
+    }
+  }
+
+  /* 抽屉遮罩 */
+  .q-mask {
+    position: fixed;
+    inset: 0;
+    z-index: 55;
+    border: 0;
+    background: color-mix(in srgb, var(--color-ink) 22%, transparent);
+    backdrop-filter: blur(3px);
+    animation: q-fade-in var(--dur-state) ease both;
+  }
+
+  @keyframes q-fade-in {
+    from { opacity: 0; }
+  }
+
+  /* ═══════════════════════════════════════════════════════════════════
+     ③ 左侧栏：品牌 / 搜索 / 频道 / 我
+     ═══════════════════════════════════════════════════════════════════ */
+
+  .q-side__brand {
+    display: flex;
+    align-items: center;
+    gap: 0.625rem;
+    flex: none;
+    padding: 0.9rem 0.9rem 0.75rem;
+    border-bottom: 1px solid color-mix(in srgb, var(--color-ink) 7%, transparent);
+  }
+
+  .q-side__mark {
+    flex: none;
+    display: grid;
+    place-items: center;
+    width: 2.5rem;
+    height: 2.5rem;
+    border-radius: 0.875rem;
+    background: var(--color-rose);
+    color: var(--color-crimson);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.55);
+  }
+
+  .q-side__titles {
+    flex: 1;
     min-width: 0;
   }
 
-  .q-aside-card {
-    border: 1px solid var(--color-hairline);
-    border-radius: var(--radius-card);
-    background: #fffdfb;
-    padding: 0.9rem;
+  .q-side__name {
+    font-family: var(--font-display);
+    font-size: 1.0625rem;
+    font-weight: 700;
+    line-height: 1.25;
+    letter-spacing: 0.01em;
+    color: var(--color-ink);
   }
 
-  .q-aside-head {
+  .q-side__sub {
+    display: flex;
+    align-items: center;
+    gap: 0.375rem;
+    margin-top: 0.2rem;
+    font-size: 0.6875rem;
+    color: var(--color-muted);
+  }
+
+  .q-side__tag {
+    display: inline-flex;
+    align-items: center;
+    padding: 0.05rem 0.45rem;
+    border-radius: var(--radius-pill);
+    background: color-mix(in srgb, var(--color-rose) 48%, #fff);
+    font-size: 0.65625rem;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    color: var(--color-ink);
+  }
+
+  /* 品牌行右侧的方钮（提醒开关 / 抽屉关闭） */
+  .q-iconbtn {
+    flex: none;
+    display: grid;
+    place-items: center;
+    width: 2.25rem;
+    height: 2.25rem;
+    border-radius: 0.75rem;
+    border: 1px solid color-mix(in srgb, var(--color-ink) 8%, transparent);
+    background: rgba(255, 252, 249, 0.72);
+    color: var(--color-ink);
+    transition:
+      background-color var(--dur-micro) ease,
+      color var(--dur-micro) ease,
+      border-color var(--dur-micro) ease;
+  }
+
+  .q-iconbtn:hover {
+    background: color-mix(in srgb, var(--color-rose) 26%, transparent);
+    color: var(--color-crimson);
+  }
+
+  .q-iconbtn.is-on {
+    border-color: color-mix(in srgb, var(--color-crimson) 45%, transparent);
+    background: color-mix(in srgb, var(--color-rose) 42%, #fff);
+    color: var(--color-crimson);
+  }
+
+  .q-side__search {
+    flex: none;
+    padding: 0.75rem 0.875rem 0.5rem;
+  }
+
+  /* 长得像输入框，本质是按钮：点开站内搜索浮层 */
+  .q-searchbtn {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    width: 100%;
+    min-height: 2.25rem;
+    padding: 0.4rem 0.75rem;
+    border: 1px solid color-mix(in srgb, var(--color-ink) 8%, transparent);
+    border-radius: 1rem;
+    background: rgba(253, 246, 240, 0.8);
+    font-size: 0.8125rem;
+    color: var(--color-subtle);
+    text-align: left;
+    transition:
+      border-color var(--dur-micro) ease,
+      background-color var(--dur-micro) ease,
+      color var(--dur-micro) ease;
+  }
+
+  .q-searchbtn:hover {
+    border-color: color-mix(in srgb, var(--color-crimson) 34%, transparent);
+    background: #fff;
+    color: var(--color-ink);
+  }
+
+  .q-side__scroll {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    padding: 0.25rem 0.625rem 0.75rem;
+    overscroll-behavior: contain;
+    scrollbar-width: thin;
+    scrollbar-color: color-mix(in srgb, var(--color-brown) 16%, transparent) transparent;
+  }
+
+  .q-side__group + .q-side__group {
+    margin-top: 1.1rem;
+  }
+
+  .q-side__grouphead {
     display: flex;
     align-items: center;
     justify-content: space-between;
     gap: 0.5rem;
-    margin-bottom: 0.6rem;
-  }
-
-  .q-aside-head__t {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.35rem;
-    font-size: 0.8rem;
-    color: var(--color-brown);
-  }
-
-  .q-aside-head__n {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.3rem;
-    font-size: 0.7rem;
+    padding: 0 0.5rem;
+    margin-bottom: 0.4rem;
+    font-size: 0.6875rem;
+    font-weight: 600;
+    letter-spacing: 0.08em;
     color: var(--color-subtle);
   }
 
-  .q-aside-head__n i {
-    width: 0.35rem;
-    height: 0.35rem;
-    border-radius: 9999px;
-    background: #4a9e6b;
-  }
-
-  .q-aside-empty {
-    padding: 0.6rem 0 0.3rem;
-    font-size: 0.72rem;
-    line-height: 1.8;
-    color: var(--color-subtle);
-  }
-
-  /* ——— ① 我的卡 ——— */
-  .q-aside-me__top {
+  /* 频道项：选中 = 玫瑰粉底 + 左侧 4px 绯红竖条 */
+  .q-channel {
+    position: relative;
     display: flex;
     align-items: center;
-    gap: 0.6rem;
+    gap: 0.5rem;
+    width: 100%;
+    min-height: 2.5rem;
+    padding: 0.4rem 0.625rem;
+    border-radius: 0.875rem;
+    font-size: 0.8125rem;
+    font-weight: 500;
+    color: var(--color-ink);
+    text-align: left;
+    transition: background-color var(--dur-micro) ease;
   }
 
-  .q-aside-me__avatar {
+  .q-channel:hover {
+    background: color-mix(in srgb, var(--color-rose) 18%, transparent);
+  }
+
+  .q-channel.is-active {
+    background: color-mix(in srgb, var(--color-rose) 36%, transparent);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.55);
+  }
+
+  .q-channel.is-active::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 50%;
+    width: 4px;
+    height: 1.375rem;
+    border-radius: 0 4px 4px 0;
+    background: var(--color-crimson);
+    transform: translateY(-50%);
+  }
+
+  .q-channel__hash {
     flex: none;
     display: grid;
     place-items: center;
-    width: 2.8rem;
-    height: 2.8rem;
-    border-radius: 9999px;
-    background-color: color-mix(in srgb, var(--color-rose) 24%, #fff);
-    /* 和消息头像同一套：background-image + 首字兜底，外链挂了不留破图 */
-    background-size: cover;
-    background-position: center;
-    border: 1px solid var(--color-hairline);
-    font-size: 0.95rem;
-    color: var(--color-brown);
-    user-select: none;
+    width: 1.5rem;
+    height: 1.5rem;
+    border-radius: 0.5rem;
+    background: color-mix(in srgb, var(--color-rose) 40%, #fff);
+    font-size: 0.75rem;
+    font-weight: 700;
+    color: var(--color-crimson);
   }
 
-  .q-aside-me__id {
+  .q-channel__name {
+    flex: 1;
     min-width: 0;
-  }
-
-  .q-aside-me__name {
-    display: flex;
-    align-items: center;
-    gap: 0.35rem;
-    font-size: 0.92rem;
-    color: var(--color-ink);
-    overflow-wrap: anywhere;
-  }
-
-  .q-aside-me__tag {
-    flex: none;
-    padding: 0 0.28rem;
-    border-radius: 0.28rem;
-    background: color-mix(in srgb, var(--color-crimson) 12%, transparent);
-    color: var(--color-accent-soft);
-    font-size: 0.62rem;
-    line-height: 1.6;
-  }
-
-  .q-aside-me__site {
-    margin-top: 0.15rem;
-    font-size: 0.68rem;
-    color: var(--color-subtle);
-    white-space: nowrap;
     overflow: hidden;
+    white-space: nowrap;
     text-overflow: ellipsis;
   }
 
-  /* 个人主页：右上角一个小按钮。
-     原来这里是「个人主页 + 回到最新」两个并排大按钮，占了半张卡 ——
-     回到最新已经挪进聊天框了，剩下的一个不该再占那么宽。 */
-  .q-aside-me__link {
+  .q-channel__n {
     flex: none;
-    margin-left: auto;
+    font-size: 0.6875rem;
+    color: var(--color-subtle);
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* 底部「我」的卡 */
+  .q-side__me {
+    flex: none;
+    padding: 0.75rem;
+    border-top: 1px solid color-mix(in srgb, var(--color-ink) 7%, transparent);
+  }
+
+  /* 抽屉里的关闭键：桌面常驻时不出现 */
+  .q-side__close {
+    display: none;
+  }
+
+  @media (max-width: 1023px) {
+    .q-side__close {
+      display: grid;
+    }
+  }
+
+  /* 「此刻在长亭」头像条 */
+  .q-side__folk {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.35rem;
+    padding: 0 0.35rem;
+  }
+
+  .q-side__folkav {
+    position: relative;
+    display: grid;
+    place-items: center;
+    width: 1.9rem;
+    height: 1.9rem;
+    overflow: hidden;
+    border-radius: 9999px;
+    background: var(--color-rose);
+    font-size: 0.72rem;
+    font-weight: 700;
+    color: var(--color-ink);
+    box-shadow: 0 1px 2px rgba(74, 55, 40, 0.08);
+  }
+
+  .q-side__folkav img {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  }
+
+  .q-side__folkmore {
     display: grid;
     place-items: center;
     width: 1.9rem;
     height: 1.9rem;
     border-radius: 9999px;
-    border: 1px solid var(--color-hairline);
-    color: var(--color-brown);
-    transition: background-color var(--dur-micro) ease, border-color var(--dur-micro) ease,
-      color var(--dur-micro) ease;
+    background: color-mix(in srgb, var(--color-ink) 7%, transparent);
+    font-size: 0.65rem;
+    font-weight: 600;
+    color: var(--color-muted);
   }
 
-  .q-aside-me__link:hover {
-    background: color-mix(in srgb, var(--color-rose) 16%, transparent);
-    border-color: color-mix(in srgb, var(--color-crimson) 28%, transparent);
-    color: var(--color-crimson);
-  }
-
-  /* 未登录的那张邀请卡 */
-  .q-aside-guest__t {
-    font-size: 0.88rem;
-    color: var(--color-ink);
-  }
-
-  .q-aside-guest__s {
-    margin: 0.35rem 0 0.75rem;
-    font-size: 0.72rem;
-    line-height: 1.8;
+  .q-side__folkempty {
+    font-size: 0.71875rem;
+    line-height: 1.7;
     color: var(--color-subtle);
   }
 
-  .q-aside-guest button {
-    width: 100%;
-    padding: 0.42rem;
-    border-radius: var(--radius-pill);
-    background: var(--color-cta);
-    color: #fff;
-    font-size: 0.78rem;
+  /* 「茶室须知」展开后的正文 */
+  .q-side__notice {
+    margin: 0.4rem 0.25rem 0;
+    padding: 0.55rem 0.6rem;
+    border-radius: 0.7rem;
+    background: color-mix(in srgb, var(--color-rose) 20%, transparent);
+    font-size: 0.71875rem;
+    line-height: 1.75;
+    color: var(--color-muted);
   }
 
-  /* ——— ② 在线的人 ——— */
-  .q-aside-list {
-    display: flex;
-    flex-direction: column;
-    gap: 0.1rem;
-    /* 超过这个高度就在卡片里滚 —— 侧栏不该比聊天区还长 */
-    max-height: 15rem;
-    overflow-y: auto;
-    scrollbar-width: thin;
-  }
-
-  .q-aside-person {
+  .q-me {
     display: flex;
     align-items: center;
-    gap: 0.5rem;
-    padding: 0.28rem 0.15rem;
-    border-radius: 0.5rem;
+    gap: 0.625rem;
+    padding: 0.55rem 0.625rem;
+    border: 1px solid rgba(255, 255, 255, 0.8);
+    border-radius: 1rem;
+    background: rgba(253, 246, 240, 0.75);
+    box-shadow: 0 1px 2px rgba(74, 55, 40, 0.04);
   }
 
-  .q-aside-person__avatar {
+  .q-me__avatar {
+    position: relative;
     flex: none;
+    width: 2.5rem;
+    height: 2.5rem;
+  }
+
+  .q-me__avatar > span {
     display: grid;
     place-items: center;
-    width: 1.85rem;
-    height: 1.85rem;
+    width: 100%;
+    height: 100%;
     border-radius: 9999px;
-    background-color: color-mix(in srgb, var(--color-rose) 22%, #fff);
+    background-color: var(--color-crimson);
     background-size: cover;
     background-position: center;
-    border: 1px solid var(--color-hairline);
-    font-size: 0.7rem;
-    color: var(--color-brown);
-    user-select: none;
+    font-size: 0.875rem;
+    font-weight: 700;
+    color: var(--color-cream);
   }
 
-  .q-aside-person__body {
+  .q-me__dot {
+    position: absolute;
+    right: -1px;
+    bottom: -1px;
+    width: 0.8rem;
+    height: 0.8rem;
+    border: 2px solid var(--color-cream);
+    border-radius: 9999px;
+    background: var(--color-crimson);
+  }
+
+  .q-me__id {
     flex: 1;
     min-width: 0;
   }
 
-  .q-aside-person__name {
+  .q-me__name {
     display: flex;
     align-items: center;
     gap: 0.3rem;
-    font-size: 0.78rem;
+    font-size: 0.84375rem;
+    font-weight: 700;
     color: var(--color-ink);
-    white-space: nowrap;
     overflow: hidden;
+    white-space: nowrap;
     text-overflow: ellipsis;
   }
 
-  .q-aside-person__name em {
-    flex: none;
-    font-style: normal;
-    padding: 0 0.24rem;
-    border-radius: 0.24rem;
-    background: color-mix(in srgb, var(--color-crimson) 11%, transparent);
-    color: var(--color-accent-soft);
-    font-size: 0.6rem;
-  }
-
-  .q-aside-person__site {
-    display: block;
-    font-size: 0.63rem;
+  .q-me__sub {
+    margin-top: 0.1rem;
+    font-size: 0.6875rem;
     color: var(--color-subtle);
-    white-space: nowrap;
     overflow: hidden;
+    white-space: nowrap;
     text-overflow: ellipsis;
   }
 
-  .q-aside-person__dot {
+  .q-me__pill {
     flex: none;
-    width: 0.35rem;
-    height: 0.35rem;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    min-height: 1.5rem;
+    padding: 0.15rem 0.5rem;
+    border-radius: 0.75rem;
+    background: color-mix(in srgb, var(--color-rose) 48%, #fff);
+    font-size: 0.6875rem;
+    font-weight: 600;
+    color: var(--color-ink);
+  }
+
+  .q-me__pill i {
+    width: 0.375rem;
+    height: 0.375rem;
     border-radius: 9999px;
-    background: #4a9e6b;
+    background: var(--color-crimson);
   }
 
-  .q-aside-more {
-    width: 100%;
-    margin-top: 0.5rem;
-    padding: 0.35rem;
-    border-top: 1px solid var(--color-hairline);
-    font-size: 0.7rem;
-    color: var(--color-accent-soft);
-  }
-
-  .q-aside-more:hover {
-    color: var(--color-crimson);
-  }
-
-  /* ——— ③ 公告 ——— */
-  .q-aside-notice__list {
-    display: flex;
+  .q-me--guest {
     flex-direction: column;
-    gap: 0.45rem;
+    align-items: stretch;
+    gap: 0.5rem;
   }
 
-  .q-aside-notice__list li {
-    position: relative;
-    padding-left: 0.7rem;
-    font-size: 0.72rem;
-    line-height: 1.85;
-    color: var(--color-muted);
+  .q-me--guest b {
+    font-size: 0.84375rem;
+    color: var(--color-ink);
   }
 
-  .q-aside-notice__list li::before {
-    content: "";
-    position: absolute;
-    left: 0.15rem;
-    top: 0.68rem;
-    width: 0.22rem;
-    height: 0.22rem;
+  .q-me--guest p {
+    font-size: 0.6875rem;
+    line-height: 1.7;
+    color: var(--color-subtle);
+  }
+
+  .q-me__cta {
+    min-height: 2.25rem;
+    border-radius: var(--radius-pill);
+    background: var(--color-crimson);
+    font-size: 0.78rem;
+    font-weight: 600;
+    color: var(--color-cream);
+  }
+
+  /* 身份未定时的高占位块（形状与真卡一致，入场不抖） */
+  .q-me__ghost {
+    display: block;
     border-radius: 9999px;
-    background: var(--color-rose);
+    background: color-mix(in srgb, var(--color-brown) 10%, #fffdfb);
+    animation: q-skel-breathe 1.8s ease-in-out infinite alternate;
   }
 
-  .q-chat {
-    position: relative;
-    display: flex;
-    flex-direction: column;
-    /* 高度：页头压到 ~62px、整页上移 24px 之后，这块可以再往上顶一档。
-       站长原话「高度做大点，让人一眼是看聊天记录」——
-       所以上限放宽到 58rem、下限留 28rem 给矮屏，中间按视口算（减 13rem
-       是「导航 + 页头 + 一点页脚呼吸」的实测值，不是拍的）。 */
-    height: clamp(28rem, calc(100svh - 13rem), 58rem);
-    border: 1px solid var(--color-hairline);
-    border-radius: var(--radius-card);
-    background: #fffdfb;
-    overflow: hidden;
+  .q-me__ghost--av {
+    flex: none;
+    width: 2.5rem;
+    height: 2.5rem;
   }
 
-  /* ——— 顶部状态条 ——— */
+  .q-me__ghost--line {
+    height: 0.6rem;
+    border-radius: 9999px;
+  }
+
+  /* ═══════════════════════════════════════════════════════════════════
+     ④ 中栏顶栏
+     ═══════════════════════════════════════════════════════════════════ */
+
   .q-chat__bar {
     display: flex;
     align-items: center;
     justify-content: space-between;
     gap: 0.75rem;
-    padding: 0.6rem 1rem;
-    border-bottom: 1px solid var(--color-hairline);
-    background: color-mix(in srgb, var(--color-cream) 62%, #fff);
-    font-size: 0.75rem;
-    color: var(--color-subtle);
+    flex: none;
+    padding: 0.85rem 1.15rem;
+    border-bottom: 1px solid color-mix(in srgb, var(--color-ink) 7%, transparent);
   }
 
+  .q-chat__head {
+    display: flex;
+    align-items: center;
+    gap: 0.625rem;
+    min-width: 0;
+  }
+
+  .q-chat__title {
+    font-family: var(--font-display);
+    font-size: 1.0625rem;
+    font-weight: 700;
+    letter-spacing: 0.01em;
+    color: var(--color-ink);
+    white-space: nowrap;
+  }
+
+  /* 在线人数：玫瑰粉胶囊 + 深暖棕字（设计稿的 rose-tag） */
   .q-chat__live {
     display: inline-flex;
     align-items: center;
-    gap: 0.4rem;
+    gap: 0.35rem;
+    flex: none;
+    padding: 0.15rem 0.55rem;
+    border-radius: var(--radius-pill);
+    background: color-mix(in srgb, var(--color-rose) 48%, #fff);
+    font-size: 0.71875rem;
+    font-weight: 600;
+    color: var(--color-ink);
+    font-variant-numeric: tabular-nums;
   }
 
-  /* 在线小圆点：不呼吸、不闪 —— 聊天室里常驻闪的东西最耗神 */
   .q-chat__live i {
-    width: 0.4rem;
-    height: 0.4rem;
+    width: 0.375rem;
+    height: 0.375rem;
     border-radius: 9999px;
-    background: #4a9e6b;
+    background: var(--color-crimson);
   }
 
-  /* ——— 滚动区 ——— */
+  .q-chat__sub {
+    margin-top: 0.15rem;
+    font-size: 0.75rem;
+    color: var(--color-subtle);
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+  }
+
+  /* 标题行：频道名 + 在线胶囊 */
+  .q-chat__titlerow {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+  }
+
+  /* 抽屉开关：只有窄屏才出现。
+     ⚠️ 必须双类名：`.q-chat__searchbtn` 在文件后面，单类名会被它盖回 inline-flex。 */
+  .q-chat__searchbtn.q-chat__menu {
+    display: none;
+  }
+
+  @media (max-width: 1023px) {
+    .q-chat__searchbtn.q-chat__menu {
+      display: inline-flex;
+    }
+  }
+
+  /* 字数提示 */
+  .q-chat__count {
+    display: block;
+    padding: 0.2rem 0.4rem 0;
+    text-align: right;
+    font-size: 0.6875rem;
+    color: var(--color-subtle);
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* 未登录时输入区的位置 */
+  .q-chat__guest {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    min-height: 3rem;
+    padding: 0.55rem 0.9rem;
+    border: 1px solid rgba(255, 255, 255, 0.92);
+    border-radius: 1.375rem;
+    background: rgba(255, 252, 249, 0.86);
+    box-shadow: 0 12px 32px -8px rgba(74, 55, 40, 0.1);
+    font-size: 0.8125rem;
+    color: var(--color-muted);
+  }
+
+  .q-chat__guest button {
+    flex: none;
+    min-height: 2.25rem;
+    padding: 0 1rem;
+    border-radius: var(--radius-pill);
+    background: var(--color-crimson);
+    font-size: 0.8125rem;
+    font-weight: 600;
+    color: var(--color-cream);
+  }
+
+  /* @ 候选里的名字与站长标 */
+  .q-chat__mentions__n {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+  }
+
+  .q-chat__mentions em {
+    flex: none;
+    padding: 0.02rem 0.3rem;
+    border-radius: var(--radius-pill);
+    background: color-mix(in srgb, var(--color-crimson) 14%, transparent);
+    font-size: 0.625rem;
+    font-style: normal;
+    font-weight: 600;
+    color: var(--color-accent-soft);
+  }
+
+  /* 拖文件进来：整卡虚线覆盖 */
+  .q-chat.is-drop::after {
+    content: '松手就发出去';
+    position: absolute;
+    inset: 0.5rem;
+    z-index: 20;
+    display: grid;
+    place-items: center;
+    border: 2px dashed color-mix(in srgb, var(--color-crimson) 55%, transparent);
+    border-radius: 1.25rem;
+    background: rgba(253, 246, 240, 0.9);
+    font-size: 0.875rem;
+    font-weight: 600;
+    color: var(--color-crimson);
+    pointer-events: none;
+  }
+
+  .q-chat__barbtns {
+    display: flex;
+    align-items: center;
+    gap: 0.375rem;
+    flex: none;
+  }
+
+  /* 顶栏按钮：玻璃方块，和设计稿的 btn-glass 一致 */
+  .q-chat__searchbtn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.35rem;
+    min-width: 2.25rem;
+    min-height: 2.25rem;
+    padding: 0 0.6rem;
+    border: 1px solid color-mix(in srgb, var(--color-ink) 8%, transparent);
+    border-radius: 0.75rem;
+    background: rgba(255, 252, 249, 0.72);
+    font-size: 0.78125rem;
+    font-weight: 500;
+    color: var(--color-ink);
+    transition:
+      background-color var(--dur-micro) ease,
+      color var(--dur-micro) ease,
+      border-color var(--dur-micro) ease;
+  }
+
+  .q-chat__searchbtn:hover {
+    background: color-mix(in srgb, var(--color-rose) 26%, transparent);
+    color: var(--color-crimson);
+  }
+
+  .q-chat__searchbtn.is-on {
+    border-color: color-mix(in srgb, var(--color-crimson) 42%, transparent);
+    background: color-mix(in srgb, var(--color-rose) 40%, #fff);
+    color: var(--color-crimson);
+  }
+
+  /* 小屏只留图标，标签藏起来 */
+  @media (max-width: 640px) {
+    .q-chat__searchbtn .q-btnlabel {
+      display: none;
+    }
+
+    .q-chat__sub {
+      display: none;
+    }
+  }
+
+  /* ═══════════════════════════════════════════════════════════════════
+     ⑤ 消息流
+     ═══════════════════════════════════════════════════════════════════ */
+
   .q-chat__scroll {
     flex: 1;
     min-height: 0;
@@ -452,114 +913,85 @@
     flex-direction: column;
     overflow-y: auto;
     overscroll-behavior: contain;
+    padding: 0.5rem 1.15rem 0.25rem;
     scrollbar-width: thin;
-    scrollbar-color: color-mix(in srgb, var(--color-rose) 40%, transparent) transparent;
+    scrollbar-color: color-mix(in srgb, var(--color-brown) 16%, transparent) transparent;
   }
 
+  /* 消息少时贴底：margin-top:auto 在内容溢出时自动归零，不影响滚动 */
   .q-chat__inner {
-    /* margin-top: auto 是「消息少时贴底」的正解：
-       内容从下往上堆，像任何一个聊天软件；内容多了自然撑开并滚动。
-       用 justify-content: flex-end 会踩 overflow 的经典 bug（顶部内容滚不到）。 */
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
     margin-top: auto;
-    padding: 0.75rem 1rem 1rem;
+    padding: 0.5rem 0 0.75rem;
   }
 
-  .q-chat__empty,
-  .q-chat__blank {
+  /* 窄屏放开滚动链：侧栏在聊天卡下面，划到底要能继续划页面 */
+  @media (max-width: 1023px) {
+    .q-chat__scroll {
+      overscroll-behavior-y: auto;
+      padding-inline: 0.85rem;
+    }
+  }
+
+  /* ——— 时间分隔：两侧细线夹一枚胶囊 ——— */
+  .q-chat__time {
     display: flex;
     align-items: center;
     justify-content: center;
-    gap: 0.5rem;
-    padding: 3rem 1rem;
+    gap: 0.75rem;
+    margin: 0.95rem 0 0.35rem;
+    font-size: 0.71875rem;
+    font-weight: 500;
     color: var(--color-subtle);
-    font-size: 0.85rem;
-    text-align: center;
-    line-height: 1.9;
+    font-variant-numeric: tabular-nums;
+    user-select: none;
   }
 
-  .q-chat__empty {
+  .q-chat__time::before,
+  .q-chat__time::after {
+    content: '';
     flex: 1;
+    max-width: 6rem;
+    height: 1px;
+    background: color-mix(in srgb, var(--color-ink) 10%, transparent);
   }
 
-  .q-chat__retry {
-    display: flex;
-    justify-content: center;
-    padding-bottom: 2rem;
-  }
-
-  .q-chat__retry button,
-  .q-chat__more button {
-    border: 1px solid var(--color-hairline);
-    border-radius: var(--radius-pill);
-    padding: 0.25rem 0.9rem;
-    font-size: 0.75rem;
-    color: var(--color-crimson);
-    background: transparent;
-    transition: background-color var(--dur-micro) ease, border-color var(--dur-micro) ease;
-  }
-
-  .q-chat__retry button:hover,
-  .q-chat__more button:hover {
-    background: color-mix(in srgb, var(--color-rose) 14%, transparent);
-    border-color: color-mix(in srgb, var(--color-crimson) 30%, transparent);
-  }
-
-  .q-chat__more {
-    display: flex;
-    justify-content: center;
-    padding: 0.25rem 0 0.75rem;
-  }
-
-  /* ——— 时间与分割线 ———
-     时间和时刻用 `--color-muted`（90% 墨）而不是 `--color-subtle`（75%）：
-     这两个都是 11~12px 的极小字，subtle 在暖白底上实测只有 4.34:1，够不到
-     正文 4.5:1 的底线 —— 一行时间看不清，就等于整条时间线失效。 */
-  .q-chat__time {
-    margin: 0.9rem 0 0.5rem;
-    text-align: center;
-    font-size: 0.75rem;
-    color: var(--color-muted);
-  }
-
+  /* 「上次看到这里」：绯红线，和普通时间线区分开 */
   .q-chat__readmark {
     display: flex;
     align-items: center;
     gap: 0.6rem;
-    margin: 1rem 0 0.6rem;
-    font-size: 0.7rem;
+    margin: 0.9rem 0 0.45rem;
+    font-size: 0.71875rem;
     color: var(--color-accent-soft);
   }
 
   .q-chat__readmark::before,
   .q-chat__readmark::after {
-    content: "";
+    content: '';
     flex: 1;
     height: 1px;
-    background: color-mix(in srgb, var(--color-crimson) 26%, transparent);
+    background: color-mix(in srgb, var(--color-crimson) 28%, transparent);
   }
 
-  /* ——— 消息行 ——— */
-  /**
-   * 行间距用 **padding 而不是 margin**。
-   *
-   * margin 不属于任何元素的盒子，所以两个行盒子之间会留下一条 0.85rem 的
-   * 「死带」：鼠标落在这条缝里，没有任何 `.q-chat__row` 处于 :hover，
-   * 操作条会凭空消失。改成 padding 之后行盒子首尾相接，纵向连续 ——
-   * 指针永远落在某一行里，露出的就是那一行的按钮。
-   * （Slack / Discord 的消息行也是整块无缝隙的，同一个道理。）
-   */
+  /* ——— 一行消息 ———
+     行间距用 padding 而不是 margin：margin 不属于任何盒子，会在两行之间留一条
+     hover 死带（指针落进去没有任何行处于 :hover，浮出的操作条会消失）。 */
   .q-chat__row {
+    position: relative;
     display: flex;
     align-items: flex-start;
-    gap: 0.5rem;
-    padding-top: 0.85rem;
+    gap: 0.625rem;
+    padding-top: 0.55rem;
   }
 
   .q-chat__row.is-grouped {
     padding-top: 0.2rem;
   }
 
-  /* 自己的靠右：翻转方向比 float/absolute 都稳，窄屏也不会塌 */
+  /* 自己：靠右，头像在右 */
   .q-chat__row.is-mine {
     flex-direction: row-reverse;
   }
@@ -568,43 +1000,63 @@
     flex: none;
     display: grid;
     place-items: center;
-    width: 2rem;
-    height: 2rem;
+    width: 2.25rem;
+    height: 2.25rem;
+    margin-top: 1.35rem;
     border-radius: 9999px;
-    overflow: hidden;
-    background-color: color-mix(in srgb, var(--color-rose) 22%, #fff);
-    /* 头像走 background-image（见 ChatRoom 里的说明）：
-       外链挂了不会有破图占位符，底下的首字直接露出来 */
+    background-color: var(--color-rose);
     background-size: cover;
     background-position: center;
-    background-repeat: no-repeat;
-    border: 1px solid var(--color-hairline);
-    font-size: 0.75rem;
-    color: var(--color-brown);
-    user-select: none;
+    font-size: 0.8125rem;
+    font-weight: 700;
+    color: var(--color-ink);
+    box-shadow: 0 1px 2px rgba(74, 55, 40, 0.08);
+  }
+
+  .q-chat__row.is-grouped .q-chat__avatar {
+    margin-top: 0.1rem;
+  }
+
+  /* 头像：首字垫在下面，图片盖在上面；图挂了就 onError 把自己隐藏，露出首字 */
+  .q-chat__avatar,
+  .q-member__av,
+  .q-me__avatar > span {
+    position: relative;
+    overflow: hidden;
+  }
+
+  .q-chat__avatar img,
+  .q-member__av img,
+  .q-me__avatar > span img {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
   }
 
   .q-chat__body {
-    max-width: min(78%, 34rem);
     min-width: 0;
+    max-width: min(80%, 36rem);
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
   }
 
   .q-chat__row.is-mine .q-chat__body {
-    display: flex;
-    flex-direction: column;
     align-items: flex-end;
   }
 
+  /* ——— 昵称行 ——— */
   .q-chat__meta {
     display: flex;
     flex-wrap: wrap;
-    align-items: baseline;
+    align-items: center;
     gap: 0.4rem;
-    margin-bottom: 0.2rem;
-    /* 0.72rem(11.5px) 在暖白底上只有 4.2~4.8:1，正卡在 AA 线上；
-       提到 0.75rem 后每个字号都过线，行高不变 */
+    padding: 0 0.15rem;
+    margin-bottom: 0.3rem;
     font-size: 0.75rem;
-    color: var(--color-muted);
+    color: var(--color-subtle);
   }
 
   .q-chat__row.is-mine .q-chat__meta {
@@ -612,32 +1064,42 @@
   }
 
   .q-chat__name {
-    /* 棕色 #8b5a3c 落在带粉的气泡底上实测只有 4.26:1 —— 昵称是「这句谁说的」，
-       看不清等于整条消息失去归属。改用 90% 墨并保留 500 权重做层级 */
-    color: var(--color-muted);
-    font-weight: 500;
+    font-size: 0.8125rem;
+    font-weight: 700;
+    color: var(--color-ink);
   }
 
+  /* 角色标（站长 / @我） */
   .q-chat__tag {
-    padding: 0 0.3rem;
-    border-radius: 0.3rem;
-    background: color-mix(in srgb, var(--color-crimson) 12%, transparent);
+    display: inline-flex;
+    align-items: center;
+    padding: 0.05rem 0.4rem;
+    border-radius: var(--radius-pill);
+    background: color-mix(in srgb, var(--color-rose) 46%, #fff);
+    font-size: 0.65625rem;
+    font-weight: 600;
+    color: var(--color-ink);
+  }
+
+  .q-chat__tag--at {
+    background: color-mix(in srgb, var(--color-crimson) 16%, transparent);
     color: var(--color-accent-soft);
-    font-size: 0.65rem;
-    line-height: 1.5;
+  }
+
+  .q-chat__site,
+  .q-chat__clock,
+  .q-chat__edited {
+    font-size: 0.71875rem;
+    color: var(--color-subtle);
+    font-variant-numeric: tabular-nums;
   }
 
   .q-chat__site {
-    /* 10.4px 的极小字：跟着 meta 一起提到 0.7rem，不再单独留一档更小的 */
-    font-size: 0.7rem;
     color: var(--color-accent-soft);
   }
 
-  .q-chat__clock {
-    font-size: 0.75rem;
-    /* 之前是 0.68rem + opacity 0.8：叠在 75% 墨上实际只剩 ≈3.6:1（实测 4.47 是没算
-       opacity 的读数）。现在字号提到 12px、去掉 opacity、颜色用 90% 墨，≈6.2:1 */
-    color: var(--color-muted);
+  .q-chat__edited {
+    color: var(--color-accent-soft);
   }
 
   /* ——— 气泡 ——— */
@@ -647,1293 +1109,193 @@
     flex-direction: column;
     align-items: flex-start;
     gap: 0.3rem;
+    max-width: 100%;
   }
 
-  /* 自己的消息靠右，气泡、回应条、操作条一起靠右 */
   .q-chat__row.is-mine .q-chat__bubblewrap {
     align-items: flex-end;
   }
 
-  /**
-   * 操作条（回复 / 撤回 / +）。
-   *
-   * 位置放在气泡**右侧同一水平带**（自己的消息镜像到左侧），原因三条：
-   *
-   * 1. **命中区 = 整行**。显隐的触发条件挂在 `.q-chat__row:hover` 上，而整行是
-   *    满宽的块，于是「想点按钮」这件事的容错范围从「一条 18px 高的窄条」
-   *    变成了「整行 —— 横向几百像素、纵向四十像素」。Fitts 定律里这等于
-   *    把目标一路延伸到家门口；贴边目标更是近乎无限大。
-   * 2. **不再需要跨过行边界**。原先按钮绝对定位在气泡**下方**，属于行盒子之外：
-   *    从下面往上够，会先命中下一条消息的行、露出的是**下面那条**的按钮；
-   *    从上往下够，中途只要偏出那条窄带就掉 hover。挪到同一水平带之后，
-   *    按钮整个落在行盒子内部，进出都不会断开 hover 链。
-   * 3. **滑过去是直线**。气泡 → 按钮是一次纯水平移动，不用斜向穿过空隙。
-   *
-   * 尺寸按 WCAG 2.2 SC 2.5.8 来：「指针目标至少 24×24 CSS px」。
-   * 这里给到 30px（约 2.6 倍于原来的 18px 高文字按钮），间距 5px。
-   */
-  .q-chat__acts {
-    position: absolute;
-    top: 0;
-    left: calc(100% + 0.4rem);
-    z-index: 5;
-    display: flex;
-    align-items: center;
-    gap: 5px;
-    opacity: 0;
-    pointer-events: none;
-    transition: opacity var(--dur-micro) ease;
-  }
-
-  /* 自己的消息靠右：整体镜像到气泡左侧，按钮顺序也跟着反 */
-  .q-chat__row.is-mine .q-chat__acts {
-    left: auto;
-    right: calc(100% + 0.4rem);
-    flex-direction: row-reverse;
-  }
-
-  .q-chat__row:hover .q-chat__acts,
-  .q-chat__acts:focus-within,
-  .q-chat__acts.has-open {
-    opacity: 1;
-    pointer-events: auto;
-  }
-
-  /**
-   * 窄屏 / 触屏：横向没地方放，动作回到气泡**下方**，并改成正常流。
-   *
-   * 必须进正常流而不是继续绝对定位：
-   *   · 绝对定位在下方 → 和下一行文字叠在一起（行间距只有 0.85rem，按钮 30px 高）
-   *   · 绝对定位在右侧 → 实测 390px 宽时把滚动容器撑出 37px 横向溢出，
-   *     聊天区会永久多一条横向滚动条（气泡最宽能到 70%，右边只剩几十像素）
-   *
-   * 进流之后「提前预留 35px」这件事反而变成了优点：这块空白属于行盒子内部，
-   * 鼠标悬停它同样算悬停在行上，于是显隐依然可靠，而布局不会因为 hover 而跳动。
-   *
-   * ⚠️ 断点从 640 提到 768：逐档实测横溢只发生在 **641–729**（641→29.4px、
-   *    700→17px、728→2.4px、730→0）。根因是「气泡 70% 上限 + 30px 按钮 + 间距」
-   *    塞不进滚动容器。取 768 而不是 730，是给字号/字体换行留 38px 余量；
-   *    730–1023 这段侧放其实是够的，不该被一起改掉（多一行按钮 = 每条消息高 35px）。
-   */
-  @media (max-width: 768px), (hover: none) {
-    .q-chat__acts {
-      position: static;
-      margin-top: 0.35rem;
-    }
-  }
-
-  /**
-   * 触屏没有 hover：默认收起，**点一下这条消息再展开**。
-   *
-   * 之前是「常显」——实测 23 条消息就是 69 个按钮平铺在屏幕上（390px 宽下
-   * 一屏只有 5 条消息，却压着 15 个按钮），比藏起来更糟：读消息时视线被
-   * 一排排「回复 / 举报 / +」切开。但完全藏起来又等于「撤回和编辑在手机上不存在」，
-   * 所以取中：点一下展开，再点一下收起。
-   */
-  @media (hover: none) {
-    /**
-     * ⚠️ 用 `display: none` 而不是 `opacity: 0`。
-     *
-     * 窄屏下操作条是 `position: static`（进正常流），只把 opacity 归零的话
-     * **它仍然占着 36px 高度** —— 23 条消息就是 828px 的空白带，每条消息之间
-     * 都空出一截，看起来像布局坏了（实测截图确认）。
-     * 隐藏态必须整块不占位；展开时再回到 flex。
-     */
-    .q-chat__acts {
-      display: none;
-    }
-
-    .q-chat__row.is-acts-open .q-chat__acts {
-      display: flex;
-      opacity: 1;
-      pointer-events: auto;
-    }
-
-    /* 展开态需要一个可见的锚点：不然用户不知道按钮为什么冒出来 */
-    .q-chat__row.is-acts-open .q-chat__bubble,
-    .q-chat__row.is-acts-open .q-chat__file {
-      border-color: color-mix(in srgb, var(--color-crimson) 30%, transparent);
-    }
-  }
-
   .q-chat__bubble {
-    padding: 0.45rem 0.7rem;
-    border-radius: 0.9rem 0.9rem 0.9rem 0.25rem;
-    border: 1px solid var(--color-hairline);
-    background: #fff;
+    max-width: 100%;
+    padding: 0.55rem 0.9rem;
+    border: 1px solid rgba(255, 255, 255, 0.95);
+    border-radius: 1.25rem 1.25rem 1.25rem 0.375rem;
+    background: rgba(255, 253, 250, 0.9);
+    box-shadow: 0 6px 18px -8px rgba(74, 55, 40, 0.08);
+    font-size: 0.875rem;
+    line-height: 1.7;
     color: var(--color-ink);
-    font-size: 0.9rem;
-    overflow-wrap: anywhere;
+    word-break: break-word;
   }
 
   .q-chat__row.is-mine .q-chat__bubble {
-    border-radius: 0.9rem 0.9rem 0.25rem 0.9rem;
-    /* 自己的消息要有明确的「这是我说的」：底色比第一版深一档（7% → 12%），
-       但不到微信那种饱和绿 —— 站点整体是暖白，压得太重会跳出画面 */
-    background: color-mix(in srgb, var(--color-crimson) 12%, #fff);
-    border-color: color-mix(in srgb, var(--color-crimson) 24%, transparent);
+    border-color: rgba(255, 255, 255, 0.2);
+    border-radius: 1.25rem 1.25rem 0.375rem 1.25rem;
+    background: var(--color-crimson);
+    box-shadow:
+      0 8px 22px -8px rgba(194, 58, 85, 0.42),
+      inset 0 1px 0 rgba(255, 255, 255, 0.18);
+    color: var(--color-cream);
   }
 
-  /* .q-rich 的段落间距是给评论区写的（0.5em），气泡里要收紧 */
-  .q-chat__bubble.q-rich {
-    line-height: 1.65;
+  /**
+   * 自己的气泡里，富文本要跟着反白。
+   *
+   * 正文的 color 是继承的，但 `rich.css` 给 strong / code / a 写了显式颜色 ——
+   * 那些规则作用在深绯红底上：加粗 2.16:1、行内代码 1.11:1，等于看不见。
+   */
+  .q-chat__row.is-mine .q-chat__bubble :is(strong, b, em, a) {
+    color: var(--color-cream);
   }
 
-  .q-chat__bubble.q-rich p {
-    margin: 0.15em 0;
+  /* 行内代码的底色要比气泡**更深**：加一层米白会把底提亮，
+     反白字反而掉到 3.55:1；压深墨色才把对比拉开 */
+  .q-chat__row.is-mine .q-chat__bubble code {
+    background: color-mix(in srgb, var(--color-ink) 30%, transparent);
+    color: var(--color-cream);
   }
 
-  .q-chat__bubble.q-rich pre {
-    max-width: 100%;
-    overflow-x: auto;
-    margin: 0.4em 0;
+  .q-chat__row.is-mine .q-chat__bubble a {
+    text-decoration-color: rgba(253, 246, 240, 0.6);
   }
 
-  .q-chat__bubble.q-rich > *:first-child {
-    margin-top: 0;
+  /* 手机端 16px：低于它 iOS Safari 聚焦时会放大整页且不会缩回来 */
+  @media (max-width: 768px) {
+    .q-chat__bubble {
+      font-size: 1rem;
+    }
   }
 
-  .q-chat__bubble.q-rich > *:last-child {
-    margin-bottom: 0;
-  }
-
-  /* 审核中：不遮、不抖，只把边框虚一下 —— 让人知道在等，但别焦虑 */
+  /* 审核中：虚线 + 略淡，只让发送者自己看到 */
   .q-chat__bubble.is-pending {
     border-style: dashed;
-    opacity: 0.85;
+    opacity: 0.9;
   }
 
-  /* ——— 消息里的图 / 视频 ——— */
-  .q-chat__media {
-    /* 20rem 是「看得清、又不至于一条占满整屏」的折中 */
-    max-width: min(100%, 20rem);
+  .q-chat__pending {
+    font-size: 0.6875rem;
+    color: var(--color-subtle);
+  }
+
+  /* 引用块：贴着正文上方，一条 2.5px 竖线 */
+  .q-chat__bubble .q-chat__quote,
+  .q-chat__quote {
+    display: block;
+    margin-bottom: 0.4rem;
+    padding: 0.3rem 0.55rem;
+    border-left: 2.5px solid var(--color-crimson);
+    border-radius: 0.5rem;
+    background: color-mix(in srgb, var(--color-rose) 26%, transparent);
+    font-size: 0.75rem;
+    line-height: 1.6;
+    color: var(--color-ink);
+  }
+
+  .q-chat__quote b {
+    display: block;
+    font-size: 0.6875rem;
+    font-weight: 600;
+    opacity: 0.9;
+  }
+
+  /**
+   * 引用摘要单行截断。
+   *
+   * ⚠️ 不能用 `white-space: nowrap`：那会让整段的 max-content 变成不可压缩的宽度，
+   * 而气泡的宽度又是由内容决定的（`max-width:100%` 对着不定的包含块等于失效），
+   * 于是一条 40 字的引用就把气泡顶到卡片外面 —— 窄屏实测撑出 7px 横向滚动。
+   * 用「允许换行 + 单行 line-clamp」：min-content 缩到一个字，气泡就压得回去。
+   */
+  .q-chat__quote span {
+    display: -webkit-box;
+    -webkit-line-clamp: 1;
+    -webkit-box-orient: vertical;
     overflow: hidden;
-    border: 1px solid var(--color-hairline);
-    border-radius: 0.9rem;
+    opacity: 0.82;
+    word-break: break-word;
+  }
+
+  /**
+   * 引用块是气泡的**兄弟节点**（渲染在 bubblewrap 里，不在 bubble 内），
+   * 所以它落在浅色卡片上，不能跟着自己的气泡上反白 ——
+   * 之前那版给了米白字，实测白底白字 1.03:1。自己的消息这里和别人的一致。
+   */
+  .q-chat__row.is-mine .q-chat__quote {
+    border-left-color: var(--color-crimson);
+    background: color-mix(in srgb, var(--color-rose) 26%, transparent);
+    color: var(--color-ink);
+  }
+
+  /* ——— 图片 / 视频 ——— */
+  .q-chat__media {
+    max-width: min(20rem, 100%);
+    overflow: hidden;
+    border: 1px solid rgba(255, 255, 255, 0.9);
+    border-radius: 1rem;
     background: #fff;
-    line-height: 0;
+    box-shadow: 0 6px 18px -8px rgba(74, 55, 40, 0.12);
   }
 
   .q-chat__media img {
     display: block;
     width: 100%;
-    height: auto;
+    max-height: 20rem;
+    object-fit: cover;
     cursor: zoom-in;
   }
 
   .q-chat__media video {
     display: block;
     width: 100%;
-    height: auto;
-    max-height: 22rem;
+    max-height: 20rem;
     background: #000;
   }
 
-  .q-chat__row.is-mine .q-chat__media {
-    border-color: color-mix(in srgb, var(--color-crimson) 20%, transparent);
+  .q-chat__media img:focus-visible {
+    outline: 2px solid var(--color-crimson);
+    outline-offset: -2px;
   }
 
-  /* 待发送的那张缩略图 */
-  .q-chat__pendingmedia {
-    position: relative;
-    display: inline-flex;
-    max-width: 10rem;
-    border: 1px solid var(--color-hairline);
-    border-radius: 0.6rem;
-    overflow: hidden;
-  }
-
-  .q-chat__pendingmedia img,
-  .q-chat__pendingmedia video {
-    display: block;
-    width: 100%;
-    height: auto;
-    max-height: 6rem;
-    object-fit: cover;
-  }
-
-  .q-chat__pendingmedia button {
-    position: absolute;
-    top: 0.2rem;
-    right: 0.2rem;
-    display: grid;
-    place-items: center;
-    width: 1.1rem;
-    height: 1.1rem;
-    border-radius: 9999px;
-    background: rgba(40, 20, 25, 0.55);
-    color: #fff;
-  }
-
-  .q-chat__pending {
-    flex: none;
-    font-size: 0.65rem;
-    color: var(--color-subtle);
-    white-space: nowrap;
-  }
-
-  /**
-   * 文字按钮（回复 / 撤回）。
-   *
-   * 保留文字而不是换图标：图标（尤其「铅笔 / 三个点」）的语义要靠猜，
-   * 而站长这套界面里只有两个动作，写出来更快 —— Slack 自己做简化版时
-   * 也是把动作从灰图标改成「可见、能读懂的入口」。
-   *
-   * 尺寸 30×30（WCAG 2.2 SC 2.5.8 要求 ≥24×24）。原来 0.65rem 字号 + 0.1rem 内边距
-   * 只有 18px 高，鼠标要停在一条 18px 的窄条上才点得中。
-   */
-  .q-chat__recall {
-    flex: none;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    min-width: 1.875rem;
-    min-height: 1.875rem;
-    padding: 0 0.5rem;
-    border: 1px solid var(--color-hairline);
-    border-radius: 0.55rem;
-    background: #fffdfb;
-    color: var(--color-brown);
-    font-size: 0.72rem;
-    line-height: 1;
-    /* 显隐由外层的 .q-chat__acts 统一控制，这里不再自己管 opacity */
-    transition: color var(--dur-micro) ease, border-color var(--dur-micro) ease,
-      background-color var(--dur-micro) ease;
-  }
-
-  .q-chat__recall:hover {
-    color: var(--color-crimson);
-    border-color: color-mix(in srgb, var(--color-crimson) 30%, transparent);
-    background: color-mix(in srgb, var(--color-rose) 12%, #fff);
-  }
-
-  /* ——— 表情回应 ——— */
-  .q-chat__addreact {
-    position: relative;
-    flex: none;
-    display: inline-flex;
-  }
-
-  .q-chat__plus {
-    display: grid;
-    place-items: center;
-    width: 1.875rem;
-    height: 1.875rem;
-    border-radius: 9999px;
-    border: 1px solid var(--color-hairline);
-    background: #fffdfb;
-    color: var(--color-subtle);
-    font-size: 1rem;
-    line-height: 1;
-    /* 显隐同样交给外层 .q-chat__acts */
-    transition: color var(--dur-micro) ease, border-color var(--dur-micro) ease,
-      background-color var(--dur-micro) ease;
-  }
-
-  .q-chat__plus:hover {
-    color: var(--color-crimson);
-    border-color: color-mix(in srgb, var(--color-crimson) 34%, transparent);
-    background: color-mix(in srgb, var(--color-rose) 12%, #fff);
-  }
-
-  /* 弹出的那一排：胶囊形，八个表情刚好一行 */
-  .q-chat__reactpop {
-    position: absolute;
-    bottom: 100%;
-    /* 默认往**左**展开：操作条现在挂在自己气泡的右侧，「+」离卡片右缘只有
-       几十像素，往右展开会被裁掉一半（触屏布局下按钮在气泡下方，同样成立） */
-    left: auto;
-    right: 0;
-    z-index: 20;
-    display: flex;
-    gap: 0.1rem;
-    margin-bottom: 0.35rem;
-    padding: 0.3rem;
-    border-radius: var(--radius-pill);
-    border: 1px solid var(--color-hairline);
-    background: #fffdfb;
-    box-shadow: 0 8px 24px rgba(90, 40, 50, 0.12);
-  }
-
-  /* 自己的消息镜像过来：操作条在气泡左侧，弹层改为向右展开 */
-  .q-chat__row.is-mine .q-chat__reactpop {
-    left: 0;
-    right: auto;
-  }
-
-  .q-chat__reactpop button {
-    display: grid;
-    place-items: center;
-    width: 1.7rem;
-    height: 1.7rem;
-    border-radius: 9999px;
-    transition: background-color var(--dur-micro) ease;
-  }
-
-  .q-chat__reactpop button:hover {
-    background: color-mix(in srgb, var(--color-rose) 18%, transparent);
-  }
-
-  .q-chat__reactpop img {
-    width: 1.2rem;
-    height: 1.2rem;
-    object-fit: contain;
-  }
-
-  .q-chat__reacts {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 0.25rem;
-  }
-
-  .q-chat__react {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.2rem;
-    /* 实测原来只有 37.6×21.5 —— 高度差 2.5px 够不到 24 的底线，
-       而这一排回应小标本来就挨得很近，低了就只能靠运气点中 */
-    min-height: 1.5rem;
-    padding: 0.16rem 0.5rem 0.16rem 0.3rem;
-    border-radius: var(--radius-pill);
-    border: 1px solid var(--color-hairline);
-    background: #fff;
-    font-size: 0.72rem;
-    color: var(--color-muted);
-    transition: border-color var(--dur-micro) ease, background-color var(--dur-micro) ease;
-  }
-
-  /* 自己点过的：底色和边框都加一档，一眼能看出「这个我也点了」 */
-  .q-chat__react.is-mine {
-    border-color: color-mix(in srgb, var(--color-crimson) 34%, transparent);
-    background: color-mix(in srgb, var(--color-crimson) 8%, #fff);
-    color: var(--color-accent-soft);
-  }
-
-  .q-chat__react:hover {
-    border-color: color-mix(in srgb, var(--color-crimson) 40%, transparent);
-  }
-
-  .q-chat__react img {
-    width: 0.95rem;
-    height: 0.95rem;
-    object-fit: contain;
-  }
-
-  .q-chat__recalled {
-    margin: 0.7rem 0;
-    text-align: center;
-    font-size: 0.72rem;
-    color: var(--color-subtle);
-  }
-
-  /* ——— 新消息浮标 ——— */
-  .q-chat__jump {
-    position: absolute;
-    left: 50%;
-    bottom: 5.6rem;
-    transform: translateX(-50%);
-    display: inline-flex;
-    align-items: center;
-    gap: 0.3rem;
-    padding: 0.3rem 0.8rem;
-    border-radius: var(--radius-pill);
-    border: 1px solid color-mix(in srgb, var(--color-crimson) 28%, transparent);
-    background: #fffdfb;
-    color: var(--color-crimson);
-    font-size: 0.75rem;
-    box-shadow: 0 6px 20px rgba(90, 40, 50, 0.12);
-  }
-
-  .q-chat__tip {
-    padding: 0.35rem 1rem 0;
-    font-size: 0.72rem;
-    color: var(--color-accent-soft);
-  }
-
-  /* ——— 输入区 ——— */
-  .q-chat__composer {
-    display: flex;
-    align-items: flex-end;
-    gap: 0.5rem;
-    padding: 0.7rem 0.85rem 0.85rem;
-    border-top: 1px solid var(--color-hairline);
-    background: color-mix(in srgb, var(--color-cream) 55%, #fff);
-  }
-
-  .q-chat__inputwrap {
-    position: relative;
-    /* min-width: 0 不能省：flex 子项的默认 min-width 是 auto，
-       textarea 的固有宽度会把整行撑破，发送按钮被挤到卡片外面（实测窄屏就是这样） */
-    min-width: 0;
-    flex: 1;
-    display: flex;
-    align-items: flex-end;
-    /* 两个工具按钮之间 0.3rem：0.25 太挤，手指点「表情」常常点到旁边那张图 */
-    gap: 0.3rem;
-    padding: 0.35rem 0.4rem 0.35rem 0.8rem;
-    border: 1px solid var(--color-hairline);
-    border-radius: 1rem;
-    background: #fff;
-    transition: border-color var(--dur-micro) ease, box-shadow var(--dur-micro) ease;
-  }
-
-  /**
-   * 焦点画在**容器**上，不是 textarea 自己身上。
-   *
-   * 原来这一层只改边框颜色，同时我又给全局的 `textarea:focus-visible` 加了轮廓 ——
-   * 两层叠起来就是「外面一圈绯红 + 里面一条发丝边」的双框（站长截图那个）。
-   * Signal / Element / Telegram 的输入区都只有一层：容器边框变色 + 一圈柔和外环，
-   * 环用 box-shadow 画，不占布局，光标进出时不会把下面的内容顶动。
-   */
-  .q-chat__inputwrap:focus-within {
-    border-color: color-mix(in srgb, var(--color-crimson) 46%, transparent);
-    box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-rose) 22%, transparent);
-  }
-
-  /* 鼠标设备上给一点悬停反馈：不然「点这儿才能打字」这件事没有前兆 */
-  @media (hover: hover) {
-    .q-chat__inputwrap:hover {
-      border-color: color-mix(in srgb, var(--color-brown) 26%, transparent);
-    }
-  }
-
-  .q-chat__inputwrap:focus-within:hover {
-    border-color: color-mix(in srgb, var(--color-crimson) 46%, transparent);
-  }
-
-  .q-chat__input {
-    flex: 1;
-    width: 100%;
-    min-width: 0;
-    /* 内容高度 = line-height(1.6 × 0.9rem ≈ 23px) + 上下 padding(0.3rem ≈ 9.6px) ≈ 33px。
-       min-height 必须盖住它，否则 textarea 一进页面就溢出、右侧冒出上下滚动条
-       （站长截图里输入框右边那两个小箭头就是它）。 */
-    min-height: 2rem;
-    max-height: 8rem;
-    padding: 0.3rem 0;
-    border: 0;
-    outline: 0;
-    resize: none;
-    overflow-y: auto;
-    background: transparent;
-    color: var(--color-ink);
-    font-size: 0.9rem;
-    line-height: 1.6;
-    font-family: inherit;
-  }
-
-  .q-chat__input::placeholder {
-    color: var(--color-subtle);
-    opacity: 0.85;
-  }
-
-  .q-chat__tools {
-    position: relative;
-    flex: none;
-    display: flex;
-    align-items: center;
-    padding-bottom: 0.1rem;
-  }
-
-  .q-chat__tool {
-    display: grid;
-    place-items: center;
-    width: 1.85rem;
-    height: 1.85rem;
-    border-radius: 9999px;
-    color: var(--color-subtle);
-    transition: background-color var(--dur-micro) ease, color var(--dur-micro) ease;
-  }
-
-  .q-chat__tool:hover {
-    background: color-mix(in srgb, var(--color-rose) 16%, transparent);
-    color: var(--color-crimson);
-  }
-
-  .q-chat__send {
-    flex: none;
-    display: grid;
-    place-items: center;
-    width: 2.3rem;
-    height: 2.3rem;
-    border-radius: 9999px;
-    background: var(--color-cta);
-    color: #fff;
-    transition: opacity var(--dur-micro) ease, transform var(--dur-micro) ease;
-  }
-
-  .q-chat__send:disabled {
-    opacity: 0.42;
-    cursor: not-allowed;
-  }
-
-  /* hover 之前是完全没有的：鼠标移上去毫无变化，像一张图片。
-     用同色系（混一点棕）压暗，而不是混黑 —— 混黑会把暖调压成脏红。 */
-  @media (hover: hover) {
-    .q-chat__send:not(:disabled):hover {
-      background: color-mix(in oklab, var(--color-cta) 86%, var(--color-brown));
-    }
-  }
-
-  .q-chat__send:not(:disabled):active {
-    transform: scale(0.94);
-  }
-
-  .q-chat__count {
-    position: absolute;
-    right: 0.9rem;
-    bottom: -0.9rem;
-    font-size: 0.65rem;
-    color: var(--color-subtle);
-  }
-
-  /* ——— 未登录 ——— */
-  .q-chat__guest {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 0.75rem;
-    padding: 1rem;
-    border-top: 1px solid var(--color-hairline);
-    background: color-mix(in srgb, var(--color-cream) 55%, #fff);
-    font-size: 0.82rem;
-    color: var(--color-subtle);
-  }
-
-  .q-chat__guest button {
-    padding: 0.35rem 1.1rem;
-    border-radius: var(--radius-pill);
-    background: var(--color-cta);
-    color: #fff;
-    font-size: 0.8rem;
-  }
-
-  /* ——— 顶栏搜索入口 ——— */
-  .q-chat__searchbtn {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.28rem;
-    /* 原来只有 21px 高、11.2px 字 —— 低于 WCAG 2.2 SC 2.5.8（AA）的 24×24，
-       而且它和「提醒」并排，两个小目标挨在一起最容易点错。 */
-    min-height: 1.75rem;
-    padding: 0.25rem 0.7rem;
-    border-radius: var(--radius-pill);
-    font-size: 0.75rem;
-    color: var(--color-muted);
-    transition: background-color var(--dur-micro) ease, color var(--dur-micro) ease;
-  }
-
-  .q-chat__searchbtn:hover {
-    background: color-mix(in srgb, var(--color-rose) 16%, transparent);
-    color: var(--color-crimson);
-  }
-
-  /* ——— 输入区上方：引用条 + 正在输入 ——— */
-  .q-chat__above {
-    display: flex;
-    flex-direction: column;
-    gap: 0.25rem;
-    padding: 0 0.85rem;
-  }
-
-  .q-chat__replybar {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-    padding: 0.28rem 0.55rem;
-    border-left: 2px solid color-mix(in srgb, var(--color-crimson) 45%, transparent);
-    border-radius: 0 0.4rem 0.4rem 0;
-    background: color-mix(in srgb, var(--color-crimson) 5%, #fff);
-    font-size: 0.72rem;
-    color: var(--color-subtle);
-  }
-
-  .q-chat__replybar__t {
-    flex: 1;
-    min-width: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
-  .q-chat__replybar__t b {
-    color: var(--color-brown);
-    font-weight: 500;
-  }
-
-  .q-chat__replybar button {
-    flex: none;
-    display: grid;
-    place-items: center;
-    width: 1.15rem;
-    height: 1.15rem;
-    border-radius: 9999px;
-    color: var(--color-subtle);
-  }
-
-  .q-chat__replybar button:hover {
-    background: color-mix(in srgb, var(--color-rose) 20%, transparent);
-    color: var(--color-crimson);
-  }
-
-  .q-chat__typing {
-    display: flex;
-    align-items: center;
-    gap: 0.2rem;
-    font-size: 0.68rem;
-    color: var(--color-subtle);
-  }
-
-  /* 三个点**不做闪烁动画**：这是个持续状态，为了三个点常驻跑 CSS 动画不划算 */
-  .q-chat__typing i {
-    width: 3px;
-    height: 3px;
-    border-radius: 9999px;
-    background: currentColor;
-    opacity: 0.5;
-  }
-
-  /* ——— @ 候选弹层 ——— */
-  .q-chat__mentions {
-    position: absolute;
-    bottom: calc(100% + 0.35rem);
-    left: 0;
-    right: 0;
-    z-index: 25;
-    display: flex;
-    flex-direction: column;
-    gap: 1px;
-    max-height: 12rem;
-    overflow-y: auto;
-    padding: 0.3rem;
-    border: 1px solid var(--color-hairline);
-    border-radius: 0.7rem;
-    background: #fffdfb;
-    box-shadow: 0 10px 30px rgba(90, 40, 50, 0.14);
-  }
-
-  .q-chat__mentions button {
-    display: flex;
-    align-items: center;
-    gap: 0.4rem;
-    padding: 0.28rem 0.4rem;
-    border-radius: 0.4rem;
-    font-size: 0.78rem;
-    color: var(--color-ink);
-    text-align: left;
-  }
-
-  .q-chat__mentions button:hover {
-    background: color-mix(in srgb, var(--color-rose) 16%, transparent);
-  }
-
-  .q-chat__mentions__av {
-    flex: none;
-    display: grid;
-    place-items: center;
-    width: 1.4rem;
-    height: 1.4rem;
-    border-radius: 9999px;
-    background-color: color-mix(in srgb, var(--color-rose) 22%, #fff);
-    background-size: cover;
-    background-position: center;
-    font-size: 0.6rem;
-    color: var(--color-brown);
-  }
-
-  .q-chat__mentions__n {
-    flex: 1;
-    min-width: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
-  .q-chat__mentions em {
-    font-style: normal;
-    font-size: 0.6rem;
-    color: var(--color-accent-soft);
-  }
-
-  /* ——— 引用条（气泡下方，样子学微信：一条竖线 + 「名字: 内容」）——— */
-  .q-chat__quote {
-    max-width: 100%;
-    padding: 0.1rem 0 0.1rem 0.5rem;
-    border-left: 2px solid color-mix(in srgb, var(--color-brown) 30%, transparent);
-    font-size: 0.72rem;
-    line-height: 1.6;
-    color: var(--color-subtle);
-    /* 微信那边引用是单行截断的，长的链接也不会把气泡撑宽 */
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
-  .q-chat__quote b {
-    margin-right: 0.3rem;
-    color: var(--color-brown);
-    font-weight: 500;
-  }
-
-  .q-chat__row.is-mine .q-chat__quote {
-    border-left-color: color-mix(in srgb, var(--color-crimson) 34%, transparent);
-  }
-
-  /* ——— 已读回执：只挂在我最新那条下面 ——— */
-  .q-chat__reads {
-    align-self: flex-end;
-    margin-top: 0.12rem;
-    /* 0.62rem(9.9px) + 75% 墨实测 4.7:1，在气泡的粉色底上会掉到 4.2 ——
-       擦线的都是极小字，干脆一起提上去 */
-    font-size: 0.7rem;
-    color: var(--color-muted);
-  }
-
-  /* @了你 的小标：比「站长」更显眼一点，但别做成红色警告 */
-  .q-chat__tag--at {
-    background: color-mix(in srgb, var(--color-crimson) 15%, transparent);
-    /* crimson 压在这层 15% 绯红底上是 4.37:1，不够 —— 用小字专用的更暗一档 */
-    color: var(--color-accent-soft);
-  }
-
-  /* 从搜索结果跳过来时闪一下；纯视觉提示，2.2 秒后自己消失 */
-  .q-chat__anchor {
-    border-radius: 0.5rem;
-    animation: q-chat-flash 2.2s ease-out;
-  }
-
-  @keyframes q-chat-flash {
-    0%,
-    55% {
-      background: color-mix(in srgb, var(--color-crimson) 11%, transparent);
-    }
-    100% {
-      background: transparent;
-    }
-  }
-
-  /* ——— 搜索面板（portal 到 body） ——— */
-  .q-chatsearch {
-    position: fixed;
-    inset: 0;
-    z-index: 200;
-    display: grid;
-    place-items: start center;
-    padding: 12vh 1rem 1rem;
-    background: rgba(60, 30, 40, 0.26);
-  }
-
-  .q-chatsearch__panel {
-    display: flex;
-    flex-direction: column;
-    width: min(38rem, 100%);
-    max-height: 70vh;
-    overflow: hidden;
-    border: 1px solid var(--color-hairline);
-    border-radius: var(--radius-card);
-    background: #fffdfb;
-    box-shadow: 0 20px 60px rgba(60, 30, 40, 0.18);
-  }
-
-  .q-chatsearch__head {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-    padding: 0.7rem 0.9rem;
-    border-bottom: 1px solid var(--color-hairline);
-    color: var(--color-subtle);
-  }
-
-  .q-chatsearch__input {
-    flex: 1;
-    min-width: 0;
-    border: 0;
-    outline: 0;
-    background: transparent;
-    color: var(--color-ink);
-    font-size: 0.9rem;
-    font-family: inherit;
-  }
-
-  .q-chatsearch__head button {
-    flex: none;
-    display: grid;
-    place-items: center;
-    width: 1.5rem;
-    height: 1.5rem;
-    border-radius: 9999px;
-    color: var(--color-subtle);
-  }
-
-  .q-chatsearch__head button:hover {
-    background: color-mix(in srgb, var(--color-rose) 18%, transparent);
-    color: var(--color-crimson);
-  }
-
-  .q-chatsearch__body {
-    overflow-y: auto;
-    padding: 0.5rem;
-  }
-
-  .q-chatsearch__hint {
-    display: flex;
-    align-items: center;
-    gap: 0.35rem;
-    padding: 1rem 0.6rem;
-    font-size: 0.78rem;
-    color: var(--color-subtle);
-  }
-
-  .q-chatsearch__list {
-    display: flex;
-    flex-direction: column;
-    gap: 1px;
-  }
-
-  .q-chatsearch__list button {
-    display: flex;
-    gap: 0.55rem;
-    width: 100%;
-    padding: 0.45rem;
-    border-radius: 0.6rem;
-    text-align: left;
-  }
-
-  .q-chatsearch__list button:hover {
-    background: color-mix(in srgb, var(--color-rose) 13%, transparent);
-  }
-
-  .q-chatsearch__av {
-    flex: none;
-    display: grid;
-    place-items: center;
-    width: 1.7rem;
-    height: 1.7rem;
-    border-radius: 9999px;
-    background-color: color-mix(in srgb, var(--color-rose) 22%, #fff);
-    background-size: cover;
-    background-position: center;
-    font-size: 0.66rem;
-    color: var(--color-brown);
-  }
-
-  .q-chatsearch__main {
-    flex: 1;
-    min-width: 0;
-    display: flex;
-    flex-direction: column;
-    gap: 0.1rem;
-  }
-
-  .q-chatsearch__meta {
-    display: flex;
-    align-items: baseline;
-    gap: 0.4rem;
-    font-size: 0.72rem;
-    color: var(--color-brown);
-  }
-
-  .q-chatsearch__meta time {
-    font-size: 0.66rem;
-    color: var(--color-subtle);
-  }
-
-  .q-chatsearch__meta em {
-    font-style: normal;
-    font-size: 0.62rem;
-    color: var(--color-accent-soft);
-  }
-
-  .q-chatsearch__text {
-    font-size: 0.78rem;
-    color: var(--color-muted);
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
-  /* ═══════════════════════════════════════════════════════════════════
-     视觉升级（2026-11-24 夜）
-     
-     方向：**产品克制的精修**，不是加特效。这一页的骨架（页头 / 侧栏 / 会话 /
-     输入区）已经定了，这次只动六件事：骨架屏、空态、时间线、等宽数字、
-     新消息入场、触屏目标。刻意没做：气泡渐变、头像光晕、在线点呼吸
-     （后者以前明确写过「常驻闪的东西最耗神」，那条判断仍然成立）。
-     ═══════════════════════════════════════════════════════════════════ */
-
-  /* ——— ① 骨架屏 ———
-     原来的加载态是一行「正在推开长亭的门…」，整张卡片空着。
-     聊天的形状很固定（来一条、回一条），骨架能提前把节奏画出来。 */
-  .q-chat__skeleton {
-    display: flex;
-    flex: 1;
-    flex-direction: column;
-    gap: 1.1rem;
-    padding: 1.25rem 1rem;
-    overflow: hidden;
-  }
-
-  .q-skel-row {
-    display: flex;
-    align-items: flex-start;
-    gap: 0.5rem;
-  }
-
-  .q-skel-row.is-mine {
-    flex-direction: row-reverse;
-  }
-
-  .q-skel-av {
-    flex: none;
-    width: 2rem;
-    height: 2rem;
-    border-radius: 9999px;
-    background: color-mix(in srgb, var(--color-brown) 10%, #fffdfb);
-    animation: q-skel-breathe 1.8s ease-in-out infinite alternate;
-  }
-
-  .q-skel-body {
-    display: flex;
-    flex-direction: column;
-    gap: 0.35rem;
-    min-width: 0;
-  }
-
-  .q-skel-line {
-    height: 0.62rem;
-    border-radius: 9999px;
-    background: color-mix(in srgb, var(--color-brown) 9%, #fffdfb);
-    animation: q-skel-breathe 1.8s ease-in-out infinite alternate;
-  }
-
-  /* 宽度给参差，不要三条一样长 —— 一样的长度看起来像表格 */
-  .q-skel-line:nth-child(1) { width: 6rem; }
-  .q-skel-line:nth-child(2) { width: 13rem; }
-  .q-skel-line:nth-child(3) { width: 9rem; }
-
-  .q-skel-row.is-mine .q-skel-body {
-    align-items: flex-end;
-  }
-
-  .q-skel-row.is-mine .q-skel-line:nth-child(1) { width: 5rem; }
-  .q-skel-row.is-mine .q-skel-line:nth-child(2) { width: 11rem; }
-
-  @keyframes q-skel-breathe {
-    from { opacity: 0.55; }
-    to { opacity: 1; }
-  }
-
-  .q-chat__skeleton-note {
-    margin-top: auto;
-    padding-top: 1rem;
-    text-align: center;
-    font-size: 0.74rem;
-    color: var(--color-subtle);
-  }
-
-  /* ——— ② 空态 ———
-     原来只有两行灰字，落在卡片底部（`.q-chat__inner` 的 margin-top: auto）。
-     空聊天室其实是一次邀请，值得给个落点和一句「你可以先说话」。 */
-  .q-chat__scroll.is-empty .q-chat__inner {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    height: 100%;
-    margin-top: 0;
-  }
-
-  .q-chat__blank {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 0.55rem;
-    padding: 2rem 1rem;
-    text-align: center;
-  }
-
-  /* 一枚印章：细线方框 + 门内的「亭」字。全站只有这一处这样用，别扩散 */
-  .q-chat__blank__mark {
-    display: grid;
-    place-items: center;
-    width: 2.6rem;
-    height: 2.6rem;
-    margin-bottom: 0.35rem;
-    border: 1px solid color-mix(in srgb, var(--color-crimson) 42%, transparent);
-    border-radius: 0.3rem;
-    color: var(--color-crimson);
-    font-family: var(--font-display);
-    font-size: 1.15rem;
-    line-height: 1;
-    opacity: 0.9;
-  }
-
-  .q-chat__blank__t {
-    font-family: var(--font-display);
-    font-size: 1.05rem;
-    color: var(--color-ink);
-    letter-spacing: 0.02em;
-  }
-
-  .q-chat__blank__s {
-    max-width: 20rem;
-    font-size: 0.8rem;
-    line-height: 1.8;
-    color: var(--color-subtle);
-  }
-
-  .q-chat__blank__cta {
-    margin-top: 0.5rem;
-    padding: 0.4rem 1.1rem;
-    border-radius: var(--radius-pill);
-    background: var(--color-cta);
-    color: #fff;
-    font-size: 0.78rem;
-    transition: opacity var(--dur-micro) ease;
-  }
-
-  .q-chat__blank__cta:hover {
-    opacity: 0.88;
-  }
-
-  /* ——— ③ 时间线 ———
-     纯居中文字读起来像「正文里插了一句」，加两条细线之后才是分隔符。 */
-  .q-chat__time {
-    display: flex;
-    align-items: center;
-    gap: 0.6rem;
-    margin: 1rem 0 0.55rem;
-    text-align: center;
-    font-size: 0.75rem;
-    letter-spacing: 0.02em;
-    /* 与上面那条规则同步：极小字不能用 75% 墨（4.34:1 不过线） */
-    color: var(--color-muted);
-  }
-
-  .q-chat__time::before,
-  .q-chat__time::after {
-    content: '';
-    flex: 1;
-    height: 1px;
-    /* 13% 的棕在暖白底上等于不存在（实测 417px 长的线，肉眼在 2× 截图里都看不出）——
-       细线的意义是「把这段时间切开」，看不见就等于没切。提到 22%。 */
-    background: color-mix(in srgb, var(--color-brown) 22%, transparent);
-  }
-
-  /* ——— ④ 数字对齐 ———
-     时间、已读、字数都是会变的数字，比例字体会让它们逐帧抖。 */
-  .q-chat__clock,
-  .q-chat__time,
-  .q-chat__reads,
-  .q-chat__count,
-  .q-chat__readmark {
-    font-variant-numeric: tabular-nums;
-  }
-
-  /* ——— ⑤ 新消息入场 ———
-     只给「进来之后才到」的消息（自己发的也算）。首屏那批不动 ——
-     一进页面十几条一起浮上来，比不浮更吵。 */
-  .q-chat__row.is-fresh {
-    animation: q-msg-in 220ms cubic-bezier(0.22, 0.61, 0.36, 1) both;
-  }
-
-  @keyframes q-msg-in {
-    from {
-      opacity: 0;
-      transform: translateY(5px);
-    }
-  }
-
-  /* ——— ⑥ 焦点可见 ———
-     聊天室里 Tab 要能走完「回复 → 撤回 → + → 输入框」，每一步都得看得见。 */
-  .q-chat :is(button, textarea, a):focus-visible {
-    outline: 2px solid color-mix(in srgb, var(--color-crimson) 62%, transparent);
-    outline-offset: 2px;
-    border-radius: 0.4rem;
-  }
-
-  /* 例外：输入框的焦点由外层 `.q-chat__inputwrap:focus-within` 统一画。
-     不排除的话 textarea 会再套一圈轮廓，和外框叠成双框。 */
-  .q-chat .q-chat__input:focus-visible {
-    outline: none;
-  }
-
-  /* ——— ⑦ 拖拽投放 ———
-     拖文件进聊天区本来就能发，但之前没有任何反馈；松手前不知道会发生什么。 */
-  .q-chat.is-drop {
-    border-color: color-mix(in srgb, var(--color-crimson) 40%, transparent);
-  }
-
-  .q-chat.is-drop::after {
-    content: '松手就发出去';
-    position: absolute;
-    inset: 0.5rem;
-    z-index: 30;
-    display: grid;
-    place-items: center;
-    border: 1px dashed color-mix(in srgb, var(--color-crimson) 45%, transparent);
-    border-radius: var(--radius-card);
-    background: color-mix(in srgb, #fffdfb 82%, transparent);
-    color: var(--color-crimson);
-    font-size: 0.85rem;
-    letter-spacing: 0.04em;
-    pointer-events: none;
-  }
-
-  /* ——— ⑧ 触屏目标 ———
-     WCAG 2.5.8 是 24×24 的底线，44 是 AAA / Apple HIG 的尺寸。
-     触屏上没有鼠标精度，输入区的按钮按 40px 走。 */
-  @media (hover: none) {
-    .q-chat__tool {
-      width: 2.5rem;
-      height: 2.5rem;
-    }
-
-    .q-chat__send {
-      width: 2.75rem;
-      height: 2.75rem;
-    }
-  }
-
-  /* ——— ⑨ 顶栏右侧按钮组 + 断线提示 ———
-     提醒开关进顶栏而不是侧栏：它是「这一页怎么提醒我」，属于会话本身的操作；
-     侧栏那块是「我是谁 / 谁在 / 规矩」，职责不同。 */
-  .q-chat__barbtns {
-    display: flex;
-    align-items: center;
-    gap: 0.15rem;
-  }
-
-  .q-chat__searchbtn.is-on {
-    color: var(--color-crimson);
-    background: color-mix(in srgb, var(--color-rose) 16%, transparent);
-  }
-
-  /* 断线提示条：整个会话区上面一条细带，比弹 toast 轻，也不会挡住消息 */
-  .q-chat__offline {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 0.4rem;
-    flex: none;
-    padding: 0.32rem 1rem;
-    border-bottom: 1px solid var(--color-hairline);
-    background: color-mix(in srgb, var(--color-amber) 12%, #fffdfb);
-    color: var(--color-brown);
-    font-size: 0.72rem;
-  }
-
-  .q-chat__offline i {
-    width: 0.36rem;
-    height: 0.36rem;
-    border-radius: 9999px;
-    background: var(--color-amber);
-  }
-
-  /* ═══════════════════════════════════════════════════════════════════
-     编辑 / 举报 / 置顶 / 文件（2026-11-24 夜 · 第二批）
-     ═══════════════════════════════════════════════════════════════════ */
-
-  /* ——— 置顶条 ———
-     常驻在会话区上方，不随滚动消失：置顶的意义就是「一直看得见」。
-     点击跳过去；站长右侧多一个取消按钮。 */
-  .q-chat__pin {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-    flex: none;
-    padding: 0.45rem 0.9rem;
-    border-bottom: 1px solid var(--color-hairline);
-    background: color-mix(in srgb, var(--color-rose) 10%, #fffdfb);
-  }
-
-  .q-chat__pin__ic {
-    flex: none;
-    display: grid;
-    place-items: center;
-    color: var(--color-crimson);
-  }
-
-  .q-chat__pin__t {
-    flex: 1;
-    min-width: 0;
-    display: flex;
-    align-items: baseline;
-    gap: 0.4rem;
-    text-align: left;
-    font-size: 0.74rem;
-    color: var(--color-muted);
-    overflow: hidden;
-  }
-
-  .q-chat__pin__t b {
-    flex: none;
-    font-weight: 500;
-    color: var(--color-brown);
-  }
-
-  .q-chat__pin__t span {
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
-  .q-chat__pin__t:hover span {
-    color: var(--color-crimson);
-  }
-
-  .q-chat__pin__x {
-    flex: none;
-    display: grid;
-    place-items: center;
-    width: 1.4rem;
-    height: 1.4rem;
-    border-radius: 9999px;
-    color: var(--color-subtle);
-    transition: color var(--dur-micro) ease, background-color var(--dur-micro) ease;
-  }
-
-  .q-chat__pin__x:hover {
-    color: var(--color-crimson);
-    background: color-mix(in srgb, var(--color-rose) 18%, transparent);
-  }
-
-  /* ——— 「已编辑」———
-     不做成徽章：它属于「这条的元信息」，和时刻同级，压重了反而抢眼。 */
-  .q-chat__edited {
-    /* 0.62rem（9.9px）在任何屏上都读不出来，而「已编辑」恰恰是必须被看见的
-       诚实信息 —— 提到 0.7rem 并把颜色从 75% 墨换成柔化强调色（更暗一档）。 */
-    font-size: 0.7rem;
-    color: var(--color-accent-soft);
-  }
-
-  /* ——— 文件卡片 ———
-     不放进气泡：文档是「一个可下载的东西」，不是一段话。 */
+  /* ——— 文件卡片 ——— */
   .q-chat__file {
     display: flex;
     align-items: center;
-    gap: 0.55rem;
-    width: min(20rem, 100%);
-    padding: 0.55rem 0.65rem;
-    border: 1px solid var(--color-hairline);
-    border-radius: 0.8rem;
-    background: #fff;
-    transition: border-color var(--dur-micro) ease, background-color var(--dur-micro) ease;
+    gap: 0.6rem;
+    width: min(19rem, 100%);
+    padding: 0.6rem 0.7rem;
+    border: 1px solid color-mix(in srgb, var(--color-ink) 8%, transparent);
+    border-radius: 0.9rem;
+    background: rgba(253, 246, 240, 0.9);
+    transition:
+      border-color var(--dur-micro) ease,
+      background-color var(--dur-micro) ease;
+  }
+
+  /* 文件卡也是气泡的兄弟节点，同样落在浅色卡片上 —— 用浅底深字 */
+  .q-chat__row.is-mine .q-chat__file {
+    border-color: color-mix(in srgb, var(--color-ink) 8%, transparent);
+    background: rgba(253, 246, 240, 0.9);
   }
 
   .q-chat__file:hover {
-    border-color: color-mix(in srgb, var(--color-crimson) 32%, transparent);
-    background: color-mix(in srgb, var(--color-rose) 8%, #fff);
+    border-color: color-mix(in srgb, var(--color-crimson) 36%, transparent);
   }
 
   .q-chat__file__ic {
     flex: none;
     display: grid;
     place-items: center;
-    width: 2rem;
-    height: 2rem;
-    border-radius: 0.55rem;
-    background: color-mix(in srgb, var(--color-rose) 20%, #fff);
-    color: var(--color-accent-soft);
+    width: 2.1rem;
+    height: 2.1rem;
+    border-radius: 0.65rem;
+    background: var(--color-rose);
+    color: var(--color-crimson);
+  }
+
+  .q-chat__row.is-mine .q-chat__file__ic {
+    background: var(--color-rose);
+    color: var(--color-crimson);
   }
 
   .q-chat__file__meta {
@@ -1945,19 +1307,27 @@
   }
 
   .q-chat__file__meta b {
-    font-size: 0.8rem;
-    font-weight: 500;
+    font-size: 0.8125rem;
+    font-weight: 600;
     color: var(--color-ink);
     overflow: hidden;
-    text-overflow: ellipsis;
     white-space: nowrap;
+    text-overflow: ellipsis;
   }
 
   .q-chat__file__meta i {
     font-style: normal;
-    font-size: 0.66rem;
+    font-size: 0.6875rem;
     color: var(--color-subtle);
     font-variant-numeric: tabular-nums;
+  }
+
+  .q-chat__row.is-mine .q-chat__file__meta b {
+    color: var(--color-ink);
+  }
+
+  .q-chat__row.is-mine .q-chat__file__meta i {
+    color: var(--color-subtle);
   }
 
   .q-chat__file__dl {
@@ -1969,29 +1339,1075 @@
     color: var(--color-crimson);
   }
 
-  /* 待发文件：一行胶囊，不占一块图的地 */
-  .q-chat__pendingmedia__file {
+  /* ——— 表情回应 ——— */
+  .q-chat__reacts {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.3rem;
+    margin-top: 0.35rem;
+  }
+
+  .q-chat__react {
     display: inline-flex;
     align-items: center;
-    gap: 0.4rem;
-    padding: 0.4rem 0.7rem;
-    border: 1px solid var(--color-hairline);
-    border-radius: 0.6rem;
-    background: #fff;
-    font-size: 0.76rem;
-    color: var(--color-brown);
-    max-width: 16rem;
+    gap: 0.25rem;
+    min-height: 1.5rem;
+    padding: 0.1rem 0.5rem 0.1rem 0.3rem;
+    border: 1px solid color-mix(in srgb, var(--color-ink) 9%, transparent);
+    border-radius: var(--radius-pill);
+    background: rgba(255, 252, 249, 0.85);
+    font-size: 0.71875rem;
+    font-weight: 600;
+    color: var(--color-ink);
+    font-variant-numeric: tabular-nums;
+    transition:
+      background-color var(--dur-micro) ease,
+      border-color var(--dur-micro) ease,
+      transform var(--dur-micro) ease;
+  }
+
+  .q-chat__react img {
+    width: 1.05rem;
+    height: 1.05rem;
+  }
+
+  .q-chat__react:hover {
+    border-color: color-mix(in srgb, var(--color-crimson) 34%, transparent);
+  }
+
+  .q-chat__react.is-mine {
+    border-color: color-mix(in srgb, var(--color-crimson) 42%, transparent);
+    background: color-mix(in srgb, var(--color-rose) 60%, #fff);
+  }
+
+  .q-chat__react.is-mine span {
+    color: var(--color-crimson);
+  }
+
+  /* ——— 悬停操作条 ———
+     视觉上浮在气泡上方，但盒子与气泡**重叠 6px**（视觉间距由 padding 造）：
+     指针从气泡往上走时始终在这个盒子里，不会掉 hover。 */
+  .q-chat__acts {
+    position: absolute;
+    top: -2rem;
+    left: 0;
+    z-index: 5;
+    display: flex;
+    align-items: center;
+    gap: 0.15rem;
+    padding: 0.2rem 0.3rem 1.4rem;
+    border-radius: var(--radius-pill);
+    background: rgba(255, 252, 249, 0.92);
+    border: 1px solid rgba(255, 255, 255, 0.92);
+    box-shadow: 0 10px 26px -10px rgba(74, 55, 40, 0.22);
+    backdrop-filter: blur(10px);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity var(--dur-micro) ease;
+  }
+
+  .q-chat__row.is-mine .q-chat__acts {
+    left: auto;
+    right: 0;
+  }
+
+  .q-chat__row:hover .q-chat__acts,
+  .q-chat__acts:focus-within,
+  .q-chat__acts.has-open,
+  .q-chat__row.is-acts-open .q-chat__acts {
+    opacity: 1;
+    pointer-events: auto;
+  }
+
+  /* 操作条里的按钮：文字钮，30px 高（≥ WCAG 2.5.8 的 24） */
+  .q-chat__recall {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.2rem;
+    height: 1.875rem;
+    padding: 0 0.5rem;
+    border-radius: var(--radius-pill);
+    font-size: 0.75rem;
+    color: var(--color-ink);
+    white-space: nowrap;
+    transition:
+      background-color var(--dur-micro) ease,
+      color var(--dur-micro) ease;
+  }
+
+  .q-chat__recall:hover {
+    background: color-mix(in srgb, var(--color-rose) 40%, transparent);
+    color: var(--color-crimson);
+  }
+
+  .q-chat__actbtn {
+    display: grid;
+    place-items: center;
+    width: 1.875rem;
+    height: 1.875rem;
+    border-radius: 9999px;
+    transition: background-color var(--dur-micro) ease, transform var(--dur-micro) ease;
+  }
+
+  .q-chat__actbtn:hover {
+    background: color-mix(in srgb, var(--color-rose) 40%, transparent);
+  }
+
+  .q-chat__actbtn:active {
+    transform: scale(0.92);
+  }
+
+  .q-chat__actbtn img {
+    width: 1.1rem;
+    height: 1.1rem;
+  }
+
+  /* 分隔竖线 */
+  .q-chat__actsep {
+    width: 1px;
+    height: 0.9rem;
+    margin: 0 0.15rem;
+    background: color-mix(in srgb, var(--color-ink) 10%, transparent);
+  }
+
+  /* 「+」更多回应 */
+  .q-chat__addreact {
+    position: relative;
+    display: inline-flex;
+  }
+
+  .q-chat__plus {
+    display: grid;
+    place-items: center;
+    width: 1.875rem;
+    height: 1.875rem;
+    border-radius: 9999px;
+    font-size: 0.9rem;
+    color: var(--color-ink);
+    transition: background-color var(--dur-micro) ease;
+  }
+
+  .q-chat__plus:hover,
+  .q-chat__plus[aria-expanded='true'] {
+    background: color-mix(in srgb, var(--color-rose) 40%, transparent);
+    color: var(--color-crimson);
+  }
+
+  /* 表情弹层：向上弹，避免被卡片 overflow 裁掉 */
+  .q-chat__reactpop {
+    position: absolute;
+    bottom: calc(100% + 0.4rem);
+    right: 0;
+    z-index: 20;
+    display: flex;
+    gap: 0.1rem;
+    padding: 0.3rem;
+    border: 1px solid rgba(255, 255, 255, 0.92);
+    border-radius: var(--radius-pill);
+    background: rgba(255, 252, 249, 0.96);
+    box-shadow: 0 12px 30px -10px rgba(74, 55, 40, 0.24);
+    backdrop-filter: blur(12px);
+  }
+
+  .q-chat__reactpop button {
+    display: grid;
+    place-items: center;
+    width: 1.75rem;
+    height: 1.75rem;
+    border-radius: 9999px;
+  }
+
+  .q-chat__reactpop button:hover {
+    background: color-mix(in srgb, var(--color-rose) 42%, transparent);
+  }
+
+  .q-chat__reactpop img {
+    width: 1.15rem;
+    height: 1.15rem;
+  }
+
+  /* ——— 紧凑形态的键盘入口 ———
+     平时全透明且不接收指针（手指点穿到气泡，走整行 toggle）；
+     聚焦或展开时现形。`display:none` 会把键盘路径整条摘掉，所以只做透明。 */
+  .q-chat__actstoggle {
+    display: none;
+  }
+
+  @media (max-width: 768px), (hover: none) {
+    .q-chat__acts {
+      position: static;
+      margin-top: 0.35rem;
+      padding: 0.2rem 0.3rem;
+      opacity: 1;
+      pointer-events: auto;
+      display: none;
+    }
+
+    .q-chat__row.is-acts-open .q-chat__acts {
+      display: flex;
+    }
+
+    .q-chat__actstoggle {
+      display: grid;
+      place-items: center;
+      position: absolute;
+      top: -0.4rem;
+      right: -0.4rem;
+      z-index: 6;
+      width: 1.75rem;
+      height: 1.75rem;
+      border: 1px solid color-mix(in srgb, var(--color-ink) 10%, transparent);
+      border-radius: 9999px;
+      background: #fffdfb;
+      color: var(--color-subtle);
+      opacity: 0;
+      pointer-events: none;
+      /* ⚠️ 不要给 opacity 加过渡：渐入会留两三帧「焦点到了但全透明」 */
+      transition: color var(--dur-micro) ease, border-color var(--dur-micro) ease;
+    }
+
+    .q-chat__row.is-mine .q-chat__actstoggle {
+      right: auto;
+      left: -0.4rem;
+    }
+
+    .q-chat__actstoggle:focus {
+      opacity: 1;
+      pointer-events: auto;
+      border-color: var(--color-crimson);
+      box-shadow: 0 2px 8px rgba(74, 55, 40, 0.18);
+    }
+
+    .q-chat__actstoggle[aria-expanded='true'] {
+      opacity: 0;
+      pointer-events: none;
+    }
+  }
+
+  /* 撤回后的一行灰字 */
+  .q-chat__recalled {
+    padding: 0.3rem 0;
+    text-align: center;
+    font-size: 0.71875rem;
+    color: var(--color-subtle);
+  }
+
+  /* 已读回执 */
+  .q-chat__reads {
+    align-self: flex-end;
+    margin-top: 0.15rem;
+    padding-right: 0.15rem;
+    font-size: 0.6875rem;
+    color: var(--color-subtle);
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* 「看看更早的」 */
+  .q-chat__more {
+    display: flex;
+    justify-content: center;
+    padding: 0.35rem 0 0.6rem;
+  }
+
+  .q-chat__more button {
+    min-height: 2rem;
+    padding: 0.25rem 0.9rem;
+    border: 1px solid color-mix(in srgb, var(--color-ink) 9%, transparent);
+    border-radius: var(--radius-pill);
+    background: rgba(255, 252, 249, 0.8);
+    font-size: 0.75rem;
+    color: var(--color-muted);
+  }
+
+  .q-chat__more button:hover {
+    border-color: color-mix(in srgb, var(--color-crimson) 34%, transparent);
+    color: var(--color-crimson);
+  }
+
+  /* ═══════════════════════════════════════════════════════════════════
+     ⑥ 输入区
+     ═══════════════════════════════════════════════════════════════════ */
+
+  /* 输入区上方那些条：引用 / 待发附件 / 编辑 / 提示 / 连接断开 */
+  .q-chat__above {
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+    padding: 0 1.15rem;
+  }
+
+  .q-chat__composer {
+    flex: none;
+    padding: 0.5rem 1rem 0.9rem;
+  }
+
+  /* 玻璃输入容器（设计稿的 glass-float） */
+  .q-chat__inputwrap {
+    display: flex;
+    align-items: flex-end;
+    gap: 0.5rem;
+    min-width: 0;
+    padding: 0.5rem 0.5rem 0.5rem 0.55rem;
+    border: 1px solid rgba(255, 255, 255, 0.92);
+    border-radius: 1.375rem;
+    background: rgba(255, 252, 249, 0.86);
+    box-shadow:
+      0 12px 32px -8px rgba(74, 55, 40, 0.12),
+      inset 0 1px 0 rgba(255, 255, 255, 0.95);
+    backdrop-filter: blur(14px);
+    transition:
+      box-shadow var(--dur-micro) ease,
+      border-color var(--dur-micro) ease;
+  }
+
+  .q-chat__inputwrap:hover {
+    border-color: rgba(255, 255, 255, 1);
+  }
+
+  /* 焦点只画在容器上：textarea 自己再画一圈就会成双框 */
+  .q-chat__inputwrap:focus-within {
+    border-color: color-mix(in srgb, var(--color-crimson) 40%, transparent);
+    box-shadow:
+      0 0 0 3px color-mix(in srgb, var(--color-rose) 34%, transparent),
+      0 12px 32px -8px rgba(74, 55, 40, 0.14);
+  }
+
+  .q-chat__tools {
+    display: flex;
+    align-items: center;
+    gap: 0.3rem;
+    flex: none;
+    padding-bottom: 0.1rem;
+  }
+
+  .q-chat__tool {
+    position: relative;
+    display: grid;
+    place-items: center;
+    width: 2.25rem;
+    height: 2.25rem;
+    border: 1px solid color-mix(in srgb, var(--color-ink) 7%, transparent);
+    border-radius: 0.75rem;
+    background: rgba(255, 252, 249, 0.7);
+    color: var(--color-ink);
+    transition:
+      background-color var(--dur-micro) ease,
+      color var(--dur-micro) ease;
+  }
+
+  .q-chat__tool:hover {
+    background: color-mix(in srgb, var(--color-rose) 30%, transparent);
+    color: var(--color-crimson);
+  }
+
+  .q-chat__input {
+    flex: 1;
+    width: 100%;
+    min-width: 0;
+    /* 内容高度 = 行高(1.6×14px≈22.4) + 上下 padding(9.6) ≈ 32px，min-height 要盖住它，
+       否则 textarea 一进页面就溢出、右侧冒出上下滚动条 */
+    min-height: 2.125rem;
+    max-height: 8rem;
+    padding: 0.3rem 0.15rem;
+    border: 0;
+    background: transparent;
+    outline: 0;
+    resize: none;
+    font-family: inherit;
+    font-size: 0.875rem;
+    line-height: 1.6;
+    color: var(--color-ink);
+    caret-color: var(--color-crimson);
+  }
+
+  @media (max-width: 768px) {
+    .q-chat__input {
+      font-size: 1rem;
+    }
+  }
+
+  .q-chat__input::placeholder {
+    color: var(--color-subtle);
+  }
+
+  /* 发送：实心绯红 + 米白字（设计稿的 btn-crimson） */
+  .q-chat__send {
+    flex: none;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.35rem;
+    min-width: 2.75rem;
+    height: 2.5rem;
+    padding: 0 0.9rem;
+    border-radius: 1rem;
+    background: var(--color-crimson);
+    font-size: 0.84375rem;
+    font-weight: 600;
+    color: var(--color-cream);
+    box-shadow:
+      0 6px 16px -4px rgba(194, 58, 85, 0.38),
+      inset 0 1px 0 rgba(255, 255, 255, 0.22);
+    transition:
+      transform 0.15s cubic-bezier(0.22, 1, 0.36, 1),
+      filter var(--dur-micro) ease;
+  }
+
+  .q-chat__send .q-btnlabel {
+    display: none;
+  }
+
+  @media (min-width: 480px) {
+    .q-chat__send .q-btnlabel {
+      display: inline;
+    }
+  }
+
+  .q-chat__send:hover:not(:disabled) {
+    filter: brightness(1.06);
+    transform: translateY(-1px);
+  }
+
+  .q-chat__send:active:not(:disabled) {
+    transform: translateY(0.5px) scale(0.97);
+  }
+
+  .q-chat__send:disabled {
+    opacity: 0.42;
+    cursor: not-allowed;
+  }
+
+  /* 引用 / 编辑预览条 */
+  .q-chat__replybar {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.45rem 0.6rem;
+    border-left: 3px solid var(--color-crimson);
+    border-radius: 0.75rem;
+    background: color-mix(in srgb, var(--color-rose) 30%, transparent);
+  }
+
+  .q-chat__replybar__t {
+    flex: 1;
+    min-width: 0;
+    font-size: 0.75rem;
+    color: var(--color-ink);
     overflow: hidden;
     white-space: nowrap;
     text-overflow: ellipsis;
   }
 
-  /* 举报按钮：和「回复/撤回」同一套外观，只在悬停时泛红 —— 它是重动作，不该抢眼 */
-  .q-chat__report:hover {
+  .q-chat__replybar.is-editing {
+    border-left-color: var(--color-accent-soft);
+    background: color-mix(in srgb, var(--color-amber) 18%, transparent);
+  }
+
+  .q-chat__replybar button {
+    flex: none;
+    display: grid;
+    place-items: center;
+    width: 1.5rem;
+    height: 1.5rem;
+    border-radius: 9999px;
+    color: var(--color-subtle);
+  }
+
+  .q-chat__replybar button:hover {
+    background: rgba(255, 255, 255, 0.6);
     color: var(--color-crimson);
   }
 
-  /* ——— 举报弹层 ——— */
+  /* 待发附件 */
+  .q-chat__pendingmedia {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    padding: 0.5rem;
+    border: 1px solid color-mix(in srgb, var(--color-ink) 8%, transparent);
+    border-radius: 0.9rem;
+    background: rgba(253, 246, 240, 0.9);
+  }
+
+  .q-chat__pendingmedia img,
+  .q-chat__pendingmedia video {
+    width: 3rem;
+    height: 3rem;
+    border-radius: 0.6rem;
+    object-fit: cover;
+  }
+
+  .q-chat__pendingmedia__file {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    font-size: 0.78rem;
+    color: var(--color-ink);
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+  }
+
+  /* @ 提及候选 */
+  .q-chat__mentions {
+    display: flex;
+    flex-direction: column;
+    gap: 0.15rem;
+    padding: 0.3rem;
+    border: 1px solid rgba(255, 255, 255, 0.92);
+    border-radius: 0.9rem;
+    background: rgba(255, 252, 249, 0.96);
+    box-shadow: 0 12px 30px -10px rgba(74, 55, 40, 0.24);
+    max-height: 12rem;
+    overflow-y: auto;
+  }
+
+  .q-chat__mentions button {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    min-height: 2.25rem;
+    padding: 0.2rem 0.45rem;
+    border-radius: 0.6rem;
+    font-size: 0.8125rem;
+    color: var(--color-ink);
+    text-align: left;
+  }
+
+  .q-chat__mentions button:hover,
+  .q-chat__mentions button.is-active {
+    background: color-mix(in srgb, var(--color-rose) 36%, transparent);
+  }
+
+  .q-chat__mentions__av {
+    flex: none;
+    display: grid;
+    place-items: center;
+    width: 1.6rem;
+    height: 1.6rem;
+    border-radius: 9999px;
+    background: var(--color-rose);
+    background-size: cover;
+    background-position: center;
+    font-size: 0.7rem;
+    font-weight: 700;
+    color: var(--color-ink);
+  }
+
+  /* 正在输入 */
+  .q-chat__typing {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    align-self: flex-start;
+    padding: 0.25rem 0.7rem;
+    border-radius: var(--radius-pill);
+    background: rgba(255, 252, 249, 0.86);
+    border: 1px solid rgba(255, 255, 255, 0.9);
+    font-size: 0.75rem;
+    color: var(--color-muted);
+  }
+
+  .q-chat__typing i {
+    width: 0.25rem;
+    height: 0.25rem;
+    border-radius: 9999px;
+    background: var(--color-crimson);
+    opacity: 0.5;
+  }
+
+  /* 提示条（成功 / 警告） */
+  .q-chat__tip {
+    padding: 0.4rem 0.7rem;
+    border-radius: 0.7rem;
+    background: color-mix(in srgb, var(--color-amber) 18%, transparent);
+    font-size: 0.75rem;
+    color: var(--color-ink);
+  }
+
+  .q-chat__tip.is-ok {
+    background: color-mix(in srgb, var(--color-rose) 30%, transparent);
+  }
+
+  /* 连接断了 */
+  .q-chat__offline {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.35rem 1.15rem;
+    background: color-mix(in srgb, var(--color-amber) 16%, transparent);
+    font-size: 0.75rem;
+    color: var(--color-ink);
+  }
+
+  .q-chat__offline i {
+    width: 0.375rem;
+    height: 0.375rem;
+    border-radius: 9999px;
+    background: var(--color-amber);
+  }
+
+  /* 一次性操作提示 */
+  .q-chat__taphint {
+    flex: none;
+    align-self: center;
+    margin: 0.4rem 0 0;
+    padding: 0.3rem 0.8rem;
+    border-radius: var(--radius-pill);
+    background: color-mix(in srgb, var(--color-rose) 30%, #fffdfb);
+    font-size: 0.71875rem;
+    line-height: 1.6;
+    color: var(--color-ink);
+    text-align: center;
+  }
+
+  /* 置顶条：常驻在消息流上方 */
+  .q-chat__pin {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    flex: none;
+    margin: 0 1.15rem 0;
+    padding: 0.45rem 0.7rem;
+    border: 1px solid color-mix(in srgb, var(--color-crimson) 18%, transparent);
+    border-radius: 0.9rem;
+    background: color-mix(in srgb, var(--color-rose) 26%, transparent);
+  }
+
+  .q-chat__pin__ic {
+    flex: none;
+    color: var(--color-crimson);
+  }
+
+  .q-chat__pin__t {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    align-items: baseline;
+    gap: 0.4rem;
+    font-size: 0.75rem;
+    color: var(--color-muted);
+    text-align: left;
+    overflow: hidden;
+  }
+
+  .q-chat__pin__t b {
+    flex: none;
+    font-weight: 600;
+    color: var(--color-ink);
+  }
+
+  .q-chat__pin__t span {
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+  }
+
+  .q-chat__pin__x {
+    flex: none;
+    display: grid;
+    place-items: center;
+    width: 1.5rem;
+    height: 1.5rem;
+    border-radius: 9999px;
+    color: var(--color-subtle);
+  }
+
+  .q-chat__pin__x:hover {
+    background: rgba(255, 255, 255, 0.7);
+    color: var(--color-crimson);
+  }
+
+  /* 回到底部 */
+  .q-chat__jump {
+    position: absolute;
+    right: 1.25rem;
+    bottom: 0.75rem;
+    z-index: 8;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    min-height: 2rem;
+    padding: 0.25rem 0.75rem;
+    border: 1px solid rgba(255, 255, 255, 0.95);
+    border-radius: var(--radius-pill);
+    background: rgba(255, 252, 249, 0.95);
+    box-shadow: 0 10px 26px -10px rgba(74, 55, 40, 0.26);
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: var(--color-crimson);
+  }
+
+  /* ═══════════════════════════════════════════════════════════════════
+     ⑦ 右侧：空间详情
+     ═══════════════════════════════════════════════════════════════════ */
+
+  .q-info__head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+    flex: none;
+    padding: 0.9rem 0.9rem 0.7rem;
+    border-bottom: 1px solid color-mix(in srgb, var(--color-ink) 7%, transparent);
+  }
+
+  .q-info__title {
+    display: flex;
+    align-items: center;
+    gap: 0.45rem;
+    font-size: 0.9rem;
+    font-weight: 700;
+    color: var(--color-ink);
+  }
+
+  .q-info__title i {
+    width: 0.5rem;
+    height: 0.5rem;
+    border-radius: 9999px;
+    background: var(--color-crimson);
+  }
+
+  .q-info__scroll {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    padding: 0.75rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+    overscroll-behavior: contain;
+    scrollbar-width: thin;
+    scrollbar-color: color-mix(in srgb, var(--color-brown) 16%, transparent) transparent;
+  }
+
+  /* 公告：玫瑰粉大色块 + 深暖棕字（设计稿的 rose-surface-block） */
+  .q-notice {
+    position: relative;
+    overflow: hidden;
+    padding: 0.9rem 1rem;
+    border-radius: 1.25rem;
+    background: var(--color-rose);
+    box-shadow:
+      0 10px 26px -10px rgba(246, 165, 184, 0.65),
+      inset 0 1px 0 rgba(255, 255, 255, 0.55);
+  }
+
+  /* 角落的琥珀金光晕 */
+  .q-notice::after {
+    content: '';
+    position: absolute;
+    top: -2.6rem;
+    right: -2rem;
+    width: 8rem;
+    height: 8rem;
+    border-radius: 9999px;
+    background: radial-gradient(
+      circle,
+      color-mix(in srgb, var(--color-amber) 45%, transparent) 0%,
+      transparent 70%
+    );
+    filter: blur(16px);
+    pointer-events: none;
+  }
+
+  .q-notice__top {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+    margin-bottom: 0.5rem;
+  }
+
+  .q-notice__badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    padding: 0.1rem 0.5rem;
+    border-radius: var(--radius-pill);
+    background: var(--color-crimson);
+    font-size: 0.65625rem;
+    font-weight: 700;
+    letter-spacing: 0.02em;
+    color: var(--color-cream);
+  }
+
+  .q-notice__pin {
+    font-size: 0.6875rem;
+    font-weight: 600;
+    color: var(--color-ink);
+    opacity: 0.8;
+  }
+
+  .q-notice__t {
+    position: relative;
+    z-index: 1;
+    font-size: 0.9rem;
+    font-weight: 700;
+    line-height: 1.45;
+    color: var(--color-ink);
+  }
+
+  .q-notice__b {
+    position: relative;
+    z-index: 1;
+    margin-top: 0.4rem;
+    font-size: 0.78rem;
+    line-height: 1.8;
+    font-weight: 500;
+    color: var(--color-ink);
+  }
+
+  /* 普通小卡（成员 / 长亭的话） */
+  .q-card {
+    padding: 0.8rem;
+    border: 1px solid rgba(255, 255, 255, 0.85);
+    border-radius: 1.25rem;
+    background: rgba(253, 246, 240, 0.7);
+  }
+
+  .q-card__head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+    padding: 0 0.15rem 0.5rem;
+  }
+
+  .q-card__t {
+    font-size: 0.8125rem;
+    font-weight: 700;
+    color: var(--color-ink);
+  }
+
+  .q-card__n {
+    font-size: 0.6875rem;
+    color: var(--color-subtle);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .q-card__sub {
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+    padding: 0.1rem 0.3rem 0.35rem;
+    font-size: 0.6875rem;
+    font-weight: 600;
+    color: var(--color-crimson);
+  }
+
+  .q-card__sub i {
+    width: 0.375rem;
+    height: 0.375rem;
+    border-radius: 9999px;
+    background: var(--color-crimson);
+  }
+
+  /* 成员行 */
+  .q-member {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.3rem 0.35rem;
+    border-radius: 0.7rem;
+  }
+
+  .q-member:hover {
+    background: color-mix(in srgb, var(--color-rose) 22%, transparent);
+  }
+
+  .q-member__av {
+    flex: none;
+    display: grid;
+    place-items: center;
+    width: 1.9rem;
+    height: 1.9rem;
+    border-radius: 9999px;
+    background-color: var(--color-rose);
+    background-size: cover;
+    background-position: center;
+    font-size: 0.7rem;
+    font-weight: 700;
+    color: var(--color-ink);
+  }
+
+  .q-member__body {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .q-member__name {
+    display: flex;
+    align-items: center;
+    gap: 0.3rem;
+    font-size: 0.78125rem;
+    font-weight: 600;
+    color: var(--color-ink);
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+  }
+
+  .q-member__site {
+    margin-top: 0.05rem;
+    font-size: 0.65625rem;
+    color: var(--color-subtle);
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+  }
+
+  .q-member__tag {
+    padding: 0.02rem 0.3rem;
+    border-radius: var(--radius-pill);
+    background: color-mix(in srgb, var(--color-crimson) 14%, transparent);
+    font-size: 0.625rem;
+    font-weight: 600;
+    color: var(--color-accent-soft);
+  }
+
+  .q-member__dot {
+    flex: none;
+    width: 0.4rem;
+    height: 0.4rem;
+    border-radius: 9999px;
+    background: var(--color-crimson);
+  }
+
+  /* 规则列表 */
+  .q-rules {
+    display: flex;
+    flex-direction: column;
+    gap: 0.45rem;
+    padding: 0 0.15rem;
+  }
+
+  .q-rules li {
+    position: relative;
+    padding-left: 0.8rem;
+    font-size: 0.75rem;
+    line-height: 1.75;
+    color: var(--color-muted);
+  }
+
+  .q-rules li::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 0.6em;
+    width: 0.28rem;
+    height: 0.28rem;
+    border-radius: 9999px;
+    background: color-mix(in srgb, var(--color-crimson) 55%, transparent);
+  }
+
+  /* ═══════════════════════════════════════════════════════════════════
+     ⑧ 浮层：搜索 / 举报
+     ═══════════════════════════════════════════════════════════════════ */
+
+  .q-chatsearch {
+    position: fixed;
+    inset: 0;
+    z-index: 80;
+    display: grid;
+    place-items: start center;
+    padding: clamp(3rem, 12vh, 8rem) 1rem 1rem;
+  }
+
+  .q-chatsearch__mask {
+    position: absolute;
+    inset: 0;
+    border: 0;
+    background: color-mix(in srgb, var(--color-ink) 26%, transparent);
+    backdrop-filter: blur(4px);
+  }
+
+  .q-chatsearch__box {
+    position: relative;
+    width: min(32rem, 100%);
+    max-height: 70vh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    border: 1px solid rgba(255, 255, 255, 0.92);
+    border-radius: 1.25rem;
+    background: #fffdfb;
+    box-shadow: 0 24px 60px -20px rgba(74, 55, 40, 0.34);
+  }
+
+  .q-chatsearch__field {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.7rem 0.9rem;
+    border-bottom: 1px solid color-mix(in srgb, var(--color-ink) 8%, transparent);
+  }
+
+  .q-chatsearch__input {
+    flex: 1;
+    min-width: 0;
+    border: 0;
+    background: transparent;
+    outline: 0;
+    font-size: 0.9rem;
+    color: var(--color-ink);
+    caret-color: var(--color-crimson);
+  }
+
+  .q-chatsearch__list {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    padding: 0.4rem;
+  }
+
+  .q-chatsearch__hit {
+    display: block;
+    width: 100%;
+    padding: 0.5rem 0.6rem;
+    border-radius: 0.7rem;
+    text-align: left;
+  }
+
+  .q-chatsearch__hit:hover,
+  .q-chatsearch__hit:focus-visible {
+    background: color-mix(in srgb, var(--color-rose) 28%, transparent);
+  }
+
+  .q-chatsearch__meta {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    margin-bottom: 0.15rem;
+    font-size: 0.6875rem;
+    color: var(--color-subtle);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .q-chatsearch__meta b {
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: var(--color-ink);
+  }
+
+  .q-chatsearch__text {
+    font-size: 0.8125rem;
+    line-height: 1.6;
+    color: var(--color-muted);
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+
+  .q-chatsearch__note {
+    padding: 1rem;
+    text-align: center;
+    font-size: 0.8125rem;
+    color: var(--color-subtle);
+  }
+
+  /* 举报弹层 */
   .q-report {
     position: fixed;
     inset: 0;
@@ -2004,28 +2420,30 @@
   .q-report__mask {
     position: absolute;
     inset: 0;
-    background: color-mix(in srgb, #2a1216 38%, transparent);
+    border: 0;
+    background: color-mix(in srgb, var(--color-ink) 30%, transparent);
+    backdrop-filter: blur(4px);
   }
 
   .q-report__box {
     position: relative;
     width: min(21rem, 100%);
     padding: 1.15rem 1.15rem 0.9rem;
-    border: 1px solid var(--color-hairline);
-    border-radius: var(--radius-card);
+    border: 1px solid rgba(255, 255, 255, 0.92);
+    border-radius: 1.25rem;
     background: #fffdfb;
-    box-shadow: 0 18px 48px rgba(90, 40, 50, 0.18);
+    box-shadow: 0 24px 60px -20px rgba(74, 55, 40, 0.34);
   }
 
   .q-report__t {
-    font-family: var(--font-display);
     font-size: 1rem;
+    font-weight: 700;
     color: var(--color-ink);
   }
 
   .q-report__s {
     margin-top: 0.4rem;
-    font-size: 0.74rem;
+    font-size: 0.78rem;
     line-height: 1.8;
     color: var(--color-subtle);
   }
@@ -2038,19 +2456,21 @@
   }
 
   .q-report__opts button {
-    padding: 0.5rem 0.4rem;
-    border: 1px solid var(--color-hairline);
-    border-radius: 0.6rem;
+    min-height: 2.5rem;
+    border: 1px solid color-mix(in srgb, var(--color-ink) 9%, transparent);
+    border-radius: 0.7rem;
     background: #fff;
-    font-size: 0.78rem;
-    color: var(--color-brown);
-    transition: border-color var(--dur-micro) ease, color var(--dur-micro) ease,
+    font-size: 0.8125rem;
+    color: var(--color-ink);
+    transition:
+      border-color var(--dur-micro) ease,
+      color var(--dur-micro) ease,
       background-color var(--dur-micro) ease;
   }
 
   .q-report__opts button:hover:not(:disabled) {
-    border-color: color-mix(in srgb, var(--color-crimson) 34%, transparent);
-    background: color-mix(in srgb, var(--color-rose) 12%, #fff);
+    border-color: color-mix(in srgb, var(--color-crimson) 36%, transparent);
+    background: color-mix(in srgb, var(--color-rose) 24%, #fff);
     color: var(--color-crimson);
   }
 
@@ -2061,236 +2481,233 @@
   .q-report__cancel {
     display: block;
     margin: 0.7rem auto 0;
-    font-size: 0.76rem;
+    min-height: 2rem;
+    padding: 0 0.8rem;
+    font-size: 0.78rem;
     color: var(--color-subtle);
   }
 
   .q-report__cancel:hover {
-    color: var(--color-brown);
+    color: var(--color-ink);
   }
 
   /* ═══════════════════════════════════════════════════════════════════
-     2026-11-24 · impeccable 评审后的修正（对比度 / 命中区 / iOS 缩放 / 焦点）
+     ⑨ 空态 / 骨架 / 焦点 / 动效
      ═══════════════════════════════════════════════════════════════════ */
 
-  /**
-   * 移动端输入框字号必须 ≥16px。
-   *
-   * 0.9rem = 14.4px，iOS Safari 在聚焦时会**自动放大整页**（用户点一下输入框，
-   * 页面「嗡」地一缩），而且放大之后不会自己缩回来。这是移动端聊天最容易被
-   * 一句话劝退的细节。桌面维持 14.4px 不变。
-   */
-  @media (max-width: 768px) {
-    .q-chat__input {
-      font-size: 16px;
-    }
+  /* 空态：印章 + 邀请 */
+  .q-chat__scroll.is-empty {
+    justify-content: center;
   }
 
-  /* 光标和选区跟着配色走，而不是浏览器默认的黑竖线 / 蓝底 ——
-     这是最便宜、也最常被跳过的一处「这页是被人搭过的」信号 */
-  .q-chat__input {
-    caret-color: var(--color-crimson);
-  }
-
-  .q-chat__scroll::selection,
-  .q-chat__bubble::selection {
-    background: color-mix(in srgb, var(--color-rose) 42%, transparent);
-  }
-
-  /**
-   * 可滚动区域要能被键盘聚焦（`tabIndex=0`）。
-   * 聚焦后必须看得见 —— 否则键盘用户不知道自己现在控制的是聊天记录还是输入框。
-   */
-  .q-chat__scroll:focus-visible {
-    outline: 2px solid color-mix(in srgb, var(--color-crimson) 50%, transparent);
-    outline-offset: -2px;
-    border-radius: 0.5rem;
-  }
-
-  /* 图片消息本身可聚焦（键盘能打开灯箱），所以也要有可见焦点环 */
-  .q-chat__media img:focus-visible {
-    outline: 2px solid var(--color-crimson);
-    outline-offset: 2px;
-    border-radius: 0.5rem;
-  }
-
-  /**
-   * 紧凑形态下的键盘入口。
-   *
-   * 平时 `opacity: 0` + `pointer-events: none`：不占位、不影响手指点气泡
-   * （事件穿过去命中气泡，走整行 toggle，不会双触发）；
-   * 键盘聚焦或已展开时现形 —— 28px，看得见也点得中。
-   *
-   * ⚠️ 不写 `visibility: hidden` / `display: none`：那两个会把元素从 Tab 序里摘掉，
-   * 入口就形同不存在（这正是上一轮 `display: none` 弄丢 70 个可聚焦点的原因）。
-   */
-  .q-chat__actstoggle {
-    display: none;
-  }
-
-  @media (max-width: 768px), (hover: none) {
-    .q-chat__actstoggle {
-      display: grid;
-      place-items: center;
-      position: absolute;
-      /* 挂在气泡右上角外侧 6px：落在气泡盒内，不会把滚动容器撑出横向溢出 */
-      top: -0.4rem;
-      right: -0.4rem;
-      z-index: 6;
-      width: 1.75rem;
-      height: 1.75rem;
-      border-radius: 9999px;
-      border: 1px solid var(--color-hairline);
-      background: #fffdfb;
-      color: var(--color-subtle);
-      opacity: 0;
-      pointer-events: none;
-      /**
-       * ⚠️ transition 里**不能带 opacity**。
-       *
-       * 键盘 Tab 到它的那一帧，opacity 从 0 渐入 180ms；而 opacity:0 时连描边
-       * （全局 focus-visible 的 outline）也一起透明，实测有 2 帧（约 36ms）
-       * 屏幕上是「什么都没有」—— 焦点看起来消失了。显隐由键盘动作直接决定，
-       * 不需要渐入；color / border 的过渡留着就够。
-       */
-      transition: color var(--dur-micro) ease, border-color var(--dur-micro) ease;
-    }
-
-    .q-chat__row.is-mine .q-chat__actstoggle {
-      right: auto;
-      left: -0.4rem;
-    }
-
-    /**
-     * 用 `:focus` 而不是只 `:focus-visible`。
-     *
-     * 它是「聚焦才现形」的控件，任何来源的焦点都该让它显形 ——
-     * 实测在触摸环境里 Tab 到它时 `:focus-visible` 不命中，opacity 停在 0，
-     * 等于给了一个看不见的焦点目标（WCAG 2.4.7）。
-     * 鼠标点不到它（隐藏态 pointer-events: none），所以放宽不会有副作用。
-     */
-    .q-chat__actstoggle:focus {
-      opacity: 1;
-      pointer-events: auto;
-      /**
-       * 可见态必须自己「立」起来。
-       *
-       * 实测：圆面 #fffdfb 对气泡白只有 **1.00:1**，描边 16% 绯红对白 **1.25:1** ——
-       * 整个控件在视觉上不存在，用户只看见三个点浮在气泡角上（WCAG 1.4.11 要 3:1）。
-       * 描边直接上实色绯红（对白 ≈5.4:1），再加一层带偏移的柔和投影把它从气泡上抬起来。
-       */
-      border-color: var(--color-crimson);
-      box-shadow: 0 2px 8px color-mix(in srgb, var(--color-ink) 18%, transparent);
-    }
-
-    /**
-     * 展开后入口让位。
-     *
-     * 它挂在气泡右上角外侧，展开时若继续显形，28px 的圆会啃掉 meta 行末尾
-     * （实测把「…就进来了」的末字压住，而那一行正是「这是谁说的」）。
-     * 焦点此时已经交给操作条里的第一个按钮（见 ChatRoom 的 onClick），
-     * 所以这里藏起来不会丢焦点。
-     */
-    .q-chat__actstoggle[aria-expanded='true'] {
-      opacity: 0;
-      pointer-events: none;
-    }
-
-    .q-chat__actstoggle:hover {
-      color: var(--color-crimson);
-      /* 和聚焦态同一个描边强度：34% 只有 1.9:1，撑不起 3:1 的非文本对比度 */
-      border-color: var(--color-crimson);
-    }
-  }
-
-  /**
-   * 「轻点一条消息，可以回复、回应或举报」—— 一次性提示。
-   *
-   * 紧凑形态下操作条默认收着，入口本身没有任何可见标记；
-   * 这条提示补上「怎么用」，第一次展开后就不再出现（存 localStorage）。
-   * 它刻意**放在 role="log" 之外**：放进消息流里会被读屏当成一条新消息播报。
-   */
-  .q-chat__taphint {
-    flex: none;
-    align-self: center;
-    margin: 0.4rem 0 0;
-    padding: 0.3rem 0.8rem;
-    border-radius: var(--radius-pill);
-    background: color-mix(in srgb, var(--color-rose) 18%, #fffdfb);
-    font-size: 0.72rem;
-    line-height: 1.6;
-    color: var(--color-muted);
+  .q-chat__blank {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 3rem 1rem;
     text-align: center;
   }
 
-  /**
-   * 在线名单给一个最小高度。
-   *
-   * 侧栏在加载完成那一刻会从「正在看看谁在…」变成 2~3 行名单，卡片一长，
-   * 下面的公告卡和页脚就整体下移 —— 实测这一处贡献了首屏 CLS 的 53%。
-   * 三行的高度先占住，人数少时不至于空，人数多时本来就会长。
-   */
-  .q-aside-list,
-  .q-aside-empty {
-    min-height: 5.4rem;
+  .q-chat__blank__mark {
+    display: grid;
+    place-items: center;
+    width: 3rem;
+    height: 3rem;
+    margin-bottom: 0.35rem;
+    border: 1px solid color-mix(in srgb, var(--color-crimson) 34%, transparent);
+    border-radius: 0.85rem;
+    font-family: var(--font-display);
+    font-size: 1.35rem;
+    color: var(--color-crimson);
   }
 
-  /**
-   * 身份还没拿到时的「我的卡」占位。
-   *
-   * 原来加载态直接落进「还没进门 / 坐下聊聊」的访客卡（170px 高），
-   * 登录身份一到又缩成 60px 的我的卡 —— 侧栏抖一下、页脚跟着跳。
-   * 现在同高占位：读到同一个账号时直接换成真卡，高度不变。
-   */
-  .q-aside-me__ghost {
-    width: 2.8rem;
-    height: 2.8rem;
-    border-radius: 9999px;
+  .q-chat__blank__t {
+    font-family: var(--font-display);
+    font-size: 1.125rem;
+    font-weight: 700;
+    color: var(--color-ink);
+  }
+
+  .q-chat__blank__s {
+    max-width: 20rem;
+    font-size: 0.8125rem;
+    line-height: 1.8;
+    color: var(--color-subtle);
+  }
+
+  .q-chat__blank__cta {
+    min-height: 2.25rem;
+    margin-top: 0.4rem;
+    padding: 0 1rem;
+    border-radius: var(--radius-pill);
+    background: var(--color-crimson);
+    font-size: 0.8125rem;
+    font-weight: 600;
+    color: var(--color-cream);
+  }
+
+  /* 加载失败 */
+  .q-chat__empty {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 0.6rem;
+    font-size: 0.8125rem;
+    color: var(--color-subtle);
+  }
+
+  .q-chat__retry button {
+    min-height: 2.25rem;
+    padding: 0 1rem;
+    border-radius: var(--radius-pill);
+    background: var(--color-crimson);
+    font-size: 0.8125rem;
+    color: var(--color-cream);
+  }
+
+  /* 骨架屏 */
+  .q-chat__skeleton {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+    padding: 1rem 1.15rem;
+    overflow: hidden;
+  }
+
+  .q-skel-row {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.625rem;
+  }
+
+  .q-skel-row.is-mine {
+    flex-direction: row-reverse;
+  }
+
+  .q-skel-av {
     flex: none;
+    width: 2.25rem;
+    height: 2.25rem;
+    border-radius: 9999px;
     background: color-mix(in srgb, var(--color-brown) 10%, #fffdfb);
     animation: q-skel-breathe 1.8s ease-in-out infinite alternate;
   }
 
-  .q-aside-me__ghost-line {
-    display: block;
-    height: 0.7rem;
+  .q-skel-body {
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+    flex: 1;
+  }
+
+  .q-skel-row.is-mine .q-skel-body {
+    align-items: flex-end;
+  }
+
+  .q-skel-line {
+    height: 0.62rem;
     border-radius: 9999px;
     background: color-mix(in srgb, var(--color-brown) 9%, #fffdfb);
     animation: q-skel-breathe 1.8s ease-in-out infinite alternate;
   }
 
-  .q-aside-me__ghost-line.short {
-    width: 3.5rem;
-    height: 0.55rem;
+  .q-skel-line:nth-child(1) { width: 5.5rem; }
+  .q-skel-line:nth-child(2) { width: 13rem; }
+  .q-skel-line:nth-child(3) { width: 9rem; }
+
+  .q-skel-row.is-mine .q-skel-line:nth-child(1) { width: 4.5rem; }
+  .q-skel-row.is-mine .q-skel-line:nth-child(2) { width: 10rem; }
+
+  @keyframes q-skel-breathe {
+    from { opacity: 0.55; }
+    to { opacity: 1; }
   }
 
-  /* 触屏：操作按钮抬到 36px 高。
-     WCAG 2.2 AA 只要求 24×24，但手机上这一排是常显的，30px 高、5px 间距
-     的相邻目标仍然容易点错（拇指指腹接触面积约 11mm ≈ 42px）。 */
-  @media (hover: none) {
-    .q-chat__acts .q-chat__recall {
-      min-height: 2.25rem;
-      padding: 0 0.6rem;
-      font-size: 0.75rem;
-    }
+  .q-chat__skeleton-note {
+    margin-top: auto;
+    padding-bottom: 0.5rem;
+    text-align: center;
+    font-size: 0.78rem;
+    color: var(--color-subtle);
+  }
 
-    .q-chat__plus {
-      width: 2.25rem;
-      height: 2.25rem;
+  /* 焦点可见：全局统一画在容器上，别让 textarea 自己再画一圈 */
+  .q-chatpage :is(button, a, [role='button']):focus-visible {
+    outline: 2px solid var(--color-crimson);
+    outline-offset: 2px;
+    border-radius: 0.5rem;
+  }
+
+  .q-chatpage textarea:focus-visible {
+    outline: none;
+  }
+
+  /* 滚动区可键盘聚焦 */
+  .q-chat__scroll:focus-visible {
+    outline: 2px solid color-mix(in srgb, var(--color-crimson) 55%, transparent);
+    outline-offset: -2px;
+    border-radius: 0.75rem;
+  }
+
+  /* 新消息入场：只对「进来之后才到」的那批生效 */
+  .q-chat__row.is-fresh {
+    animation: q-msg-in 240ms cubic-bezier(0.22, 1, 0.36, 1) both;
+  }
+
+  @keyframes q-msg-in {
+    from {
+      opacity: 0;
+      transform: translateY(8px) scale(0.99);
     }
+  }
+
+  /* 搜索跳转时闪一下 */
+  .q-chat__anchor {
+    border-radius: 0.75rem;
+    animation: q-anchor 1.6s ease-out both;
+  }
+
+  @keyframes q-anchor {
+    0%,
+    40% {
+      background: color-mix(in srgb, var(--color-amber) 34%, transparent);
+    }
+    100% {
+      background: transparent;
+    }
+  }
+
+  /* 光标与选区跟着配色走 */
+  .q-chatpage ::selection {
+    background: var(--color-rose);
+    color: var(--color-ink);
+  }
+
+  .q-chat__bubble ::selection {
+    background: color-mix(in srgb, var(--color-rose) 60%, transparent);
   }
 
   @media (prefers-reduced-motion: reduce) {
+    .q-amb,
     .q-skel-av,
     .q-skel-line,
-    .q-aside-me__ghost,
-    .q-aside-me__ghost-line {
+    .q-me__ghost {
       animation: none;
       opacity: 0.85;
     }
 
-    .q-chat__row.is-fresh {
+    .q-chat__row.is-fresh,
+    .q-chat__anchor {
       animation: none;
+    }
+
+    .q-side,
+    .q-info {
+      transition: none;
     }
   }
 }

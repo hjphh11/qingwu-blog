@@ -10,8 +10,10 @@ import ChatRoom from '../../components/ChatRoom.tsx';
  * （`new Date(iso)` 取本地时区）在服务端和浏览器可能差一秒，hydration 会报不一致。
  * 直接跳过 SSR，让组件自己拉数据、自己画。
  *
+ * 2026-11-25 换版：原来是「页头 + 聊天卡 + 侧栏」，现在是三栏玻璃卡布局。
+ * h1 挪进左侧栏的品牌区（一页只留一个 h1），独立页头因此去掉。
+ *
  * 和其他页的分工：留言是「一次性招呼」，长亭是「在场」。
- * 两边都保留 —— 把留言板改成聊天室，等于把「签名本」改写成「客厅」。
  */
 ---
 
@@ -20,35 +22,12 @@ import ChatRoom from '../../components/ChatRoom.tsx';
   description="清吾的长亭，路过就进来坐坐。聊两句、发个表情，或者只是看看别人在说什么。"
 >
   <div class="page-shell q-chat-page">
-    <header class="page-head">
-      <div>
-        <h1 class="page-head__title">长亭</h1>
-        <p class="page-head__sub">十里一长亭，歇歇脚再说 ~</p>
-      </div>
-    </header>
-
-    {/*
-      占位容器：给岛预留高度。
-
-      `client:only` 意味着服务端不产出任何标记 —— 水合之前这一块高度是 0，
-      页脚就被顶在上面；岛一挂载（实测 226ms）聊天卡 732px 长出来，页脚被推下去，
-      **这一下贡献了整页 CLS 的 97%（0.1826）**。外面这层把高度先占住，
-      页脚从第一帧起就在最终位置。
-
-      数值必须和 .q-chat 的 height 一致（chat.css 里那个 clamp）。
-    */}
-    <div class="q-chat-slot">
-      <ChatRoom client:only="react" />
-    </div>
+    <ChatRoom client:only="react" />
   </div>
 </Layout>
 
 <style>
-  /* 页头压缩、整页上移的规则**不在这里**，在 src/styles/chat.css 的
-     `.q-chat-page` 那一段。
-
-     原因：这一页的 `<style>` 实测根本没被加载 —— dev 下页面只有 4 个内联
-     `<style>`，没有一条包含 `.q-chat-page`，于是「页头压薄」那套一直是死代码，
-     页头实际还是 --space-section 的下边距。写进全局样式表之后才真正生效。
-     以后这一页的样式都放进 chat.css，别再往这里写。 */
+  /* 这一页的样式**不在这里**，全在 src/styles/chat.css。
+     原因：这一页的 `<style>` 实测没被加载（dev 下页面的 4 个内联 style 一个都不含
+     `.q-chat-page`），写在这里等于死代码。以后这一页的样式都放进 chat.css。 */
 </style>

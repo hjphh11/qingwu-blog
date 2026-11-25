@@ -2,8 +2,6 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { MorphIcon } from 'morphicons/react';
 import {
-  Bell,
-  BellRing,
   ChevronDown,
   Download,
   Ellipsis,
@@ -21,6 +19,7 @@ import {
 import EmojiPicker from './EmojiPicker';
 import LoginDialog from './auth/LoginDialog';
 import ChatAside from './chat/ChatAside';
+import ChatInfo from './chat/ChatInfo';
 import ChatSearch from './chat/ChatSearch';
 import { renderRich } from '../lib/richText';
 import { EMOJI_MAP } from '../lib/emojis';
@@ -422,6 +421,10 @@ export default function ChatRoom() {
   const [openActs, setOpenActs] = useState(0);
   /** 举报弹层的焦点契约（Esc / Tab 循环 / 关闭后归位） */
   const reportBoxRef = useDialogFocus(Boolean(reporting), () => setReporting(null));
+
+  /** 窄屏抽屉：左（频道）/ 右（空间详情）。桌面宽屏下这两个类名不起作用 */
+  const [sideOpen, setSideOpen] = useState(false);
+  const [infoOpen, setInfoOpen] = useState(false);
 
   /** 是否紧凑形态（窄屏 / 触屏）—— 决定要不要出「轻点消息…」那条一次性提示 */
   const [compact, setCompact] = useState(false);
@@ -1184,567 +1187,688 @@ export default function ChatRoom() {
   // 加载阶段登录按钮点了没反应（LoginDialog 要等 config 才有），属于必然，不是 bug。
 
   /** 侧栏（三个分支共用一份配置，避免 props 写三遍） */
-  const aside = (
+  const side = (
     <ChatAside
       account={account}
       members={members}
-      online={loading ? -1 : online}
       identityPending={!identityReady}
+      online={loading ? -1 : online}
+      notify={notify}
+      open={sideOpen}
+      onToggleNotify={() => void toggleNotify()}
+      onSearch={() => {
+        setSideOpen(false);
+        setSearchOpen(true);
+      }}
       onLogin={() => setLoginOpen(true)}
+      onClose={() => setSideOpen(false)}
+    />
+  );
+
+  const spaceInfo = (
+    <ChatInfo
+      members={members}
+      online={loading ? -1 : online}
+      pin={pin}
+      loading={loading}
+      open={infoOpen}
+      onClose={() => setInfoOpen(false)}
+    />
+  );
+
+  /** 背景氛围：四团光斑，位置对应设计稿 */
+  const ambience = (
+    <div className="q-chatpage__amb" aria-hidden="true">
+      <span className="q-amb q-amb--rose-a" />
+      <span className="q-amb q-amb--rose-b" />
+      <span className="q-amb q-amb--amber-a" />
+      <span className="q-amb q-amb--amber-b" />
+    </div>
+  );
+
+  /** 窄屏抽屉打开时的遮罩：点哪儿都能收 */
+  const drawerMask = (
+    <button
+      type="button"
+      className="q-mask"
+      aria-label="收起浮层"
+      onClick={() => {
+        setSideOpen(false);
+        setInfoOpen(false);
+      }}
     />
   );
 
   if (loading) {
     return (
-      <div className="q-chat-layout">
-        {aside}
-        <section className="q-chat" aria-busy="true" aria-label="正在加载聊天记录">
-          {/* 骨架按聊天的真实节奏摆：来一条、回一条、再来一条。
-              纯装饰，读屏跳过（文字说明在最后一行）。 */}
-          <div className="q-chat__skeleton" aria-hidden="true">
-            <div className="q-skel-row">
-              <span className="q-skel-av" />
-              <div className="q-skel-body">
-                <i className="q-skel-line" />
-                <i className="q-skel-line" />
+      <div className="q-chatpage">
+        {ambience}
+        <div className="q-bento">
+          {side}
+          <section className="q-chat q-glass" aria-busy="true" aria-label="正在加载聊天记录">
+            <header className="q-chat__bar">
+              <div className="q-chat__head">
+                <div style={{ minWidth: 0 }}>
+                  <h2 className="q-chat__title"># 综合大厅</h2>
+                  <p className="q-chat__sub">正在推开长亭的门…</p>
+                </div>
               </div>
-            </div>
-            <div className="q-skel-row is-mine">
-              <span className="q-skel-av" />
-              <div className="q-skel-body">
-                <i className="q-skel-line" />
-                <i className="q-skel-line" />
-                <i className="q-skel-line" />
+            </header>
+            {/* 骨架按聊天的真实节奏摆：来一条、回一条、再来一条。
+                纯装饰，读屏跳过（文字说明在最后一行）。 */}
+            <div className="q-chat__skeleton" aria-hidden="true">
+              <div className="q-skel-row">
+                <span className="q-skel-av" />
+                <div className="q-skel-body">
+                  <i className="q-skel-line" />
+                  <i className="q-skel-line" />
+                </div>
               </div>
-            </div>
-            <div className="q-skel-row">
-              <span className="q-skel-av" />
-              <div className="q-skel-body">
-                <i className="q-skel-line" />
-                <i className="q-skel-line" />
-                <i className="q-skel-line" />
+              <div className="q-skel-row is-mine">
+                <span className="q-skel-av" />
+                <div className="q-skel-body">
+                  <i className="q-skel-line" />
+                  <i className="q-skel-line" />
+                  <i className="q-skel-line" />
+                </div>
               </div>
-            </div>
-            <div className="q-skel-row is-mine">
-              <span className="q-skel-av" />
-              <div className="q-skel-body">
-                <i className="q-skel-line" />
-                <i className="q-skel-line" />
+              <div className="q-skel-row">
+                <span className="q-skel-av" />
+                <div className="q-skel-body">
+                  <i className="q-skel-line" />
+                  <i className="q-skel-line" />
+                  <i className="q-skel-line" />
+                </div>
               </div>
-            </div>
-            <div className="q-skel-row">
-              <span className="q-skel-av" />
-              <div className="q-skel-body">
-                <i className="q-skel-line" />
-                <i className="q-skel-line" />
+              <div className="q-skel-row is-mine">
+                <span className="q-skel-av" />
+                <div className="q-skel-body">
+                  <i className="q-skel-line" />
+                  <i className="q-skel-line" />
+                </div>
               </div>
+              <p className="q-chat__skeleton-note">正在推开长亭的门…</p>
             </div>
-            <p className="q-chat__skeleton-note">正在推开长亭的门…</p>
-          </div>
-        </section>
+          </section>
+          {spaceInfo}
+        </div>
       </div>
     );
   }
 
   if (failed) {
     return (
-      <div className="q-chat-layout">
-        {aside}
-        <section className="q-chat">
-          <div className="q-chat__empty">
-            <MorphIcon icon={CircleAlert} size={18} color="currentColor" />
-            <span>长亭的门暂时推不开，稍后再来看看</span>
-          </div>
-          <div className="q-chat__retry">
-            <button type="button" onClick={() => void init()}>
-              再试一次
-            </button>
-          </div>
-        </section>
+      <div className="q-chatpage">
+        {ambience}
+        <div className="q-bento">
+          {side}
+          <section className="q-chat q-glass" aria-label="长亭聊天室">
+            <div className="q-chat__empty">
+              <MorphIcon icon={CircleAlert} size={18} color="currentColor" />
+              <span>长亭的门暂时推不开，稍后再来看看</span>
+              <div className="q-chat__retry">
+                <button type="button" onClick={() => void init()}>
+                  再试一次
+                </button>
+              </div>
+            </div>
+          </section>
+          {spaceInfo}
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="q-chat-layout">
-      {aside}
-      <section
-        className={`q-chat${dragging > 0 ? ' is-drop' : ''}`}
-        aria-label="长亭聊天室"
-        onDragEnter={(e) => {
-          if (!e.dataTransfer?.types.includes('Files')) return;
-          e.preventDefault();
-          setDragging((n) => n + 1);
-        }}
-        onDragOver={(e) => {
-          // 不 preventDefault 的话浏览器会直接打开这个文件，把聊天页面顶掉
-          if (e.dataTransfer?.types.includes('Files')) e.preventDefault();
-        }}
-        onDragLeave={(e) => {
-          if (!e.dataTransfer?.types.includes('Files')) return;
-          setDragging((n) => Math.max(0, n - 1));
-        }}
-        onDrop={(e) => {
-          setDragging(0);
-          const f = e.dataTransfer?.files?.[0];
-          if (!f) return;
-          e.preventDefault();
-          void attachFile(f);
-        }}
-      >
-        <div className="q-chat__bar">
-          <span className="q-chat__live">
-            <i aria-hidden="true" />
-            {/* 「还没有人在」缺了宾语 —— 在长亭里，「在」的宾语就是长亭，
-                写全了才不像半句话 */}
-            {online > 0 ? `${online} 人在长亭` : '还没有人在长亭'}
-          </span>
-          <div className="q-chat__barbtns">
-            <button
-              type="button"
-              className={`q-chat__searchbtn${notify === 'on' ? ' is-on' : ''}`}
-              onClick={() => void toggleNotify()}
-              aria-pressed={notify === 'on'}
-              title={
-                notify === 'on'
-                  ? '开着呢：页面在后台时，有人说话会弹一条系统提醒'
-                  : notify === 'denied'
-                    ? '浏览器拦了提醒，去地址栏左边放行'
-                    : '页面放后台时，有人说话弹一条系统提醒'
-              }
-            >
-              <MorphIcon icon={notify === 'on' ? BellRing : Bell} size={13} color="currentColor" />
-              {notify === 'on' ? '提醒开' : '提醒'}
-            </button>
-            <button
-              type="button"
-              className="q-chat__searchbtn"
-              onClick={() => setSearchOpen(true)}
-              aria-label="搜索聊天记录"
-            >
-              <MorphIcon icon={Search} size={13} color="currentColor" />
-              搜索
-            </button>
-          </div>
-        </div>
+    <div className="q-chatpage">
+      {ambience}
 
-        {/* 一次性操作提示。放在顶栏下面而不是消息流里：
-            消息流是 `role="log" aria-live`，塞进去会被读屏当成一条新消息念出来。
-            ⚠️ 访客别说「可以回复、回应或举报」—— 这三件事都要登录，
-               写了就是空头支票，点上去只会弹登录框。 */}
-        {tapHint && messages.length > 0 && (
-          <p className="q-chat__taphint">
-            {signedIn ? '轻点一条消息，可以回复、回应或举报' : '登录之后才能回复、回应或举报'}
-          </p>
-        )}
+      {(sideOpen || infoOpen) && drawerMask}
 
-        {link === 'down' && (
-          <p className="q-chat__offline" role="status">
-            <i aria-hidden="true" />
-            连接断了，正在重连…
-          </p>
-        )}
+      <div className="q-bento">
+        {side}
 
-      {pin && (
-        <div className="q-chat__pin">
-          <span className="q-chat__pin__ic" aria-hidden="true">
-            <MorphIcon icon={Pin} size={12} color="currentColor" />
-          </span>
-          <button type="button" className="q-chat__pin__t" onClick={() => jumpToPin(pin.id)}>
-            <b>{pin.name}</b>
-            <span>{pin.excerpt || '（这条没写正文）'}</span>
-          </button>
-          {account?.role === 'admin' && (
-            <button
-              type="button"
-              className="q-chat__pin__x"
-              onClick={() => void doPin(null)}
-              aria-label="取消置顶"
-              title="取消置顶"
-            >
-              <MorphIcon icon={X} size={11} color="currentColor" />
-            </button>
-          )}
-        </div>
-      )}
-
-      {/* tabIndex=0：可滚动区域必须能被键盘聚焦，否则键盘 / 读屏用户
-          既读不到历史，也没法用方向键往下翻（WCAG 2.1.1）。
-          只加在滚动容器上，不落到每条消息里 —— 否则 Tab 会被消息淹没。 */}
-      <div
-        className={`q-chat__scroll${messages.length === 0 ? ' is-empty' : ''}`}
-        ref={scrollRef}
-        onScroll={onScroll}
-        tabIndex={0}
-        role="region"
-        aria-label="聊天记录，可用方向键滚动"
-      >
-        {/* role=log + aria-live：新消息进来读屏会念出来。
-            只声明 additions —— 撤回、已读这些状态变化不该抢话。 */}
-        <div
-          className="q-chat__inner"
-          role="log"
-          aria-live="polite"
-          aria-relevant="additions"
-          aria-label="聊天记录"
+        <section
+          className={`q-chat q-glass${dragging > 0 ? ' is-drop' : ''}`}
+          aria-label="长亭聊天室"
+          onDragEnter={(e) => {
+            if (!e.dataTransfer?.types.includes('Files')) return;
+            e.preventDefault();
+            setDragging((n) => n + 1);
+          }}
+          onDragOver={(e) => {
+            // 不 preventDefault 的话浏览器会直接打开这个文件，把聊天页面顶掉
+            if (e.dataTransfer?.types.includes('Files')) e.preventDefault();
+          }}
+          onDragLeave={(e) => {
+            if (!e.dataTransfer?.types.includes('Files')) return;
+            setDragging((n) => Math.max(0, n - 1));
+          }}
+          onDrop={(e) => {
+            setDragging(0);
+            const f = e.dataTransfer?.files?.[0];
+            if (!f) return;
+            e.preventDefault();
+            void attachFile(f);
+          }}
         >
-          {hasMore && (
-            <div className="q-chat__more">
-              <button type="button" onClick={() => void loadMore()} disabled={loadingMore}>
-                {loadingMore ? '正在翻…' : '看看更早的'}
+          <header className="q-chat__bar">
+            {/* 窄屏才有：打开左侧频道抽屉 */}
+            <button
+              type="button"
+              className="q-chat__searchbtn q-chat__menu"
+              onClick={() => setSideOpen(true)}
+              aria-label="打开频道栏"
+            >
+              {/* 自绘「左边一条栏」：和站内导航的汉堡区分开，否则手机顶部会并排两个汉堡 */}
+              <svg
+                width="16"
+                height="16"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                aria-hidden="true"
+              >
+                <rect x="3" y="4" width="18" height="16" rx="3" />
+                <path d="M9 4v16" />
+              </svg>
+            </button>
+
+            <div className="q-chat__head">
+              <div style={{ minWidth: 0 }}>
+                <div className="q-chat__titlerow">
+                  <h2 className="q-chat__title"># 综合大厅</h2>
+                  <span className="q-chat__live">
+                    <i aria-hidden="true" />
+                    {/* 「还没有人在」缺宾语 —— 在长亭里，「在」的宾语就是长亭 */}
+                    {online > 0 ? `${online} 人在线` : '还没人在'}
+                  </span>
+                </div>
+                <p className="q-chat__sub">推门即见的暖光客厅，分享此刻的灵感与茶香</p>
+              </div>
+            </div>
+
+            <div className="q-chat__barbtns">
+              <button
+                type="button"
+                className="q-chat__searchbtn"
+                onClick={() => setSearchOpen(true)}
+                aria-label="搜索聊天记录"
+                title="搜索聊天记录"
+              >
+                <MorphIcon icon={Search} size={16} color="currentColor" />
+              </button>
+              <button
+                type="button"
+                className={`q-chat__searchbtn${infoOpen ? ' is-on' : ''}`}
+                onClick={() => setInfoOpen((v) => !v)}
+                aria-expanded={infoOpen}
+                aria-label="展开空间详情"
+                title="展开 / 收起空间详情"
+              >
+                {/* 自绘：一块面板 + 一条竖分隔，和设计稿的图标同一个语义 */}
+                <svg
+                  width="16"
+                  height="16"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  aria-hidden="true"
+                >
+                  <rect x="3" y="4" width="18" height="16" rx="3" />
+                  <path d="M15 4v16" />
+                </svg>
+                <span className="q-btnlabel">信息栏</span>
               </button>
             </div>
-          )}
+          </header>
 
-          {messages.length === 0 && (
-            <div className="q-chat__blank">
-              {/* 一枚印章式的落点：细线方框 + 「亭」字。全站只有这一处这么用 */}
-              <span className="q-chat__blank__mark" aria-hidden="true">
-                亭
+          {/* 置顶：常驻在消息流上方，点它跳过去 */}
+          {pin && (
+            <div className="q-chat__pin">
+              <span className="q-chat__pin__ic" aria-hidden="true">
+                <MorphIcon icon={Pin} size={12} color="currentColor" />
               </span>
-              <p className="q-chat__blank__t">长亭还空着</p>
-              <p className="q-chat__blank__s">坐下来说第一句。路过的人会看见，也会回你一句。</p>
-              {!signedIn && (
+              <button type="button" className="q-chat__pin__t" onClick={() => jumpToPin(pin.id)}>
+                <b>{pin.name}</b>
+                <span>{pin.excerpt || '（这条没写正文）'}</span>
+              </button>
+              {account?.role === 'admin' && (
                 <button
                   type="button"
-                  className="q-chat__blank__cta"
-                  onClick={() => setLoginOpen(true)}
+                  className="q-chat__pin__x"
+                  onClick={() => void doPin(null)}
+                  aria-label="取消置顶"
+                  title="取消置顶"
                 >
-                  坐下聊聊
+                  <MorphIcon icon={X} size={11} color="currentColor" />
                 </button>
               )}
             </div>
           )}
 
-          {messages.map((m, i) => {
-            const prev = messages[i - 1];
-            const prevTs = prev ? new Date(prev.at).getTime() : 0;
-            const ts = new Date(m.at).getTime();
-            const splitTime = !prev || ts - prevTs > GROUP_GAP_MS;
-            const showReadMark =
-              readMarkId > 0 && m.id > readMarkId && (!prev || prev.id <= readMarkId);
-            // 「上次看到这里」这条线也算一次打断：它后面的那条要重新露头像，
-            // 否则视觉上像是接着上一句说的（实际中间隔了一条时间线）
-            const sameAuthor =
-              prev && prev.name === m.name && prev.status !== 'recalled' && m.status !== 'recalled';
-            const grouped = Boolean(sameAuthor) && !splitTime && !showReadMark;
-            // 进来之后才到的消息（含自己刚发的）才做入场动画
-            const fresh = firstMaxRef.current >= 0 && m.id > firstMaxRef.current;
-
-            return (
-              <div
-                key={m.id}
-                data-mid={m.id}
-                className={highlightId === m.id ? 'q-chat__anchor' : undefined}
-              >
-                {splitTime && <div className="q-chat__time">{stampOf(m.at)}</div>}
-                {showReadMark && <div className="q-chat__readmark">上次看到这里</div>}
-                <MessageRow
-                  m={m}
-                  grouped={grouped}
-                  fresh={fresh}
-                  /* 上面刚画过时间线就不再重复时刻：同一条消息上出现两个相同的时间，
-                     读者要花一秒确认「这俩是一个时间吗」，而这一秒正是看聊天时最贵的 */
-                  showClock={!splitTime}
-                  actsOpen={openActs === m.id}
-                  onToggleActs={() => setOpenActs((v) => (v === m.id ? 0 : m.id))}
-                  canRecall={m.mine && m.status === 'visible' && Date.now() - ts < 2 * 60 * 1000}
-                  /* 和服务端同一个 5 分钟窗口：按钮显示条件不一致会出现「按钮在、点了报错」 */
-                  canEdit={m.mine && m.status === 'visible' && Date.now() - ts < 5 * 60 * 1000}
-                  canPin={account?.role === 'admin' && m.status === 'visible'}
-                  pinned={pin?.id === m.id}
-                  onRecall={() => void doRecall(m.id)}
-                  onEdit={() => startEdit(m)}
-                  onPin={() => void doPin(m)}
-                  onReport={() => setReporting(m)}
-                  onReact={(emoji) => void doReact(m.id, emoji)}
-                  onReply={() => setReplyTo(m)}
-                  readCount={reads?.id === m.id ? reads.n : 0}
-                />
-              </div>
-            );
-          })}
-        </div>
-      </div>
-
-      {!atBottom && (
-        <button type="button" className="q-chat__jump" onClick={() => scrollToBottom(true)}>
-          <MorphIcon icon={ChevronDown} size={13} color="currentColor" />
-          {pendingNew > 0 ? `${pendingNew} 条新消息` : '回到最新'}
-        </button>
-      )}
-
-      {tip && (
-        <p className="q-chat__tip" role="status">
-          {tip.text}
-        </p>
-      )}
-
-      {(editing || replyTo || typingNames.length > 0 || pendingMedia) && (
-        <div className="q-chat__above">
-          {editing && (
-            <div className="q-chat__replybar is-editing">
-              <span className="q-chat__replybar__t">
-                正在改这条 · Enter 保存，Esc 取消
-              </span>
-              <button type="button" onClick={cancelEdit} aria-label="取消编辑">
-                <MorphIcon icon={X} size={11} color="currentColor" />
-              </button>
-            </div>
-          )}
-          {replyTo && (
-            <div className="q-chat__replybar">
-              <span className="q-chat__replybar__t">
-                回 <b>{replyTo.name}</b>
-                {replyTo.body ? `：${replyTo.body.replace(/\s+/g, ' ').slice(0, 40)}` : ''}
-              </span>
-              <button type="button" onClick={() => setReplyTo(null)} aria-label="取消引用">
-                <MorphIcon icon={X} size={11} color="currentColor" />
-              </button>
-            </div>
-          )}
-          {typingNames.length > 0 && (
-            <p className="q-chat__typing">
-              {typingNames.slice(0, 2).join('、')}
-              {typingNames.length > 2 ? ` 等 ${typingNames.length} 人` : ''} 正在输入
-              <i />
-              <i />
-              <i />
+          {/* 一次性操作提示。放在消息流外：消息流是 role=log + aria-live，
+              塞进去会被读屏当成一条新消息念出来。
+              ⚠️ 访客别说「可以回复、回应或举报」—— 那三件事都要登录。 */}
+          {tapHint && messages.length > 0 && (
+            <p className="q-chat__taphint">
+              {signedIn ? '轻点一条消息，可以回复、回应或举报' : '登录之后才能回复、回应或举报'}
             </p>
           )}
-          {pendingMedia && (
-            <div className="q-chat__pendingmedia">
-              {pendingMedia.kind === 'image' ? (
-                <img src={mediaSrc(pendingMedia)} alt="待发送的图片" />
-              ) : pendingMedia.kind === 'video' ? (
-                <video src={mediaSrc(pendingMedia)} muted playsInline preload="metadata" />
-              ) : (
-                <span className="q-chat__pendingmedia__file">
-                  <MorphIcon icon={FileText} size={14} color="currentColor" />
-                  {pendingMedia.filename || '文件'}
-                </span>
-              )}
-              <button
-                type="button"
-                onClick={() => setPendingMedia(null)}
-                aria-label="不用这张了"
-              >
-                <MorphIcon icon={X} size={11} color="currentColor" />
-              </button>
-            </div>
-          )}
-        </div>
-      )}
 
-      {signedIn ? (
-        <div className="q-chat__composer">
-          <div className="q-chat__inputwrap">
-            {mention && mentionList.length > 0 && (
-              <div className="q-chat__mentions" role="listbox" aria-label="选一个人">
-                {mentionList.map((p) => (
-                  <button key={p.id} type="button" role="option" aria-selected={false} onClick={() => pickMention(p)}>
-                    <span
-                      className="q-chat__mentions__av"
-                      style={p.avatar ? { backgroundImage: `url("${p.avatar}")` } : undefined}
-                      aria-hidden="true"
-                    >
-                      {p.name.slice(0, 1)}
-                    </span>
-                    <span className="q-chat__mentions__n">{p.name}</span>
-                    {p.admin && <em>站长</em>}
+          {link === 'down' && (
+            <p className="q-chat__offline" role="status">
+              <i aria-hidden="true" />
+              连接断了，正在重连…
+            </p>
+          )}
+
+          {/* tabIndex=0：可滚动区域必须能被键盘聚焦，否则键盘/读屏用户既读不到历史，
+              也没法用方向键往下翻（WCAG 2.1.1）。只加在容器上，不落到每条消息里。 */}
+          <div
+            className={`q-chat__scroll${messages.length === 0 ? ' is-empty' : ''}`}
+            ref={scrollRef}
+            onScroll={onScroll}
+            tabIndex={0}
+            role="region"
+            aria-label="聊天记录，可用方向键滚动"
+          >
+            {/* role=log + aria-live：新消息进来读屏会念出来。
+                只声明 additions —— 撤回、已读这些状态变化不该抢话。 */}
+            <div
+              className="q-chat__inner"
+              role="log"
+              aria-live="polite"
+              aria-relevant="additions"
+              aria-label="聊天记录"
+            >
+              {hasMore && (
+                <div className="q-chat__more">
+                  <button type="button" onClick={() => void loadMore()} disabled={loadingMore}>
+                    {loadingMore ? '正在翻…' : '看看更早的'}
                   </button>
-                ))}
-              </div>
-            )}
-            <textarea
-              ref={inputRef}
-              className="q-chat__input"
-              value={draft}
-              onChange={(e) => {
-                const v = e.target.value.slice(0, 500);
-                setDraft(v);
-                // 光标前是不是一个「刚打了一半的 @」
-                const pos = e.target.selectionStart ?? v.length;
-                const hit = /@([^\s@]{0,20})$/.exec(v.slice(0, pos));
-                setMention(hit ? { at: pos - hit[0].length, q: hit[1] ?? '' } : null);
-                // 「正在输入」上报：3 秒一次，别把接口打成 DoS
-                if (v.trim() && Date.now() - lastTypingRef.current > 3000) {
-                  lastTypingRef.current = Date.now();
-                  void typing();
-                }
-              }}
-              onKeyDown={(e) => {
-                if (e.key === 'Escape') {
-                  if (mention) {
-                    e.preventDefault();
-                    setMention(null);
-                    return;
-                  }
-                  // 编辑态下 Esc = 放弃这次修改，把输入区还给「发新消息」
-                  if (editing) {
-                    e.preventDefault();
-                    cancelEdit();
-                    return;
-                  }
-                }
-                if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
-                  // 选人弹层开着时，Enter 先当作「选第一个」
-                  if (mention && mentionList.length > 0) {
-                    e.preventDefault();
-                    pickMention(mentionList[0]!);
-                    return;
-                  }
-                  e.preventDefault();
-                  void doSend();
-                }
-              }}
-              onPaste={(e) => {
-                // 截图直接 Ctrl+V —— 聊天里这是最常用的发图方式
-                const items = e.clipboardData?.items;
-                if (!items) return;
-                for (const it of items) {
-                  if (it.kind !== 'file') continue;
-                  const f = it.getAsFile();
-                  if (f) {
-                    e.preventDefault();
-                    void attachFile(f);
-                    return;
-                  }
-                }
-              }}
-              rows={1}
-              /* 占位符要能在 390px 宽下**一行放完**：原来那句（@ 可以叫个人）
-                 在手机上会折成两行，输入框一进页面就变高，看着像刚打了一半字 */
-              placeholder={editing ? '改这句话…' : '说点什么… @ 叫人'}
-              title="Enter 发送，Shift + Enter 换行，@ 提及"
-              aria-label="说点什么，@ 可以提及在场的人"
-            />
-            <div className="q-chat__tools">
-              <button
-                type="button"
-                className="q-chat__tool"
-                aria-label="表情"
-                aria-expanded={emojiOpen}
-                onClick={() => setEmojiOpen((v) => !v)}
-              >
-                <MorphIcon icon={Smile} size={15} color="currentColor" />
-              </button>
-              <button
-                type="button"
-                className="q-chat__tool"
-                aria-label="发图片、视频或文件"
-                onClick={() => fileRef.current?.click()}
-                disabled={uploading}
-              >
-                {uploading ? (
-                  <MorphIcon icon={LoaderCircle} size={15} color="currentColor" />
-                ) : (
-                  <MorphIcon icon={ImageIcon} size={15} color="currentColor" />
-                )}
-              </button>
-              <input
-                ref={fileRef}
-                type="file"
-                /* 不再是 image/video 两个通配 —— 文档也要能发。
-                   accept 只影响选择框的默认筛选，真正收什么由服务端白名单决定 */
-                accept="image/*,video/*,.pdf,.zip,.txt,.md,.csv,.json,.epub,.docx,.xlsx,.pptx"
-                hidden
-                onChange={(e) => {
-                  const f = e.target.files?.[0];
-                  // 清空 value：不然连选同一张图不会触发 change
-                  e.target.value = '';
-                  if (f) void attachFile(f);
-                }}
-              />
-              {emojiOpen && (
-                <EmojiPicker
-                  open
-                  placement="top"
-                  onPick={pickEmoji}
-                  onClose={() => setEmojiOpen(false)}
-                />
+                </div>
               )}
+
+              {messages.length === 0 && (
+                <div className="q-chat__blank">
+                  {/* 一枚印章式的落点：细线方框 + 「亭」字。全站只有这一处这么用 */}
+                  <span className="q-chat__blank__mark" aria-hidden="true">
+                    亭
+                  </span>
+                  <p className="q-chat__blank__t">长亭还空着</p>
+                  <p className="q-chat__blank__s">
+                    坐下来说第一句。路过的人会看见，也会回你一句。
+                  </p>
+                  {!signedIn && (
+                    <button
+                      type="button"
+                      className="q-chat__blank__cta"
+                      onClick={() => setLoginOpen(true)}
+                    >
+                      坐下聊聊
+                    </button>
+                  )}
+                </div>
+              )}
+
+              {messages.map((m, i) => {
+                const prev = messages[i - 1];
+                const prevTs = prev ? new Date(prev.at).getTime() : 0;
+                const ts = new Date(m.at).getTime();
+                const splitTime = !prev || ts - prevTs > GROUP_GAP_MS;
+                const showReadMark =
+                  readMarkId > 0 && m.id > readMarkId && (!prev || prev.id <= readMarkId);
+                // 「上次看到这里」这条线也算一次打断：它后面的那条要重新露头像，
+                // 否则视觉上像是接着上一句说的（实际中间隔了一条时间线）
+                const sameAuthor =
+                  prev &&
+                  prev.name === m.name &&
+                  prev.status !== 'recalled' &&
+                  m.status !== 'recalled';
+                const grouped = Boolean(sameAuthor) && !splitTime && !showReadMark;
+                // 进来之后才到的消息（含自己刚发的）才做入场动画
+                const fresh = firstMaxRef.current >= 0 && m.id > firstMaxRef.current;
+
+                return (
+                  <div
+                    key={m.id}
+                    data-mid={m.id}
+                    className={highlightId === m.id ? 'q-chat__anchor' : undefined}
+                  >
+                    {splitTime && <div className="q-chat__time">{stampOf(m.at)}</div>}
+                    {showReadMark && <div className="q-chat__readmark">上次看到这里</div>}
+                    <MessageRow
+                      m={m}
+                      grouped={grouped}
+                      fresh={fresh}
+                      /* 上面刚画过时间线就不再重复时刻：同一条消息上出现两个相同的时间，
+                         读者要花一秒确认「这俩是一个时间吗」 */
+                      showClock={!splitTime}
+                      actsOpen={openActs === m.id}
+                      onToggleActs={() => setOpenActs((v) => (v === m.id ? 0 : m.id))}
+                      canRecall={
+                        m.mine && m.status === 'visible' && Date.now() - ts < 2 * 60 * 1000
+                      }
+                      /* 和服务端同一个 5 分钟窗口：条件不一致会出现「按钮在、点了报错」 */
+                      canEdit={m.mine && m.status === 'visible' && Date.now() - ts < 5 * 60 * 1000}
+                      canPin={account?.role === 'admin' && m.status === 'visible'}
+                      pinned={pin?.id === m.id}
+                      onRecall={() => void doRecall(m.id)}
+                      onEdit={() => startEdit(m)}
+                      onPin={() => void doPin(m)}
+                      onReport={() => setReporting(m)}
+                      onReact={(emoji) => void doReact(m.id, emoji)}
+                      onReply={() => setReplyTo(m)}
+                      readCount={reads?.id === m.id ? reads.n : 0}
+                    />
+                  </div>
+                );
+              })}
             </div>
           </div>
-          <button
-            type="button"
-            className="q-chat__send"
-            onClick={() => void doSend()}
-            disabled={sending || !draft.trim()}
-            aria-label={editing ? '保存修改' : '发送'}
-            title={editing ? '保存修改（Esc 取消）' : '发送（Enter）'}
-          >
-            {sending ? (
-              <MorphIcon icon={LoaderCircle} size={15} color="currentColor" />
-            ) : editing ? (
-              <MorphIcon icon={Pencil} size={14} color="currentColor" />
-            ) : (
-              <MorphIcon icon={Send} size={15} color="currentColor" />
-            )}
-          </button>
-          {draft.length > 380 && <span className="q-chat__count">{draft.length}/500</span>}
-        </div>
-      ) : (
-        <div className="q-chat__guest">
-          <p>登录之后就能一起聊了 ~</p>
-          <button type="button" onClick={() => setLoginOpen(true)}>
-            登录
-          </button>
-        </div>
-      )}
 
-      {config && (
-        <LoginDialog
-          open={loginOpen}
-          config={config}
-          onClose={() => setLoginOpen(false)}
-          onDone={(account) => {
-            setLoginOpen(false);
-            setSignedIn(Boolean(account));
-            void init();
-          }}
-        />
-      )}
+          {!atBottom && (
+            <button type="button" className="q-chat__jump" onClick={() => scrollToBottom(true)}>
+              <MorphIcon icon={ChevronDown} size={13} color="currentColor" />
+              {pendingNew > 0 ? `${pendingNew} 条新消息` : '回到最新'}
+            </button>
+          )}
 
-      {searchOpen && <ChatSearch onClose={() => setSearchOpen(false)} onPick={jumpToMessage} />}
-
-      {reporting &&
-        createPortal(
-          <div className="q-report" role="dialog" aria-modal="true" aria-label="举报这条消息">
-            <button
-              type="button"
-              className="q-report__mask"
-              aria-label="关掉"
-              onClick={() => setReporting(null)}
-            />
-            <div className="q-report__box" ref={reportBoxRef}>
-              <p className="q-report__t">举报给站长</p>
-              <p className="q-report__s">
-                {reporting.name} 的这条会标出来给站长看。不会自动删 ——
-                举报不该让人说的话凭空消失。
-              </p>
-              <div className="q-report__opts">
-                {REPORT_REASONS.map((r) => (
-                  <button
-                    key={r.key}
-                    type="button"
-                    disabled={reportBusy}
-                    onClick={() => void doReport(r.key)}
-                  >
-                    {r.label}
+          {(editing || replyTo || typingNames.length > 0 || pendingMedia || tip) && (
+            <div className="q-chat__above">
+              {editing && (
+                <div className="q-chat__replybar is-editing">
+                  <span className="q-chat__replybar__t">
+                    正在改这条 · Enter 保存，Esc 取消
+                  </span>
+                  <button type="button" onClick={cancelEdit} aria-label="取消编辑">
+                    <MorphIcon icon={X} size={11} color="currentColor" />
                   </button>
-                ))}
-              </div>
-              <button type="button" className="q-report__cancel" onClick={() => setReporting(null)}>
-                算了
-              </button>
+                </div>
+              )}
+              {replyTo && (
+                <div className="q-chat__replybar">
+                  <span className="q-chat__replybar__t">
+                    回 <b>{replyTo.name}</b>
+                    {replyTo.body ? `：${replyTo.body.replace(/\s+/g, ' ').slice(0, 40)}` : ''}
+                  </span>
+                  <button type="button" onClick={() => setReplyTo(null)} aria-label="取消引用">
+                    <MorphIcon icon={X} size={11} color="currentColor" />
+                  </button>
+                </div>
+              )}
+              {pendingMedia && (
+                <div className="q-chat__pendingmedia">
+                  {pendingMedia.kind === 'image' ? (
+                    <img src={mediaSrc(pendingMedia)} alt="待发送的图片" />
+                  ) : pendingMedia.kind === 'video' ? (
+                    <video src={mediaSrc(pendingMedia)} muted playsInline preload="metadata" />
+                  ) : (
+                    <span className="q-chat__pendingmedia__file">
+                      <MorphIcon icon={FileText} size={14} color="currentColor" />
+                      {pendingMedia.filename || '文件'}
+                    </span>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => setPendingMedia(null)}
+                    aria-label="不用这个附件了"
+                  >
+                    <MorphIcon icon={X} size={11} color="currentColor" />
+                  </button>
+                </div>
+              )}
+              {typingNames.length > 0 && (
+                <p className="q-chat__typing">
+                  {typingNames.slice(0, 2).join('、')}
+                  {typingNames.length > 2 ? ` 等 ${typingNames.length} 人` : ''} 正在输入
+                  <i />
+                  <i />
+                  <i />
+                </p>
+              )}
+              {tip && (
+                <p className={`q-chat__tip${tip.kind === 'ok' ? ' is-ok' : ''}`} role="status">
+                  {tip.text}
+                </p>
+              )}
             </div>
-          </div>,
-          document.body,
-        )}
-      </section>
+          )}
+
+          {signedIn ? (
+            <div className="q-chat__composer">
+              <div className="q-chat__inputwrap">
+                {mention && mentionList.length > 0 && (
+                  <div className="q-chat__mentions" role="listbox" aria-label="选一个人">
+                    {mentionList.map((p) => (
+                      <button
+                        key={p.id}
+                        type="button"
+                        role="option"
+                        aria-selected={false}
+                        onClick={() => pickMention(p)}
+                      >
+                        <span
+                          className="q-chat__mentions__av"
+                          style={p.avatar ? { backgroundImage: `url("${p.avatar}")` } : undefined}
+                          aria-hidden="true"
+                        >
+                          {p.name.slice(0, 1)}
+                        </span>
+                        <span className="q-chat__mentions__n">{p.name}</span>
+                        {p.admin && <em>站长</em>}
+                      </button>
+                    ))}
+                  </div>
+                )}
+
+                <div className="q-chat__tools">
+                  <button
+                    type="button"
+                    className="q-chat__tool"
+                    aria-label="表情"
+                    aria-expanded={emojiOpen}
+                    onClick={() => setEmojiOpen((v) => !v)}
+                  >
+                    <MorphIcon icon={Smile} size={17} color="currentColor" />
+                  </button>
+                  <button
+                    type="button"
+                    className="q-chat__tool"
+                    aria-label="发图片、视频或文件"
+                    onClick={() => fileRef.current?.click()}
+                    disabled={uploading}
+                  >
+                    {uploading ? (
+                      <MorphIcon icon={LoaderCircle} size={17} color="currentColor" />
+                    ) : (
+                      <MorphIcon icon={ImageIcon} size={17} color="currentColor" />
+                    )}
+                  </button>
+                  <input
+                    ref={fileRef}
+                    type="file"
+                    /* accept 只影响选择框的默认筛选，真正收什么由服务端白名单决定 */
+                    accept="image/*,video/*,.pdf,.zip,.txt,.md,.csv,.json,.epub,.docx,.xlsx,.pptx"
+                    hidden
+                    onChange={(e) => {
+                      const f = e.target.files?.[0];
+                      // 清空 value：不然连选同一张图不会触发 change
+                      e.target.value = '';
+                      if (f) void attachFile(f);
+                    }}
+                  />
+                  {emojiOpen && (
+                    <EmojiPicker
+                      open
+                      placement="top"
+                      onPick={pickEmoji}
+                      onClose={() => setEmojiOpen(false)}
+                    />
+                  )}
+                </div>
+
+                <textarea
+                  ref={inputRef}
+                  className="q-chat__input"
+                  value={draft}
+                  onChange={(e) => {
+                    const v = e.target.value.slice(0, 500);
+                    setDraft(v);
+                    // 光标前是不是一个「刚打了一半的 @」
+                    const pos = e.target.selectionStart ?? v.length;
+                    const hit = /@([^\s@]{0,20})$/.exec(v.slice(0, pos));
+                    setMention(hit ? { at: pos - hit[0].length, q: hit[1] ?? '' } : null);
+                    // 「正在输入」上报：3 秒一次，别把接口打成 DoS
+                    if (v.trim() && Date.now() - lastTypingRef.current > 3000) {
+                      lastTypingRef.current = Date.now();
+                      void typing();
+                    }
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Escape') {
+                      if (mention) {
+                        e.preventDefault();
+                        setMention(null);
+                        return;
+                      }
+                      // 编辑态下 Esc = 放弃这次修改，把输入区还给「发新消息」
+                      if (editing) {
+                        e.preventDefault();
+                        cancelEdit();
+                        return;
+                      }
+                    }
+                    if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
+                      // 选人弹层开着时，Enter 先当作「选第一个」
+                      if (mention && mentionList.length > 0) {
+                        e.preventDefault();
+                        pickMention(mentionList[0]!);
+                        return;
+                      }
+                      e.preventDefault();
+                      void doSend();
+                    }
+                  }}
+                  onPaste={(e) => {
+                    // 截图直接 Ctrl+V —— 聊天里这是最常用的发图方式
+                    const items = e.clipboardData?.items;
+                    if (!items) return;
+                    for (const it of items) {
+                      if (it.kind !== 'file') continue;
+                      const f = it.getAsFile();
+                      if (f) {
+                        e.preventDefault();
+                        void attachFile(f);
+                        return;
+                      }
+                    }
+                  }}
+                  rows={1}
+                  /* 占位符要能在 390px 宽下一行放完，否则输入框一进页面就变高 */
+                  placeholder={editing ? '改这句话…' : '写点什么吧…'}
+                  title="Enter 发送，Shift + Enter 换行，@ 提及"
+                  aria-label="说点什么，@ 可以提及在场的人"
+                />
+
+                <button
+                  type="button"
+                  className="q-chat__send"
+                  onClick={() => void doSend()}
+                  disabled={sending || !draft.trim()}
+                  aria-label={editing ? '保存修改' : '发送'}
+                  title={editing ? '保存修改（Esc 取消）' : '发送（Enter）'}
+                >
+                  <span className="q-btnlabel">{editing ? '保存' : '发送'}</span>
+                  {sending ? (
+                    <MorphIcon icon={LoaderCircle} size={15} color="currentColor" />
+                  ) : editing ? (
+                    <MorphIcon icon={Pencil} size={14} color="currentColor" />
+                  ) : (
+                    <MorphIcon icon={Send} size={15} color="currentColor" />
+                  )}
+                </button>
+              </div>
+              {draft.length > 380 && <span className="q-chat__count">{draft.length}/500</span>}
+            </div>
+          ) : (
+            <div className="q-chat__composer">
+              <div className="q-chat__guest">
+                <p>登录之后就能一起聊了 ~</p>
+                <button type="button" onClick={() => setLoginOpen(true)}>
+                  登录
+                </button>
+              </div>
+            </div>
+          )}
+
+          {config && (
+            <LoginDialog
+              open={loginOpen}
+              config={config}
+              onClose={() => setLoginOpen(false)}
+              onDone={(account) => {
+                setLoginOpen(false);
+                setSignedIn(Boolean(account));
+                void init();
+              }}
+            />
+          )}
+
+          {searchOpen && <ChatSearch onClose={() => setSearchOpen(false)} onPick={jumpToMessage} />}
+
+          {reporting &&
+            createPortal(
+              <div className="q-report" role="dialog" aria-modal="true" aria-label="举报这条消息">
+                <button
+                  type="button"
+                  className="q-report__mask"
+                  aria-label="关掉"
+                  onClick={() => setReporting(null)}
+                />
+                <div className="q-report__box" ref={reportBoxRef}>
+                  <p className="q-report__t">举报给站长</p>
+                  <p className="q-report__s">
+                    {reporting.name} 的这条会标出来给站长看。不会自动删 ——
+                    举报不该让人说的话凭空消失。
+                  </p>
+                  <div className="q-report__opts">
+                    {REPORT_REASONS.map((r) => (
+                      <button
+                        key={r.key}
+                        type="button"
+                        disabled={reportBusy}
+                        onClick={() => void doReport(r.key)}
+                      >
+                        {r.label}
+                      </button>
+                    ))}
+                  </div>
+                  <button
+                    type="button"
+                    className="q-report__cancel"
+                    onClick={() => setReporting(null)}
+                  >
+                    算了
+                  </button>
+                </div>
+              </div>,
+              document.body,
+            )}
+        </section>
+
+        {spaceInfo}
+      </div>
     </div>
   );
+
 }
 
 /** 一条消息。自己的靠右、别人的靠左，和 IM 的肌肉记忆一致 */
@@ -1872,21 +1996,28 @@ function MessageRow({
         }
       }}
     >
-      {!mine && (
-        /**
-         * 头像用 background-image 而不是 <img>：
-         * 外链头像挂掉时 background 不会有「破图」占位符，底下的首字自然露出来 ——
-         * 用 <img> + onError 切首字要多写一层状态，而且图还在 pending 的那几秒里
-         * 会是一个空白圆（实测：本地无网时十几个空圆，很难看）。
-         */
-        <span
-          className="q-chat__avatar"
-          aria-hidden="true"
-          style={m.avatar ? { backgroundImage: `url("${m.avatar}")` } : undefined}
-        >
-          {m.name.slice(0, 1)}
-        </span>
-      )}
+      {/*
+        头像用 background-image 而不是 <img>：外链头像挂掉时 background 不会有
+        「破图」占位符，底下的首字自然露出来 —— 用 <img> + onError 切首字要多写一层
+        状态，而且图还在 pending 的那几秒里会是一个空白圆。
+        自己的消息也露头像（设计稿两侧都有），行的 flex-direction 是 row-reverse，
+        所以它会自动落到右边。
+      */}
+      <span className="q-chat__avatar" aria-hidden="true">
+        {m.name.slice(0, 1)}
+        {m.avatar && (
+          <img
+            src={m.avatar}
+            alt=""
+            loading="lazy"
+            decoding="async"
+            /* 外链头像挂掉时藏起自己，露出底下的首字 —— 比留个空白圆好 */
+            onError={(e) => {
+              e.currentTarget.style.display = 'none';
+            }}
+          />
+        )}
+      </span>
 
       <div className="q-chat__body">
         {!grouped && (
@@ -2047,6 +2178,22 @@ function MessageRow({
           {/* 操作条：贴在气泡右侧同一水平带（自己的消息镜像到左侧）。
               位置、尺寸和「为什么不做悬停下方的窄条」见 chat.css 里 .q-chat__acts 的注释 */}
           <div className={`q-chat__acts${pickOpen ? ' has-open' : ''}`}>
+            {/* 三个快捷回应：设计稿里就是「一眼能点的三个」，
+                完整面板仍挂在后面的「+」上 */}
+            {m.status === 'visible' &&
+              REACT_SET.slice(0, 3).map((r) => (
+                <button
+                  key={r.key}
+                  type="button"
+                  className="q-chat__actbtn"
+                  title={`回应 ${r.label}`}
+                  aria-label={`回应 ${r.label}`}
+                  onClick={() => onReact(r.key)}
+                >
+                  <img src={EMOJI_MAP[r.key]?.src} alt="" loading="lazy" decoding="async" />
+                </button>
+              ))}
+            <span className="q-chat__actsep" aria-hidden="true" />
             <button type="button" className="q-chat__recall" onClick={onReply}>
               回复
             </button>
@@ -2080,7 +2227,7 @@ function MessageRow({
                 <button
                   type="button"
                   className="q-chat__plus"
-                  aria-label="回应一下"
+                  aria-label="更多回应"
                   aria-expanded={pickOpen}
                   onClick={() => setPickOpen((v) => !v)}
                 >
