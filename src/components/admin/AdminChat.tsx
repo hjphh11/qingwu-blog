@@ -149,6 +149,7 @@ function timeAgo(ms: number): string {
 function kindLabel(kind: string): string {
   if (kind === 'image') return '[图片]';
   if (kind === 'video') return '[视频]';
+  if (kind === 'audio') return '[语音]';
   if (kind === 'file') return '[文件]';
   return '';
 }

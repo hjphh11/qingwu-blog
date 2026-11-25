@@ -11,6 +11,7 @@ import {
   CircleAlert,
   ImageUp as ImageIcon,
   LoaderCircle,
+  Mic,
   Search,
   Send,
   Smile,
@@ -22,6 +23,7 @@ import ChatAside from './chat/ChatAside';
 import ChatInfo from './chat/ChatInfo';
 import ChatSearch from './chat/ChatSearch';
 import PersonCard, { hostOf } from './chat/PersonCard';
+import VoiceBubble from './chat/VoiceBubble';
 import { useDialogFocus } from '../lib/useDialogFocus';
 import { renderRich } from '../lib/richText';
 import { EMOJI_MAP } from '../lib/emojis';
@@ -265,6 +267,19 @@ function mergeMessages(
 const SNAP_KEY = 'qingwu:chat-snap';
 const SNAP_TTL = 90 * 1000;
 const SNAP_MAX = 30;
+
+/** 秒数 → 「0:07」。语音最长 60 秒，不处理小时 */
+function mmss(sec: number): string {
+  const v = Math.max(0, Math.round(sec));
+  return `${Math.floor(v / 60)}:${String(v % 60).padStart(2, '0')}`;
+}
+
+/* ——— 语音消息 ———
+   60 秒是微信的上限，也是「点一下开始、再点一下结束」这个交互能忍的最长时长；
+   32kbps 的 opus 一分钟约 240KB，比一段视频小两个数量级。
+   桌面端为主，所以不用「按住说话」——那个手势在鼠标上很不自然（松开点偏就白录）。 */
+const REC_MAX_SEC = 60;
+const REC_BPS = 32_000;
 
 /* ——— 桌面三栏的列宽（拖分隔条改的就是这两个数） ———
    默认值就是设计稿的 272 / 312；边界是「再小就放不下内容」的实测值：
@@ -673,6 +688,18 @@ export default function ChatRoom() {
   /** 已经传好、还没发出去的那张图 / 那段视频 */
   const [pendingMedia, setPendingMedia] = useState<ChatMedia | null>(null);
   const [uploading, setUploading] = useState(false);
+  /**
+   * 录音状态。`null` = 没在录；否则是已录秒数（界面上那个 0:07）。
+   *
+   * 秒数用 state 是为了让计时器能驱动界面；真正的时长在停止时用时间戳算
+   * （`setInterval` 会被后台标签页节流，累加它会少算好几秒）。
+   */
+  const [recSec, setRecSec] = useState<number | null>(null);
+  const recRef = useRef<MediaRecorder | null>(null);
+  const recChunks = useRef<Blob[]>([]);
+  const recStream = useRef<MediaStream | null>(null);
+  const recTimer = useRef<number | null>(null);
+  const recT0 = useRef(0);
   const fileRef = useRef<HTMLInputElement>(null);
 
   /** 已见过的最新 id —— poll 的游标（有快照就从快照续上，第一条 poll 才不会重复拉） */
@@ -798,7 +825,15 @@ export default function ChatRoom() {
       const plain = last.body.replace(/\s+/g, ' ').trim();
       const excerptOf = (m: ChatMessage) =>
         m.body.replace(/\s+/g, ' ').trim() ||
-        (m.media ? (m.media.kind === 'video' ? '[视频]' : m.media.kind === 'file' ? '[文件]' : '[图片]') : '');
+        (m.media
+          ? m.media.kind === 'video'
+            ? '[视频]'
+            : m.media.kind === 'file'
+              ? '[文件]'
+              : m.media.kind === 'audio'
+                ? '[语音]'
+                : '[图片]'
+          : '');
       /**
        * 被 @ 的那条优先当标题。
        *
@@ -1141,6 +1176,139 @@ export default function ChatRoom() {
     }
   };
 
+  /**
+   * 挑一个浏览器认的录音容器。
+   *
+   * Chrome / Android 只有 `audio/webm`（opus），Safari / iOS 只有 `audio/mp4`
+   * —— 两边都不支持对方的那个，所以**必须问** `isTypeSupported`，
+   * 不能写死一个然后指望它到处能用。返回空串就让 MediaRecorder 自己挑默认。
+   */
+  const pickRecMime = (): string => {
+    if (typeof MediaRecorder === 'undefined') return '';
+    const list = ['audio/webm;codecs=opus', 'audio/webm', 'audio/mp4', 'audio/ogg'];
+    for (const m of list) {
+      try {
+        if (MediaRecorder.isTypeSupported?.(m)) return m;
+      } catch {
+        /* 老浏览器没有这个静态方法：直接走默认 */
+      }
+    }
+    return '';
+  };
+
+  const stopRecTracks = () => {
+    recStream.current?.getTracks().forEach((t) => t.stop());
+    recStream.current = null;
+  };
+
+  /** 停止录音并上传。`stop()` 之后由 `onstop` 收尾（那里才拿得到完整数据） */
+  const stopRec = () => {
+    if (recTimer.current !== null) {
+      window.clearInterval(recTimer.current);
+      recTimer.current = null;
+    }
+    const mr = recRef.current;
+    if (mr && mr.state !== 'inactive') mr.stop();
+  };
+
+  /** 录音 → 上传 → 直接发出去（语音没有「待发送」预览这一步，和微信一致） */
+  const sendVoice = async (blob: Blob, sec: number) => {
+    setUploading(true);
+    try {
+      const dataUrl = await readAsDataURL(blob);
+      const up = await uploadMedia(dataUrl, { duration: sec });
+      if (!up.ok) {
+        setTip({ kind: 'warn', text: up.message });
+        return;
+      }
+      const res = await send('', { mediaId: up.media.id });
+      if (!res.ok) {
+        setTip({ kind: 'warn', text: res.message });
+        if (res.reason === 'login') setLoginOpen(true);
+        return;
+      }
+      setMessages((prev) => mergeMessages(prev, [res.message], []));
+      lastIdRef.current = Math.max(lastIdRef.current, res.message.id);
+      requestAnimationFrame(() => scrollToBottom(true));
+      void refreshWho();
+    } catch {
+      setTip({ kind: 'warn', text: '这段语音没传上去，再录一次？' });
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const startRec = async () => {
+    if (!signedIn) {
+      setLoginOpen(true);
+      return;
+    }
+    if (typeof MediaRecorder === 'undefined' || !navigator.mediaDevices?.getUserMedia) {
+      setTip({ kind: 'warn', text: '这个浏览器不支持录音，换个浏览器或者发文字吧' });
+      return;
+    }
+    setTip(null);
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      recStream.current = stream;
+      const mime = pickRecMime();
+      const mr = new MediaRecorder(stream, {
+        ...(mime ? { mimeType: mime } : {}),
+        audioBitsPerSecond: REC_BPS,
+      });
+
+      recChunks.current = [];
+      mr.ondataavailable = (e) => {
+        if (e.data.size > 0) recChunks.current.push(e.data);
+      };
+      mr.onstop = () => {
+        const sec = Math.max(1, Math.round((Date.now() - recT0.current) / 1000));
+        const blob = new Blob(recChunks.current, { type: mr.mimeType || 'audio/webm' });
+        recRef.current = null;
+        setRecSec(null);
+        stopRecTracks();
+        // 小于 ~1KB 基本是「点错了两下」，传上去只是一段杂音
+        if (blob.size < 1200) {
+          setTip({ kind: 'warn', text: '这段太短了，说一句再停？' });
+          return;
+        }
+        void sendVoice(blob, sec);
+      };
+
+      recT0.current = Date.now();
+      recRef.current = mr;
+      setRecSec(0);
+      mr.start();
+
+      recTimer.current = window.setInterval(() => {
+        const sec = Math.round((Date.now() - recT0.current) / 1000);
+        setRecSec(sec);
+        // 到上限自动停：不然录到 5 分钟才发现传不上去
+        if (sec >= REC_MAX_SEC) stopRec();
+      }, 250);
+    } catch {
+      stopRecTracks();
+      setRecSec(null);
+      setTip({ kind: 'warn', text: '没拿到麦克风权限，看看浏览器地址栏那个小锁' });
+    }
+  };
+
+  const toggleRec = () => {
+    if (recSec !== null) stopRec();
+    else void startRec();
+  };
+
+  // 切走 / 卸载时收干净：麦克风不关会一直亮着那个红点
+  useEffect(
+    () => () => {
+      if (recTimer.current !== null) window.clearInterval(recTimer.current);
+      const mr = recRef.current;
+      if (mr && mr.state !== 'inactive') mr.stop();
+      recStream.current?.getTracks().forEach((t) => t.stop());
+    },
+    [],
+  );
+
   const doSend = async () => {
     /**
      * 编辑态：这次「发送」其实是**保存修改**。
@@ -1376,6 +1544,8 @@ export default function ChatRoom() {
             mentionedMe: false,
             editedAt: null,
             media: null,
+            // 搜索结果只带正文，不带卡片：滚过去之后那次 poll 会把真正的媒体/链接补上
+            link: null,
           },
         ],
         [],
@@ -1840,8 +2010,31 @@ export default function ChatRoom() {
             </div>
           )}
 
-          {(editing || replyTo || typingNames.length > 0 || pendingMedia || tip) && (
+          {(editing ||
+            replyTo ||
+            typingNames.length > 0 ||
+            pendingMedia ||
+            tip ||
+            recSec !== null) && (
             <div className="q-chat__above">
+              {/*
+                录音条：只在录的时候存在。它替换的是「你正在说什么」这件事 ——
+                没有反馈的话，用户不知道自己到底有没有在录。
+              */}
+              {recSec !== null && (
+                <div className="q-chat__rec" role="status">
+                  <i className="q-chat__rec__dot" aria-hidden="true" />
+                  <b className="q-chat__rec__t">{mmss(recSec)}</b>
+                  <span className="q-chat__rec__hint">
+                    {recSec >= REC_MAX_SEC - 5
+                      ? `最多 ${REC_MAX_SEC} 秒，马上就到`
+                      : `最长 ${REC_MAX_SEC} 秒 · 再点一下麦克风结束`}
+                  </span>
+                  <button type="button" className="q-chat__rec__end" onClick={stopRec}>
+                    结束并发送
+                  </button>
+                </div>
+              )}
               {editing && (
                 <div className="q-chat__replybar is-editing">
                   <span className="q-chat__replybar__t">
@@ -1997,6 +2190,16 @@ export default function ChatRoom() {
                     ) : (
                       <MorphIcon icon={ImageIcon} size={17} color="currentColor" />
                     )}
+                  </button>
+                  <button
+                    type="button"
+                    className={`q-chat__tool${recSec !== null ? ' is-rec' : ''}`}
+                    aria-label={recSec !== null ? '结束录音并发送' : '录一段语音'}
+                    aria-pressed={recSec !== null}
+                    onClick={toggleRec}
+                    disabled={uploading || sending}
+                  >
+                    <MorphIcon icon={Mic} size={17} color="currentColor" />
                   </button>
                   <input
                     ref={fileRef}
@@ -2487,7 +2690,11 @@ function MessageRow({
             ) : (
               /* data-zoomable：交给全站灯箱接管点击，点开停在本站，
                  能 Esc 关、能翻组里的下一张 */
-              <div className={`q-chat__media is-${m.media.kind}`} data-zoomable>
+              <div
+                className={`q-chat__media is-${m.media.kind}`}
+                /* 只有图需要交给人像灯箱；语音和视频自己带控件，挂上去反而抢点击 */
+                data-zoomable={m.media.kind === 'image' ? '' : undefined}
+              >
                 {m.media.kind === 'image' ? (
                   /**
                    * 图片本身可聚焦、可用 Enter 打开。
@@ -2504,6 +2711,12 @@ function MessageRow({
                     tabIndex={0}
                     role="button"
                     aria-label="查看大图"
+                  />
+                ) : m.media.kind === 'audio' ? (
+                  <VoiceBubble
+                    src={mediaSrc(m.media)}
+                    duration={m.media.duration}
+                    mine={m.mine}
                   />
                 ) : (
                   <video src={mediaSrc(m.media)} controls playsInline preload="metadata" />
@@ -2526,6 +2739,42 @@ function MessageRow({
               <span>{m.quote.excerpt || '（空）'}</span>
             </div>
           )}
+          {/*
+            链接预览卡片。
+            服务端抓到 OG 才有（在 bubblewrap 里、气泡外面：它是「这条消息指向的东西」，
+            不属于这条消息本身）。点开是新标签页，`rel=noopener` 不能省。
+          */}
+          {m.link && (
+            <a
+              className="q-chat__link"
+              href={m.link.url}
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              <span className="q-chat__link__body">
+                <b className="q-chat__link__site">{m.link.site || hostOf(m.link.url)}</b>
+                <span className="q-chat__link__title">{m.link.title || m.link.url}</span>
+                {m.link.description && (
+                  <span className="q-chat__link__desc">{m.link.description}</span>
+                )}
+              </span>
+              {m.link.image && (
+                <img
+                  className="q-chat__link__img"
+                  src={m.link.image}
+                  alt=""
+                  loading="lazy"
+                  decoding="async"
+                  /* 第三方图床按 referer 拦外链的不少；referrerPolicy 能救回一大半 */
+                  referrerPolicy="no-referrer"
+                  onError={(e) => {
+                    e.currentTarget.style.display = 'none';
+                  }}
+                />
+              )}
+            </a>
+          )}
+
           {m.status === 'pending' && (
             <span className="q-chat__pending" title="正在过一遍审核，稍等一下">
               等一等

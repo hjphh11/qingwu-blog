@@ -46,6 +46,8 @@
 .qhidden .q-proj-sweep,
 .qhidden .q-wall__tile::before,
 .qhidden .q-chat__typing i,
+.qhidden .q-chat__tool.is-rec,
+.qhidden .q-chat__rec__dot,
 .qhidden .q-wall__spinner {
   animation-play-state: paused !important;
 }
@@ -78,6 +80,14 @@
   .q-chat__typing i {
     animation: none !important;
     opacity: 0.6;
+  }
+  /* 录音的脉动只靠颜色也能看懂（按钮变红 + 计时条上的秒数在走） */
+  .q-chat__tool.is-rec,
+  .q-chat__rec__dot {
+    animation: none !important;
+  }
+  .q-chat__rec__dot {
+    opacity: 1;
   }
   /* 提示小框的入场位移：只保留出现，不做上浮 */
   .q-chat__toast {

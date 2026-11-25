@@ -83,6 +83,8 @@ export {
   Pin,
   Download,
   FileText,
+  // 语音消息
+  Mic,
   // 账号页（上传头像 / 定位留言 / 站长徽章）
   ImageUp,
   RotateCcw,

@@ -23,12 +23,49 @@ import type { Env } from '../types';
 import { json } from '../util';
 import { sessionUser } from '../auth/store';
 
-/** 上限（解码后的字节）。有 R2 时放宽 —— R2 出网不计费，且没有单行大小限制 */
-const LIMIT_SQLITE = { image: 1024 * 1024, video: 5 * 1024 * 1024, file: 5 * 1024 * 1024 } as const;
-const LIMIT_R2 = { image: 4 * 1024 * 1024, video: 32 * 1024 * 1024, file: 5 * 1024 * 1024 } as const;
+/**
+ * 上限（解码后的字节）。有 R2 时放宽 —— R2 出网不计费，且没有单行大小限制。
+ *
+ * 语音这一档按「60 秒 × 32kbps ≈ 240KB」留了很宽的余量：录音端压过比特率，
+ * 真到上限说明那段录音是异常的（或者浏览器忽略了 audioBitsPerSecond）。
+ */
+const LIMIT_SQLITE = {
+  image: 1024 * 1024,
+  video: 5 * 1024 * 1024,
+  file: 5 * 1024 * 1024,
+  audio: 2 * 1024 * 1024,
+} as const;
+const LIMIT_R2 = {
+  image: 4 * 1024 * 1024,
+  video: 32 * 1024 * 1024,
+  file: 5 * 1024 * 1024,
+  audio: 8 * 1024 * 1024,
+} as const;
+
+/** 大小提示里的中文名 */
+const KIND_CN: Record<string, string> = { image: '图片', video: '视频', file: '文件', audio: '语音' };
 
 const IMAGE_MIME = new Set(['image/webp', 'image/jpeg', 'image/png', 'image/gif']);
 const VIDEO_MIME = new Set(['video/mp4', 'video/webm', 'video/quicktime']);
+
+/**
+ * 语音。
+ *
+ * 只收浏览器 MediaRecorder 真会产出的那几种：Chrome/Android 是 `audio/webm`
+ * （opus）、Safari/iOS 是 `audio/mp4`（录音不支持 webm）；ogg 给 Firefox 留门。
+ *
+ * ⚠️ 都是**容器**类型，不是编码：`audio/webm;codecs=opus` 里的 `;codecs=`
+ * 会在前端被剥掉再上传（见 lib/chat.ts 的 normalizeMime），后端也容错。
+ */
+const AUDIO_MIME = new Set([
+  'audio/webm',
+  'audio/mp4',
+  'audio/m4a',
+  'audio/x-m4a',
+  'audio/ogg',
+  'audio/mpeg',
+  'audio/aac',
+]);
 
 /**
  * 任意文件：**白名单**，不是黑名单。
@@ -51,9 +88,10 @@ const FILE_MIME = new Set([
 ]);
 
 /** 只接受白名单里的 mime —— 存进来的字节将来会以 `content-type` 原样吐出去 */
-function kindOf(mime: string): 'image' | 'video' | 'file' | null {
+function kindOf(mime: string): 'image' | 'video' | 'file' | 'audio' | null {
   if (IMAGE_MIME.has(mime)) return 'image';
   if (VIDEO_MIME.has(mime)) return 'video';
+  if (AUDIO_MIME.has(mime)) return 'audio';
   if (FILE_MIME.has(mime)) return 'file';
   return null;
 }
@@ -66,6 +104,13 @@ const EXT: Record<string, string> = {
   'video/mp4': 'mp4',
   'video/webm': 'webm',
   'video/quicktime': 'mov',
+  'audio/webm': 'weba',
+  'audio/mp4': 'm4a',
+  'audio/m4a': 'm4a',
+  'audio/x-m4a': 'm4a',
+  'audio/ogg': 'ogg',
+  'audio/mpeg': 'mp3',
+  'audio/aac': 'aac',
   'application/pdf': 'pdf',
   'application/zip': 'zip',
   'text/plain': 'txt',
@@ -246,7 +291,14 @@ export async function uploadMedia(request: Request, env: Env): Promise<Response>
   }
 
   const raw = String(payload.data ?? '').trim();
-  const m = /^data:([a-z0-9/+.-]+);base64,(.+)$/i.exec(raw);
+  /**
+   * `data:<mime>[;<param>...];base64,<data>`
+   *
+   * 原来只认 `data:image/png;base64,` 这种最简形式 —— 而 MediaRecorder 产出的
+   * Blob 类型是 `audio/webm;codecs=opus`，多一段 `;codecs=opus` 就整个失配，
+   * 传语音会得到「只能传图片、视频或文档」。参数段要吃掉。
+   */
+  const m = /^data:([a-z0-9/+.-]+)(?:;[a-z0-9=._-]+)*;base64,(.+)$/i.exec(raw);
   if (!m) {
     return json({ ok: false, reason: 'bad_format', message: '只能传图片、视频或文档' }, 400);
   }
@@ -258,7 +310,8 @@ export async function uploadMedia(request: Request, env: Env): Promise<Response>
       {
         ok: false,
         reason: 'bad_type',
-        message: '这个格式不支持：图片 jpg/png/webp/gif、视频 mp4/webm、文档 pdf/zip/md/txt/csv/office',
+        message:
+          '这个格式不支持：图片 jpg/png/webp/gif、视频 mp4/webm、语音 webm/m4a、文档 pdf/zip/md/txt/csv/office',
       },
       400,
     );
@@ -276,7 +329,7 @@ export async function uploadMedia(request: Request, env: Env): Promise<Response>
       {
         ok: false,
         reason: 'too_large',
-        message: `${kind === 'image' ? '图片' : kind === 'video' ? '视频' : '文件'}不能超过 ${mb} MB`,
+        message: `${KIND_CN[kind] ?? '文件'}不能超过 ${mb} MB`,
       },
       413,
     );
@@ -322,7 +375,8 @@ export async function uploadMedia(request: Request, env: Env): Promise<Response>
         url ? '' : b64,
         num(payload.width),
         num(payload.height),
-        kind === 'video' ? num(payload.duration) : null,
+        // 视频与语音都要时长：前者是进度条，后者是气泡上那个「0:12」
+        kind === 'video' || kind === 'audio' ? num(payload.duration) : null,
         me.id,
         now,
         url,
@@ -339,7 +393,7 @@ export async function uploadMedia(request: Request, env: Env): Promise<Response>
         bytes,
         width: num(payload.width),
         height: num(payload.height),
-        duration: kind === 'video' ? num(payload.duration) : null,
+        duration: kind === 'video' || kind === 'audio' ? num(payload.duration) : null,
         /** 只有 kind='file' 才有；前端下载卡片显示这个名字 */
         filename: kind === 'file' ? cleanName(payload.filename, mime) : null,
         /** 非空 = 图在 R2，前端直接用；空 = 走 /chat/media/:id */

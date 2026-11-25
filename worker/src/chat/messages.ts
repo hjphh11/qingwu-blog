@@ -21,6 +21,7 @@ import { sessionUser, type AccountRow } from '../auth/store';
 import { moderateComment } from '../admin/ai';
 import { screen, type ScreenCtx } from './screen';
 import { getPin } from './pin';
+import { extractUrl, loadPreviews, warmPreview, type LinkPreview } from './link';
 
 /** 正文上限。和 screen.ts 的 MAX_BODY 对齐 —— 那边是审核判据，这里是硬校验 */
 const BODY_MAX = 500;
@@ -109,10 +110,12 @@ interface MessageRow {
   /** 邮箱前缀 —— display_name 为空时的署名兜底（与 comments.ts 的口径一致） */
   acc_prefix: string | null;
   email_hash: string | null;
+  /** 这条消息里第一个链接（发送时算好存下）；null = 没有链接 */
+  link_url: string | null;
 }
 
 const COLS = `m.id, m.account_id, m.body, m.status, m.ts, m.edited_at, m.origin, m.kind, m.image_id,
-              m.reply_to_id, m.mentions,
+              m.reply_to_id, m.mentions, m.link_url,
               m.remote_nick, m.remote_avatar, m.remote_site,
               a.display_name AS acc_name, a.avatar_url AS acc_avatar,
               a.role AS acc_role, a.site_url AS acc_site, a.email_hash AS email_hash,
@@ -292,6 +295,7 @@ function toItem(
   reactions: Reaction[] = [],
   quote?: Quote,
   media?: MediaInfo,
+  link?: LinkPreview,
 ): Record<string, unknown> {
   const remote = r.origin === 'remote';
   // 本地消息三档头像兜底：账号档案 → 邮箱哈希现拼（和评论同一套，不返回 emailHash 本身）
@@ -360,6 +364,8 @@ function toItem(
           bytes: media.bytes ?? null,
         }
       : null,
+    /** 链接预览（抓不到就是 null，前端据此不画卡片） */
+    link: link ?? null,
     /** 有值 = 显示「已编辑」 */
     editedAt: r.edited_at ? new Date(r.edited_at).toISOString() : null,
   };
@@ -431,6 +437,10 @@ export async function getHistory(request: Request, env: Env): Promise<Response> 
       env,
       page.map((r) => r.image_id).filter((n): n is number => typeof n === 'number' && n > 0),
     );
+    const links = await loadPreviews(
+      env,
+      page.map((r) => r.link_url).filter((u): u is string => typeof u === 'string' && u.length > 0),
+    );
 
     return json({
       ok: true,
@@ -442,6 +452,7 @@ export async function getHistory(request: Request, env: Env): Promise<Response> 
           reacts.get(r.id),
           r.reply_to_id ? quotes.get(r.reply_to_id) : undefined,
           r.image_id ? medias.get(r.image_id) : undefined,
+          r.link_url ? links.get(r.link_url) : undefined,
         ),
       ),
       hasMore,
@@ -547,6 +558,10 @@ export async function pollChat(request: Request, env: Env): Promise<Response> {
       env,
       all.map((r) => r.image_id).filter((n): n is number => typeof n === 'number' && n > 0),
     );
+    const links = await loadPreviews(
+      env,
+      all.map((r) => r.link_url).filter((u): u is string => typeof u === 'string' && u.length > 0),
+    );
 
     /**
      * 正在输入的人。
@@ -616,6 +631,7 @@ export async function pollChat(request: Request, env: Env): Promise<Response> {
           reacts.get(r.id),
           r.reply_to_id ? quotes.get(r.reply_to_id) : undefined,
           r.image_id ? medias.get(r.image_id) : undefined,
+          r.link_url ? links.get(r.link_url) : undefined,
         ),
       ),
       recalled,
@@ -825,9 +841,18 @@ export async function sendMessage(
     // hold → pending（只有自己可见）；flag / pass → visible
     const status = verdict.action === 'hold' ? 'pending' : 'visible';
 
+    /**
+     * 这条消息里的第一个链接。
+     *
+     * 在这里算、存下来的原因：poll 每 2.5 秒把一屏消息重发一次，
+     * 每次都跑一遍正则太浪费；而且存下来之后「预览抓不到」也不会
+     * 让卡片在下次轮询时忽然消失。
+     */
+    const linkUrl = extractUrl(body);
+
     const res = await env.DB.prepare(
-      `INSERT INTO chat_messages (account_id, body, status, ts, updated_at, ip_hash, origin, reply_to_id, mentions, kind, image_id)
-       VALUES (?, ?, ?, ?, ?, ?, 'local', ?, ?, ?, ?)`,
+      `INSERT INTO chat_messages (account_id, body, status, ts, updated_at, ip_hash, origin, reply_to_id, mentions, kind, image_id, link_url)
+       VALUES (?, ?, ?, ?, ?, ?, 'local', ?, ?, ?, ?, ?)`,
     )
       .bind(
         me.id,
@@ -840,10 +865,20 @@ export async function sendMessage(
         mentions.length ? JSON.stringify(mentions) : null,
         media ? media.kind : 'text',
         media ? media.id : null,
+        linkUrl || null,
       )
       .run();
 
     const id = Number(res.meta.last_row_id);
+
+    /**
+     * 抓预览 —— 同样**不在请求路径上**。
+     *
+     * 用户点发送只该等一个数据库写入；抓网页是四秒起步的事，
+     * 而且经常抓不到（人家 403）。等它等于每条带链接的消息都卡三秒。
+     * 抓到之后写进缓存表，下一次 poll 就把卡片带出来了。
+     */
+    if (linkUrl) ctx.waitUntil(warmPreview(env, linkUrl));
 
     /**
      * 异步审核 —— **不在请求路径上**。
@@ -881,6 +916,12 @@ export async function sendMessage(
         reactions: [],
         quote: quote ?? null,
         mentionedMe: false,
+        /**
+         * 刚发出去这条还没有卡片：抓取是异步的。
+         * 直接给 null 而不是「正在抓」——前端不需要为一张卡片维护第三种状态，
+         * 2.5 秒后的那次 poll 会把它补上。
+         */
+        link: null,
         media: media
           ? {
               id: media.id,

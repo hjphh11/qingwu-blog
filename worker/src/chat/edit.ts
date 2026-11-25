@@ -17,6 +17,7 @@ import { json } from '../util';
 import { sessionUser } from '../auth/store';
 import { screen, type ScreenCtx } from './screen';
 import { judgeLater, trustedHosts } from './messages';
+import { extractUrl, warmPreview } from './link';
 
 /** 编辑窗口。和前端按钮的显示条件必须一致（两边都写 5 分钟） */
 const EDIT_WINDOW = 5 * 60 * 1000;
@@ -123,12 +124,22 @@ export async function editMessage(
     );
   }
 
+  /**
+   * 正文改了，链接也可能变了。
+   *
+   * 不清空旧值的话，把「https://a.com」改成「https://b.com」之后，
+   * 气泡下面仍挂着 a 的卡片 —— 比没有卡片更让人迷惑。
+   */
+  const linkUrl = extractUrl(body);
+
   try {
     await env.DB.prepare(
-      'UPDATE chat_messages SET body = ?, edited_at = ?, updated_at = ? WHERE id = ?',
+      'UPDATE chat_messages SET body = ?, link_url = ?, edited_at = ?, updated_at = ? WHERE id = ?',
     )
-      .bind(body, now, now, id)
+      .bind(body, linkUrl || null, now, now, id)
       .run();
+
+    if (linkUrl) ctx.waitUntil(warmPreview(env, linkUrl));
   } catch (err) {
     console.error('[chat] 编辑失败:', err instanceof Error ? err.message : err);
     return json({ ok: false, reason: 'storage', message: '没改成，稍后再试' }, 502);

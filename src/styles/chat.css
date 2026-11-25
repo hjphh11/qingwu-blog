@@ -1464,6 +1464,228 @@
     outline-offset: -2px;
   }
 
+  /* ——— 链接预览卡片 ———
+     挂在气泡**外面**（它是「这条消息指向的东西」，不是消息本身），
+     所以宽度自己定，不跟着气泡走。 */
+  .q-chat__link {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.6rem;
+    width: min(21rem, 100%);
+    /* 一条只有短链接的消息，气泡可能只有 240px —— 卡片跟着压成一条线就没法读了 */
+    min-width: 12rem;
+    margin-top: 0.3rem;
+    padding: 0.55rem 0.6rem;
+    border: 1px solid color-mix(in srgb, var(--color-ink) 9%, transparent);
+    border-radius: 0.85rem;
+    background: rgba(253, 246, 240, 0.94);
+    text-decoration: none;
+    transition: border-color var(--dur-micro) ease;
+  }
+
+  .q-chat__link:hover {
+    border-color: color-mix(in srgb, var(--color-crimson) 34%, transparent);
+  }
+
+  .q-chat__link:focus-visible {
+    outline: 2px solid var(--color-crimson);
+    outline-offset: 2px;
+  }
+
+  .q-chat__link__body {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.12rem;
+  }
+
+  .q-chat__link__site {
+    font-size: 0.6875rem;
+    font-weight: 600;
+    color: var(--color-subtle);
+  }
+
+  /* 标题最多两行、描述最多两行：一屏里几张卡片，长标题会把消息流撑散 */
+  .q-chat__link__title {
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+    font-size: 0.8125rem;
+    font-weight: 600;
+    line-height: 1.5;
+    color: var(--color-ink);
+  }
+
+  .q-chat__link__desc {
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+    font-size: 0.71875rem;
+    line-height: 1.6;
+    color: var(--color-muted);
+  }
+
+  .q-chat__link__img {
+    flex: none;
+    width: 3.4rem;
+    height: 3.4rem;
+    border-radius: 0.55rem;
+    object-fit: cover;
+  }
+
+  /* ——— 语音消息 ———
+     外面那层 `.q-chat__media` 的白卡片壳对语音没意义（它自己是胶囊），
+     所以只留定位，把边框和阴影交给 `.q-voice`。 */
+  .q-chat__media.is-audio {
+    max-width: min(17rem, 100%);
+    overflow: visible;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+    box-shadow: none;
+  }
+
+  .q-voice {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    width: min(15rem, 100%);
+    padding: 0.42rem 0.6rem 0.42rem 0.42rem;
+    border: 1px solid color-mix(in srgb, var(--color-ink) 9%, transparent);
+    border-radius: 0.9rem;
+    background: rgba(253, 246, 240, 0.92);
+  }
+
+  /* 自己的语音：淡绯红底，和右侧的气泡一族 */
+  .q-voice.is-mine {
+    border-color: color-mix(in srgb, var(--color-crimson) 20%, transparent);
+    background: color-mix(in srgb, var(--color-rose) 34%, #fff);
+  }
+
+  .q-voice__play {
+    flex: none;
+    display: grid;
+    place-items: center;
+    width: 1.85rem;
+    height: 1.85rem;
+    border-radius: 9999px;
+    background: var(--color-crimson);
+    color: #fff;
+    transition: transform var(--dur-micro) ease;
+  }
+
+  .q-voice__play:hover {
+    transform: scale(1.06);
+  }
+
+  .q-voice__play:focus-visible {
+    outline: 2px solid var(--color-crimson);
+    outline-offset: 2px;
+  }
+
+  /* 波形本身就是第二颗播放键：整条都在同一个盒子里，指针不用瞄准那颗小圆 */
+  .q-voice__wave {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    /* 24px：它是一整条可点的按钮，得够 WCAG 2.5.8 的 24×24 */
+    height: 1.5rem;
+    padding: 0;
+    cursor: pointer;
+  }
+
+  .q-voice__wave i {
+    flex: 1;
+    min-width: 2px;
+    border-radius: 9999px;
+    background: var(--color-crimson);
+    transition: opacity var(--dur-micro) ease;
+  }
+
+  .q-voice__t {
+    flex: none;
+    font-size: 0.6875rem;
+    font-weight: 600;
+    color: var(--color-muted);
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* ——— 录音中：按钮脉动 + 一条计时条 ——— */
+  .q-chat__tool.is-rec {
+    background: color-mix(in srgb, var(--color-crimson) 16%, transparent);
+    color: var(--color-crimson);
+    animation: q-rec-pulse 1.5s ease-in-out infinite;
+  }
+
+  @keyframes q-rec-pulse {
+    0%,
+    100% {
+      box-shadow: 0 0 0 0 color-mix(in srgb, var(--color-crimson) 34%, transparent);
+    }
+    60% {
+      box-shadow: 0 0 0 6px color-mix(in srgb, var(--color-crimson) 0%, transparent);
+    }
+  }
+
+  .q-chat__rec {
+    display: flex;
+    align-items: center;
+    gap: 0.45rem;
+    padding: 0.35rem 0.55rem;
+    border-radius: 0.75rem;
+    background: color-mix(in srgb, var(--color-crimson) 9%, transparent);
+    font-size: 0.71875rem;
+    color: var(--color-muted);
+  }
+
+  .q-chat__rec__dot {
+    flex: none;
+    width: 0.45rem;
+    height: 0.45rem;
+    border-radius: 9999px;
+    background: var(--color-crimson);
+    animation: q-rec-blink 1.2s ease-in-out infinite;
+  }
+
+  @keyframes q-rec-blink {
+    0%,
+    100% {
+      opacity: 0.3;
+    }
+    50% {
+      opacity: 1;
+    }
+  }
+
+  .q-chat__rec__t {
+    flex: none;
+    font-variant-numeric: tabular-nums;
+    color: var(--color-crimson);
+  }
+
+  .q-chat__rec__hint {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+  }
+
+  .q-chat__rec__end {
+    flex: none;
+    min-height: 1.5rem;
+    padding: 0 0.45rem;
+    border-radius: var(--radius-pill);
+    background: var(--color-crimson);
+    font-size: 0.71875rem;
+    font-weight: 600;
+    color: #fff;
+  }
+
   /* ——— 文件卡片 ——— */
   .q-chat__file {
     display: flex;

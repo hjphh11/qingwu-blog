@@ -31,7 +31,8 @@ export interface Quote {
 /** 图片 / 视频的元信息 */
 export interface ChatMedia {
   id: number;
-  kind: 'image' | 'video' | 'file';
+  /** audio = 语音消息（录音上传），duration 是秒数 */
+  kind: 'image' | 'video' | 'file' | 'audio';
   width: number | null;
   height: number | null;
   duration: number | null;
@@ -51,6 +52,16 @@ export function mediaUrl(id: number): string {
 /** 取真正该用的地址：优先 R2，兜底走 worker */
 export function mediaSrc(m: ChatMedia): string {
   return m.url || mediaUrl(m.id);
+}
+
+/** 链接预览（服务端抓的 OG，抓不到就是 null） */
+export interface LinkPreview {
+  url: string;
+  title: string;
+  description: string;
+  image: string;
+  /** 站点名（og:site_name，缺省是域名） */
+  site: string;
 }
 
 export interface ChatMessage {
@@ -80,8 +91,10 @@ export interface ChatMessage {
   mentionedMe: boolean;
   /** 最后一次编辑时间（ISO）；null = 没改过 */
   editedAt: string | null;
-  /** 图片 / 视频（null = 纯文字） */
+  /** 图片 / 视频 / 语音（null = 纯文字） */
   media: ChatMedia | null;
+  /** 正文里第一个链接的预览卡片（null = 没有链接，或没抓到） */
+  link: LinkPreview | null;
 }
 
 export interface ChatPage {
@@ -189,6 +202,21 @@ function asMessage(raw: unknown): ChatMessage | null {
         : null,
     mentionedMe: Boolean(r.mentionedMe),
     editedAt: typeof r.editedAt === 'string' && r.editedAt ? r.editedAt : null,
+    link:
+      r.link && typeof r.link === 'object'
+        ? (() => {
+            const ll = r.link as Record<string, unknown>;
+            const url = typeof ll.url === 'string' ? ll.url : '';
+            if (!url) return null;
+            return {
+              url,
+              title: String(ll.title ?? ''),
+              description: String(ll.description ?? ''),
+              image: String(ll.image ?? ''),
+              site: String(ll.site ?? ''),
+            };
+          })()
+        : null,
     media:
       r.media && typeof r.media === 'object'
         ? (() => {
@@ -197,8 +225,18 @@ function asMessage(raw: unknown): ChatMessage | null {
             if (!id) return null;
             return {
               id,
+              /**
+               * 四种 kind 都要显式认。兜底成 image 是最像的默认值（图最多），
+               * 但它会把新加的语音也吃进去 —— 一条语音会渲染成一张指向音频的 `<img>`。
+               */
               kind:
-                mm.kind === 'video' ? ('video' as const) : mm.kind === 'file' ? ('file' as const) : ('image' as const),
+                mm.kind === 'video'
+                  ? ('video' as const)
+                  : mm.kind === 'audio'
+                    ? ('audio' as const)
+                    : mm.kind === 'file'
+                      ? ('file' as const)
+                      : ('image' as const),
               width: Number(mm.width) || null,
               height: Number(mm.height) || null,
               duration: Number(mm.duration) || null,
@@ -376,6 +414,17 @@ export type UploadResult = { ok: true; media: ChatMedia } | { ok: false; message
  * 走 data URL 而不是 multipart：前端本来就要用 canvas 压图（压完拿到 data URL），
  * 再转一次 Blob 纯属绕路。服务端会自己校验 mime 和大小 —— 客户端的限制永远可绕过。
  */
+/**
+ * data URL 里的 mime 收敛成「容器类型」。
+ *
+ * MediaRecorder 产出的 Blob 类型带编码参数（`audio/webm;codecs=opus`），
+ * 原样塞进 data URL 后，后端的白名单和扩展名映射都认不出它。
+ * 编码参数不影响播放（容器里自带），剥掉只有好处。
+ */
+function normalizeMime(dataUrl: string): string {
+  return dataUrl.replace(/^data:([^;,]+)((?:;[^;,]+)*);base64,/i, (_all, mime: string) => `data:${mime};base64,`);
+}
+
 export async function uploadMedia(
   dataUrl: string,
   meta: { width?: number; height?: number; duration?: number; filename?: string } = {},
@@ -385,7 +434,7 @@ export async function uploadMedia(
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({
-        data: dataUrl,
+        data: normalizeMime(dataUrl),
         width: meta.width,
         height: meta.height,
         duration: meta.duration,
