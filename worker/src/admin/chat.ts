@@ -13,10 +13,29 @@
 import type { Env } from '../types';
 import { json } from '../util';
 import type { Admin } from './auth';
+import { RULE_NOTES } from '../chat/screen';
 
 const REPORT_STATUS = new Set(['handled', 'dismissed']);
 /** 封禁时长上限：30 天。再长就不该用「临时禁言」这个工具了 */
 const BAN_MAX_MINUTES = 30 * 24 * 60;
+
+interface RuleStatRow {
+  id: string;
+  hits: number;
+  hurt: number;
+  at: number;
+}
+
+interface AdminMsgRow {
+  id: number;
+  body: string;
+  kind: string;
+  status: string;
+  ts: number;
+  author_id: number;
+  author_name: string | null;
+  reports: number;
+}
 
 interface BanRow {
   id: number;
@@ -80,6 +99,33 @@ export async function getChatOverview(request: Request, env: Env, _admin: Admin)
     }));
   const banRows = (bans.results ?? []) as BanRow[];
 
+  /**
+   * 审核规则的命中 / 误伤。
+   *
+   * `chat_rule_stats` 一直是「只写不读」——清单改哪条、哪条在误伤，全靠猜。
+   * 这里把 `RULE_NOTES` 里**所有**规则都列出来（哪怕命中 0），
+   * 因为「这条从没命中过」本身也是信息：可能已经过时了。
+   */
+  const statRows = await env.DB.prepare(
+    'SELECT rule_id AS id, hits AS hits, hurt AS hurt, updated_at AS at FROM chat_rule_stats',
+  )
+    .all<RuleStatRow>()
+    .catch(() => ({ results: [] as RuleStatRow[] }));
+  const statList = (statRows.results ?? []) as RuleStatRow[];
+  const statMap = new Map(statList.map((r) => [r.id, r]));
+  const rules = Object.keys(RULE_NOTES)
+    .sort()
+    .map((id) => {
+      const r = statMap.get(id);
+      return {
+        id,
+        note: RULE_NOTES[id] ?? '',
+        hits: r?.hits ?? 0,
+        hurt: r?.hurt ?? 0,
+        at: r?.at ?? 0,
+      };
+    });
+
   const rows = (reports.results ?? []) as ReportRow[];
   return json({
     ok: true,
@@ -111,6 +157,7 @@ export async function getChatOverview(request: Request, env: Env, _admin: Admin)
       createdAt: b.created_at,
     })),
     openCount: rows.filter((r) => r.status === 'open').length,
+    rules,
   });
 }
 
@@ -192,4 +239,75 @@ export async function clearChatBan(
 ): Promise<Response> {
   const res = await env.DB.prepare('DELETE FROM chat_bans WHERE account_id = ?').bind(accountId).run();
   return json({ ok: true, removed: res.meta?.changes ?? 0 });
+}
+
+/**
+ * 最近消息（巡查用）。
+ *
+ * 举报是「别人替你发现的」，这一栏是「你自己看一眼」。所以：
+ *   · 已收走的（deleted）不列 —— 它们已经不是「现场」了；
+ *   · 待审的（pending）要列，而且排在最前（那正是需要站长决定的那批）；
+ *   · 每行带上被举报次数，一眼看出哪条已经有人不满。
+ */
+export async function getChatMessages(request: Request, env: Env, _admin: Admin): Promise<Response> {
+  const url = new URL(request.url);
+  const before = Number(url.searchParams.get('before') || '') || 0;
+  const limit = 30;
+
+  const rows = await env.DB.prepare(
+    `SELECT m.id AS id, m.body AS body, m.kind AS kind, m.status AS status, m.ts AS ts,
+            m.account_id AS author_id,
+            COALESCE(NULLIF(a.display_name, ''), substr(a.email, 1, instr(a.email, '@') - 1)) AS author_name,
+            (SELECT COUNT(*) FROM chat_reports r WHERE r.message_id = m.id) AS reports
+       FROM chat_messages m LEFT JOIN accounts a ON a.id = m.account_id
+      WHERE m.status <> 'deleted'${before > 0 ? ' AND m.id < ?' : ''}
+      ORDER BY m.id DESC
+      LIMIT ?`,
+  )
+    .bind(...(before > 0 ? [before, limit + 1] : [limit + 1]))
+    .all<AdminMsgRow>()
+    .catch(() => ({ results: [] as AdminMsgRow[] }));
+
+  const list = (rows.results ?? []) as AdminMsgRow[];
+  const hasMore = list.length > limit;
+  const page = hasMore ? list.slice(0, limit) : list;
+  return json({
+    ok: true,
+    hasMore,
+    messages: page.map((r) => ({
+      id: r.id,
+      body: r.body ?? '',
+      kind: r.kind ?? 'text',
+      status: r.status ?? 'visible',
+      ts: r.ts,
+      authorId: r.author_id ?? 0,
+      authorName: r.author_name || `账号#${r.author_id ?? 0}`,
+      reports: r.reports ?? 0,
+    })),
+  });
+}
+
+/**
+ * 给一条规则记一次「误伤」。
+ *
+ * 后台那一列的意义不是 KPI，而是**敢不敢改清单**：某条规则 hurt 涨得快，
+ * 说明它判得宽，该收窄；一条规则长期 0 命中，说明它可能已经过时。
+ * 单条消息的「这条没问题」将来可以接这里（直接在消息上点），现在先给规则记。
+ */
+export async function markRuleHurt(
+  request: Request,
+  env: Env,
+  _admin: Admin,
+  id: string,
+): Promise<Response> {
+  const ruleId = String(id || '').slice(0, 12);
+  if (!ruleId) return json({ ok: false, reason: 'bad_rule' }, 400);
+  const now = Date.now();
+  await env.DB.prepare(
+    `INSERT INTO chat_rule_stats (rule_id, hits, hurt, updated_at) VALUES (?, 0, 1, ?)
+       ON CONFLICT(rule_id) DO UPDATE SET hurt = hurt + 1, updated_at = excluded.updated_at`,
+  )
+    .bind(ruleId, now)
+    .run();
+  return json({ ok: true });
 }

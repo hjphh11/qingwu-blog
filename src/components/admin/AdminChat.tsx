@@ -1,14 +1,14 @@
 /*
- * 后台 · 长亭（举报与封禁）
+ * 后台 · 长亭
  *
- * 这一页是前台「举报」按钮的另一半。在这之前，举报只落 `chat_reports`，
- * **没有任何读取方** —— 前台说的是「交到站长那儿了」，实际上只有手写 SQL 才看得见。
+ * 三个页签，对应站长真正会做的三件事：
+ *   ① 举报 —— 有人按了那颗按钮，得有人看（在这之前举报只落库、没有读取方）；
+ *   ② 最近消息 —— 举报是「别人替你发现的」，这一栏是自己扫一眼；待审的排最前；
+ *   ③ 审核规则 —— 哪条在命中、哪条在误伤。这页之前 `chat_rule_stats` 只写不读，
+ *      改清单只能靠猜。
  *
- * 三个动作，口径在 worker/src/admin/chat.ts：
- *   · 删消息 = 软删（status='deleted'），前台显示「这条被站长收走了」；
- *     它名下的 open 举报一起标成已处理。
- *   · 忽略 = 只把这条举报关掉，不碰消息（可能只是有人不喜欢听）。
- *   · 封人 = 写 chat_bans，发送时会查；同一账号只留一条。
+ * 三个动作的口径在 worker/src/admin/chat.ts：删消息是软删（前台留一行
+ * 「这条被站长收走了」），封人写 chat_bans（发送时会查）。
  *
  * 为什么不放在评论收件箱里：两套东西的消息模型完全不同（评论有楼层、聊天没有），
  * 混在一页里「删」按钮的含义会飘。
@@ -31,7 +31,6 @@ interface ChatReport {
     ts: number;
     authorId: number;
     authorName: string;
-    authorHash: string;
   } | null;
   reporter: { id: number; name: string };
 }
@@ -44,6 +43,25 @@ interface ChatBan {
   createdAt: number;
 }
 
+interface ChatMsg {
+  id: number;
+  body: string;
+  kind: string;
+  status: string;
+  ts: number;
+  authorId: number;
+  authorName: string;
+  reports: number;
+}
+
+interface Rule {
+  id: string;
+  note: string;
+  hits: number;
+  hurt: number;
+  at: number;
+}
+
 const REASON_LABEL: Record<string, string> = {
   illegal: '违法',
   porn: '色情',
@@ -53,12 +71,20 @@ const REASON_LABEL: Record<string, string> = {
   other: '其他',
 };
 
+const STATUS_LABEL: Record<string, string> = {
+  visible: '正常',
+  pending: '待审',
+  recalled: '已撤回',
+};
+
 /** 封禁时长三个常用档，别让人填分钟数 */
 const BAN_OPTIONS = [
   { label: '1 小时', minutes: 60 },
   { label: '1 天', minutes: 60 * 24 },
   { label: '7 天', minutes: 60 * 24 * 7 },
 ];
+
+type Tab = 'reports' | 'messages' | 'rules';
 
 function timeAgo(ms: number): string {
   const d = Math.max(0, Date.now() - ms);
@@ -76,13 +102,20 @@ function kindLabel(kind: string): string {
 }
 
 export default function AdminChat() {
+  const [tab, setTab] = useState<Tab>('reports');
+
   const [reports, setReports] = useState<ChatReport[] | null>(null);
   const [bans, setBans] = useState<ChatBan[]>([]);
+  const [rules, setRules] = useState<Rule[]>([]);
   const [openCount, setOpenCount] = useState(0);
+
+  const [msgs, setMsgs] = useState<ChatMsg[] | null>(null);
+  const [msgsMore, setMsgsMore] = useState(false);
+
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState('');
   const [toast, setToast] = useState('');
-  const [busy, setBusy] = useState<string>('');
+  const [busy, setBusy] = useState('');
   /** 正在填封禁时长的那条举报（message.id） */
   const [banFor, setBanFor] = useState<number | null>(null);
 
@@ -97,6 +130,7 @@ export default function AdminChat() {
         ok?: boolean;
         reports?: ChatReport[];
         bans?: ChatBan[];
+        rules?: Rule[];
         openCount?: number;
       };
       if (!data.ok) {
@@ -105,6 +139,7 @@ export default function AdminChat() {
       }
       setReports(data.reports ?? []);
       setBans(data.bans ?? []);
+      setRules(data.rules ?? []);
       setOpenCount(data.openCount ?? 0);
       setErr('');
     } catch {
@@ -114,9 +149,31 @@ export default function AdminChat() {
     }
   }, []);
 
+  const loadMsgs = useCallback(async (before = 0) => {
+    try {
+      const res = await fetch(`${API}/chat/messages${before ? `?before=${before}` : ''}`, {
+        credentials: 'include',
+      });
+      const data = (await res.json().catch(() => ({}))) as {
+        ok?: boolean;
+        messages?: ChatMsg[];
+        hasMore?: boolean;
+      };
+      if (!data.ok) return;
+      setMsgs((prev) => (before && prev ? [...prev, ...(data.messages ?? [])] : (data.messages ?? [])));
+      setMsgsMore(Boolean(data.hasMore));
+    } catch {
+      /* 巡查栏读不到不影响举报那两栏 */
+    }
+  }, []);
+
   useEffect(() => {
     void load();
   }, [load]);
+
+  useEffect(() => {
+    if (tab === 'messages' && msgs === null) void loadMsgs();
+  }, [tab, msgs, loadMsgs]);
 
   const flash = (text: string) => {
     setToast(text);
@@ -134,6 +191,7 @@ export default function AdminChat() {
       }
       flash(after);
       await load();
+      if (msgs !== null) await loadMsgs();
     } catch {
       flash('网络好像不太顺');
     } finally {
@@ -181,6 +239,17 @@ export default function AdminChat() {
       '解封了',
     );
 
+  const hurt = (ruleId: string) =>
+    act(
+      `hurt:${ruleId}`,
+      () => fetch(`${API}/chat/rules/${ruleId}/hurt`, { method: 'POST', credentials: 'include' }),
+      `${ruleId} 记了一次误伤`,
+    );
+
+  const confirmDelete = (id: number, ask: string) => {
+    if (window.confirm(`${ask}前台会显示「这条被站长收走了」。`)) void removeMessage(id);
+  };
+
   return (
     <>
       <AdminTop active="chat" />
@@ -189,7 +258,7 @@ export default function AdminChat() {
           <div>
             <h1>长亭</h1>
             <p>
-              被举报的消息在这里处理。删掉的消息不会消失成空白 —— 前台会留一行「这条被站长收走了」。
+              被举报的消息在这里处理。删掉的消息不会变成空白 —— 前台会留一行「这条被站长收走了」。
             </p>
           </div>
           <div className="q-admin-stat-actions">
@@ -197,132 +266,243 @@ export default function AdminChat() {
           </div>
         </div>
 
+        <div className="q-chat-adm__tabs" role="tablist" aria-label="长亭后台分区">
+          <button
+            type="button"
+            role="tab"
+            aria-selected={tab === 'reports'}
+            className={tab === 'reports' ? 'is-on' : ''}
+            onClick={() => setTab('reports')}
+          >
+            举报 {openCount > 0 ? <em>{openCount}</em> : null}
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={tab === 'messages'}
+            className={tab === 'messages' ? 'is-on' : ''}
+            onClick={() => setTab('messages')}
+          >
+            最近消息
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={tab === 'rules'}
+            className={tab === 'rules' ? 'is-on' : ''}
+            onClick={() => setTab('rules')}
+          >
+            审核规则
+          </button>
+        </div>
+
         {err ? <p className="q-admin-error">{err}</p> : null}
         {toast ? <p className="q-admin-saved">{toast}</p> : null}
         {loading && !reports ? <div className="q-admin-loading">正在读举报…</div> : null}
 
-        {reports && reports.length === 0 ? (
-          <section className="q-admin-panel">
-            <p className="q-admin-empty">还没有人举报过。这一页空着是好事。</p>
-          </section>
-        ) : null}
+        {/* ——— ① 举报 ——— */}
+        {tab === 'reports' ? (
+          <>
+            {reports && reports.length === 0 ? (
+              <section className="q-admin-panel">
+                <p className="q-admin-empty">还没有人举报过。这一页空着是好事。</p>
+              </section>
+            ) : null}
 
-        {reports?.map((r) => (
-          <section className={`q-admin-panel q-chat-adm${r.status === 'open' ? ' is-open' : ''}`} key={r.id}>
-            <header className="q-chat-adm__head">
-              <span className={`q-chat-adm__badge is-${r.status}`}>
-                {r.status === 'open' ? '待处理' : r.status === 'handled' ? '已处理' : '已忽略'}
-              </span>
-              <span className="q-chat-adm__reason">{REASON_LABEL[r.reason] || r.reason}</span>
-              <span className="q-chat-adm__meta">
-                {r.reporter.name} 举报 · {timeAgo(r.ts)}
-              </span>
-            </header>
+            {reports?.map((r) => (
+              <section
+                className={`q-admin-panel q-chat-adm${r.status === 'open' ? ' is-open' : ''}`}
+                key={r.id}
+              >
+                <header className="q-chat-adm__head">
+                  <span className={`q-chat-adm__badge is-${r.status}`}>
+                    {r.status === 'open' ? '待处理' : r.status === 'handled' ? '已处理' : '已忽略'}
+                  </span>
+                  <span className="q-chat-adm__reason">{REASON_LABEL[r.reason] || r.reason}</span>
+                  <span className="q-chat-adm__meta">
+                    {r.reporter.name} 举报 · {timeAgo(r.ts)}
+                  </span>
+                </header>
 
-            {r.message ? (
-              <>
-                <p className="q-chat-adm__quote">
-                  {kindLabel(r.message.kind) || r.message.body || '（空消息）'}
-                </p>
-                <p className="q-chat-adm__from">
-                  —— {r.message.authorName}
-                  {r.message.status === 'deleted' ? '（已收走）' : ''}
-                </p>
-              </>
-            ) : (
-              <p className="q-chat-adm__quote">这条消息已经不在了</p>
-            )}
+                {r.message ? (
+                  <>
+                    <p className="q-chat-adm__quote">
+                      {kindLabel(r.message.kind) || r.message.body || '（空消息）'}
+                    </p>
+                    <p className="q-chat-adm__from">
+                      —— {r.message.authorName}
+                      {r.message.status === 'deleted' ? '（已收走）' : ''}
+                    </p>
+                  </>
+                ) : (
+                  <p className="q-chat-adm__quote">这条消息已经不在了</p>
+                )}
 
-            <div className="q-chat-adm__acts">
-              {r.message && r.message.status !== 'deleted' ? (
-                <button
-                  type="button"
-                  className="q-admin-btn q-admin-btn--primary q-admin-btn--sm"
-                  disabled={busy === `del:${r.message.id}`}
-                  onClick={() => {
-                    if (window.confirm('删掉这条？前台会显示「这条被站长收走了」。')) {
-                      void removeMessage(r.message!.id);
-                    }
-                  }}
-                >
-                  删掉这条
-                </button>
-              ) : null}
+                <div className="q-chat-adm__acts">
+                  {r.message && r.message.status !== 'deleted' ? (
+                    <button
+                      type="button"
+                      className="q-admin-btn q-admin-btn--primary q-admin-btn--sm"
+                      disabled={busy === `del:${r.message.id}`}
+                      onClick={() => confirmDelete(r.message!.id, '删掉这条？')}
+                    >
+                      删掉这条
+                    </button>
+                  ) : null}
 
-              {r.message && r.status === 'open' ? (
-                banFor === r.message.id ? (
-                  <span className="q-chat-adm__banopts">
-                    封 {r.message.authorName}：
-                    {BAN_OPTIONS.map((o) => (
+                  {r.message && r.status === 'open' ? (
+                    banFor === r.message.id ? (
+                      <span className="q-chat-adm__banopts">
+                        封 {r.message.authorName}：
+                        {BAN_OPTIONS.map((o) => (
+                          <button
+                            key={o.minutes}
+                            type="button"
+                            className="q-admin-btn q-admin-btn--sm"
+                            disabled={busy === `ban:${r.message!.authorId}`}
+                            onClick={() => {
+                              void ban(r.message!.authorId, o.minutes, o.label);
+                              setBanFor(null);
+                            }}
+                          >
+                            {o.label}
+                          </button>
+                        ))}
+                        <button type="button" className="q-chat-adm__cancel" onClick={() => setBanFor(null)}>
+                          算了
+                        </button>
+                      </span>
+                    ) : (
                       <button
-                        key={o.minutes}
                         type="button"
                         className="q-admin-btn q-admin-btn--sm"
-                        disabled={busy === `ban:${r.message!.authorId}`}
-                        onClick={() => {
-                          void ban(r.message!.authorId, o.minutes, o.label);
-                          setBanFor(null);
-                        }}
+                        onClick={() => setBanFor(r.message!.id)}
                       >
-                        {o.label}
+                        封禁作者
                       </button>
-                    ))}
-                    <button type="button" className="q-chat-adm__cancel" onClick={() => setBanFor(null)}>
-                      算了
-                    </button>
-                  </span>
-                ) : (
-                  <button
-                    type="button"
-                    className="q-admin-btn q-admin-btn--sm"
-                    onClick={() => setBanFor(r.message!.id)}
-                  >
-                    封禁作者
-                  </button>
-                )
-              ) : null}
+                    )
+                  ) : null}
 
-              {r.status === 'open' ? (
+                  {r.status === 'open' ? (
+                    <button
+                      type="button"
+                      className="q-admin-btn q-admin-btn--sm"
+                      disabled={busy === `skip:${r.id}`}
+                      onClick={() => void dismiss(r.id)}
+                    >
+                      忽略
+                    </button>
+                  ) : null}
+                </div>
+              </section>
+            ))}
+
+            <section className="q-admin-panel">
+              <header className="q-chat-adm__head">
+                <h2 className="q-chat-adm__h">正在封禁</h2>
+                <span className="q-chat-adm__count">{bans.length} 人</span>
+              </header>
+              {bans.length === 0 ? (
+                <p className="q-admin-empty">现在没有人被禁言。</p>
+              ) : (
+                <ul className="q-chat-adm__bans">
+                  {bans.map((b) => (
+                    <li key={b.accountId}>
+                      <b>{b.name}</b>
+                      <span>还剩 {Math.max(1, Math.ceil((b.until - Date.now()) / 60_000))} 分钟</span>
+                      <span className="q-chat-adm__bansr">{b.reason || '—'}</span>
+                      <button
+                        type="button"
+                        className="q-admin-btn q-admin-btn--sm"
+                        disabled={busy === `unban:${b.accountId}`}
+                        onClick={() => void unban(b.accountId)}
+                      >
+                        解封
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </section>
+          </>
+        ) : null}
+
+        {/* ——— ② 最近消息（巡查） ——— */}
+        {tab === 'messages' ? (
+          <section className="q-admin-panel">
+            {msgs === null ? (
+              <div className="q-admin-loading">正在读最近的消息…</div>
+            ) : msgs.length === 0 ? (
+              <p className="q-admin-empty">这间屋子还没有人说过话。</p>
+            ) : (
+              <ul className="q-chat-adm__list">
+                {msgs.map((m) => (
+                  <li key={m.id} className={m.status === 'pending' ? 'is-pending' : ''}>
+                    <span className="q-chat-adm__t">{timeAgo(m.ts)}</span>
+                    <span className="q-chat-adm__who">{m.authorName}</span>
+                    <span className="q-chat-adm__bodytxt">{kindLabel(m.kind) || m.body || '（空）'}</span>
+                    <span className="q-chat-adm__tags">
+                      {m.status !== 'visible' ? (
+                        <em className={`is-${m.status}`}>{STATUS_LABEL[m.status] || m.status}</em>
+                      ) : null}
+                      {m.reports > 0 ? <em className="is-report">{m.reports} 举报</em> : null}
+                    </span>
+                    <button
+                      type="button"
+                      className="q-admin-btn q-admin-btn--sm"
+                      disabled={busy === `del:${m.id}`}
+                      onClick={() => confirmDelete(m.id, '收走这条？')}
+                    >
+                      收走
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+            {msgsMore ? (
+              <div className="q-chat-adm__more">
                 <button
                   type="button"
                   className="q-admin-btn q-admin-btn--sm"
-                  disabled={busy === `skip:${r.id}`}
-                  onClick={() => void dismiss(r.id)}
+                  onClick={() => void loadMsgs(msgs?.[msgs.length - 1]?.id ?? 0)}
                 >
-                  忽略
+                  再看早一些的
                 </button>
-              ) : null}
-            </div>
+              </div>
+            ) : null}
           </section>
-        ))}
+        ) : null}
 
-        <section className="q-admin-panel">
-          <header className="q-chat-adm__head">
-            <h2 className="q-chat-adm__h">正在封禁</h2>
-            <span className="q-chat-adm__count">{bans.length} 人</span>
-          </header>
-          {bans.length === 0 ? (
-            <p className="q-admin-empty">现在没有人被禁言。</p>
-          ) : (
-            <ul className="q-chat-adm__bans">
-              {bans.map((b) => (
-                <li key={b.accountId}>
-                  <b>{b.name}</b>
-                  <span>还剩 {Math.max(1, Math.ceil((b.until - Date.now()) / 60_000))} 分钟</span>
-                  <span className="q-chat-adm__bansr">{b.reason || '—'}</span>
+        {/* ——— ③ 审核规则 ——— */}
+        {tab === 'rules' ? (
+          <section className="q-admin-panel">
+            <header className="q-chat-adm__head">
+              <h2 className="q-chat-adm__h">命中与误伤</h2>
+              <span className="q-chat-adm__note">
+                命中多不代表有问题；误伤多的那条，是清单该收窄的那条。
+              </span>
+            </header>
+            <ul className="q-chat-adm__rules">
+              {rules.map((r) => (
+                <li key={r.id} className={r.hits === 0 ? 'is-idle' : ''}>
+                  <b>{r.id}</b>
+                  <span className="q-chat-adm__rule-note">{r.note}</span>
+                  <span className="q-chat-adm__num">{r.hits} 次</span>
+                  <span className={`q-chat-adm__num${r.hurt > 0 ? ' is-bad' : ''}`}>误伤 {r.hurt}</span>
                   <button
                     type="button"
                     className="q-admin-btn q-admin-btn--sm"
-                    disabled={busy === `unban:${b.accountId}`}
-                    onClick={() => void unban(b.accountId)}
+                    title="这条规则判错了：记一次误伤，方便回头看要不要收窄"
+                    disabled={busy === `hurt:${r.id}`}
+                    onClick={() => void hurt(r.id)}
                   >
-                    解封
+                    误伤了
                   </button>
                 </li>
               ))}
             </ul>
-          )}
-        </section>
+          </section>
+        ) : null}
       </main>
     </>
   );

@@ -3330,3 +3330,181 @@ html.q-route-done .q-admin-route i {
   white-space: nowrap;
   text-overflow: ellipsis;
 }
+
+/* ——— 长亭后台：页签 / 巡查列表 / 规则表（2026-11-25） ——— */
+.q-chat-adm__tabs {
+  display: flex;
+  gap: 3px;
+  width: max-content;
+  max-width: 100%;
+  margin-bottom: 12px;
+  padding: 3px;
+  border-radius: 9px;
+  background: var(--qa-accent-soft);
+}
+
+.q-chat-adm__tabs button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 30px;
+  padding: 0 12px;
+  border-radius: 7px;
+  font-size: 12.5px;
+  color: rgba(17, 17, 17, 0.6);
+  transition: background var(--dur-micro) ease, color var(--dur-micro) ease;
+}
+
+.q-chat-adm__tabs button.is-on {
+  background: #fff;
+  color: var(--qa-accent);
+  box-shadow: 0 1px 2px rgba(17, 17, 17, 0.08);
+}
+
+.q-chat-adm__tabs em {
+  padding: 0 5px;
+  border-radius: 999px;
+  background: var(--qa-accent);
+  color: #fff;
+  font-size: 10.5px;
+  font-style: normal;
+  font-variant-numeric: tabular-nums;
+}
+
+.q-chat-adm__note {
+  margin-left: auto;
+  font-size: 11.5px;
+  color: rgba(17, 17, 17, 0.5);
+}
+
+/* 巡查列表：一行一条，正文超长只在中间省略 */
+.q-chat-adm__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.q-chat-adm__list li {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 14px;
+  border-bottom: 1px solid var(--qa-line);
+  font-size: 12.5px;
+}
+
+.q-chat-adm__list li:last-child {
+  border-bottom: 0;
+}
+
+/* 待审的那几条挑出来 —— 它们才是等站长决定的 */
+.q-chat-adm__list li.is-pending {
+  background: var(--qa-warn-bg);
+}
+
+.q-chat-adm__t {
+  flex: none;
+  width: 58px;
+  color: rgba(17, 17, 17, 0.45);
+  font-variant-numeric: tabular-nums;
+}
+
+.q-chat-adm__who {
+  flex: none;
+  width: 84px;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-weight: 600;
+  color: var(--color-ink);
+}
+
+.q-chat-adm__bodytxt {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  color: rgba(17, 17, 17, 0.72);
+}
+
+.q-chat-adm__tags {
+  flex: none;
+  display: flex;
+  gap: 4px;
+}
+
+.q-chat-adm__tags em {
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: var(--qa-accent-soft);
+  font-size: 10.5px;
+  font-style: normal;
+  color: rgba(17, 17, 17, 0.6);
+}
+
+.q-chat-adm__tags em.is-pending {
+  background: var(--qa-warn-bg);
+  color: var(--qa-warn-fg);
+}
+
+.q-chat-adm__tags em.is-report {
+  background: #fdecea;
+  color: #b3261e;
+}
+
+.q-chat-adm__more {
+  padding: 10px 14px;
+  border-top: 1px solid var(--qa-line);
+  text-align: center;
+}
+
+/* 规则表 */
+.q-chat-adm__rules {
+  list-style: none;
+  margin: 0;
+  padding: 2px 14px 10px;
+}
+
+.q-chat-adm__rules li {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--qa-line);
+  font-size: 12.5px;
+}
+
+.q-chat-adm__rules li:last-child {
+  border-bottom: 0;
+}
+
+/* 一次都没命中过的规则淡化 —— 它可能是已经过时的那条 */
+.q-chat-adm__rules li.is-idle {
+  opacity: 0.5;
+}
+
+.q-chat-adm__rules b {
+  flex: none;
+  width: 46px;
+  font-family: var(--font-body);
+  font-size: 11.5px;
+  letter-spacing: 0.02em;
+  color: var(--color-ink);
+}
+
+.q-chat-adm__rule-note {
+  flex: 1;
+  min-width: 0;
+  color: rgba(17, 17, 17, 0.7);
+}
+
+.q-chat-adm__num {
+  flex: none;
+  font-variant-numeric: tabular-nums;
+  color: rgba(17, 17, 17, 0.55);
+}
+
+.q-chat-adm__num.is-bad {
+  color: #b3261e;
+}

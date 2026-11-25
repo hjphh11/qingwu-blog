@@ -16,7 +16,9 @@ import { getSettings, patchSettings } from './settings';
 import {
   clearChatBan,
   deleteChatMessage,
+  getChatMessages,
   getChatOverview,
+  markRuleHurt,
   setChatBan,
   setChatReportStatus,
 } from './chat';
@@ -113,6 +115,16 @@ export async function handleAdmin(request: Request, env: Env, path: string): Pro
   // —— 长亭：举报 / 删消息 / 封人 ——
   if (path === '/admin/chat' && m === 'GET') {
     return requireAdmin(request, env, (admin) => getChatOverview(request, env, admin));
+  }
+
+  if (path === '/admin/chat/messages' && m === 'GET') {
+    return requireAdmin(request, env, (admin) => getChatMessages(request, env, admin));
+  }
+
+  const chatHurt = path.match(/^\/admin\/chat\/rules\/([A-Za-z0-9-]+)\/hurt$/);
+  if (chatHurt && m === 'POST') {
+    const id = String(chatHurt[1]);
+    return requireAdmin(request, env, (admin) => markRuleHurt(request, env, admin, id));
   }
 
   const chatReport = path.match(/^\/admin\/chat\/reports\/(\d+)$/);
