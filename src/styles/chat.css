@@ -1535,7 +1535,8 @@
   .q-chat__acts {
     position: absolute;
     top: auto;
-    bottom: calc(100% - 0.3rem);
+    /* 再往下压 8px：视觉上直接坐在气泡的上圆角上，指针一碰气泡边就够到 */
+    bottom: calc(100% - 0.5rem);
     left: 0;
     z-index: 5;
     display: flex;
@@ -1587,8 +1588,11 @@
   }
 
   /* 「+」更多回应 */
+  /* ⚠️ 这里**不能** position: relative。
+     「+」现在是操作条的第一个按钮，表情面板若以它为参照 `right: 0`，
+     会从条子最左边一路往左长，直接长出聊天卡被裁掉（实测 x 出了卡片 146px）。
+     让它以整条操作条为参照（条子本身是 absolute），左边对齐就永远在卡片内。 */
   .q-chat__addreact {
-    position: relative;
     display: inline-flex;
   }
 
@@ -1613,7 +1617,7 @@
   .q-chat__reactpop {
     position: absolute;
     bottom: calc(100% + 0.4rem);
-    right: 0;
+    left: 0;
     z-index: 20;
     display: flex;
     gap: 0.1rem;
@@ -1623,6 +1627,12 @@
     background: rgba(255, 252, 249, 0.96);
     box-shadow: 0 12px 30px -10px rgba(74, 55, 40, 0.24);
     backdrop-filter: blur(12px);
+  }
+
+  /* 自己的消息整条靠右：面板改成右边的对齐，免得往右长出卡片 */
+  .q-chat__row.is-mine .q-chat__reactpop {
+    left: auto;
+    right: 0;
   }
 
   .q-chat__reactpop button {
@@ -2205,11 +2215,24 @@
     scrollbar-color: color-mix(in srgb, var(--color-brown) 16%, transparent) transparent;
   }
 
+  /**
+   * ⚠️ 卡片不许被压扁。
+   *
+   * 这个滚动容器是 flex 列，子项的默认 `flex: 0 1 auto` 是**可以缩**的：
+   * 内容只比容器高几像素时，浏览器不会滚动，而是把第一张卡（公告）
+   * 压到 29px 高，文字直接被 `overflow: hidden` 切在底部 ——
+   * 站长看到的「文字要到底了」就是它。
+   * 钉成 `flex: none` 之后卡片保持自然高度，多出来的交给容器滚动。
+   */
+  .q-info__scroll > * {
+    flex: none;
+  }
+
   /* 公告：玫瑰粉大色块 + 深暖棕字（设计稿的 rose-surface-block） */
   .q-notice {
     position: relative;
     overflow: hidden;
-    padding: 0.9rem 1rem;
+    padding: 0.9rem 1rem 1.05rem;
     border-radius: 1.25rem;
     background: var(--color-rose);
     box-shadow:

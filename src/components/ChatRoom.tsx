@@ -2398,37 +2398,8 @@ function MessageRow({
           {/* 操作条：压在气泡上沿（自己的消息镜像到左侧）。
               位置、尺寸和「为什么贴着气泡而不是浮在上方」见 chat.css 里 .q-chat__acts 的注释 */}
           <div className={`q-chat__acts${pickOpen ? ' has-open' : ''}`}>
-            {/* 这里原来还有三个快捷表情。2026-11-25 站长去掉了：
-                一行里最常用的其实是「回复 / 撤回」，表情已经在后面的「+」里，
-                先摆三张脸只会把操作条撑宽、糊住上一条消息。 */}
-            <button type="button" className="q-chat__recall" onClick={onReply}>
-              回复
-            </button>
-            {canEdit && (
-              <button type="button" className="q-chat__recall" onClick={onEdit}>
-                编辑
-              </button>
-            )}
-            {canRecall && (
-              <button type="button" className="q-chat__recall" onClick={onRecall}>
-                撤回
-              </button>
-            )}
-            {canPin && (
-              <button type="button" className="q-chat__recall" onClick={onPin}>
-                {pinned ? '取消置顶' : '置顶'}
-              </button>
-            )}
-            {!mine && m.status === 'visible' && (
-              <button
-                type="button"
-                className="q-chat__recall q-chat__report"
-                onClick={onReport}
-                title="觉得这条不合适？交给站长看"
-              >
-                举报
-              </button>
-            )}
+            {/* 「+」放在最前面当开场：想加个表情的人不用先把整条读完再往右找。
+                原来这里有三个快捷表情，2026-11-25 站长去掉了（表情全在 + 里）。 */}
             {m.status === 'visible' && (
               <span className="q-chat__addreact" ref={reactWrapRef}>
                 <button
@@ -2459,6 +2430,34 @@ function MessageRow({
                   </span>
                 )}
               </span>
+            )}
+            <button type="button" className="q-chat__recall" onClick={onReply}>
+              回复
+            </button>
+            {canEdit && (
+              <button type="button" className="q-chat__recall" onClick={onEdit}>
+                编辑
+              </button>
+            )}
+            {canRecall && (
+              <button type="button" className="q-chat__recall" onClick={onRecall}>
+                撤回
+              </button>
+            )}
+            {canPin && (
+              <button type="button" className="q-chat__recall" onClick={onPin}>
+                {pinned ? '取消置顶' : '置顶'}
+              </button>
+            )}
+            {!mine && m.status === 'visible' && (
+              <button
+                type="button"
+                className="q-chat__recall q-chat__report"
+                onClick={onReport}
+                title="觉得这条不合适？交给站长看"
+              >
+                举报
+              </button>
             )}
           </div>
         </div>
