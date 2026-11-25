@@ -2585,7 +2585,9 @@
     flex: 1;
     min-width: 0;
     display: flex;
-    align-items: baseline;
+    align-items: center;
+    /* 24px：它是一条完整的按钮（点了跳过去），得够 WCAG 2.5.8 的 24×24 */
+    min-height: 1.5rem;
     gap: 0.4rem;
     font-size: 0.75rem;
     color: var(--color-muted);
@@ -3203,6 +3205,12 @@
     flex-direction: column;
     gap: 0.05rem;
     padding-bottom: 0.25rem;
+    /* 屏蔽名单最多 200 条：不封顶的话这张卡能把右栏撑成一堵墙 */
+    max-height: 13.5rem;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    scrollbar-width: thin;
+    scrollbar-color: color-mix(in srgb, var(--color-brown) 16%, transparent) transparent;
   }
 
   .q-blocked__row {

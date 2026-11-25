@@ -1904,7 +1904,14 @@ export default function ChatRoom() {
               <span className="q-chat__pin__ic" aria-hidden="true">
                 <MorphIcon icon={Pin} size={12} color="currentColor" />
               </span>
-              <button type="button" className="q-chat__pin__t" onClick={() => jumpToPin(pin.id)}>
+              <button
+                type="button"
+                className="q-chat__pin__t"
+                onClick={() => jumpToPin(pin.id)}
+                /* 两个 span 之间只有 CSS 的 gap，读屏会把「谁」和「说什么」连成一串；
+                   给它一句完整的话，顺便说明点它会做什么 */
+                aria-label={`${pin.name} 置顶：${pin.excerpt || '这条没写正文'}（跳到这条）`}
+              >
                 <b>{pin.name}</b>
                 <span>{pin.excerpt || '（这条没写正文）'}</span>
               </button>

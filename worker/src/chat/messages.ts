@@ -399,9 +399,21 @@ function toItem(
   };
 }
 
-function onlineOf(env: Env, now: number): Promise<number> {
-  return env.DB.prepare('SELECT COUNT(*) AS n FROM chat_presence WHERE last_seen > ?')
-    .bind(now - ONLINE_WINDOW)
+/**
+ * 在线人数。
+ *
+ * 也要排掉屏蔽的人：标题上写「3 人在线」、成员名单里只有 2 个，
+ * 会让人以为名单漏了谁（这个数字和名单必须同源）。
+ */
+function onlineOf(env: Env, now: number, meId: number): Promise<number> {
+  return env.DB.prepare(
+    `SELECT COUNT(*) AS n FROM chat_presence p
+      WHERE p.last_seen > ?
+        AND NOT EXISTS (
+          SELECT 1 FROM chat_blocks b WHERE b.blocker_id = ? AND b.blocked_id = p.account_id
+        )`,
+  )
+    .bind(now - ONLINE_WINDOW, meId)
     .first<{ n: number }>()
     .then((r) => r?.n ?? 0)
     .catch(() => 0);
@@ -487,9 +499,9 @@ export async function getHistory(request: Request, env: Env): Promise<Response> 
       hasMore,
       nextBefore: page[0]?.id ?? 0,
       lastRead,
-      online: await onlineOf(env, Date.now()),
+      online: await onlineOf(env, Date.now(), meId ?? -1),
       /** 置顶条（没有就是 null）。跟 history 一起下发，首屏就有 */
-      pin: await getPin(env),
+      pin: await getPin(env, meId ?? -1),
       auth: { signedIn: Boolean(me), canSend: Boolean(me) },
     });
   } catch (err) {
@@ -672,9 +684,9 @@ export async function pollChat(request: Request, env: Env): Promise<Response> {
       ),
       recalled,
       removed,
-      online: await onlineOf(env, now),
+      online: await onlineOf(env, now, meId ?? -1),
       /** 每次 poll 都带 —— 一百来个字节，换取「站长一置顶，所有人两秒内看见」 */
-      pin: await getPin(env),
+      pin: await getPin(env, meId ?? -1),
       typing: (typingRows.results ?? []).map((r) => r.name || r.prefix || '有人'),
       reads,
       auth: { signedIn: Boolean(me), canSend: Boolean(me) },

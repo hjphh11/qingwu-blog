@@ -27,8 +27,11 @@ const EXCERPT_MAX = 60;
 /**
  * 读当前置顶。表还没建 / 查挂了都按「没有置顶」处理 ——
  * 一条装饰性的横幅不该让整个聊天室打不开。
+ *
+ * `meId` 用来排掉屏蔽：如果置顶的正好是我屏蔽的人，这条公告对我等于不存在
+ * （不让「屏蔽」在公告位上开一个后门）。
  */
-export async function getPin(env: Env): Promise<PinInfo | null> {
+export async function getPin(env: Env, meId = -1): Promise<PinInfo | null> {
   try {
     const row = await env.DB.prepare(
       `SELECT m.id, m.body, m.ts,
@@ -36,8 +39,13 @@ export async function getPin(env: Env): Promise<PinInfo | null> {
          FROM chat_pins p
          JOIN chat_messages m ON m.id = p.message_id
          LEFT JOIN accounts a ON a.id = m.account_id
-        WHERE p.room = 'main' AND m.status = 'visible'`,
-    ).first<{ id: number; body: string; ts: number; name: string | null }>();
+        WHERE p.room = 'main' AND m.status = 'visible'
+          AND NOT EXISTS (
+            SELECT 1 FROM chat_blocks b WHERE b.blocker_id = ? AND b.blocked_id = m.account_id
+          )`,
+    )
+      .bind(meId)
+      .first<{ id: number; body: string; ts: number; name: string | null }>();
 
     if (!row) return null;
     const flat = row.body.replace(/\s+/g, ' ').trim();
@@ -90,5 +98,5 @@ export async function setPin(request: Request, env: Env): Promise<Response> {
     .bind(id, me.id, now)
     .run();
 
-  return json({ ok: true, pin: await getPin(env) });
+  return json({ ok: true, pin: await getPin(env, me.id) });
 }
