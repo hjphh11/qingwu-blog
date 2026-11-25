@@ -95,9 +95,101 @@
      * 只在栏内比较，永远压不过遮罩的 55 —— 实测抽屉被磨砂盖住、字全糊。
      */
     display: grid;
-    grid-template-columns: 272px minmax(0, 1fr) 312px;
-    gap: 0.875rem;
+    /* 左右两栏的宽度由 JS 写在行内（拖分隔条改的就是它们），中栏吃掉剩下的。
+       这组变量只设了默认值，所以 ≤1199 的媒体查询照样能整块换掉模板。 */
+    grid-template-columns:
+      var(--side-w, 272px)
+      minmax(0, 1fr)
+      var(--info-w, 312px);
+    /* 三栏之间的缝：8px。再宽三栏就像三张各过各的卡，读起来要来回跳 */
+    --bento-gap: 0.5rem;
+    gap: var(--bento-gap);
     height: clamp(32rem, calc(100svh - 12rem), 62rem);
+  }
+
+  /* 桌面把信息栏整列收起（顶栏「信息栏」按钮）。
+     ⚠️ 必须关在 min-width:1200 里：≤1199 的右栏是抽屉，
+        这两条 (0,2,0) 的规则会盖掉媒体查询里的单栏模板，把抽屉也一起藏了。 */
+  @media (min-width: 1200px) {
+    .q-bento.is-noinfo {
+      grid-template-columns:
+        var(--side-w, 272px)
+        minmax(0, 1fr);
+    }
+
+    .q-bento.is-noinfo .q-info {
+      display: none;
+    }
+  }
+
+  /* 拖列宽时的全局光标：指针被捕获在分隔条上，但视觉上要一直是 ←→ */
+  .q-colresize,
+  .q-colresize * {
+    cursor: col-resize !important;
+    user-select: none;
+  }
+
+  /**
+   * 分隔条：宽 20px 的透明命中区，压在两栏之间的缝上。
+   *
+   * 为什么要 20px：缝只有 8px，纯 2px 的线根本捏不住（这是「能拖」这件事
+   * 能不能成立的关键，不是审美）。它向两侧各压进卡片 6px —— 落点都在
+   * 卡片的 padding 上，不会挡住气泡里的文字与按钮。
+   */
+  .q-split {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    z-index: 6;
+    width: 20px;
+    touch-action: none;
+    cursor: col-resize;
+    /* 默认不显示：三栏并排时才需要（≤1199 两侧是抽屉） */
+    display: none;
+  }
+
+  @media (min-width: 1200px) {
+    .q-split {
+      display: block;
+    }
+  }
+
+  .q-split--left {
+    left: calc(var(--side-w, 272px) + var(--bento-gap) / 2 - 10px);
+  }
+
+  .q-split--right {
+    right: calc(var(--info-w, 312px) + var(--bento-gap) / 2 - 10px);
+  }
+
+  /* 握把：一小截圆头竖线，悬停 / 拖动 / 键盘聚焦时才现形 */
+  .q-split::after {
+    content: '';
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    width: 3px;
+    height: 2.5rem;
+    transform: translate(-50%, -50%);
+    border-radius: 9999px;
+    background: color-mix(in srgb, var(--color-ink) 16%, transparent);
+    opacity: 0;
+    transition:
+      opacity var(--dur-micro) ease,
+      background-color var(--dur-micro) ease;
+  }
+
+  .q-split:hover::after,
+  .q-split:focus-visible::after,
+  .q-split.is-drag::after {
+    opacity: 1;
+    background: var(--color-crimson);
+  }
+
+  .q-split:focus-visible {
+    outline: 2px solid var(--color-crimson);
+    outline-offset: -2px;
+    border-radius: 0.5rem;
   }
 
   /* 三栏共用的玻璃卡 */
@@ -485,15 +577,58 @@
     color: var(--color-subtle);
   }
 
-  /* 「茶室须知」展开后的正文 */
-  .q-side__notice {
-    margin: 0.4rem 0.25rem 0;
-    padding: 0.55rem 0.6rem;
-    border-radius: 0.7rem;
-    background: color-mix(in srgb, var(--color-rose) 20%, transparent);
-    font-size: 0.71875rem;
-    line-height: 1.75;
-    color: var(--color-muted);
+  /* 互联站点：一行一个站，形状跟频道项同一套（不设 hover —— 它不是按钮） */
+  .q-peers {
+    display: flex;
+    flex-direction: column;
+    gap: 0.1rem;
+    padding: 0 0.25rem;
+  }
+
+  .q-peer {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    min-height: 2.25rem;
+    padding: 0.35rem 0.4rem;
+    border-radius: 0.75rem;
+    font-size: 0.8125rem;
+    color: var(--color-ink);
+  }
+
+  .q-peer__ic {
+    flex: none;
+    display: grid;
+    place-items: center;
+    width: 1.375rem;
+    height: 1.375rem;
+    border-radius: 0.45rem;
+    background: color-mix(in srgb, var(--color-rose) 34%, #fff);
+    font-size: 0.6875rem;
+    font-weight: 700;
+    line-height: 1;
+    color: var(--color-crimson);
+  }
+
+  .q-peer.is-home .q-peer__ic {
+    background: var(--color-crimson);
+    color: var(--color-cream);
+  }
+
+  .q-peer__host {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .q-peer__n {
+    flex: none;
+    font-size: 0.6875rem;
+    color: var(--color-subtle);
+    font-variant-numeric: tabular-nums;
   }
 
   .q-me {
@@ -822,6 +957,17 @@
   .q-chat__searchbtn.is-on {
     border-color: color-mix(in srgb, var(--color-crimson) 42%, transparent);
     background: color-mix(in srgb, var(--color-rose) 40%, #fff);
+    color: var(--color-crimson);
+  }
+
+  /* 宽屏把信息栏整列收起时，按钮退成「关着」的样子（不是 disabled，照样能点回来） */
+  .q-chat__searchbtn.is-off {
+    border-color: color-mix(in srgb, var(--color-ink) 6%, transparent);
+    background: transparent;
+    color: var(--color-subtle);
+  }
+
+  .q-chat__searchbtn.is-off:hover {
     color: var(--color-crimson);
   }
 

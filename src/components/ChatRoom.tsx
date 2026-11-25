@@ -301,6 +301,20 @@ const SNAP_KEY = 'qingwu:chat-snap';
 const SNAP_TTL = 90 * 1000;
 const SNAP_MAX = 30;
 
+/* ——— 桌面三栏的列宽（拖分隔条改的就是这两个数） ———
+   默认值就是设计稿的 272 / 312；边界是「再小就放不下内容」的实测值：
+   左栏 200 以内频道名要换行，右栏 240 以内公告的标题会折成两行。
+   中栏 420 是输入区 + 工具排 + 发送键刚好一行的宽度。 */
+const COL_KEY = 'qingwu:chat-cols-v1';
+const COL_DEFAULT = { side: 272, info: 312 };
+const COL_MIN = { side: 200, info: 240 };
+const COL_MAX = { side: 420, info: 460 };
+const CENTER_MIN = 420;
+
+function clampNum(v: number, lo: number, hi: number): number {
+  return Math.min(hi, Math.max(lo, v));
+}
+
 interface Snapshot {
   v: 1;
   at: number;
@@ -425,6 +439,155 @@ export default function ChatRoom() {
   /** 窄屏抽屉：左（频道）/ 右（空间详情）。桌面宽屏下这两个类名不起作用 */
   const [sideOpen, setSideOpen] = useState(false);
   const [infoOpen, setInfoOpen] = useState(false);
+
+  /**
+   * 桌面（≥1200）三栏的列宽：只有左右两栏是数，中栏吃掉剩下的。
+   *
+   * 为什么是「左右固定、中间自适应」而不是三栏都给像素：
+   * 视口一改宽，多出来的地方应该给正在读的消息流，而不是让两侧继续长。
+   * 拖分隔条改的就是这两个数，存 localStorage（`q_chat_cols_v1`）。
+   * ≤1199 时两侧都是抽屉，这两个数不生效（CSS 媒体查询直接换掉模板）。
+   */
+  const [cols, setCols] = useState(COL_DEFAULT);
+  /** 桌面上把右栏整列收起来（窄屏走抽屉，用 infoOpen）。默认展开 */
+  const [infoHidden, setInfoHidden] = useState(false);
+  /** 是否到了「三栏并排」的宽度，决定分隔条渲染与否 */
+  const [wide, setWide] = useState(false);
+  /** 正在拖哪一根分隔条（用来加高亮 + 全局光标） */
+  const [splitBusy, setSplitBusy] = useState<'' | 'side' | 'info'>('');
+
+  const bentoRef = useRef<HTMLDivElement>(null);
+  const colDrag = useRef<{ which: 'side' | 'info'; x: number; start: number } | null>(null);
+
+  useEffect(() => {
+    const mq = window.matchMedia('(min-width: 1200px)');
+    const sync = () => {
+      const isWide = mq.matches;
+      setWide(isWide);
+      // 从窄屏拖宽回来时，抽屉要收掉 —— 否则那层遮罩会留在屏幕上（整页发灰）
+      if (isWide) {
+        setSideOpen(false);
+        setInfoOpen(false);
+      }
+    };
+    sync();
+    mq.addEventListener('change', sync);
+    return () => mq.removeEventListener('change', sync);
+  }, []);
+
+  /** 把一组列宽夹回可用范围：两侧都要让出中栏的最小宽度 */
+  const fitCols = (next: { side: number; info: number }) => {
+    const el = bentoRef.current;
+    const total = el?.clientWidth || Math.max(880, window.innerWidth - 80);
+    const cs = el ? getComputedStyle(el) : null;
+    const gap = cs ? parseFloat(cs.columnGap) || 8 : 8;
+    // 实际有几条轨道（右栏收起时是 2）—— 直接读模板，比再存一份状态可靠
+    const lanes = cs ? cs.gridTemplateColumns.trim().split(/\s+/).length : 3;
+    // ≤1199 两侧都是抽屉，这两个数根本不生效：别拿窄屏把存的值夹小
+    if (!window.matchMedia('(min-width: 1200px)').matches) return next;
+    const room = total - gap * (lanes - 1) - CENTER_MIN;
+    const info = clampNum(
+      next.info,
+      COL_MIN.info,
+      Math.min(COL_MAX.info, Math.max(COL_MIN.info, room - COL_MIN.side)),
+    );
+    const side = clampNum(
+      next.side,
+      COL_MIN.side,
+      Math.min(COL_MAX.side, Math.max(COL_MIN.side, room - info)),
+    );
+    return { side, info };
+  };
+
+  // 进来时恢复上次拖的宽度；存的值可能是在很宽的屏上拖的，所以要夹一遍。
+  // 只在挂载时读一次：之后再读会把用户正在拖的宽度盖回去。
+  useEffect(() => {
+    try {
+      const raw = window.localStorage.getItem(COL_KEY);
+      if (!raw) return;
+      const v = JSON.parse(raw) as { side?: number; info?: number };
+      if (typeof v.side !== 'number' || typeof v.info !== 'number') return;
+      setCols(fitCols({ side: v.side, info: v.info }));
+    } catch {
+      /* 隐私模式 / 值坏了：用默认宽度，不影响聊天 */
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // 视口变窄时要重新夹一次，否则会把中栏挤没
+  useEffect(() => {
+    const onResize = () => setCols((c) => fitCols(c));
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // 拖到一半切页/卸载：把全局光标那个类收掉，不然整站光标都变成 ←→
+  useEffect(() => () => document.documentElement.classList.remove('q-colresize'), []);
+
+  /**
+   * 宽度一变就落盘。
+   *
+   * 放在 effect 里而不是各自的事件回调里：拖动、键盘、双击复位三条路径
+   * 都能写到，且拖动过程中不写（每帧写 localStorage 毫无意义）。
+   */
+  useEffect(() => {
+    if (splitBusy) return;
+    try {
+      window.localStorage.setItem(COL_KEY, JSON.stringify(cols));
+    } catch {
+      /* 存不下就存不下，这次拖拽本身是生效的 */
+    }
+  }, [cols, splitBusy]);
+
+  const endSplit = () => {
+    if (!colDrag.current) return;
+    colDrag.current = null;
+    setSplitBusy('');
+    document.documentElement.classList.remove('q-colresize');
+  };
+
+  const startSplit = (which: 'side' | 'info') => (e: React.PointerEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    e.currentTarget.setPointerCapture(e.pointerId);
+    colDrag.current = {
+      which,
+      x: e.clientX,
+      start: which === 'side' ? cols.side : cols.info,
+    };
+    setSplitBusy(which);
+    document.documentElement.classList.add('q-colresize');
+  };
+
+  const moveSplit = (e: React.PointerEvent<HTMLDivElement>) => {
+    const d = colDrag.current;
+    if (!d) return;
+    // 左栏向右拖 = 变宽；右栏向左拖 = 变宽，所以符号相反
+    const raw = d.which === 'side' ? d.start + (e.clientX - d.x) : d.start - (e.clientX - d.x);
+    setCols((c) => fitCols({ ...c, [d.which]: raw }));
+  };
+
+  /** 分隔条的键盘操作：左右各 16px，省得非要动鼠标 */
+  const nudgeSplit = (which: 'side' | 'info') => (e: React.KeyboardEvent<HTMLDivElement>) => {
+    const step = e.shiftKey ? 48 : 16;
+    const dir = e.key === 'ArrowRight' ? 1 : e.key === 'ArrowLeft' ? -1 : 0;
+    if (!dir) return;
+    e.preventDefault();
+    setCols((c) => fitCols({ ...c, [which]: c[which] + (which === 'side' ? dir * step : -dir * step) }));
+  };
+
+  const resetSplit = (which: 'side' | 'info') => () => {
+    setCols((c) => fitCols({ ...c, [which]: COL_DEFAULT[which] }));
+  };
+
+  /** 顶栏那个「信息栏」按钮：宽屏收/展整列，窄屏开/关抽屉 */
+  const toggleInfo = () => {
+    if (wide) setInfoHidden((v) => !v);
+    else setInfoOpen((v) => !v);
+  };
+
+  /** 当前右栏是不是「看得见」——宽屏看整列，窄屏看抽屉 */
+  const infoShown = wide ? !infoHidden : infoOpen;
 
   /** 是否紧凑形态（窄屏 / 触屏）—— 决定要不要出「轻点消息…」那条一次性提示 */
   const [compact, setCompact] = useState(false);
@@ -1232,7 +1395,15 @@ export default function ChatRoom() {
   if (loading) {
     return (
       <div className="q-chatpage">
-        <div className="q-bento">
+        <div
+          className={`q-bento${wide && infoHidden ? ' is-noinfo' : ''}`}
+          style={
+            {
+              '--side-w': `${cols.side}px`,
+              '--info-w': `${cols.info}px`,
+            } as React.CSSProperties
+          }
+        >
           {side}
           <section className="q-chat q-glass" aria-busy="true" aria-label="正在加载聊天记录">
             <header className="q-chat__bar">
@@ -1288,7 +1459,15 @@ export default function ChatRoom() {
   if (failed) {
     return (
       <div className="q-chatpage">
-        <div className="q-bento">
+        <div
+          className={`q-bento${wide && infoHidden ? ' is-noinfo' : ''}`}
+          style={
+            {
+              '--side-w': `${cols.side}px`,
+              '--info-w': `${cols.info}px`,
+            } as React.CSSProperties
+          }
+        >
           {side}
           <section className="q-chat q-glass" aria-label="长亭聊天室">
             <div className="q-chat__empty">
@@ -1309,9 +1488,18 @@ export default function ChatRoom() {
 
   return (
     <div className="q-chatpage">
-      {(sideOpen || infoOpen) && drawerMask}
+      {!wide && (sideOpen || infoOpen) && drawerMask}
 
-      <div className="q-bento">
+      <div
+        ref={bentoRef}
+        className={`q-bento${wide && infoHidden ? ' is-noinfo' : ''}${splitBusy ? ' is-colresize' : ''}`}
+        style={
+          {
+            '--side-w': `${cols.side}px`,
+            '--info-w': `${cols.info}px`,
+          } as React.CSSProperties
+        }
+      >
         {side}
 
         <section
@@ -1389,11 +1577,14 @@ export default function ChatRoom() {
               </button>
               <button
                 type="button"
-                className={`q-chat__searchbtn${infoOpen ? ' is-on' : ''}`}
-                onClick={() => setInfoOpen((v) => !v)}
-                aria-expanded={infoOpen}
-                aria-label="展开空间详情"
-                title="展开 / 收起空间详情"
+                className={`q-chat__searchbtn${!wide && infoOpen ? ' is-on' : ''}${
+                  wide && infoHidden ? ' is-off' : ''
+                }`}
+                onClick={toggleInfo}
+                aria-expanded={infoShown}
+                aria-controls="q-chat-info"
+                aria-label={infoShown ? '收起信息栏' : '展开信息栏'}
+                title={infoShown ? '收起信息栏' : '展开信息栏'}
               >
                 {/* 自绘：一块面板 + 一条竖分隔，和设计稿的图标同一个语义 */}
                 <svg
@@ -1856,6 +2047,47 @@ export default function ChatRoom() {
         </section>
 
         {spaceInfo}
+
+        {/* 两根分隔条：只在三栏并排时出现，拖它改左右两栏的宽度。
+            宽 20px、高整栏 —— 视觉只有中间一小截握把，其余是透明命中区。 */}
+        {wide && (
+          <>
+            <div
+              className={`q-split q-split--left${splitBusy === 'side' ? ' is-drag' : ''}`}
+              role="separator"
+              aria-orientation="vertical"
+              aria-label="拖动调整频道栏宽度"
+              aria-valuenow={cols.side}
+              aria-valuemin={COL_MIN.side}
+              aria-valuemax={COL_MAX.side}
+              tabIndex={0}
+              onPointerDown={startSplit('side')}
+              onPointerMove={moveSplit}
+              onPointerUp={endSplit}
+              onPointerCancel={endSplit}
+              onKeyDown={nudgeSplit('side')}
+              onDoubleClick={resetSplit('side')}
+            />
+            {!infoHidden && (
+              <div
+                className={`q-split q-split--right${splitBusy === 'info' ? ' is-drag' : ''}`}
+                role="separator"
+                aria-orientation="vertical"
+                aria-label="拖动调整信息栏宽度"
+                aria-valuenow={cols.info}
+                aria-valuemin={COL_MIN.info}
+                aria-valuemax={COL_MAX.info}
+                tabIndex={0}
+                onPointerDown={startSplit('info')}
+                onPointerMove={moveSplit}
+                onPointerUp={endSplit}
+                onPointerCancel={endSplit}
+                onKeyDown={nudgeSplit('info')}
+                onDoubleClick={resetSplit('info')}
+              />
+            )}
+          </>
+        )}
       </div>
     </div>
   );

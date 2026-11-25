@@ -1,14 +1,14 @@
-import { useState } from 'react';
 import { MorphIcon } from 'morphicons/react';
-import { Bell, BellRing, MessageCircle, Search, X } from '../../lib/icons';
+import { Bell, BellRing, Search, X } from '../../lib/icons';
 import { avatarFromHash } from '../../lib/avatar';
 import type { SessionAccount } from '../../lib/auth';
 import type { ChatMember } from '../../lib/chat';
+import { SITE } from '../../config';
 
 /**
  * 长亭 · 左侧栏
  *
- * 2026-11-25 换版后只剩三块：品牌 / 搜索 / 频道 + 底部的「我」。
+ * 2026-11-25 换版后只剩三块：品牌 / 搜索 / 房间 + 底部的「我」。
  * 相对设计稿做了两处删减（站长要求）：
  *   · 没有「在线私信」分组 —— 长亭是一间公共客厅，私聊留给站外
  *   · 频道只有一个「综合大厅」，所以不渲染新建频道按钮，也不做频道切换
@@ -17,9 +17,17 @@ import type { ChatMember } from '../../lib/chat';
  * 左栏因此不再需要每 30 秒刷一份成员列表。
  */
 
-/** 「茶室须知」展开后的正文。改这里就能改须知 —— 内容归仓库，状态才归数据库 */
-const NOTICE_BODY =
-  '十里一长亭，路过就进来坐坐。发言会过一遍 AI 审核，违规的内容会被收走；两分钟内可以撤回，一分钟十五句是上限。';
+/** `https://www.qingwu.ink/foo` → `qingwu.ink`：只留能一眼认出是谁的主机名 */
+function hostOf(url: string): string {
+  return url
+    .replace(/^https?:\/\//i, '')
+    .replace(/^www\./i, '')
+    .split('/')[0]!
+    .toLowerCase();
+}
+
+/** 本站主机名：没人在线时「互联」里也至少有它，否则那块会空着 */
+const HOME_HOST = hostOf(SITE.url);
 
 export default function ChatAside({
   account,
@@ -49,8 +57,6 @@ export default function ChatAside({
   /** 移动端抽屉的关闭 */
   onClose: () => void;
 }) {
-  const [openInfo, setOpenInfo] = useState(false);
-
   /**
    * 头像统一走 `avatarFromHash`（cravatar）。
    *
@@ -64,10 +70,24 @@ export default function ChatAside({
       : account.avatar
     : '';
 
-  const host = (account?.site || '')
-    .replace(/^https?:\/\//i, '')
-    .replace(/^www\./i, '')
-    .split('/')[0];
+  const host = hostOf(account?.site || '');
+
+  /**
+   * 互联站点：这间屋子里的人各自从哪个站来。
+   *
+   * 不做一份手写名单 —— 名单一过期就是假话。这里直接按成员的 `site`
+   * 归并：现在只有本站，将来接了 Matrix 转发，远端成员的服务器会自己冒出来。
+   * 本站永远在列（没人说话时也要让人知道这间屋子连的是谁）。
+   */
+  const peerMap = new Map<string, number>();
+  for (const m of members) {
+    const h = hostOf(m.site || '') || HOME_HOST;
+    peerMap.set(h, (peerMap.get(h) ?? 0) + 1);
+  }
+  if (!peerMap.has(HOME_HOST)) peerMap.set(HOME_HOST, 0);
+  const peers = [...peerMap.entries()]
+    .map(([h, n]) => ({ host: h, n, home: h === HOME_HOST }))
+    .sort((a, b) => (a.home ? -1 : b.home ? 1 : b.n - a.n));
 
   return (
     <aside className={`q-side q-glass${open ? ' is-open' : ''}`} aria-label="长亭侧栏">
@@ -154,22 +174,24 @@ export default function ChatAside({
           </button>
         </section>
 
+        {/* 互联：这间屋子连到了哪些站。数据来自成员自己的 `site`，
+            所以以后接了别的站，这里会自动多一行，不用改代码。 */}
         <section className="q-side__group">
           <div className="q-side__grouphead">
-            <span>这间屋子</span>
+            <span>互联站点</span>
+            <span>{peers.length} 个</span>
           </div>
-          <button
-            type="button"
-            className={`q-channel${openInfo ? ' is-active' : ''}`}
-            onClick={() => setOpenInfo((v) => !v)}
-            aria-expanded={openInfo}
-          >
-            <span className="q-channel__hash" aria-hidden="true">
-              <MorphIcon icon={MessageCircle} size={13} color="currentColor" />
-            </span>
-            <span className="q-channel__name">茶室须知</span>
-          </button>
-          {openInfo && <p className="q-side__notice">{NOTICE_BODY}</p>}
+          <ul className="q-peers">
+            {peers.map((p) => (
+              <li key={p.host} className={`q-peer${p.home ? ' is-home' : ''}`}>
+                <span className="q-peer__ic" aria-hidden="true">
+                  {p.host.slice(0, 1).toUpperCase()}
+                </span>
+                <span className="q-peer__host">{p.host}</span>
+                <span className="q-peer__n">{p.home ? '本站' : `${p.n} 人`}</span>
+              </li>
+            ))}
+          </ul>
         </section>
 
         {/* 只开了一间屋子，频道列表很短 —— 这里补一条「此刻在长亭」，

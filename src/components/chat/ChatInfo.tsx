@@ -48,7 +48,11 @@ export default function ChatInfo({
   onClose: () => void;
 }) {
   return (
-    <aside className={`q-info q-glass${open ? ' is-open' : ''}`} aria-label="空间详情">
+    <aside
+      id="q-chat-info"
+      className={`q-info q-glass${open ? ' is-open' : ''}`}
+      aria-label="空间详情"
+    >
       <div className="q-info__head">
         <span className="q-info__title">
           <i aria-hidden="true" />
