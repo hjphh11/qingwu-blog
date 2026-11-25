@@ -83,6 +83,8 @@ export {
   Pin,
   Download,
   FileText,
+  // 长亭输入区：图片单独一个入口（手机直接进相册），附件另一个
+  Paperclip,
   // 语音消息
   Mic,
   // 账号页（上传头像 / 定位留言 / 站长徽章）

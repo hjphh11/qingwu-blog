@@ -12,6 +12,7 @@ import {
   ImageUp as ImageIcon,
   LoaderCircle,
   Mic,
+  Paperclip,
   Search,
   Send,
   Smile,
@@ -710,6 +711,9 @@ export default function ChatRoom() {
   const recTimer = useRef<number | null>(null);
   const recT0 = useRef(0);
   const fileRef = useRef<HTMLInputElement>(null);
+  /** 图片/视频单独一个 input：手机上 `accept="image/*"` 会直接进相册，
+      混进 pdf/zip 之后系统只会弹「选取文件」，多一步还得自己找相册 */
+  const imageRef = useRef<HTMLInputElement>(null);
 
   /** 已见过的最新 id —— poll 的游标（有快照就从快照续上，第一条 poll 才不会重复拉） */
   const lastIdRef = useRef(boot?.lastId ?? 0);
@@ -1132,6 +1136,51 @@ export default function ChatRoom() {
    * 为什么不直接发出去：图片经常要配一句话（「你看这个」），
    * 上传完先挂着、等用户按发送，比「先发图再补文字」自然。
    */
+  /**
+   * 一条消息发出去之后的收尾。
+   *
+   * 抽出来是因为现在有两个入口：点「发送」（doSend）和「图/文件传完直接发」（handleUploaded）。
+   * 两边的清场动作必须一模一样 —— 漏一个就会出现「图已经发出去了、草稿还挂在输入框里」。
+   */
+  const afterSent = (message: ChatMessage) => {
+    setDraft('');
+    // 发出去之后引用、@、待发媒体都该清掉 —— 留着会让下一条莫名其妙也带上
+    setReplyTo(null);
+    setMentionIds([]);
+    setMention(null);
+    setPendingMedia(null);
+    setMessages((prev) => mergeMessages(prev, [message], []));
+    lastIdRef.current = Math.max(lastIdRef.current, message.id);
+    setEmojiOpen(false);
+    requestAnimationFrame(() => scrollToBottom(true));
+    inputRef.current?.focus();
+    // 发言数变了 —— 侧栏的「累计发言 / 再聊几句」要跟着走，别等 30 秒
+    void refreshWho();
+  };
+
+  /**
+   * 上传成功后怎么处置这张图 / 这个文件。
+   *
+   * · 没在打字 ⇒ **直接作为独立一条发出去**（选完就发，不用再点一次发送）
+   * · 正在打字 ⇒ 挂成待发，把话说完一起发 —— 这种场景下「图 + 说明」本来就是一体的
+   * · 发送失败 ⇒ 退回待发状态，图不能丢，点发送还能再试
+   */
+  const handleUploaded = async (media: ChatMedia) => {
+    if (draft.trim()) {
+      setPendingMedia(media);
+      return;
+    }
+    setSending(true);
+    setTip(null);
+    const res = await send('', { replyTo: 0, mentions: [], mediaId: media.id });
+    setSending(false);
+    if (res.ok) afterSent(res.message);
+    else {
+      setPendingMedia(media);
+      setTip({ kind: 'warn', text: res.message });
+    }
+  };
+
   const attachFile = async (file: File) => {
     if (!signedIn) {
       setLoginOpen(true);
@@ -1152,7 +1201,7 @@ export default function ChatRoom() {
           width: shrunk.width,
           height: shrunk.height,
         });
-        if (up.ok) setPendingMedia(up.media);
+        if (up.ok) await handleUploaded(up.media);
         else setTip({ kind: 'warn', text: up.message });
         return;
       }
@@ -1164,7 +1213,7 @@ export default function ChatRoom() {
         }
         const dataUrl = await readAsDataURL(file);
         const up = await uploadMedia(dataUrl);
-        if (up.ok) setPendingMedia(up.media);
+        if (up.ok) await handleUploaded(up.media);
         else setTip({ kind: 'warn', text: up.message });
         return;
       }
@@ -1180,7 +1229,7 @@ export default function ChatRoom() {
       }
       const dataUrl = await readAsDataURL(file);
       const up = await uploadMedia(dataUrl, { filename: file.name });
-      if (up.ok) setPendingMedia(up.media);
+      if (up.ok) await handleUploaded(up.media);
       else setTip({ kind: 'warn', text: up.message });
     } finally {
       setUploading(false);
@@ -1363,19 +1412,7 @@ export default function ChatRoom() {
     setSending(false);
 
     if (res.ok) {
-      setDraft('');
-      // 发出去之后引用、@、待发媒体都该清掉 —— 留着会让下一条莫名其妙也带上
-      setReplyTo(null);
-      setMentionIds([]);
-      setMention(null);
-      setPendingMedia(null);
-      setMessages((prev) => mergeMessages(prev, [res.message], []));
-      lastIdRef.current = Math.max(lastIdRef.current, res.message.id);
-      setEmojiOpen(false);
-      requestAnimationFrame(() => scrollToBottom(true));
-      inputRef.current?.focus();
-      // 发言数变了 —— 侧栏的「累计发言 / 再聊几句」要跟着走，别等 30 秒
-      void refreshWho();
+      afterSent(res.message);
       return;
     }
 
@@ -2234,8 +2271,8 @@ export default function ChatRoom() {
                   <button
                     type="button"
                     className="q-chat__tool"
-                    aria-label="发图片、视频或文件"
-                    onClick={() => fileRef.current?.click()}
+                    aria-label="发图片或视频（手机会直接打开相册）"
+                    onClick={() => imageRef.current?.click()}
                     disabled={uploading}
                   >
                     {uploading ? (
@@ -2243,6 +2280,15 @@ export default function ChatRoom() {
                     ) : (
                       <MorphIcon icon={ImageIcon} size={17} color="currentColor" />
                     )}
+                  </button>
+                  <button
+                    type="button"
+                    className="q-chat__tool"
+                    aria-label="添加附件"
+                    onClick={() => fileRef.current?.click()}
+                    disabled={uploading}
+                  >
+                    <MorphIcon icon={Paperclip} size={17} color="currentColor" />
                   </button>
                   <button
                     type="button"
@@ -2255,14 +2301,27 @@ export default function ChatRoom() {
                     <MorphIcon icon={Mic} size={17} color="currentColor" />
                   </button>
                   <input
-                    ref={fileRef}
+                    ref={imageRef}
                     type="file"
-                    /* accept 只影响选择框的默认筛选，真正收什么由服务端白名单决定 */
-                    accept="image/*,video/*,.pdf,.zip,.txt,.md,.csv,.json,.epub,.docx,.xlsx,.pptx"
+                    /* 只认图/视频：手机上点图片按钮会**直接进相册**，不再先弹「选取文件」。
+                       ⚠️ 别加 capture —— 加了就只能拍照，选不了相册里已有的照片。 */
+                    accept="image/*,video/*"
                     hidden
                     onChange={(e) => {
                       const f = e.target.files?.[0];
                       // 清空 value：不然连选同一张图不会触发 change
+                      e.target.value = '';
+                      if (f) void attachFile(f);
+                    }}
+                  />
+                  <input
+                    ref={fileRef}
+                    type="file"
+                    /* 附件只列文档类。accept 只影响选择框的筛选，真正收什么由服务端白名单决定 */
+                    accept=".pdf,.zip,.txt,.md,.csv,.json,.epub,.docx,.xlsx,.pptx"
+                    hidden
+                    onChange={(e) => {
+                      const f = e.target.files?.[0];
                       e.target.value = '';
                       if (f) void attachFile(f);
                     }}

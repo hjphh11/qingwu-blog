@@ -2146,6 +2146,20 @@
     color: var(--color-crimson);
   }
 
+  /* 320~374 这一档（iPhone SE 一代、老安卓）：4 个按钮 + 字数 + 发送会差 2px 挤成两行，
+     按钮收到 2rem、间距收到 0.25rem 刚好放得下。仍高于 24px 的命中区下限。 */
+  @media (max-width: 374px) {
+    .q-chat__tool {
+      width: 2rem;
+      height: 2rem;
+      border-radius: 0.65rem;
+    }
+
+    .q-chat__tools {
+      gap: 0.25rem;
+    }
+  }
+
   .q-chat__input {
     /* 第一行独占：不管工具条多宽，输入区永远是一整行 */
     order: 1;
