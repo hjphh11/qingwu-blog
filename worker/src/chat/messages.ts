@@ -528,7 +528,7 @@ export async function pollChat(request: Request, env: Env): Promise<Response> {
      * 而「已读 N」这个信息在实际对话里也只对最后一句有意义（和 WhatsApp 一样）。
      * 判定用阅读游标反推：某人的 last_read_id >= 这条的 id，就算他读到了。
      */
-    let reads: { id: number; n: number } | null = null;
+    let reads: { id: number; n: number; names: string[] } | null = null;
     if (meId) {
       const last = await env.DB.prepare(
         `SELECT MAX(id) AS id FROM chat_messages WHERE account_id = ? AND status = 'visible'`,
@@ -537,13 +537,29 @@ export async function pollChat(request: Request, env: Env): Promise<Response> {
         .first<{ id: number | null }>()
         .catch(() => null);
       if (last?.id) {
-        const cnt = await env.DB.prepare(
-          `SELECT COUNT(*) AS n FROM chat_reads WHERE last_read_id >= ? AND account_id != ?`,
+        /**
+         * 谁读到了这条：`last_read_id >= 这条 id` 就算读到。
+         *
+         * 一次查询同时给出「几个人」和「是谁」—— 名字取前 5 个（悬停才看），
+         * 人数用整行数，不受 5 的限制。上限 200 是因为这间屋子本来就不大，
+         * 真到几百人这个回执也没意义了。
+         */
+        const who = await env.DB.prepare(
+          `SELECT COALESCE(NULLIF(a.display_name, ''), substr(a.email, 1, instr(a.email, '@') - 1)) AS name
+             FROM chat_reads r JOIN accounts a ON a.id = r.account_id
+            WHERE r.last_read_id >= ? AND r.account_id != ?
+            ORDER BY r.updated_at DESC
+            LIMIT 200`,
         )
           .bind(last.id, meId)
-          .first<{ n: number }>()
-          .catch(() => null);
-        reads = { id: last.id, n: cnt?.n ?? 0 };
+          .all<{ name: string | null }>()
+          .catch(() => ({ results: [] as Array<{ name: string | null }> }));
+        const list = (who.results ?? []) as Array<{ name: string | null }>;
+        reads = {
+          id: last.id,
+          n: list.length,
+          names: list.slice(0, 5).map((r) => r.name || '有人'),
+        };
       }
     }
 

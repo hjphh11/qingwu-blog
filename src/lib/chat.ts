@@ -99,7 +99,7 @@ export interface PollResult {
   /** 正在打字的人的名字（不含自己） */
   typing: string[];
   /** 我最新一条消息被多少人读到了；null = 我还没发过言 */
-  reads: { id: number; n: number } | null;
+  reads: { id: number; n: number; names: string[] } | null;
   /** 当前置顶（每次 poll 都带，站长一改所有人两秒内看见） */
   pin: PinInfo | null;
 }
@@ -235,7 +235,7 @@ export async function poll(after: number): Promise<PollResult> {
     recalled?: unknown[];
     online?: number;
     typing?: unknown[];
-    reads?: { id?: unknown; n?: unknown } | null;
+    reads?: { id?: unknown; n?: unknown; names?: unknown[] } | null;
     pin?: unknown;
     auth?: { signedIn?: boolean };
   };
@@ -256,7 +256,14 @@ export async function poll(after: number): Promise<PollResult> {
       .slice(0, 5),
     reads:
       data.reads && Number(data.reads.id) > 0
-        ? { id: Number(data.reads.id), n: Number(data.reads.n) || 0 }
+        ? {
+            id: Number(data.reads.id),
+            n: Number(data.reads.n) || 0,
+            names: (Array.isArray(data.reads.names) ? data.reads.names : [])
+              .map((s2) => String(s2 ?? ''))
+              .filter(Boolean)
+              .slice(0, 5),
+          }
         : null,
   };
 }

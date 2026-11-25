@@ -354,8 +354,16 @@ export default function ChatRoom() {
 
   /** 别人正在打字 */
   const [typingNames, setTypingNames] = useState<string[]>([]);
+  /**
+   * 每个「正在输入」的名字最后一次被后端报到的时刻。
+   *
+   * 后端窗口 6 秒、前端 3 秒报一次，两次 poll 之间（2.5 秒）本来不该断；
+   * 但请求一慢就容易在窗口边缘抖成「闪一下又没了」。这里多留 4 秒 ——
+   * 只比 poll 间隔长一点，既不会让「停手」看起来像还在打，又不会闪。
+   */
+  const typingSeenRef = useRef<Map<string, number>>(new Map());
   /** 我最新那条被读了几次 */
-  const [reads, setReads] = useState<{ id: number; n: number } | null>(null);
+  const [reads, setReads] = useState<{ id: number; n: number; names: string[] } | null>(null);
 
   /** 搜索面板 */
   const [searchOpen, setSearchOpen] = useState(false);
@@ -870,7 +878,19 @@ export default function ChatRoom() {
 
         setOnline(r.online);
         setSignedIn(r.signedIn);
-        setTypingNames(r.typing);
+        {
+          const now = Date.now();
+          const seen = typingSeenRef.current;
+          for (const n of r.typing) seen.set(n, now);
+          const alive: string[] = [];
+          for (const [n, at] of seen) {
+            if (now - at < 4000) alive.push(n);
+            else seen.delete(n);
+          }
+          setTypingNames((prev) =>
+            prev.length === alive.length && prev.every((n, i) => n === alive[i]) ? prev : alive,
+          );
+        }
         setReads(r.reads);
         setPinState((prev) => (prev?.id === r.pin?.id ? prev : r.pin));
 
@@ -1759,6 +1779,7 @@ export default function ChatRoom() {
                       onReact={(emoji) => void doReact(m.id, emoji)}
                       onReply={() => setReplyTo(m)}
                       readCount={reads?.id === m.id ? reads.n : 0}
+                      readNames={reads?.id === m.id ? reads.names : undefined}
                     />
                   </div>
                 );
@@ -1823,7 +1844,27 @@ export default function ChatRoom() {
                 </div>
               )}
               {typingNames.length > 0 && (
-                <p className="q-chat__typing">
+                <p className="q-chat__typing" aria-live="polite">
+                  {/* 头像比名字先被看见：名字可能是「茶客#7」这种，头像一眼认得 */}
+                  {typingNames.slice(0, 2).map((n) => {
+                    const who = members.find((x) => x.name === n);
+                    return (
+                      <span key={n} className="q-chat__typingav" aria-hidden="true">
+                        {n.slice(0, 1)}
+                        {who?.avatar && (
+                          <img
+                            src={who.avatar}
+                            alt=""
+                            loading="lazy"
+                            decoding="async"
+                            onError={(e) => {
+                              e.currentTarget.style.display = 'none';
+                            }}
+                          />
+                        )}
+                      </span>
+                    );
+                  })}
                   {typingNames.slice(0, 2).join('、')}
                   {typingNames.length > 2 ? ` 等 ${typingNames.length} 人` : ''} 正在输入
                   <i />
@@ -2163,6 +2204,7 @@ function MessageRow({
   onReact,
   onReply,
   readCount,
+  readNames,
 }: {
   m: ChatMessage;
   grouped: boolean;
@@ -2187,6 +2229,8 @@ function MessageRow({
   onReply: () => void;
   /** 这条被多少人读完（只对「我最新那条」有意义，其余传 0） */
   readCount: number;
+  /** 是谁读的（最多 5 个名字），只用来做悬停提示 */
+  readNames?: string[];
 }) {
   // ⚠️ hook 必须在下面那个「撤回消息直接 return」之前 —— 否则两种状态的 hook
   //    数量不同，React 会报 "Rendered fewer hooks than expected"。
@@ -2515,7 +2559,36 @@ function MessageRow({
           </div>
         </div>
 
-        {readCount > 0 && <span className="q-chat__reads">已读 {readCount}</span>}
+        {/*
+          已读回执：对勾 + 人数。对勾不是装饰 —— 它比「已读」两个字更早被扫到，
+          而人数和「谁读的」放在悬停提示里，不占行宽。
+        */}
+        {readCount > 0 && (
+          <span
+            className="q-chat__reads"
+            title={
+              readNames && readNames.length
+                ? `${readNames.join('、')}${readCount > readNames.length ? ` 等 ${readCount} 人` : ''} 已读`
+                : `${readCount} 人已读`
+            }
+          >
+            <svg
+              width="13"
+              height="13"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2.6"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              aria-hidden="true"
+            >
+              <path d="M1.8 12.6l4.4 4.4L14.6 8.6" />
+              <path d="M9.4 14.6l2.4 2.4L22 8.6" />
+            </svg>
+            已读 {readCount}
+          </span>
+        )}
       </div>
     </div>
   );

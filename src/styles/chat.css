@@ -115,12 +115,11 @@
     /**
      * 卡片高度。
      *
-     * `- 9rem` 是「导航（68）+ 卡片上方的呼吸 + 底部留一条边」的总和：
-     * 1440×900 下卡顶在 120、卡底落在 876，视口底还剩 24px。
-     * 原来是 `- 12rem` / 上限 62rem —— 900 高时只有 708，卡片底下空出一大截，
-     * 看着像没铺满；上限提到 72rem 后，1080 高的屏能到 936。
+     * `- 6.5rem` 是「卡顶 80（导航底 60 + 20 空隙）+ 卡底离视口 24」：
+     * 1440×900 下卡顶 80、卡底 876。改这里的减数之前先看
+     * `.q-chat-wide .page-shell` 的 padding-top —— 两者是配套的。
      */
-    height: clamp(34rem, calc(100svh - 9rem), 72rem);
+    height: clamp(34rem, calc(100svh - 6.5rem), 72rem);
   }
 
   /**
@@ -131,6 +130,12 @@
    * 只改这一页（`.q-chat-wide` 挂在 body 上），别的页面不受影响。
    */
   .q-chat-wide .page-shell {
+    /**
+     * 卡顶离导航只留一点点：全站的 `clamp(6rem…7.5rem)` 是给阅读页的
+     * （标题下面还要接一段正文），聊天室是一屏应用，60px 的导航下面
+     * 再空 60px 就只剩一条缝的光。这里 5rem = 导航底 + 20px。
+     */
+    padding-top: 5rem;
     padding-bottom: 1.5rem;
   }
 
@@ -1808,6 +1813,9 @@
 
   /* 已读回执 */
   .q-chat__reads {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.2rem;
     align-self: flex-end;
     margin-top: 0.15rem;
     padding-right: 0.15rem;
@@ -2122,12 +2130,64 @@
     color: var(--color-muted);
   }
 
+  /* 正在输入的人：小头像叠着排，最多两个 */
+  .q-chat__typingav {
+    position: relative;
+    display: grid;
+    place-items: center;
+    width: 1.1rem;
+    height: 1.1rem;
+    overflow: hidden;
+    border-radius: 9999px;
+    background: var(--color-rose);
+    font-size: 0.5rem;
+    font-weight: 700;
+    line-height: 1;
+    color: var(--color-ink);
+    box-shadow: 0 0 0 1.5px rgba(255, 252, 249, 0.95);
+  }
+
+  .q-chat__typingav + .q-chat__typingav {
+    margin-left: -0.3rem;
+  }
+
+  .q-chat__typingav img {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  }
+
+  /* 三个点：不动的话像三个删除线，动起来才读得出「正在敲」 */
+  @keyframes q-typing-dot {
+    0%,
+    70%,
+    100% {
+      opacity: 0.35;
+      transform: translateY(0);
+    }
+    35% {
+      opacity: 1;
+      transform: translateY(-2px);
+    }
+  }
+
   .q-chat__typing i {
     width: 0.25rem;
     height: 0.25rem;
     border-radius: 9999px;
     background: var(--color-crimson);
     opacity: 0.5;
+    animation: q-typing-dot 1.1s ease-in-out infinite;
+  }
+
+  .q-chat__typing i:nth-of-type(2) {
+    animation-delay: 0.18s;
+  }
+
+  .q-chat__typing i:nth-of-type(3) {
+    animation-delay: 0.36s;
   }
 
   /* 提示条（成功 / 警告） */

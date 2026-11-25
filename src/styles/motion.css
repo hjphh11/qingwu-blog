@@ -45,6 +45,7 @@
 .qhidden .q-lost__q,
 .qhidden .q-proj-sweep,
 .qhidden .q-wall__tile::before,
+.qhidden .q-chat__typing i,
 .qhidden .q-wall__spinner {
   animation-play-state: paused !important;
 }
@@ -72,6 +73,11 @@
   .q-submit-sweep::after,
   .q-proj-sweep {
     animation: none !important;
+  }
+  /* 「正在输入」那三个点：停下来就是三个静止的圆，靠文字本身已经说明状态 */
+  .q-chat__typing i {
+    animation: none !important;
+    opacity: 0.6;
   }
   /* 光扫停下之后留着会是一道静止的亮带，反而更扎眼 —— 直接藏掉 */
   .q-proj-sweep {
