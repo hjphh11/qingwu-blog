@@ -104,10 +104,6 @@ export default function EmojiPicker({
           </button>
         ))}
       </div>
-
-      <p className="mt-1.5 border-t border-rose/15 pt-1.5 text-[10px] leading-relaxed text-subtle">
-        表情会以 <code className="text-[10px]">:[名字]</code> 的形式存下来，换一套表情也不影响老留言。
-      </p>
     </div>
   );
 }
