@@ -13,6 +13,9 @@ import ChatRoom from '../../components/ChatRoom.tsx';
  * 2026-11-25 换版：原来是「页头 + 聊天卡 + 侧栏」，现在是三栏玻璃卡布局。
  * h1 挪进左侧栏的品牌区（一页只留一个 h1），独立页头因此去掉。
  *
+ * `bodyClass="q-chat-wide"`：长亭是应用页，版心比阅读页宽一档（1600 而不是 1240）。
+ * 挂在 body 上，导航和页脚才会跟着一起变宽 —— 详见 chat.css ① 的说明。
+ *
  * 和其他页的分工：留言是「一次性招呼」，长亭是「在场」。
  */
 ---
@@ -20,6 +23,7 @@ import ChatRoom from '../../components/ChatRoom.tsx';
 <Layout
   title="长亭 · 清吾"
   description="清吾的长亭，路过就进来坐坐。聊两句、发个表情，或者只是看看别人在说什么。"
+  bodyClass="q-chat-wide"
 >
   <div class="page-shell q-chat-page">
     <ChatRoom client:only="react" />

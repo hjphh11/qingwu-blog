@@ -4,7 +4,7 @@
  * 2026-11-25 换版：暖光茶室 / 玻璃 Bento 三栏（站长给的设计稿）。
  * 左：「我 + 频道」　中：消息流与输入区　右：空间详情。
  *
- * 四处故意偏离设计稿，都是为了达标，不是走样：
+ * 五处故意偏离设计稿，都是为了达标 / 去伪影，不是走样：
  *   ① 设计稿的次要文字是 rgba(ink,.62)/.44，奶油底上只有约 4.0 / 3.2:1，正文级不够 AA；
  *      这里用站内已校准的 --color-muted(.9)=5.8:1 / --color-subtle(.75)=4.85:1。
  *   ② 气泡正文 14px，但手机端 <16px 会触发 iOS 聚焦缩放整页 —— ≤768 提到 16px。
@@ -12,18 +12,41 @@
  *      这里让它与气泡上沿重叠、视觉间距用 padding 假装，指针路径始终在同一盒子里。
  *   ④ 设计稿没有「键盘入口」。紧凑形态（窄屏/触屏）下操作条默认 hidden，
  *      所以保留一枚 28px 的角标按钮：平时透明，聚焦或展开时现形。
+ *   ⑤ 设计稿里卡片四周那圈光，是靠一整块被裁切的模糊层做出来的 ——
+ *      裁切线在导航下方露出一条硬边，且与全站 aurora 重复。这一层不做了，
+ *      暖光统一交给全站那层 fixed 的 aurora（见 ① 的说明）。
  *
  * 层叠顺序即分组顺序：
- *   ① 壳与氛围 → ② 三栏骨架 → ③ 侧栏 → ④ 顶栏 → ⑤ 消息流
+ *   ① 壳与版心 → ② 三栏骨架 → ③ 侧栏 → ④ 顶栏 → ⑤ 消息流
  *   → ⑥ 输入区 → ⑦ 右侧详情 → ⑧ 浮层 → ⑨ 状态与无障碍
  */
 
 @layer components {
   /* ═══════════════════════════════════════════════════════════════════
-     ① 页面壳与氛围层
+     ① 页面壳与版心
      ═══════════════════════════════════════════════════════════════════ */
 
-  /* 氛围光斑关在自己的盒子里，不染导航和页脚 */
+  /**
+   * 这一页的版心比阅读页宽一档。
+   *
+   * 长亭是「应用页」不是阅读页：三栏并排，中栏要装得下气泡和输入区。
+   * 1240 的版心在 1440 下只给中栏留 548px，几乎每条消息都在折行。
+   * 这里只把这一页的 `--shell-max` 放到 1600 —— 导航、页脚、正文读的是
+   * 同一对变量，所以三者一起变宽，横轴依旧只有一个来源，不会错位。
+   *
+   * ⚠️ 别去改 `:root` 上的 `--shell-max`：那是全站版心，
+   *    改它等于让每个阅读页都变宽（版心只允许有一处，见 docs/设计规范.md）。
+   * ⚠️ 也别把 `--shell-gutter` 压到 1rem 以下：导航胶囊是靠 `-ml-4` 比正文
+   *    左伸 16px 的（Navbar 里那三条规则），留白再小它会顶出屏幕边缘。
+   */
+  .q-chat-wide {
+    --shell-max: 1600px;
+  }
+
+  /**
+   * ⚠️ `isolation: isolate` 不是装饰：抽屉的 `z-index: 60` 需要困在页面内部，
+   * 否则它会跟导航的 `z-50` 在同一个层叠上下文里比大小。别顺手删。
+   */
   .q-chatpage {
     position: relative;
     isolation: isolate;
@@ -43,105 +66,17 @@
     box-sizing: border-box;
   }
 
-  .q-chatpage__amb {
-    position: absolute;
-    inset: -1.25rem -0.75rem;
-    z-index: 0;
-    overflow: hidden;
-    pointer-events: none;
-    border-radius: 2.5rem;
-  }
-
-  .q-amb {
-    position: absolute;
-    border-radius: 9999px;
-    filter: blur(76px);
-    will-change: transform;
-  }
-
-  .q-amb--rose-a {
-    width: 46vw;
-    height: 46vw;
-    max-width: 560px;
-    max-height: 560px;
-    top: -14%;
-    left: -8%;
-    background: radial-gradient(
-      circle,
-      color-mix(in srgb, var(--color-rose) 50%, transparent) 0%,
-      color-mix(in srgb, var(--color-rose) 13%, transparent) 52%,
-      transparent 74%
-    );
-    animation: q-amb-a 26s ease-in-out infinite alternate;
-  }
-
-  .q-amb--rose-b {
-    width: 42vw;
-    height: 42vw;
-    max-width: 500px;
-    max-height: 500px;
-    right: -10%;
-    bottom: -16%;
-    background: radial-gradient(
-      circle,
-      color-mix(in srgb, var(--color-rose) 42%, transparent) 0%,
-      color-mix(in srgb, var(--color-rose) 11%, transparent) 55%,
-      transparent 75%
-    );
-    animation: q-amb-b 30s ease-in-out infinite alternate;
-  }
-
-  .q-amb--amber-a {
-    width: 32vw;
-    height: 32vw;
-    max-width: 380px;
-    max-height: 380px;
-    top: 8%;
-    right: 14%;
-    background: radial-gradient(
-      circle,
-      color-mix(in srgb, var(--color-amber) 30%, transparent) 0%,
-      color-mix(in srgb, var(--color-amber) 8%, transparent) 50%,
-      transparent 74%
-    );
-    animation: q-amb-c 22s ease-in-out infinite alternate;
-  }
-
-  .q-amb--amber-b {
-    width: 28vw;
-    height: 28vw;
-    max-width: 340px;
-    max-height: 340px;
-    bottom: 4%;
-    left: 22%;
-    background: radial-gradient(
-      circle,
-      color-mix(in srgb, var(--color-amber) 24%, transparent) 0%,
-      color-mix(in srgb, var(--color-amber) 6%, transparent) 52%,
-      transparent 74%
-    );
-    animation: q-amb-d 28s ease-in-out infinite alternate;
-  }
-
-  @keyframes q-amb-a {
-    from { transform: translate3d(0, 0, 0) scale(1); }
-    to { transform: translate3d(4%, 6%, 0) scale(1.08); }
-  }
-
-  @keyframes q-amb-b {
-    from { transform: translate3d(0, 0, 0) scale(1.04); }
-    to { transform: translate3d(-5%, -4%, 0) scale(0.96); }
-  }
-
-  @keyframes q-amb-c {
-    from { transform: translate3d(0, 0, 0) scale(0.96); }
-    to { transform: translate3d(-6%, 8%, 0) scale(1.1); }
-  }
-
-  @keyframes q-amb-d {
-    from { transform: translate3d(0, 0, 0) scale(1); }
-    to { transform: translate3d(7%, -5%, 0) scale(1.06); }
-  }
+  /**
+   * 页面自己**不再**铺一层光斑。
+   *
+   * 原来这里有四团 blur(76px) 的 `.q-amb`，关在 `overflow:hidden` 的盒子里。
+   * 但盒子只比卡片大出 12~20px，于是光斑全被裁在卡片外沿那一圈：
+   * 顶部露出一条 20px 的硬边亮带，还叠在全站那层 `.aurora-blob` 暖光上 ——
+   * 两套光互相压，导航下方就成了「一道说不清的光」。
+   *
+   * 现在只留全站那层 fixed 的 aurora：同样暖，但没有裁切边、没有重复计算，
+   * 也少掉 4 个合成层与 4 条 26~30s 的漂移动画。
+   */
 
   /* ═══════════════════════════════════════════════════════════════════
      ② 三栏骨架
@@ -158,7 +93,6 @@
      *
      * 一旦写了（哪怕 1），整栏就成了独立层叠上下文：抽屉里的 `z-index: 60`
      * 只在栏内比较，永远压不过遮罩的 55 —— 实测抽屉被磨砂盖住、字全糊。
-     * 不写也没问题：光斑层是 z-index:0，本层在 DOM 里排它后面，自然在上面。
      */
     display: grid;
     grid-template-columns: 272px minmax(0, 1fr) 312px;
@@ -2018,11 +1952,19 @@
     color: var(--color-crimson);
   }
 
-  /* 回到底部 */
+  /* 回到底部：浮在输入区上方，不能压在输入框 / 发送键上。
+     壳是 0 高度的定位参照（贴在 .q-chat__above 之前），
+     按钮绝对定位在壳的上沿 —— 既不占布局，也永远比输入区高一截。 */
+  .q-chat__jumpwrap {
+    position: relative;
+    flex: none;
+    height: 0;
+  }
+
   .q-chat__jump {
     position: absolute;
-    right: 1.25rem;
-    bottom: 0.75rem;
+    right: 1.15rem;
+    bottom: 0.55rem;
     z-index: 8;
     display: inline-flex;
     align-items: center;
@@ -2692,7 +2634,6 @@
   }
 
   @media (prefers-reduced-motion: reduce) {
-    .q-amb,
     .q-skel-av,
     .q-skel-line,
     .q-me__ghost {

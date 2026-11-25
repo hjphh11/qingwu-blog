@@ -27,6 +27,16 @@ interface Props {
    * 还会让页面多出一截可滚动高度（滚轮一动，墙不动、内容在下面跑）。
    */
   bare?: boolean;
+  /**
+   * 整个 `<body>` 额外挂的类名。
+   *
+   * 只给「需要另一套版心」的页面用（目前只有 /chat 长亭：它把 `--shell-max`
+   * 放到 1600，导航与页脚跟正文一起变宽）。
+   * 为什么挂在 body 而不是页面里的某个 div：Navbar 是 body 的直接子节点
+   * （fixed 定位），只有挂在 body 上，那对变量才照得到它 —— 挂在 `.page-shell`
+   * 里导航读不到，两者会错开一截。
+   */
+  bodyClass?: string;
 }
 
 const {
@@ -34,6 +44,7 @@ const {
   description = SITE.description,
   image = SITE.ogImage,
   bare = false,
+  bodyClass = '',
 } = Astro.props;
 const pathname = Astro.url.pathname;
 const url = SITE.url.replace(/\/$/, '') + pathname;
@@ -166,7 +177,7 @@ const hitEndpoint = `${WORKER_BASE}/hit`;
     <meta name="twitter:description" content={description} />
     <meta name="twitter:image" content={SITE.url.replace(/\/$/, '') + image} />
   </head>
-  <body>
+  <body class={bodyClass || undefined}>
     {/* 路由切换进度条(样式见 global.css 的 .q-route):ClientRouter 早就在跑,
         但切页时界面完全没反应 —— 点「文章」到新内容出现之间是静默的。
         这条 2px 绯红→琥珀的线明确「跳转发生了」。 */}

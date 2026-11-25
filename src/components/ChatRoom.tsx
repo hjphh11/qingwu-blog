@@ -1216,16 +1216,6 @@ export default function ChatRoom() {
     />
   );
 
-  /** 背景氛围：四团光斑，位置对应设计稿 */
-  const ambience = (
-    <div className="q-chatpage__amb" aria-hidden="true">
-      <span className="q-amb q-amb--rose-a" />
-      <span className="q-amb q-amb--rose-b" />
-      <span className="q-amb q-amb--amber-a" />
-      <span className="q-amb q-amb--amber-b" />
-    </div>
-  );
-
   /** 窄屏抽屉打开时的遮罩：点哪儿都能收 */
   const drawerMask = (
     <button
@@ -1242,7 +1232,6 @@ export default function ChatRoom() {
   if (loading) {
     return (
       <div className="q-chatpage">
-        {ambience}
         <div className="q-bento">
           {side}
           <section className="q-chat q-glass" aria-busy="true" aria-label="正在加载聊天记录">
@@ -1299,7 +1288,6 @@ export default function ChatRoom() {
   if (failed) {
     return (
       <div className="q-chatpage">
-        {ambience}
         <div className="q-bento">
           {side}
           <section className="q-chat q-glass" aria-label="长亭聊天室">
@@ -1321,8 +1309,6 @@ export default function ChatRoom() {
 
   return (
     <div className="q-chatpage">
-      {ambience}
-
       {(sideOpen || infoOpen) && drawerMask}
 
       <div className="q-bento">
@@ -1574,11 +1560,16 @@ export default function ChatRoom() {
             </div>
           </div>
 
+          {/* 「回到最新」要浮在输入区**上方**，不能压在输入框上。
+              用一个 0 高度的定位壳贴在输入区前面：按钮绝对定位在壳的上沿，
+              因而永远比输入区高半个指头，也不会吃掉布局高度。 */}
           {!atBottom && (
-            <button type="button" className="q-chat__jump" onClick={() => scrollToBottom(true)}>
-              <MorphIcon icon={ChevronDown} size={13} color="currentColor" />
-              {pendingNew > 0 ? `${pendingNew} 条新消息` : '回到最新'}
-            </button>
+            <div className="q-chat__jumpwrap">
+              <button type="button" className="q-chat__jump" onClick={() => scrollToBottom(true)}>
+                <MorphIcon icon={ChevronDown} size={13} color="currentColor" />
+                {pendingNew > 0 ? `${pendingNew} 条新消息` : '回到最新'}
+              </button>
+            </div>
           )}
 
           {(editing || replyTo || typingNames.length > 0 || pendingMedia || tip) && (
