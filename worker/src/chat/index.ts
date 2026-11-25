@@ -104,7 +104,7 @@ export async function handleChat(
   // /chat/:id/report
   const report = path.match(/^\/chat\/(\d+)\/report$/);
   if (report) {
-    return method === 'POST' ? reportMessage(request, env, report[1]!) : NOT_ALLOWED();
+    return method === 'POST' ? reportMessage(request, env, ctx, report[1]!) : NOT_ALLOWED();
   }
 
   // 置顶（站长）

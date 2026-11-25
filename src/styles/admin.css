@@ -3238,7 +3238,7 @@ html.q-route-done .q-admin-route i {
 .q-chat-adm__meta {
   margin-left: auto;
   font-size: 11.5px;
-  color: rgba(17, 17, 17, 0.5);
+  color: rgba(17, 17, 17, 0.62);
 }
 
 /* 被举报的原文：整段照抄，不截断 —— 判断得看全文 */
@@ -3256,7 +3256,7 @@ html.q-route-done .q-admin-route i {
   margin: 0;
   padding: 0 14px 12px;
   font-size: 11.5px;
-  color: rgba(17, 17, 17, 0.5);
+  color: rgba(17, 17, 17, 0.62);
 }
 
 .q-chat-adm__acts {
@@ -3285,10 +3285,16 @@ html.q-route-done .q-admin-route i {
   color: rgba(17, 17, 17, 0.6);
 }
 
+/* 「重新判」「算了」这种文字按钮：命中区给到 24px（WCAG 2.5.8），
+   字号小不等于点不到 */
 .q-chat-adm__cancel {
-  padding: 0 4px;
+  display: inline-flex;
+  align-items: center;
+  min-height: 1.5rem;
+  padding: 0 6px;
   font-size: 11.5px;
-  color: rgba(17, 17, 17, 0.45);
+  /* .45 只有 3:1 —— 它虽然是次要操作，仍然是可点的字，按 AA 抬到 .62 */
+  color: rgba(17, 17, 17, 0.62);
   text-decoration: underline;
   text-underline-offset: 2px;
 }
@@ -3405,7 +3411,7 @@ html.q-route-done .q-admin-route i {
 .q-chat-adm__t {
   flex: none;
   width: 58px;
-  color: rgba(17, 17, 17, 0.45);
+  color: rgba(17, 17, 17, 0.62);
   font-variant-numeric: tabular-nums;
 }
 
@@ -3507,4 +3513,115 @@ html.q-route-done .q-admin-route i {
 
 .q-chat-adm__num.is-bad {
   color: #b3261e;
+}
+
+/* ——— 长亭后台：举报的模型复核（2026-11-25） ———
+
+   三种结论用左侧一条 3px 的竖线区分：收走（红）/ 拿不准（黄）/ 放行（灰）。
+   后台是黑白点阵 —— 除了「红＝要动手」这一条，其余都不上色。 */
+.q-chat-adm__ai {
+  position: relative;
+  margin: 0 14px 12px;
+  padding: 9px 11px 9px 12px;
+  border: 1px solid var(--qa-line);
+  border-left: 3px solid rgba(17, 17, 17, 0.22);
+  border-radius: 6px;
+  background: #fbfbfb;
+}
+
+.q-chat-adm__ai.is-delete {
+  border-left-color: #b3261e;
+  background: #fdf6f5;
+}
+
+.q-chat-adm__ai.is-review {
+  border-left-color: #b26a00;
+  background: #fffaf2;
+}
+
+/* 没判过：只有一行字 + 一颗按钮，别占太多高度 */
+.q-chat-adm__ai.is-idle {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  border-left-color: transparent;
+  background: #fafafa;
+  font-size: 12px;
+  color: rgba(17, 17, 17, 0.62);
+}
+
+.q-chat-adm__ai.is-idle .q-admin-btn {
+  width: auto;
+  flex: none;
+  margin-left: auto;
+}
+
+.q-chat-adm__aihead {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  font-size: 12.5px;
+}
+
+.q-chat-adm__aiv {
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--qa-accent-soft);
+  font-weight: 600;
+  color: var(--color-ink);
+}
+
+.q-chat-adm__ai.is-delete .q-chat-adm__aiv {
+  background: #fdecea;
+  color: #b3261e;
+}
+
+.q-chat-adm__aiscore {
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  color: var(--color-ink);
+}
+
+.q-chat-adm__aihead b {
+  font-weight: 600;
+  color: rgba(17, 17, 17, 0.72);
+}
+
+.q-chat-adm__aihead .q-chat-adm__cancel {
+  margin-left: auto;
+}
+
+.q-chat-adm__ainote {
+  margin: 6px 0 0;
+  font-size: 12.5px;
+  line-height: 1.7;
+  color: rgba(17, 17, 17, 0.72);
+  overflow-wrap: anywhere;
+}
+
+/* 判定给的理由：短标签，不占一整行 */
+.q-chat-adm__aitags {
+  display: inline-flex;
+  gap: 4px;
+  flex-wrap: wrap;
+  margin-left: 6px;
+  vertical-align: middle;
+}
+
+.q-chat-adm__aitags em {
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: rgba(17, 17, 17, 0.06);
+  font-size: 11px;
+  font-style: normal;
+  color: rgba(17, 17, 17, 0.6);
+}
+
+.q-chat-adm__aimeta {
+  margin: 6px 0 0;
+  font-size: 11px;
+  /* .42 在白底上只有 2.6:1（11px 更糟）—— 抬到 .62 约 5.3:1，看着还是次要灰 */
+  color: rgba(17, 17, 17, 0.62);
 }

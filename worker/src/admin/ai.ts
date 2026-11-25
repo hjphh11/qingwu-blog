@@ -1177,6 +1177,96 @@ export async function postAiJudge(request: Request, env: Env, _admin: Admin): Pr
 }
 
 // ——————————————————————————————————————————————————————————
+// 自由文本判定 —— 长亭举报的复核
+//
+// 评论那条路（postAiJudge）是先从 comments 表 loadCtx 再判的，长亭的消息在
+// chat_messages 里，字段对不上。这里给一个「给一段文本就判」的入口。
+//
+// **口径、类别、阈值、配额、用量记账全部沿用上面那套**，不另造一份：
+// 两套口径最坏的结果是同一条内容在评论里被拦、在长亭里被放，那比不做还糟。
+// ——————————————————————————————————————————————————————————
+export interface FreeJudge {
+  verdict: Verdict['verdict'];
+  score: number;
+  reasons: string[];
+  note: string;
+  model: string;
+  ms: number;
+  /** 这次调用花掉的 token（输入 + 输出） */
+  tokens: number;
+}
+
+export type FreeJudgeResult =
+  | { ok: true; verdict: Verdict['verdict']; score: number; reasons: string[]; note: string; model: string; ms: number; tokens: number; wouldBlock: boolean; threshold: number }
+  | { ok: false; status: number; reason: string; message: string };
+
+function errOf(e: unknown): { status: number; reason: string; message: string } {
+  if (e instanceof AiError) return { status: e.status, reason: e.code, message: e.message };
+  return { status: 500, reason: 'ai_error', message: e instanceof Error ? e.message : '未知错误' };
+}
+
+/**
+ * 判一段任意文本（不是评论）。
+ *
+ * `path` 只用于提示词里的「这是哪儿的发言」；`replies` 恒空 —— 聊天没有楼层。
+ * 失败时**不抛异常**，返回 `{ ok: false, status, message }`：
+ * 调用方（后台举报卡）要把「还没配 key」这句话原样显示给站长看。
+ */
+export async function judgeFreeText(
+  env: Env,
+  input: { body: string; author: string; path: string },
+): Promise<FreeJudgeResult> {
+  const s = await loadSettings(env);
+  const ctx: CommentCtx = {
+    id: 0,
+    author: input.author || '访客',
+    body: String(input.body ?? '').slice(0, MAX_DRAFT_LEN * 4),
+    path: input.path,
+    replies: [],
+  };
+
+  // mock 优先：本机没有 key 也要能把「举报 → 判定 → 建议」这条链路跑完
+  if (!mockJudgeOn(env) && !judgeTargetOf(env, s)) {
+    return {
+      ok: false,
+      status: 503,
+      reason: 'ai_unconfigured',
+      message: '判断模型还没配 key（AI_JUDGE_KEY 或 AI_API_KEY），这条通道没开',
+    };
+  }
+
+  const used = await usedToday(env, 'judge');
+  if (used !== null && used >= quotaOf(env)) {
+    return {
+      ok: false,
+      status: 429,
+      reason: 'ai_quota',
+      message: `今天这条通道已用满 ${quotaOf(env)} 次，明天再来`,
+    };
+  }
+
+  try {
+    const v = await runJudge(env, s, ctx, s.judge.categories);
+    await recordUsage(env, 'judge', v.tokensIn, v.tokensOut);
+    return {
+      ok: true,
+      verdict: v.verdict,
+      score: v.score,
+      reasons: v.reasons,
+      note: v.note,
+      model: v.model,
+      ms: v.ms,
+      tokens: v.tokensIn + v.tokensOut,
+      // 「按当前阈值算，这条会不会被拦」—— 和体检页同一个说法，站长不用自己算
+      wouldBlock: v.verdict !== 'ok' && v.score >= s.judge.threshold,
+      threshold: s.judge.threshold,
+    };
+  } catch (e) {
+    return { ok: false, ...errOf(e) };
+  }
+}
+
+// ——————————————————————————————————————————————————————————
 // POST /admin/ai/friend-reply —— 友链申请：探测 + 起草回信（writer / DeepSeek）
 //
 // 这就是「帮我看看他家有没有挂我的友链，然后回他一封」。

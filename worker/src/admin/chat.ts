@@ -14,6 +14,8 @@ import type { Env } from '../types';
 import { json } from '../util';
 import type { Admin } from './auth';
 import { RULE_NOTES } from '../chat/screen';
+import { judgeReportById } from '../chat/report';
+import { loadSettings } from './settings';
 
 const REPORT_STATUS = new Set(['handled', 'dismissed']);
 /** 封禁时长上限：30 天。再长就不该用「临时禁言」这个工具了 */
@@ -61,6 +63,12 @@ interface ReportRow {
   author_hash: string | null;
   reporter_id: number | null;
   reporter_name: string | null;
+  ai_verdict: string | null;
+  ai_score: number | null;
+  ai_note: string | null;
+  ai_reasons: string | null;
+  ai_model: string | null;
+  ai_at: number | null;
 }
 
 /** 举报列表（open 在前）+ 当前生效的封禁 */
@@ -73,7 +81,9 @@ export async function getChatOverview(request: Request, env: Env, _admin: Admin)
             a.id AS author_id, a.email_hash AS author_hash,
             COALESCE(NULLIF(a.display_name, ''), substr(a.email, 1, instr(a.email, '@') - 1)) AS author_name,
             b.id AS reporter_id,
-            COALESCE(NULLIF(b.display_name, ''), substr(b.email, 1, instr(b.email, '@') - 1)) AS reporter_name
+            COALESCE(NULLIF(b.display_name, ''), substr(b.email, 1, instr(b.email, '@') - 1)) AS reporter_name,
+            r.ai_verdict AS ai_verdict, r.ai_score AS ai_score, r.ai_note AS ai_note,
+            r.ai_reasons AS ai_reasons, r.ai_model AS ai_model, r.ai_at AS ai_at
        FROM chat_reports r
        LEFT JOIN chat_messages m ON m.id = r.message_id
        LEFT JOIN accounts a ON a.id = m.account_id
@@ -126,6 +136,15 @@ export async function getChatOverview(request: Request, env: Env, _admin: Admin)
       };
     });
 
+  /**
+   * 判定阈值随列表一起回。
+   *
+   * 举报卡上「建议放行 / 建议收走」要按同一个阈值算，否则前端得自己拍一个数，
+   * 和 `judgeChatReport` 里那句 `wouldBlock` 就分成两套口径了。
+   * `loadSettings` 本来就在内存里缓存，这一行几乎不花钱。
+   */
+  const threshold = (await loadSettings(env)).judge.threshold;
+
   const rows = (reports.results ?? []) as ReportRow[];
   return json({
     ok: true,
@@ -148,6 +167,17 @@ export async function getChatOverview(request: Request, env: Env, _admin: Admin)
           }
         : null,
       reporter: { id: r.reporter_id ?? 0, name: r.reporter_name || `账号#${r.reporter_id ?? 0}` },
+      // 判定结论（没判过就是 null，前端据此决定要不要显示那颗按钮的「重新判」字样）
+      ai: r.ai_at
+        ? {
+            verdict: r.ai_verdict ?? 'ok',
+            score: r.ai_score ?? 0,
+            note: r.ai_note ?? '',
+            reasons: parseReasons(r.ai_reasons),
+            model: r.ai_model ?? '',
+            at: r.ai_at,
+          }
+        : null,
     })),
     bans: banRows.map((b) => ({
       accountId: b.id,
@@ -157,6 +187,8 @@ export async function getChatOverview(request: Request, env: Env, _admin: Admin)
       createdAt: b.created_at,
     })),
     openCount: rows.filter((r) => r.status === 'open').length,
+    /** AI 判定的拦截阈值（0~100），举报卡按它算建议动作 */
+    threshold,
     rules,
   });
 }
@@ -310,4 +342,35 @@ export async function markRuleHurt(
     .bind(ruleId, now)
     .run();
   return json({ ok: true });
+}
+
+/** `ai_reasons` 存的是 JSON 数组字符串；坏了就当没写，不让一行脏数据把整页打挂 */
+function parseReasons(raw: string | null): string[] {
+  if (!raw) return [];
+  try {
+    const v = JSON.parse(raw) as unknown;
+    return Array.isArray(v) ? v.slice(0, 3).map((x) => String(x).slice(0, 60)) : [];
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * 后台那颗「交给 DeepSeek 看」/「重新判」。
+ *
+ * 真正的判定在 `chat/report.ts` 的 `judgeReportById` —— 举报写进来时已经
+ * `waitUntil` 判过一次，这个接口是**重试口**：没配 key 时判不了、超时了、
+ * 或者站长想换阈值再判一次，都点它。结论同样落库（覆盖旧的）。
+ */
+export async function judgeChatReport(
+  _request: Request,
+  env: Env,
+  _admin: Admin,
+  id: number,
+): Promise<Response> {
+  const r = await judgeReportById(env, id);
+  if (!r.ok) {
+    return json({ ok: false, reason: r.reason, message: r.message ?? '没判成，稍后再试' }, r.status);
+  }
+  return json(r);
 }

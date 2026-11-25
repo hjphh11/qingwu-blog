@@ -18,6 +18,7 @@ import {
   deleteChatMessage,
   getChatMessages,
   getChatOverview,
+  judgeChatReport,
   markRuleHurt,
   setChatBan,
   setChatReportStatus,
@@ -125,6 +126,13 @@ export async function handleAdmin(request: Request, env: Env, path: string): Pro
   if (chatHurt && m === 'POST') {
     const id = String(chatHurt[1]);
     return requireAdmin(request, env, (admin) => markRuleHurt(request, env, admin, id));
+  }
+
+  // 交给模型看一眼（结论落库，再点一次会重判并覆盖旧的）
+  const chatJudge = path.match(/^\/admin\/chat\/reports\/(\d+)\/judge$/);
+  if (chatJudge && m === 'POST') {
+    const id = Number(chatJudge[1]);
+    return requireAdmin(request, env, (admin) => judgeChatReport(request, env, admin, id));
   }
 
   const chatReport = path.match(/^\/admin\/chat\/reports\/(\d+)$/);

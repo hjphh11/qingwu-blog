@@ -33,6 +33,15 @@ interface ChatReport {
     authorName: string;
   } | null;
   reporter: { id: number; name: string };
+  /** 模型的复核结论；null = 还没判过 */
+  ai: {
+    verdict: string;
+    score: number;
+    note: string;
+    reasons: string[];
+    model: string;
+    at: number;
+  } | null;
 }
 
 interface ChatBan {
@@ -71,6 +80,32 @@ const REASON_LABEL: Record<string, string> = {
   other: '其他',
 };
 
+/** 判定类别 → 中文。和 worker/src/admin/settings.ts 的 VERDICT_DESC 同名同义 */
+const VERDICT_LABEL: Record<string, string> = {
+  ok: '正常',
+  illegal: '违法',
+  porn: '色情',
+  abuse: '辱骂',
+  privacy: '隐私',
+  spam: '广告',
+};
+
+/** 建议动作 → 一句话。没有「建议封禁」：封人只由站长决定 */
+const ADVISE_LABEL: Record<string, string> = {
+  ignore: '建议放行',
+  delete: '建议收走',
+  review: '拿不准，你自己看',
+};
+
+/**
+ * 建议动作。**与 worker/src/admin/chat.ts 的 judgeChatReport 同一口径**：
+ * 判成正常 → 放行；命中类别且到阈值 → 收走；其余 → 拿不准。
+ */
+function adviseOf(verdict: string, score: number, threshold: number): 'ignore' | 'delete' | 'review' {
+  if (verdict === 'ok') return 'ignore';
+  return score >= threshold ? 'delete' : 'review';
+}
+
 const STATUS_LABEL: Record<string, string> = {
   visible: '正常',
   pending: '待审',
@@ -108,6 +143,8 @@ export default function AdminChat() {
   const [bans, setBans] = useState<ChatBan[]>([]);
   const [rules, setRules] = useState<Rule[]>([]);
   const [openCount, setOpenCount] = useState(0);
+  /** AI 判定的拦截阈值。建议动作按它算，和 worker 里同一个数 */
+  const [threshold, setThreshold] = useState(60);
 
   const [msgs, setMsgs] = useState<ChatMsg[] | null>(null);
   const [msgsMore, setMsgsMore] = useState(false);
@@ -132,6 +169,7 @@ export default function AdminChat() {
         bans?: ChatBan[];
         rules?: Rule[];
         openCount?: number;
+        threshold?: number;
       };
       if (!data.ok) {
         setErr('读不到举报列表，刷新再试');
@@ -141,6 +179,7 @@ export default function AdminChat() {
       setBans(data.bans ?? []);
       setRules(data.rules ?? []);
       setOpenCount(data.openCount ?? 0);
+      if (typeof data.threshold === 'number') setThreshold(data.threshold);
       setErr('');
     } catch {
       setErr('网络好像不太顺');
@@ -246,6 +285,14 @@ export default function AdminChat() {
       `${ruleId} 记了一次误伤`,
     );
 
+  /** 交给模型看一眼。结论落库，所以这个按钮点第二次是「重判」 */
+  const judge = (reportId: number) =>
+    act(
+      `judge:${reportId}`,
+      () => fetch(`${API}/chat/reports/${reportId}/judge`, { method: 'POST', credentials: 'include' }),
+      '看完了',
+    );
+
   const confirmDelete = (id: number, ask: string) => {
     if (window.confirm(`${ask}前台会显示「这条被站长收走了」。`)) void removeMessage(id);
   };
@@ -258,7 +305,8 @@ export default function AdminChat() {
           <div>
             <h1>长亭</h1>
             <p>
-              被举报的消息在这里处理。删掉的消息不会变成空白 —— 前台会留一行「这条被站长收走了」。
+              举报一进来就会交给模型看一眼，结论和分数就在卡片上；它只给建议，
+              删和封仍然由你按。删掉的消息不会变成空白 —— 前台会留一行「这条被站长收走了」。
             </p>
           </div>
           <div className="q-admin-stat-actions">
@@ -337,6 +385,66 @@ export default function AdminChat() {
                 ) : (
                   <p className="q-chat-adm__quote">这条消息已经不在了</p>
                 )}
+
+                {/*
+                  模型复核。结论是落库的（判定要花钱，翻页回来不该重判），
+                  所以这里有两种形态：判过就摆结论，没判过就摆按钮。
+                  **它只是建议** —— 删和封仍然是下面那两个按钮。
+                */}
+                {r.ai ? (
+                  <div className={`q-chat-adm__ai is-${adviseOf(r.ai.verdict, r.ai.score, threshold)}`}>
+                    <div className="q-chat-adm__aihead">
+                      <span className="q-chat-adm__aiv">
+                        {VERDICT_LABEL[r.ai.verdict] || r.ai.verdict}
+                      </span>
+                      <span className="q-chat-adm__aiscore">{r.ai.score}%</span>
+                      <b>{ADVISE_LABEL[adviseOf(r.ai.verdict, r.ai.score, threshold)]}</b>
+                      <button
+                        type="button"
+                        className="q-chat-adm__cancel"
+                        disabled={busy === `judge:${r.id}`}
+                        onClick={() => void judge(r.id)}
+                      >
+                        {busy === `judge:${r.id}` ? '正在看…' : '重新判'}
+                      </button>
+                    </div>
+                    {r.ai.note || r.ai.reasons.length > 0 ? (
+                      <p className="q-chat-adm__ainote">
+                        {r.ai.note}
+                        {r.ai.reasons.length > 0 ? (
+                          <span className="q-chat-adm__aitags">
+                            {r.ai.reasons.map((x) => (
+                              <em key={x}>{x}</em>
+                            ))}
+                          </span>
+                        ) : null}
+                      </p>
+                    ) : null}
+                    <p className="q-chat-adm__aimeta">
+                      {/*
+                        没配真模型时，note 里那句「未调用真模型」已经说明白了，
+                        这里只写 mock —— 两行都说一遍是啰嗦。
+                      */}
+                      {r.ai.model === 'mock' ? 'mock' : r.ai.model}
+                      {' · '}
+                      {timeAgo(r.ai.at)}
+                      {' · 阈值 '}
+                      {threshold}
+                    </p>
+                  </div>
+                ) : r.message ? (
+                  <div className="q-chat-adm__ai is-idle">
+                    <span>还没让模型看过这条。</span>
+                    <button
+                      type="button"
+                      className="q-admin-btn q-admin-btn--sm"
+                      disabled={busy === `judge:${r.id}`}
+                      onClick={() => void judge(r.id)}
+                    >
+                      {busy === `judge:${r.id}` ? '正在看…' : '交给 DeepSeek 看'}
+                    </button>
+                  </div>
+                ) : null}
 
                 <div className="q-chat-adm__acts">
                   {r.message && r.message.status !== 'deleted' ? (
