@@ -197,7 +197,7 @@ async function loadQuotes(env: Env, ids: number[]): Promise<Map<number, Quote>> 
   try {
     const ph = uniq.map(() => '?').join(',');
     const rows = await env.DB.prepare(
-      `SELECT m.id, m.body, m.origin, m.remote_nick,
+      `SELECT m.id, m.body, m.status, m.origin, m.remote_nick,
               a.display_name AS acc_name,
               substr(a.email, 1, instr(a.email, '@') - 1) AS acc_prefix
          FROM chat_messages m LEFT JOIN accounts a ON a.id = m.account_id
@@ -207,6 +207,7 @@ async function loadQuotes(env: Env, ids: number[]): Promise<Map<number, Quote>> 
       .all<{
         id: number;
         body: string;
+        status: string;
         origin: string;
         remote_nick: string | null;
         acc_name: string | null;
@@ -214,13 +215,24 @@ async function loadQuotes(env: Env, ids: number[]): Promise<Map<number, Quote>> 
       }>();
 
     for (const r of rows.results ?? []) {
+      /**
+       * ⚠️ 只有 `visible` 才把正文给引用块。
+       *
+       * 引用块是**别人**看这条消息的第二条路：正文被撤回 / 被站长收走 /
+       * 被 AI 收起来之后，如果引用还照抄原文，那等于留了个后门 ——
+       * 消息本身占位了，引用的地方仍能读到全文。`pending` 只有作者自己看得见，
+       * 别人引用它的 id 也不该拿到内容。
+       */
+      const visible = r.status === 'visible';
       map.set(r.id, {
         id: r.id,
         name:
           r.origin === 'remote'
             ? r.remote_nick || '远方的茶客'
             : r.acc_name || r.acc_prefix || '茶客',
-        excerpt: String(r.body || '').replace(/\s+/g, ' ').slice(0, 60),
+        excerpt: visible
+          ? String(r.body || '').replace(/\s+/g, ' ').slice(0, 60)
+          : '（原消息已不可见）',
       });
     }
   } catch {
