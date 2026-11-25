@@ -1256,6 +1256,36 @@ export default function ChatRoom() {
     return '';
   };
 
+  /**
+   * 造一个 MediaRecorder，**三级降级**。
+   *
+   * 为什么不能只 `new MediaRecorder(stream, { mimeType, audioBitsPerSecond })`：
+   * 部分安卓内核（厂商自带浏览器、旧 WebView）`isTypeSupported('audio/webm;codecs=opus')`
+   * 明明回 true，真构造时却抛 `NotSupportedError`；指定 `audioBitsPerSecond` 也有同样毛病。
+   * 站长的手机就是这样 —— 麦克风权限给了、`getUserMedia` 也成功，卡在构造这一步，
+   * 却被下面那个 catch 统一报成了「没权限」，所以怎么看都是「明明允许了还说没权限」。
+   *
+   * 顺序：mime + 码率 → 只给码率 → 只给 mime → 什么都不给（让浏览器自己挑，最保险）。
+   */
+  const makeRecorder = (stream: MediaStream): MediaRecorder => {
+    const mime = pickRecMime();
+    const tries: MediaRecorderOptions[] = [
+      ...(mime ? [{ mimeType: mime, audioBitsPerSecond: REC_BPS }] : []),
+      { audioBitsPerSecond: REC_BPS },
+      ...(mime ? [{ mimeType: mime }] : []),
+      {},
+    ];
+    let lastErr: unknown = null;
+    for (const opts of tries) {
+      try {
+        return new MediaRecorder(stream, opts);
+      } catch (err) {
+        lastErr = err;
+      }
+    }
+    throw lastErr;
+  };
+
   const stopRecTracks = () => {
     recStream.current?.getTracks().forEach((t) => t.stop());
     recStream.current = null;
@@ -1311,11 +1341,7 @@ export default function ChatRoom() {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       recStream.current = stream;
-      const mime = pickRecMime();
-      const mr = new MediaRecorder(stream, {
-        ...(mime ? { mimeType: mime } : {}),
-        audioBitsPerSecond: REC_BPS,
-      });
+      const mr = makeRecorder(stream);
 
       recChunks.current = [];
       mr.ondataavailable = (e) => {
@@ -1346,10 +1372,25 @@ export default function ChatRoom() {
         // 到上限自动停：不然录到 5 分钟才发现传不上去
         if (sec >= REC_MAX_SEC) stopRec();
       }, 250);
-    } catch {
+    } catch (err) {
       stopRecTracks();
       setRecSec(null);
-      setTip({ kind: 'warn', text: '没拿到麦克风权限，看看浏览器地址栏那个小锁' });
+      /**
+       * 别再一律报「没拿到麦克风权限」—— 权限给了还失败才是最常遇到的：
+       * 构造 MediaRecorder 抛 NotSupportedError、麦克风被别的 App 占着（NotReadableError），
+       * 都会走到这里。分不清就只能让人反复去查那个小锁。
+       */
+      const name = (err as { name?: string } | null)?.name ?? '';
+      console.warn('[chat] 录音启动失败:', name || '(no name)', err);
+      if (name === 'NotAllowedError' || name === 'SecurityError') {
+        setTip({ kind: 'warn', text: '没拿到麦克风权限，看看浏览器地址栏那个小锁' });
+      } else if (name === 'NotFoundError' || name === 'OverconstrainedError') {
+        setTip({ kind: 'warn', text: '没找到可用的麦克风，插个耳机再试' });
+      } else if (name === 'NotReadableError' || name === 'AbortError') {
+        setTip({ kind: 'warn', text: '麦克风被别的应用占着，关掉通话/录音再试' });
+      } else {
+        setTip({ kind: 'warn', text: '这个浏览器录不了音，换 Chrome 或 Edge 试试' });
+      }
     }
   };
 
