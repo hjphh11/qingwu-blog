@@ -97,28 +97,74 @@
     display: grid;
     /* 左右两栏的宽度由 JS 写在行内（拖分隔条改的就是它们），中栏吃掉剩下的。
        这组变量只设了默认值，所以 ≤1199 的媒体查询照样能整块换掉模板。 */
+    /**
+     * 缝隙不用 grid 的 gap，而是「轨道 = 卡片宽 + 缝」+ 卡片自己的 margin。
+     *
+     * 因为收起信息栏要把第三列的轨道动画到 0（见下面的 .is-noinfo）：
+     * 留着 gap 的话，0 宽度的轨道后面还挂着一条 8px 空档，右侧会比版心短一截；
+     * 而 gap 又没法只对某一条缝单独生效。改成 margin 之后，第三列收到 0
+     * 就是真的 0，中栏右缘正好落在版心上。
+     */
+    column-gap: 0;
     grid-template-columns:
-      var(--side-w, 272px)
+      calc(var(--side-w, 272px) + var(--bento-gap))
       minmax(0, 1fr)
-      var(--info-w, 312px);
+      calc(var(--info-w, 312px) + var(--bento-gap));
     /* 三栏之间的缝：8px。再宽三栏就像三张各过各的卡，读起来要来回跳 */
     --bento-gap: 0.5rem;
-    gap: var(--bento-gap);
     height: clamp(32rem, calc(100svh - 12rem), 62rem);
   }
 
-  /* 桌面把信息栏整列收起（顶栏「信息栏」按钮）。
-     ⚠️ 必须关在 min-width:1200 里：≤1199 的右栏是抽屉，
-        这两条 (0,2,0) 的规则会盖掉媒体查询里的单栏模板，把抽屉也一起藏了。 */
+  /* 缝由这两条 margin 供货（配合上面的 column-gap: 0） */
+  .q-side {
+    margin-right: var(--bento-gap);
+  }
+
+  .q-info {
+    margin-left: var(--bento-gap);
+  }
+
+  /**
+   * 收起 / 展开信息栏：动画的是第三列的轨道宽度，不是 display。
+   *
+   * 方向：轨道从 312 收到 0 —— 右边缘不动、左边缘往右推，就是「从左边往右收」；
+   * 展开反过来，左边缘往左让开。linear（匀速），不要缓入缓出 —— 这是空间在收，
+   * 不是东西在弹。
+   *
+   * 为什么动画的开关要单开一个 `.is-anim`：`grid-template-columns` 一上过渡，
+   * 拖列宽、改窗口大小也会被这 300ms 拖住（整栏像在糖浆里）。只在按钮触发时
+   * 打开，320ms 后由 JS 摘掉。
+   */
   @media (min-width: 1200px) {
-    .q-bento.is-noinfo {
-      grid-template-columns:
-        var(--side-w, 272px)
-        minmax(0, 1fr);
+    .q-bento.is-anim {
+      transition: grid-template-columns var(--dur-state) linear;
     }
 
+    .q-bento.is-noinfo {
+      grid-template-columns:
+        calc(var(--side-w, 272px) + var(--bento-gap))
+        minmax(0, 1fr)
+        0px;
+    }
+
+    /**
+     * 动画期间把面板里的内容钉在全宽上。
+     *
+     * 不钉的话，列宽每收一帧，里面的文字就重新折行一次 —— 看着像被攥扁，
+     * 而不是「被右墙擦掉」。钉住之后左缘往右扫、内容原样被裁，才是收拢的样子。
+     */
+    .q-bento.is-anim .q-info > * {
+      min-width: calc(var(--info-w, 312px) - 2px);
+    }
+
+    /* 到 0 宽时边框还会画出来 2px：等动画走完再藏。
+       visibility 不能动画，靠 transition 的延时做（展开时基态没有延时，立刻可见）。
+       ⚠️ 这里不要顺手把 margin-left 归零：那会让面板在动画开头猛地左跳 8px。 */
     .q-bento.is-noinfo .q-info {
-      display: none;
+      visibility: hidden;
+      transition-property: visibility;
+      transition-duration: 0s;
+      transition-delay: var(--dur-state);
     }
   }
 
@@ -242,6 +288,8 @@
     }
 
     .q-info {
+      /* 抽屉是 fixed 定位，缝由 right 决定 —— 把三栏那 8px 的 margin 让掉 */
+      margin-left: 0;
       position: fixed;
       /* 让开站内导航（约 64px）：抽屉压在导航上会露出半截白胶囊，很难看 */
       top: 4.75rem;
@@ -266,6 +314,8 @@
     }
 
     .q-side {
+      /* 抽屉是 fixed 定位：三栏那 8px 的 margin 在这里没有意义 */
+      margin-right: 0;
       position: fixed;
       top: 4.75rem;
       bottom: 0.75rem;
@@ -597,17 +647,29 @@
   }
 
   .q-peer__ic {
+    position: relative;
     flex: none;
     display: grid;
     place-items: center;
     width: 1.375rem;
     height: 1.375rem;
+    overflow: hidden;
     border-radius: 0.45rem;
     background: color-mix(in srgb, var(--color-rose) 34%, #fff);
     font-size: 0.6875rem;
     font-weight: 700;
     line-height: 1;
     color: var(--color-crimson);
+  }
+
+  /* 站点头像盖在首字母上；加载失败时 onError 把它藏起来，露出底下的字母 */
+  .q-peer__ic img {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    background: #fff;
   }
 
   .q-peer.is-home .q-peer__ic {

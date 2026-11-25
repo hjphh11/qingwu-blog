@@ -35,6 +35,7 @@ export default function ChatInfo({
   pin,
   loading,
   open,
+  collapsed,
   onClose,
 }: {
   members: ChatMember[];
@@ -45,6 +46,13 @@ export default function ChatInfo({
   loading: boolean;
   /** 窄屏抽屉是否展开（≥1200 时它常驻，这个类名不起作用） */
   open: boolean;
+  /**
+   * 宽屏上被「信息栏」按钮收起来了。
+   *
+   * 收起后这一列宽度是 0（要留给动画），DOM 还在 —— 所以必须 inert，
+   * 否则 Tab 会跳进一个看不见的面板里。
+   */
+  collapsed?: boolean;
   onClose: () => void;
 }) {
   return (
@@ -52,6 +60,8 @@ export default function ChatInfo({
       id="q-chat-info"
       className={`q-info q-glass${open ? ' is-open' : ''}`}
       aria-label="空间详情"
+      aria-hidden={collapsed || undefined}
+      inert={collapsed || undefined}
     >
       <div className="q-info__head">
         <span className="q-info__title">

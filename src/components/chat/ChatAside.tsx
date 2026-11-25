@@ -29,6 +29,17 @@ function hostOf(url: string): string {
 /** 本站主机名：没人在线时「互联」里也至少有它，否则那块会空着 */
 const HOME_HOST = hostOf(SITE.url);
 
+/**
+ * 站点的「头像」。
+ *
+ * 本站用清吾自己的头像（站内资源，稳）；别的站取它的 `/favicon.ico` ——
+ * 不引第三方图标代理（那是又一个会挂、也会看见访客 IP 的外部服务），
+ * 加载失败就退回下面那个首字母方块。友链页探速用的也是这个 URL。
+ */
+function peerIcon(host: string): string {
+  return host === HOME_HOST ? '/images/avatar.webp' : `https://${host}/favicon.ico`;
+}
+
 export default function ChatAside({
   account,
   members,
@@ -185,7 +196,20 @@ export default function ChatAside({
             {peers.map((p) => (
               <li key={p.host} className={`q-peer${p.home ? ' is-home' : ''}`}>
                 <span className="q-peer__ic" aria-hidden="true">
+                  {/* 底下的首字母是兜底：外站 favicon 404 / 防盗链时露出来 */}
                   {p.host.slice(0, 1).toUpperCase()}
+                  <img
+                    src={peerIcon(p.host)}
+                    alt=""
+                    width={22}
+                    height={22}
+                    loading="lazy"
+                    decoding="async"
+                    referrerPolicy="no-referrer"
+                    onError={(e) => {
+                      e.currentTarget.style.display = 'none';
+                    }}
+                  />
                 </span>
                 <span className="q-peer__host">{p.host}</span>
                 <span className="q-peer__n">{p.home ? '本站' : `${p.n} 人`}</span>

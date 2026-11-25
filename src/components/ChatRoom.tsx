@@ -455,6 +455,14 @@ export default function ChatRoom() {
   const [wide, setWide] = useState(false);
   /** 正在拖哪一根分隔条（用来加高亮 + 全局光标） */
   const [splitBusy, setSplitBusy] = useState<'' | 'side' | 'info'>('');
+  /**
+   * 正在跑「收起 / 展开信息栏」的那一下（≈ --dur-state 340ms）。
+   *
+   * 列宽的过渡**只在按钮触发时**打开：常开的话，拖分隔条和改窗口大小
+   * 也会被这段时长拖住，整栏像在糖浆里动。
+   */
+  const [infoAnim, setInfoAnim] = useState(false);
+  const infoAnimTimer = useRef<number | null>(null);
 
   const bentoRef = useRef<HTMLDivElement>(null);
   const colDrag = useRef<{ which: 'side' | 'info'; x: number; start: number } | null>(null);
@@ -582,9 +590,35 @@ export default function ChatRoom() {
 
   /** 顶栏那个「信息栏」按钮：宽屏收/展整列，窄屏开/关抽屉 */
   const toggleInfo = () => {
-    if (wide) setInfoHidden((v) => !v);
-    else setInfoOpen((v) => !v);
+    if (!wide) {
+      setInfoOpen((v) => !v);
+      return;
+    }
+    // 这一段允许列宽做匀速过渡（CSS `.is-anim`），跑完再摘掉
+    setInfoAnim(true);
+    setInfoHidden((v) => !v);
+    if (infoAnimTimer.current) window.clearTimeout(infoAnimTimer.current);
+    infoAnimTimer.current = window.setTimeout(() => setInfoAnim(false), 360);
   };
+
+  /** 面板自己头上的 ×：宽屏收起整列，窄屏关抽屉。之前只关了抽屉，宽屏点了没反应 */
+  const closeInfo = () => {
+    if (!wide) {
+      setInfoOpen(false);
+      return;
+    }
+    setInfoAnim(true);
+    setInfoHidden(true);
+    if (infoAnimTimer.current) window.clearTimeout(infoAnimTimer.current);
+    infoAnimTimer.current = window.setTimeout(() => setInfoAnim(false), 360);
+  };
+
+  useEffect(
+    () => () => {
+      if (infoAnimTimer.current) window.clearTimeout(infoAnimTimer.current);
+    },
+    [],
+  );
 
   /** 当前右栏是不是「看得见」——宽屏看整列，窄屏看抽屉 */
   const infoShown = wide ? !infoHidden : infoOpen;
@@ -1375,7 +1409,8 @@ export default function ChatRoom() {
       pin={pin}
       loading={loading}
       open={infoOpen}
-      onClose={() => setInfoOpen(false)}
+      collapsed={wide && infoHidden}
+      onClose={closeInfo}
     />
   );
 
@@ -1492,7 +1527,9 @@ export default function ChatRoom() {
 
       <div
         ref={bentoRef}
-        className={`q-bento${wide && infoHidden ? ' is-noinfo' : ''}${splitBusy ? ' is-colresize' : ''}`}
+        className={`q-bento${wide && infoHidden ? ' is-noinfo' : ''}${infoAnim ? ' is-anim' : ''}${
+          splitBusy ? ' is-colresize' : ''
+        }`}
         style={
           {
             '--side-w': `${cols.side}px`,
