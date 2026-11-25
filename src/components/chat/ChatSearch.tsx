@@ -61,6 +61,13 @@ export default function ChatSearch({
 
   return createPortal(
     <div className="q-chatsearch" role="dialog" aria-modal="true" aria-label="搜索聊天记录">
+      {/* 点空白处收起（Esc 也行）。遮罩是按钮，键盘用户才点得到 */}
+      <button
+        type="button"
+        className="q-chatsearch__mask"
+        aria-label="关掉搜索"
+        onClick={onClose}
+      />
       <div className="q-chatsearch__panel">
         <div className="q-chatsearch__head">
           <MorphIcon icon={Search} size={14} color="currentColor" />

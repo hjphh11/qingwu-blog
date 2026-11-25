@@ -1,6 +1,9 @@
+import { useState } from 'react';
+import { createPortal } from 'react-dom';
 import { MorphIcon } from 'morphicons/react';
 import { Bell, X } from '../../lib/icons';
 import { avatarFromHash } from '../../lib/avatar';
+import { useDialogFocus } from '../../lib/useDialogFocus';
 import type { ChatMember, PinInfo } from '../../lib/chat';
 
 /**
@@ -21,6 +24,46 @@ const RULES = [
   '发言会过一遍 AI 审核，违规的内容会被收走。',
 ];
 
+/**
+ * 卡片里先摆几个人。
+ *
+ * 5 是站长定的：再少这张卡就像一个「当前在线」小印章，看不出这是一间有人的屋子；
+ * 再多右栏就得天天滚，而人一多的时候本来就该去看完整名单。
+ */
+const CARD_SLOTS = 5;
+
+/** 一个人一行。在线的是实心点，不在线的不画点 —— 空心点容易被当成「加载中」 */
+function MemberRow({ m }: { m: ChatMember }) {
+  const site = hostOf(m.site);
+  const avatar = m.avatar || avatarFromHash('');
+  return (
+    <li className={`q-member${m.online ? ' is-on' : ''}`}>
+      <span className="q-member__av" aria-hidden="true">
+        {m.name.slice(0, 1)}
+        {avatar && (
+          <img
+            src={avatar}
+            alt=""
+            loading="lazy"
+            decoding="async"
+            onError={(e) => {
+              e.currentTarget.style.display = 'none';
+            }}
+          />
+        )}
+      </span>
+      <span className="q-member__body">
+        <span className="q-member__name">
+          {m.name}
+          {m.admin && <span className="q-member__tag">站长</span>}
+        </span>
+        {site && <span className="q-member__site">来自 {site}</span>}
+      </span>
+      {m.online && <i className="q-member__dot" aria-label="在线" />}
+    </li>
+  );
+}
+
 function hostOf(url: string): string {
   return (url || '')
     .replace(/^https?:\/\//i, '')
@@ -31,6 +74,7 @@ function hostOf(url: string): string {
 
 export default function ChatInfo({
   members,
+  people,
   online,
   pin,
   loading,
@@ -38,7 +82,10 @@ export default function ChatInfo({
   collapsed,
   onClose,
 }: {
+  /** 在线的人（用于标题里的计数兜底） */
   members: ChatMember[];
+  /** 所有来过的人（进过门或说过话）；空数组时退回在线名单 */
+  people: ChatMember[];
   /** -1 = 还在数人 */
   online: number;
   /** 站长置顶的那条；null = 没有置顶 */
@@ -55,6 +102,11 @@ export default function ChatInfo({
   collapsed?: boolean;
   onClose: () => void;
 }) {
+  const [allOpen, setAllOpen] = useState(false);
+  const allBoxRef = useDialogFocus<HTMLDivElement>(allOpen, () => setAllOpen(false));
+  const list = people.length ? people : members;
+  const shown = list.slice(0, CARD_SLOTS);
+
   return (
     <aside
       id="q-chat-info"
@@ -98,56 +150,32 @@ export default function ChatInfo({
           <div className="q-card__head">
             <span className="q-card__t">空间成员</span>
             <span className="q-card__n">
-              {loading || online < 0 ? '正在数人…' : `${online} 人在长亭`}
+              {loading || online < 0
+                ? '正在数人…'
+                : list.length > online
+                  ? `${list.length} 人来过 · ${online} 在线`
+                  : `${online} 人在长亭`}
             </span>
           </div>
 
-          {members.length === 0 ? (
-            <p className="q-rules">
-              <span style={{ paddingLeft: 0 }}>
-                {loading || online < 0
-                  ? '正在看看谁在…'
-                  : '此刻只有你在。说句话，就有人循声过来了。'}
-              </span>
+          {list.length === 0 ? (
+            <p className="q-members__empty">
+              {loading || online < 0
+                ? '正在看看谁在…'
+                : '此刻只有你在。说句话，就有人循声过来了。'}
             </p>
           ) : (
             <>
-              <div className="q-card__sub">
-                <i aria-hidden="true" />
-                在线中
-              </div>
-              <ul>
-                {members.map((m) => {
-                  const site = hostOf(m.site);
-                  const avatar = m.avatar || avatarFromHash('');
-                  return (
-                    <li key={m.id} className="q-member">
-                      <span className="q-member__av" aria-hidden="true">
-                        {m.name.slice(0, 1)}
-                        {avatar && (
-                          <img
-                            src={avatar}
-                            alt=""
-                            loading="lazy"
-                            decoding="async"
-                            onError={(e) => {
-                              e.currentTarget.style.display = 'none';
-                            }}
-                          />
-                        )}
-                      </span>
-                      <span className="q-member__body">
-                        <span className="q-member__name">
-                          {m.name}
-                          {m.admin && <span className="q-member__tag">站长</span>}
-                        </span>
-                        {site && <span className="q-member__site">来自 {site}</span>}
-                      </span>
-                      <i className="q-member__dot" aria-label="在线" />
-                    </li>
-                  );
-                })}
+              <ul className="q-members">
+                {shown.map((m) => (
+                  <MemberRow key={m.id} m={m} />
+                ))}
               </ul>
+              {list.length > shown.length && (
+                <button type="button" className="q-members__more" onClick={() => setAllOpen(true)}>
+                  显示全部 {list.length} 人
+                </button>
+              )}
             </>
           )}
         </section>
@@ -164,6 +192,41 @@ export default function ChatInfo({
           </ul>
         </section>
       </div>
+
+      {/* 全部成员：居中小窗。人一多就不能挤在右栏里，那会把公告和规矩顶下去 */}
+      {allOpen &&
+        createPortal(
+          <div className="q-people" role="dialog" aria-modal="true" aria-label="空间成员">
+            <button
+              type="button"
+              className="q-people__mask"
+              aria-label="关掉成员名单"
+              onClick={() => setAllOpen(false)}
+            />
+            <div className="q-people__box" ref={allBoxRef}>
+              <div className="q-people__head">
+                <span className="q-people__t">空间成员</span>
+                <span className="q-people__n">
+                  {list.length} 人来过 · {online} 在线
+                </span>
+                <button
+                  type="button"
+                  className="q-iconbtn"
+                  onClick={() => setAllOpen(false)}
+                  aria-label="关闭"
+                >
+                  <MorphIcon icon={X} size={15} color="currentColor" />
+                </button>
+              </div>
+              <ul className="q-members q-members--all">
+                {list.map((m) => (
+                  <MemberRow key={m.id} m={m} />
+                ))}
+              </ul>
+            </div>
+          </div>,
+          document.body,
+        )}
     </aside>
   );
 }

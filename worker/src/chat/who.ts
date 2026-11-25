@@ -31,12 +31,56 @@ interface WhoRow {
   prefix: string | null;
 }
 
+/** 「来过的人」那一条：多一个 last_seen */
+interface PeopleRow extends WhoRow {
+  seen: number | null;
+}
+
+/**
+ * 所有来过这间屋子的人：进过门（presence 留下过一行）或者说过话（消息表里有他）。
+ *
+ * 为什么要两路都查：presence 只在 poll 里写，某些老账号可能早就不在表里了，
+ * 但消息还在 —— 只查 presence 会把这些「说过话的人」漏掉。
+ * 不看 chat_reads：那是阅读游标，可能是脚本写的，不代表人来过。
+ *
+ * 上限 200：这间屋子不大，真到几百人时这个名单也该分页了。
+ */
+async function listPeople(env: Env, now: number): Promise<PeopleRow[]> {
+  const rows = await env.DB.prepare(
+    `SELECT a.id AS id,
+            a.display_name AS name, a.avatar_url AS avatar,
+            a.email_hash AS hash, a.role AS role, a.site_url AS site,
+            substr(a.email, 1, instr(a.email, '@') - 1) AS prefix,
+            (SELECT MAX(last_seen) FROM chat_presence p WHERE p.account_id = a.id) AS seen
+       FROM accounts a
+      WHERE EXISTS (SELECT 1 FROM chat_presence p2 WHERE p2.account_id = a.id)
+         OR EXISTS (SELECT 1 FROM chat_messages m
+                     WHERE m.account_id = a.id AND m.status <> 'deleted')
+      ORDER BY (a.role = 'admin') DESC, seen DESC, a.id DESC
+      LIMIT 200`,
+  ).all<PeopleRow>();
+  return (rows.results ?? []) as PeopleRow[];
+}
+
 async function currentAccount(request: Request, env: Env): Promise<AccountRow | null> {
   try {
     return (await sessionUser(request, env))?.account ?? null;
   } catch {
     return null;
   }
+}
+
+/** 把「来过的人」整理成前端要的形状：`online` 由 last_seen 落不落在窗口里决定 */
+function peopleOf(rows: PeopleRow[], now: number) {
+  return rows.map((r) => ({
+    id: r.id,
+    name: r.name || r.prefix || `茶客#${r.id}`,
+    avatar: r.avatar || avatarFromHash(r.hash || ''),
+    site: r.site || '',
+    admin: (r.role ?? '') === 'admin',
+    online: (r.seen ?? 0) > now - ONLINE_WINDOW,
+    seen: r.seen ?? 0,
+  }));
 }
 
 export async function getWho(request: Request, env: Env): Promise<Response> {
@@ -92,7 +136,17 @@ export async function getWho(request: Request, env: Env): Promise<Response> {
       }
     }
 
-    return json({ ok: true, members });
+    /**
+     * 名单（所有来过的人）单独兜一层：这张卡片挂了不该让在线名单一起 502。
+     */
+    let people: ReturnType<typeof peopleOf> = [];
+    try {
+      people = peopleOf(await listPeople(env, now), now);
+    } catch (e) {
+      console.error('[chat] people 失败:', e instanceof Error ? e.message : e);
+    }
+
+    return json({ ok: true, members, people });
   } catch (err) {
     console.error('[chat] who 失败:', err instanceof Error ? err.message : err);
     // 侧栏挂了不该影响聊天：回空列表，页面照常用

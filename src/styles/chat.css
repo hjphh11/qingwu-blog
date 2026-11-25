@@ -1527,17 +1527,21 @@
   }
 
   /* ——— 悬停操作条 ———
-     视觉上浮在气泡上方，但盒子与气泡**重叠 6px**（视觉间距由 padding 造）：
-     指针从气泡往上走时始终在这个盒子里，不会掉 hover。 */
+     **压在气泡上沿**，不是浮在它上面 32px 的位置。
+     原来 `top: -2rem` 落在气泡上方 32px，正好盖住上一条消息 ——
+     而且指针从气泡挪到操作条要跨一个空档，中途掉 hover 就闪。
+     现在 `bottom: 100%` 贴着气泡顶端再往下压 5px：视觉上压在圆角上，
+     指针路径零间距，触发距离就是「气泡边缘本身」。 */
   .q-chat__acts {
     position: absolute;
-    top: -2rem;
+    top: auto;
+    bottom: calc(100% - 0.3rem);
     left: 0;
     z-index: 5;
     display: flex;
     align-items: center;
     gap: 0.15rem;
-    padding: 0.2rem 0.3rem 1.4rem;
+    padding: 0.2rem 0.3rem;
     border-radius: var(--radius-pill);
     background: rgba(255, 252, 249, 0.92);
     border: 1px solid rgba(255, 255, 255, 0.92);
@@ -1580,36 +1584,6 @@
   .q-chat__recall:hover {
     background: color-mix(in srgb, var(--color-rose) 40%, transparent);
     color: var(--color-crimson);
-  }
-
-  .q-chat__actbtn {
-    display: grid;
-    place-items: center;
-    width: 1.875rem;
-    height: 1.875rem;
-    border-radius: 9999px;
-    transition: background-color var(--dur-micro) ease, transform var(--dur-micro) ease;
-  }
-
-  .q-chat__actbtn:hover {
-    background: color-mix(in srgb, var(--color-rose) 40%, transparent);
-  }
-
-  .q-chat__actbtn:active {
-    transform: scale(0.92);
-  }
-
-  .q-chat__actbtn img {
-    width: 1.1rem;
-    height: 1.1rem;
-  }
-
-  /* 分隔竖线 */
-  .q-chat__actsep {
-    width: 1px;
-    height: 0.9rem;
-    margin: 0 0.15rem;
-    background: color-mix(in srgb, var(--color-ink) 10%, transparent);
   }
 
   /* 「+」更多回应 */
@@ -2353,17 +2327,102 @@
     background: var(--color-crimson);
   }
 
-  /* 成员行 */
+  /* 成员行。**不设 hover**：它不是按钮，悬停变色会让人以为点得进去 */
   .q-member {
     display: flex;
     align-items: center;
     gap: 0.5rem;
+    min-height: 2.5rem;
     padding: 0.3rem 0.35rem;
     border-radius: 0.7rem;
   }
 
-  .q-member:hover {
-    background: color-mix(in srgb, var(--color-rose) 22%, transparent);
+  /* 卡片里先摆 5 个（CARD_SLOTS），再多就去「显示全部」的小窗 */
+  .q-members {
+    display: flex;
+    flex-direction: column;
+  }
+
+  .q-members__empty {
+    padding: 0.3rem 0.35rem 0.45rem;
+    font-size: 0.75rem;
+    line-height: 1.7;
+    color: var(--color-subtle);
+  }
+
+  .q-members__more {
+    display: block;
+    width: 100%;
+    min-height: 2.25rem;
+    margin-top: 0.3rem;
+    border-radius: 0.7rem;
+    background: color-mix(in srgb, var(--color-rose) 26%, transparent);
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: var(--color-crimson);
+    transition: background-color var(--dur-micro) ease;
+  }
+
+  .q-members__more:hover {
+    background: color-mix(in srgb, var(--color-rose) 42%, transparent);
+  }
+
+  /* 完整名单：居中小窗（人多了右栏装不下，也不该把公告和规矩顶下去） */
+  .q-people {
+    position: fixed;
+    inset: 0;
+    z-index: 82;
+    display: grid;
+    place-items: center;
+    padding: 1rem;
+  }
+
+  .q-people__mask {
+    position: absolute;
+    inset: 0;
+    border: 0;
+    background: color-mix(in srgb, var(--color-ink) 30%, transparent);
+    backdrop-filter: blur(4px);
+  }
+
+  .q-people__box {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    width: min(22rem, 100%);
+    max-height: min(34rem, 76vh);
+    overflow: hidden;
+    border: 1px solid rgba(255, 255, 255, 0.92);
+    border-radius: 1.25rem;
+    background: #fffdfb;
+    box-shadow: 0 24px 60px -20px rgba(74, 55, 40, 0.34);
+  }
+
+  .q-people__head {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.8rem 0.9rem;
+    border-bottom: 1px solid color-mix(in srgb, var(--color-ink) 7%, transparent);
+  }
+
+  .q-people__t {
+    font-size: 0.9rem;
+    font-weight: 700;
+    color: var(--color-ink);
+  }
+
+  .q-people__n {
+    margin-left: auto;
+    font-size: 0.6875rem;
+    color: var(--color-subtle);
+  }
+
+  .q-members--all {
+    max-height: 62vh;
+    overflow-y: auto;
+    padding: 0.45rem;
+    overscroll-behavior: contain;
   }
 
   .q-member__av {
@@ -2455,6 +2514,16 @@
      ⑧ 浮层：搜索 / 举报
      ═══════════════════════════════════════════════════════════════════ */
 
+  /**
+   * 搜索聊天记录。
+   *
+   * ⚠️ 这一段的类名必须和 `chat/chatsearch` 的 JSX 一处处对上：
+   *    .q-chatsearch → __mask / __panel / __head / __input / __body
+   *                  → __hint / __list / __av / __main / __meta / __text
+   * 换版那次这里的类名和组件走散了（CSS 写的是 __box/__field/__hit），
+   * 结果搜索框整个是浏览器默认样式 —— 一排灰字加一个原生 ×。
+   * 以后改这个组件，**先看 JSX 里到底用了哪些类**。
+   */
   .q-chatsearch {
     position: fixed;
     inset: 0;
@@ -2472,12 +2541,12 @@
     backdrop-filter: blur(4px);
   }
 
-  .q-chatsearch__box {
+  .q-chatsearch__panel {
     position: relative;
-    width: min(32rem, 100%);
-    max-height: 70vh;
     display: flex;
     flex-direction: column;
+    width: min(32rem, 100%);
+    max-height: min(34rem, 70vh);
     overflow: hidden;
     border: 1px solid rgba(255, 255, 255, 0.92);
     border-radius: 1.25rem;
@@ -2485,12 +2554,13 @@
     box-shadow: 0 24px 60px -20px rgba(74, 55, 40, 0.34);
   }
 
-  .q-chatsearch__field {
+  .q-chatsearch__head {
     display: flex;
     align-items: center;
     gap: 0.5rem;
     padding: 0.7rem 0.9rem;
     border-bottom: 1px solid color-mix(in srgb, var(--color-ink) 8%, transparent);
+    color: var(--color-subtle);
   }
 
   .q-chatsearch__input {
@@ -2500,61 +2570,120 @@
     background: transparent;
     outline: 0;
     font-size: 0.9rem;
+    line-height: 1.6;
     color: var(--color-ink);
     caret-color: var(--color-crimson);
   }
 
-  .q-chatsearch__list {
+  .q-chatsearch__input::placeholder {
+    color: var(--color-subtle);
+  }
+
+  /* 原生 search 的清空叉：样式土，而且我们旁边已经有自己的关闭键 */
+  .q-chatsearch__input::-webkit-search-cancel-button {
+    display: none;
+  }
+
+  .q-chatsearch__head button {
+    flex: none;
+    display: grid;
+    place-items: center;
+    width: 1.75rem;
+    height: 1.75rem;
+    border-radius: 0.6rem;
+    color: var(--color-subtle);
+  }
+
+  .q-chatsearch__head button:hover {
+    background: color-mix(in srgb, var(--color-rose) 26%, transparent);
+    color: var(--color-crimson);
+  }
+
+  .q-chatsearch__body {
     flex: 1;
     min-height: 0;
     overflow-y: auto;
     padding: 0.4rem;
   }
 
-  .q-chatsearch__hit {
-    display: block;
+  .q-chatsearch__hint {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.35rem;
+    padding: 1.4rem 1rem;
+    font-size: 0.8125rem;
+    color: var(--color-subtle);
+  }
+
+  .q-chatsearch__list li + li {
+    margin-top: 0.1rem;
+  }
+
+  /* 一条结果：头像 + 名字/时间 + 两行正文 */
+  .q-chatsearch__list button {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.55rem;
     width: 100%;
     padding: 0.5rem 0.6rem;
     border-radius: 0.7rem;
     text-align: left;
+    transition: background-color var(--dur-micro) ease;
   }
 
-  .q-chatsearch__hit:hover,
-  .q-chatsearch__hit:focus-visible {
+  .q-chatsearch__list button:hover,
+  .q-chatsearch__list button:focus-visible {
     background: color-mix(in srgb, var(--color-rose) 28%, transparent);
+  }
+
+  .q-chatsearch__av {
+    flex: none;
+    display: grid;
+    place-items: center;
+    width: 1.75rem;
+    height: 1.75rem;
+    border-radius: 9999px;
+    background-color: var(--color-rose);
+    background-size: cover;
+    background-position: center;
+    font-size: 0.6875rem;
+    font-weight: 700;
+    color: var(--color-ink);
+  }
+
+  .q-chatsearch__main {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.15rem;
   }
 
   .q-chatsearch__meta {
     display: flex;
     align-items: center;
     gap: 0.4rem;
-    margin-bottom: 0.15rem;
     font-size: 0.6875rem;
     color: var(--color-subtle);
     font-variant-numeric: tabular-nums;
   }
 
-  .q-chatsearch__meta b {
-    font-size: 0.75rem;
-    font-weight: 600;
-    color: var(--color-ink);
+  .q-chatsearch__meta em {
+    padding: 0 0.3rem;
+    border-radius: var(--radius-pill);
+    background: color-mix(in srgb, var(--color-ink) 8%, transparent);
+    font-style: normal;
   }
 
   .q-chatsearch__text {
-    font-size: 0.8125rem;
-    line-height: 1.6;
-    color: var(--color-muted);
     display: -webkit-box;
     -webkit-line-clamp: 2;
     -webkit-box-orient: vertical;
     overflow: hidden;
-  }
-
-  .q-chatsearch__note {
-    padding: 1rem;
-    text-align: center;
     font-size: 0.8125rem;
-    color: var(--color-subtle);
+    line-height: 1.6;
+    color: var(--color-muted);
   }
 
   /* 举报弹层 */

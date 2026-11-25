@@ -474,6 +474,14 @@ export interface ChatMember {
   site: string;
   admin: boolean;
   online: boolean;
+  /** 最后一次在场的时间戳（毫秒）；只有「来过的人」这份名单带 */
+  seen?: number;
+}
+
+/** 「空间成员」那张卡要的两份名单：在线的人 + 所有来过的人 */
+export interface WhoResult {
+  members: ChatMember[];
+  people: ChatMember[];
 }
 
 /**
@@ -485,18 +493,24 @@ export interface ChatMember {
  * ⚠️ 这里**没有**「称号 / 经验 / 累计发言」：那一套 2026-11-24 被站长否掉了，
  *    「我是谁」由前端从会话里拿（头像 + 昵称），不必服务端再算一遍。
  */
-export async function fetchWho(): Promise<ChatMember[]> {
+export async function fetchWho(): Promise<WhoResult> {
+  const empty: WhoResult = { members: [], people: [] };
   try {
     const res = await fetch(`${BASE}/chat/who`, {
       headers: { accept: 'application/json' },
       credentials: 'include',
       signal: AbortSignal.timeout(8000),
     });
-    if (!res.ok) return [];
-    const data = (await res.json()) as { members?: ChatMember[] };
-    return Array.isArray(data.members) ? data.members : [];
+    if (!res.ok) return empty;
+    const data = (await res.json()) as { members?: ChatMember[]; people?: ChatMember[] };
+    const members = Array.isArray(data.members) ? data.members : [];
+    return {
+      members,
+      // 服务端没给 people（老版本 worker / 查询失败）时退回在线名单，卡片不至于空着
+      people: Array.isArray(data.people) && data.people.length ? data.people : members,
+    };
   } catch {
-    return [];
+    return empty;
   }
 }
 

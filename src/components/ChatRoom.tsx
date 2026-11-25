@@ -21,6 +21,7 @@ import LoginDialog from './auth/LoginDialog';
 import ChatAside from './chat/ChatAside';
 import ChatInfo from './chat/ChatInfo';
 import ChatSearch from './chat/ChatSearch';
+import { useDialogFocus } from '../lib/useDialogFocus';
 import { renderRich } from '../lib/richText';
 import { EMOJI_MAP } from '../lib/emojis';
 import { fetchMe, type AuthConfig, type SessionAccount } from '../lib/auth';
@@ -106,53 +107,6 @@ const BOTTOM_SLACK = 80;
  * `onClose` 用 ref 存着：父组件每次渲染都会传一个新函数，
  * 直接放进依赖会让 effect 反复重跑、焦点被反复抢回第一个按钮。
  */
-function useDialogFocus(open: boolean, onClose: () => void) {
-  const boxRef = useRef<HTMLDivElement | null>(null);
-  const backRef = useRef<HTMLElement | null>(null);
-  const closeRef = useRef(onClose);
-  closeRef.current = onClose;
-
-  useEffect(() => {
-    if (!open) return;
-    backRef.current = document.activeElement as HTMLElement | null;
-
-    const SEL =
-      'button:not([disabled]), [href], input, textarea, select, [tabindex]:not([tabindex="-1"])';
-    const box = boxRef.current;
-    box?.querySelector<HTMLElement>(SEL)?.focus({ preventScroll: true });
-
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        e.preventDefault();
-        closeRef.current();
-        return;
-      }
-      if (e.key !== 'Tab' || !box) return;
-      const items = Array.from(box.querySelectorAll<HTMLElement>(SEL)).filter(
-        (el) => el.offsetParent !== null,
-      );
-      if (!items.length) return;
-      const first = items[0]!;
-      const last = items[items.length - 1]!;
-      if (e.shiftKey && document.activeElement === first) {
-        e.preventDefault();
-        last.focus();
-      } else if (!e.shiftKey && document.activeElement === last) {
-        e.preventDefault();
-        first.focus();
-      }
-    };
-
-    document.addEventListener('keydown', onKey);
-    return () => {
-      document.removeEventListener('keydown', onKey);
-      backRef.current?.focus?.({ preventScroll: true });
-    };
-  }, [open]);
-
-  return boxRef;
-}
-
 const DRAFT_KEY = 'qingwu:chat-draft';
 
 /**
@@ -382,6 +336,8 @@ export default function ChatRoom() {
   /** 身份是否已经确认。false = 还不知道登录没登录，侧栏先画同高占位，别急着说「还没进门」 */
   const [identityReady, setIdentityReady] = useState(Boolean(boot));
   const [members, setMembers] = useState<ChatMember[]>([]);
+  /** 所有来过这间屋子的人（进过门或说过话）—— 右栏「空间成员」用这份，在线那份在上边 */
+  const [people, setPeople] = useState<ChatMember[]>([]);
 
   /** 是否停在底部 —— 控制「回到最新 / N 条新消息」浮标的显隐 */
   const [atBottom, setAtBottom] = useState(true);
@@ -718,7 +674,9 @@ export default function ChatRoom() {
 
   /** 侧栏刷新：只刷在线名单，不动消息流 */
   const refreshWho = useCallback(async () => {
-    setMembers(await fetchWho());
+    const w = await fetchWho();
+    setMembers(w.members);
+    setPeople(w.people);
   }, []);
 
   /**
@@ -744,7 +702,8 @@ export default function ChatRoom() {
         setConfig(who.config);
         setAccount(who.account);
         setIdentityReady(true);
-        setMembers(list);
+        setMembers(list.members);
+        setPeople(list.people);
         setPinState(page.pin);
         lastIdRef.current = page.messages.reduce((max, m) => Math.max(max, m.id), 0);
         readMarkRef.current = page.lastRead;
@@ -1405,6 +1364,7 @@ export default function ChatRoom() {
   const spaceInfo = (
     <ChatInfo
       members={members}
+      people={people}
       online={loading ? -1 : online}
       pin={pin}
       loading={loading}
@@ -2435,25 +2395,12 @@ function MessageRow({
             <MorphIcon icon={Ellipsis} size={14} color="currentColor" />
           </button>
 
-          {/* 操作条：贴在气泡右侧同一水平带（自己的消息镜像到左侧）。
-              位置、尺寸和「为什么不做悬停下方的窄条」见 chat.css 里 .q-chat__acts 的注释 */}
+          {/* 操作条：压在气泡上沿（自己的消息镜像到左侧）。
+              位置、尺寸和「为什么贴着气泡而不是浮在上方」见 chat.css 里 .q-chat__acts 的注释 */}
           <div className={`q-chat__acts${pickOpen ? ' has-open' : ''}`}>
-            {/* 三个快捷回应：设计稿里就是「一眼能点的三个」，
-                完整面板仍挂在后面的「+」上 */}
-            {m.status === 'visible' &&
-              REACT_SET.slice(0, 3).map((r) => (
-                <button
-                  key={r.key}
-                  type="button"
-                  className="q-chat__actbtn"
-                  title={`回应 ${r.label}`}
-                  aria-label={`回应 ${r.label}`}
-                  onClick={() => onReact(r.key)}
-                >
-                  <img src={EMOJI_MAP[r.key]?.src} alt="" loading="lazy" decoding="async" />
-                </button>
-              ))}
-            <span className="q-chat__actsep" aria-hidden="true" />
+            {/* 这里原来还有三个快捷表情。2026-11-25 站长去掉了：
+                一行里最常用的其实是「回复 / 撤回」，表情已经在后面的「+」里，
+                先摆三张脸只会把操作条撑宽、糊住上一条消息。 */}
             <button type="button" className="q-chat__recall" onClick={onReply}>
               回复
             </button>
