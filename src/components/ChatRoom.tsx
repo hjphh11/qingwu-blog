@@ -21,6 +21,7 @@ import LoginDialog from './auth/LoginDialog';
 import ChatAside from './chat/ChatAside';
 import ChatInfo from './chat/ChatInfo';
 import ChatSearch from './chat/ChatSearch';
+import PersonCard from './chat/PersonCard';
 import { useDialogFocus } from '../lib/useDialogFocus';
 import { renderRich } from '../lib/richText';
 import { EMOJI_MAP } from '../lib/emojis';
@@ -338,6 +339,8 @@ export default function ChatRoom() {
   const [members, setMembers] = useState<ChatMember[]>([]);
   /** 所有来过这间屋子的人（进过门或说过话）—— 右栏「空间成员」用这份，在线那份在上边 */
   const [people, setPeople] = useState<ChatMember[]>([]);
+  /** 正在看谁的个人主页（null = 没开）。左栏头像 / 左栏「我」/ 右栏成员行共用 */
+  const [peek, setPeek] = useState<ChatMember | null>(null);
 
   /** 是否停在底部 —— 控制「回到最新 / N 条新消息」浮标的显隐 */
   const [atBottom, setAtBottom] = useState(true);
@@ -1343,10 +1346,23 @@ export default function ChatRoom() {
   // 加载阶段登录按钮点了没反应（LoginDialog 要等 config 才有），属于必然，不是 bug。
 
   /** 侧栏（三个分支共用一份配置，避免 props 写三遍） */
+  /**
+   * 开人卡：顺手把两侧抽屉收掉。
+   *
+   * 手机上人卡（z 84）会盖在抽屉（60）和遮罩（55）上面，不收的话关掉人卡
+   * 背后还压着一层半透明遮罩，看着像没关干净。桌面宽屏这两个状态本来就是 false。
+   */
+  const openPeek = (m: ChatMember) => {
+    setSideOpen(false);
+    setInfoOpen(false);
+    setPeek(m);
+  };
+
   const side = (
     <ChatAside
       account={account}
       members={members}
+      people={people}
       identityPending={!identityReady}
       online={loading ? -1 : online}
       notify={notify}
@@ -1358,6 +1374,7 @@ export default function ChatRoom() {
       }}
       onLogin={() => setLoginOpen(true)}
       onClose={() => setSideOpen(false)}
+      onPick={openPeek}
     />
   );
 
@@ -1371,6 +1388,7 @@ export default function ChatRoom() {
       open={infoOpen}
       collapsed={wide && infoHidden}
       onClose={closeInfo}
+      onPick={openPeek}
     />
   );
 
@@ -2086,6 +2104,16 @@ export default function ChatRoom() {
           </>
         )}
       </div>
+
+      {/* 个人主页：三个入口共用 —— 右栏成员行 / 左栏「此刻在长亭」的头像 /
+          左栏底部那张「我」。人卡本身挂 portal，放这儿只是取状态。 */}
+      {peek && (
+        <PersonCard
+          m={peek}
+          self={!!account && peek.id === account.id}
+          onClose={() => setPeek(null)}
+        />
+      )}
     </div>
   );
 

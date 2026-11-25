@@ -1,10 +1,11 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { createPortal } from 'react-dom';
 import { MorphIcon } from 'morphicons/react';
 import { Bell, X } from '../../lib/icons';
 import { avatarFromHash } from '../../lib/avatar';
 import { useDialogFocus } from '../../lib/useDialogFocus';
 import type { ChatMember, PinInfo } from '../../lib/chat';
+import { hostOf } from './PersonCard';
 
 /**
  * 长亭 · 右侧「空间详情」
@@ -74,136 +75,6 @@ function MemberRow({ m, onPick }: { m: ChatMember; onPick: (m: ChatMember) => vo
   );
 }
 
-function hostOf(url: string): string {
-  return (url || '')
-    .replace(/^https?:\/\//i, '')
-    .replace(/^www\./i, '')
-    .split('/')[0]!
-    .toLowerCase();
-}
-
-/** 毫秒时间戳 → 「刚刚 / 12 分钟前 / 3 小时前 / 5 天前」 */
-function relTime(ms?: number): string {
-  if (!ms) return '很久以前';
-  const d = Math.max(0, Date.now() - ms);
-  if (d < 60_000) return '刚刚';
-  if (d < 3_600_000) return `${Math.round(d / 60_000)} 分钟前`;
-  if (d < 86_400_000) return `${Math.round(d / 3_600_000)} 小时前`;
-  return `${Math.round(d / 86_400_000)} 天前`;
-}
-
-/** 时间戳 → 「11/24 21:40」（人卡里报时间用，年不显示：这间屋子不会跨年还挂着） */
-function stampOf(ms?: number): string {
-  if (!ms) return '某天';
-  return new Date(ms).toLocaleString('zh-CN', {
-    month: 'numeric',
-    day: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-  });
-}
-
-/**
- * 个人主页：居中小窗。
- *
- * 站内没有「账号主页」这种页面（账号不是文章作者，没有作品列表可看），
- * 所以把「他在这间屋子里的痕迹」摆出来就够：头像、名字、站长标、
- * 从哪个站来、在不在、说过几句、最近一次什么时候来过。
- * 挂 portal 是因为右栏是 `overflow: hidden` 的卡片，弹层留在里面会被裁。
- */
-function PersonCard({ m, onClose }: { m: ChatMember; onClose: () => void }) {
-  const boxRef = useDialogFocus<HTMLDivElement>(true, onClose);
-  const site = hostOf(m.site);
-  const avatar = m.avatar || avatarFromHash('');
-  const posts = m.posts ?? 0;
-
-  // 焦点落在盒子上而不是右上角那个 ×：一打开就给 × 画一圈焦点框，
-  // 看着像报错。落在盒子上读屏一样会念标题，Tab 再进 ×。
-  useEffect(() => {
-    boxRef.current?.focus({ preventScroll: true });
-  }, [boxRef]);
-
-  /** 「关于」那句话只用真实数据拼，不编简介（账号没有 bio 字段）。
-      「最后发言」放在下面的数字格里，这里只报第一次，免得同一句话出现两遍。 */
-  const about =
-    posts > 0
-      ? `${stampOf(m.firstPost)} 在这里说了第一句。`
-      : '还没在这间屋子里说过话，大概只是路过。';
-
-  return createPortal(
-    <div className="q-person" role="dialog" aria-modal="true" aria-label={`${m.name} 的个人主页`}>
-      <button type="button" className="q-person__mask" aria-label="关掉个人主页" onClick={onClose} />
-      <div className="q-person__box" ref={boxRef} tabIndex={-1}>
-        <div className="q-person__hero" aria-hidden="true" />
-        <button type="button" className="q-person__x" onClick={onClose} aria-label="关闭">
-          <MorphIcon icon={X} size={15} color="currentColor" />
-        </button>
-
-        <div className="q-person__id">
-          <span className="q-person__av" aria-hidden="true">
-            {m.name.slice(0, 1)}
-            {avatar && (
-              <img
-                src={avatar}
-                alt=""
-                loading="lazy"
-                decoding="async"
-                onError={(e) => {
-                  e.currentTarget.style.display = 'none';
-                }}
-              />
-            )}
-          </span>
-          <p className="q-person__name">
-            {m.name}
-            {m.admin && <span className="q-person__tag">站长</span>}
-          </p>
-          <p className={`q-person__state${m.online ? ' is-on' : ''}`}>
-            {m.online ? (
-              <>
-                <i aria-hidden="true" />
-                此刻在长亭
-              </>
-            ) : (
-              `最近来过 · ${relTime(m.seen)}`
-            )}
-          </p>
-        </div>
-
-        <div className="q-person__body">
-          <h3 className="q-person__h">关于这位茶友</h3>
-          <p className="q-person__about">{about}</p>
-          {site && (
-            <a
-              className="q-person__link"
-              href={`https://${site}`}
-              target="_blank"
-              rel="noopener noreferrer"
-            >
-              访问 {site} ↗
-            </a>
-          )}
-
-          <dl className="q-person__stats">
-            <div>
-              <dt>发言</dt>
-              <dd>
-                {posts}
-                <em>条</em>
-              </dd>
-            </div>
-            <div>
-              <dt>最后发言</dt>
-              <dd className="q-person__when">{posts > 0 ? stampOf(m.lastPost) : '—'}</dd>
-            </div>
-          </dl>
-        </div>
-      </div>
-    </div>,
-    document.body,
-  );
-}
-
 export default function ChatInfo({
   members,
   people,
@@ -213,6 +84,7 @@ export default function ChatInfo({
   open,
   collapsed,
   onClose,
+  onPick,
 }: {
   /** 在线的人（用于标题里的计数兜底） */
   members: ChatMember[];
@@ -233,16 +105,22 @@ export default function ChatInfo({
    */
   collapsed?: boolean;
   onClose: () => void;
+  /** 点了某个人：把「看谁」交给页面层，人卡在那儿统一渲染 */
+  onPick: (m: ChatMember) => void;
 }) {
   const [allOpen, setAllOpen] = useState(false);
-  /** 正在看谁的个人主页（null = 没开） */
-  const [picked, setPicked] = useState<ChatMember | null>(null);
   const allBoxRef = useDialogFocus<HTMLDivElement>(allOpen, () => setAllOpen(false));
   const list = people.length ? people : members;
-  /** 点一个人：个人主页替代名单小窗（两个弹层叠着按 Esc 会一次关两层） */
+  /**
+   * 点一个人：先收起名单小窗再把「看谁」抛给页面层。
+   *
+   * 人卡现在由 `ChatRoom` 统一渲染（左栏的「我」和「此刻在长亭」也要开它），
+   * 两个弹层若同时挂在这儿和那儿，会在 document 上各挂一个 Esc 监听 ——
+   * 叠着按一次 Esc 会连关两层。
+   */
   const openPerson = (m: ChatMember) => {
     setAllOpen(false);
-    setPicked(m);
+    onPick(m);
   };
   const shown = list.slice(0, CARD_SLOTS);
 
@@ -367,7 +245,6 @@ export default function ChatInfo({
           document.body,
         )}
 
-      {picked && <PersonCard m={picked} onClose={() => setPicked(null)} />}
     </aside>
   );
 }

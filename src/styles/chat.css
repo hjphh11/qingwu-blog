@@ -609,6 +609,27 @@
     object-fit: cover;
   }
 
+  /* 在线头像现在点得进去（个人主页）。button 的默认内边距/边框要清掉，
+     否则 1.9rem 的圆会被撑大两圈、和「+3」那个圆对不齐 */
+  button.q-side__folkav {
+    padding: 0;
+    border: 0;
+    cursor: pointer;
+    transition:
+      transform var(--dur-micro) ease,
+      box-shadow var(--dur-micro) ease;
+  }
+
+  button.q-side__folkav:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-crimson) 34%, transparent);
+  }
+
+  button.q-side__folkav:focus-visible {
+    outline: 2px solid var(--color-crimson);
+    outline-offset: 2px;
+  }
+
   .q-side__folkmore {
     display: grid;
     place-items: center;
@@ -702,6 +723,26 @@
     border-radius: 1rem;
     background: rgba(253, 246, 240, 0.75);
     box-shadow: 0 1px 2px rgba(74, 55, 40, 0.04);
+  }
+
+  /* 底部「我」：现在点得进去（自己的个人主页） */
+  button.q-me {
+    width: 100%;
+    text-align: left;
+    cursor: pointer;
+    transition:
+      background-color var(--dur-micro) ease,
+      border-color var(--dur-micro) ease;
+  }
+
+  button.q-me:hover {
+    background: rgba(255, 255, 255, 0.92);
+    border-color: color-mix(in srgb, var(--color-crimson) 24%, transparent);
+  }
+
+  button.q-me:focus-visible {
+    outline: 2px solid var(--color-crimson);
+    outline-offset: 2px;
   }
 
   .q-me__avatar {
@@ -2684,6 +2725,19 @@
     padding-top: 0.15rem;
     font-size: 0.8125rem;
     font-weight: 600;
+  }
+
+  /* 「是你」：和「站长」同一形状，但用琥珀 —— 两个标签同时出现时还能分开 */
+  .q-person__tag--me {
+    background: color-mix(in srgb, var(--color-amber) 40%, transparent);
+    color: var(--color-ink);
+  }
+
+  .q-person__hint {
+    margin-top: 0.85rem;
+    font-size: 0.6875rem;
+    line-height: 1.7;
+    color: var(--color-subtle);
   }
 
   .q-person__stats em {

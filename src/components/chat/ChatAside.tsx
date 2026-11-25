@@ -43,6 +43,7 @@ function peerIcon(host: string): string {
 export default function ChatAside({
   account,
   members,
+  people,
   identityPending,
   online,
   notify,
@@ -51,10 +52,13 @@ export default function ChatAside({
   onSearch,
   onLogin,
   onClose,
+  onPick,
 }: {
   account: SessionAccount | null;
   /** 在线的人：左栏只露头像，名字和来源在右侧「空间详情」里 */
   members: ChatMember[];
+  /** 所有来过的人（带发言数、首末发言时间）；「我」的人卡从这里取一行 */
+  people: ChatMember[];
   /** 身份未确认：画同高的占位块，别说「还没进门」 */
   identityPending: boolean;
   /** -1 = 还在数人 */
@@ -67,6 +71,8 @@ export default function ChatAside({
   onLogin: () => void;
   /** 移动端抽屉的关闭 */
   onClose: () => void;
+  /** 点了某个头像 / 「我」那张卡：打开他的个人主页 */
+  onPick: (m: ChatMember) => void;
 }) {
   /**
    * 头像统一走 `avatarFromHash`（cravatar）。
@@ -82,6 +88,24 @@ export default function ChatAside({
     : '';
 
   const host = hostOf(account?.site || '');
+
+  /**
+   * 「我」的成员条目 —— 点底部那张卡就是看自己的个人主页。
+   *
+   * 优先用 `/chat/who` 的 `people` 里那一条（它带 posts / firstPost / lastPost，
+   * 人卡才有「说过几句」）。刚坐下那一瞬间 presence 可能还没写上，
+   * 名单里查不到我，就用 session 兜底：名字头像都对，只是数字是空的。
+   */
+  const me: ChatMember | null = account
+    ? (people.find((p) => p.id === account.id) ?? {
+        id: account.id,
+        name: account.name,
+        avatar: meAvatar,
+        site: account.site,
+        admin: account.role === 'admin',
+        online: true,
+      })
+    : null;
 
   /**
    * 互联站点：这间屋子里的人各自从哪个站来。
@@ -228,7 +252,14 @@ export default function ChatAside({
           </div>
           <div className="q-side__folk">
             {members.slice(0, 9).map((m) => (
-              <span key={m.id} className="q-side__folkav" title={m.name}>
+              <button
+                key={m.id}
+                type="button"
+                className="q-side__folkav"
+                title={`看 ${m.name} 的个人主页`}
+                aria-label={`看 ${m.name} 的个人主页`}
+                onClick={() => onPick(m)}
+              >
                 {m.name.slice(0, 1)}
                 {m.avatar && (
                   <img
@@ -241,7 +272,7 @@ export default function ChatAside({
                     }}
                   />
                 )}
-              </span>
+              </button>
             ))}
             {members.length > 9 && <span className="q-side__folkmore">+{members.length - 9}</span>}
             {members.length === 0 && (
@@ -267,7 +298,13 @@ export default function ChatAside({
             </div>
           </div>
         ) : account ? (
-          <div className="q-me">
+          <button
+            type="button"
+            className="q-me q-me--self"
+            onClick={() => me && onPick(me)}
+            aria-label="看自己的个人主页"
+            title="别人点你的头像，看到的就是这一页"
+          >
             <span className="q-me__avatar">
               <span aria-hidden="true">
                 {account.name.slice(0, 1)}
@@ -295,7 +332,7 @@ export default function ChatAside({
               <i aria-hidden="true" />
               在线
             </span>
-          </div>
+          </button>
         ) : (
           <div className="q-me q-me--guest">
             <b>还没进门</b>
