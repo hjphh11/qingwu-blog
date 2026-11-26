@@ -44,6 +44,15 @@ const PROFILE_TTL = 24 * 60 * 60 * 1000;
 const LOCAL_ONLINE_WINDOW = 5 * 60 * 1000;
 
 /**
+ * 「有人真的在看」的窗口 —— 给已读回执用，比在线判定短。
+ *
+ * 为什么不用同一个 5 分钟：已读的语义是「有人看到了这条」，说久了就是撒谎。
+ * 心跳有 20 秒节流，2 分钟足够容忍一次后台标签页的延迟；
+ * 而 presence 用 5 分钟是为了侧栏人数不跳，两者目的不同。
+ */
+const READ_RECEIPT_WINDOW = 2 * 60 * 1000;
+
+/**
  * 站内此刻有没有人。
  *
  * 和侧栏同源（`chat_presence`），不是看「有没有人在轮询」——
@@ -51,9 +60,13 @@ const LOCAL_ONLINE_WINDOW = 5 * 60 * 1000;
  *
  * 查不出来时按「有人」处理：宁可让转发账号显示在线，也别把一个正热闹的屋子标成离线。
  */
-export async function hasLocalVisitors(env: Env, now: number): Promise<boolean> {
+export async function hasLocalVisitors(
+  env: Env,
+  now: number,
+  windowMs = LOCAL_ONLINE_WINDOW,
+): Promise<boolean> {
   const r = await env.DB.prepare(`SELECT COUNT(*) AS n FROM chat_presence WHERE last_seen > ?`)
-    .bind(now - LOCAL_ONLINE_WINDOW)
+    .bind(now - windowMs)
     .first<{ n: number }>()
     .catch(() => null);
   return r ? Number(r.n) > 0 : true;
@@ -718,8 +731,23 @@ export async function pullBridge(
       lastEventId = p.eventId;
     }
 
-    // 我们读过之后给大厅回一个已读回执 —— 不然对面永远不知道清吾这边有人看了
-    if (lastEventId) void markRead(cfg, lastEventId);
+    /**
+     * 回已读回执 —— 但**只在站内真的有人时**。
+     *
+     * 原来是无条件回的，结果大厅里永远显示「清吾长亭 已读」，哪怕我们这边一个人
+     * 都没有（离线也能「读」，很怪，而且会让对方误以为有人在场）。
+     * 判定窗口和 presence 用同一个（5 分钟），所以「显示离线」和「不再已读」是同步发生的。
+     *
+     * ⚠️ 已经发出去的历史回执撤不回来（Matrix 没有删除 receipt 的接口），
+     * 这条只影响从今往后。
+     */
+    if (lastEventId) {
+      if (await hasLocalVisitors(env, Date.now(), READ_RECEIPT_WINDOW)) {
+        void markRead(cfg, lastEventId);
+      } else {
+        console.log('[bridge] 站内没人，跳过已读回执');
+      }
+    }
 
     await env.DB.prepare(
       `UPDATE chat_sync SET room_id = ?, since = ?, lock_until = 0, updated_at = ?,
