@@ -130,9 +130,15 @@ function isOwnEcho(ev: SyncEvent): boolean {
   return typeof txn === 'string' && txn.startsWith('qingwu-');
 }
 
-/** 头像代理地址（同源相对路径，前端 `<img>` 直接用） */
+/**
+ * 头像代理地址（前端 `<img>` 直接用）。
+ *
+ * ⚠️ 必须带 `/api` 前缀：worker 内部路由是 `/chat/avatar/:sender`，但对外一律走
+ * `/api/*`（nginx 剥掉前缀再转给 8787）。少了这两个字母，浏览器会去请求 nginx 的静态
+ * 目录，拿回一个 404 —— 表现就是头像全是灰块。
+ */
 export function avatarUrlOf(sender: string, size = 96): string {
-  return `/chat/avatar/${encodeURIComponent(sender)}?s=${size}`;
+  return `/api/chat/avatar/${encodeURIComponent(sender)}?s=${size}`;
 }
 
 /**
