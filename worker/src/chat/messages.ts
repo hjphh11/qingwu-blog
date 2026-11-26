@@ -22,6 +22,7 @@ import { moderateComment } from '../admin/ai';
 import { screen, type ScreenCtx } from './screen';
 import { getPin } from './pin';
 import { flushBridge, queueBridge } from './bridge';
+import { pullBridgeIfIdle } from './sync';
 import { extractUrl, loadPreviews, warmPreview, type LinkPreview } from './link';
 
 /** 正文上限。和 screen.ts 的 MAX_BODY 对齐 —— 那边是审核判据，这里是硬校验 */
@@ -514,7 +515,11 @@ export async function getHistory(request: Request, env: Env): Promise<Response> 
 // ——————————————————————————————————————————————————————————
 // GET /chat/poll —— 增量
 // ——————————————————————————————————————————————————————————
-export async function pollChat(request: Request, env: Env): Promise<Response> {
+export async function pollChat(
+  request: Request,
+  env: Env,
+  ctx: { waitUntil(p: Promise<unknown>): void },
+): Promise<Response> {
   const url = new URL(request.url);
   const after = Number(url.searchParams.get('after') || '') || 0;
   const now = Date.now();
@@ -523,6 +528,18 @@ export async function pollChat(request: Request, env: Env): Promise<Response> {
   const meId = me?.id ?? null;
   const vis = visibleClause(meId ?? -1);
   const blk = blockClause(meId ?? -1);
+
+  /**
+   * 顺手把大厅的消息拉一遍 —— **这就是「别人一发我们就能收到」的来源**。
+   *
+   * 不放在请求路径上（`waitUntil`）：拉失败、对方慢，都不该让这次 poll 变卡。
+   * 内部有 2.5 秒节流，和前端轮询间隔对齐；没开页面时靠 cron 每分钟兜底。
+   */
+  ctx.waitUntil(
+    pullBridgeIfIdle(env).catch((err) =>
+      console.error('[bridge] 在线催拉失败:', err instanceof Error ? err.message : err),
+    ),
+  );
 
   try {
     /**

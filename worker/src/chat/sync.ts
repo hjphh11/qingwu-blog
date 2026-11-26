@@ -388,6 +388,30 @@ export async function getRemoteMedia(request: Request, env: Env): Promise<Respon
  *
  * 返回值里 `first` 表示这是接上来的第一轮（只记游标，不入库）。
  */
+/**
+ * 上一次「在线催拉」的时间（模块级，单实例够了）。
+ *
+ * worker 只有一个进程在跑，用它做节流最简单；多实例时最多是几台各自拉一次，
+ * 也不会出问题（`/sync` 的游标本来就能被多方读取）。
+ */
+let lastEagerPull = 0;
+
+/**
+ * 有人在线时催一次入站。
+ *
+ * cron 的最小粒度是一分钟，而「别人一发我们就要收」要秒级 —— 让 `/chat/poll`
+ * 顺手带一下：页面开着时每 2.5 秒一次 `/sync`，人关了页面就回到 cron 兜底。
+ *
+ * 节流是必要的：长亭可能同时开着好几个页面，每个都 2.5 秒 poll 一次，
+ * 不节流就是每秒好几次 `/sync`。2.5 秒正好匹配前端轮询间隔。
+ */
+export async function pullBridgeIfIdle(env: Env, gapMs = 2500): Promise<void> {
+  const now = Date.now();
+  if (now - lastEagerPull < gapMs) return;
+  lastEagerPull = now;
+  await pullBridge(env);
+}
+
 export async function pullBridge(
   env: Env,
 ): Promise<{ added: number; skipped: number; first: boolean; redacted: number }> {

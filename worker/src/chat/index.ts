@@ -53,7 +53,7 @@ export async function handleChat(
   }
 
   if (path === '/chat/poll') {
-    return method === 'GET' ? pollChat(request, env) : NOT_ALLOWED();
+    return method === 'GET' ? pollChat(request, env, ctx) : NOT_ALLOWED();
   }
 
   // 侧栏：我的称号/发言数 + 在线的人。30 秒刷一次就够，不该跟 poll 一起 2.5 秒跑
