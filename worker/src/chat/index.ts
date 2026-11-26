@@ -27,6 +27,7 @@ import { json } from '../util';
 import { getHistory, markRead, pollChat, sendMessage } from './messages';
 import { getMedia, uploadMedia } from './media';
 import { getRemoteAvatar } from './sync';
+import { getAccountAvatar } from './localAvatar';
 import { reactToMessage } from './react';
 import { recallMessage } from './recall';
 import { searchChat } from './search';
@@ -87,6 +88,11 @@ export async function handleChat(
   }
 
   // 互联头像代理：对方开了 MSC3916 认证媒体，<img> 带不了 token，只能由 worker 中转
+  // 出站头像代理：/chat/avatar/u/:id（站内账号，公开）—— 必须排在下面那条通配之前
+  const ownAvatar = path.match(/^\/chat\/avatar\/u\/(\d+)$/);
+  if (ownAvatar) {
+    return method === 'GET' ? getAccountAvatar(env, ownAvatar[1]!) : NOT_ALLOWED();
+  }
   if (path.startsWith('/chat/avatar/')) {
     return method === 'GET' ? getRemoteAvatar(request, env) : NOT_ALLOWED();
   }

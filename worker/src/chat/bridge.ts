@@ -11,14 +11,23 @@
  * 3. **共享账号要按原发言人分别计数**（对方的三条硬要求之一）—— 排队在这里做最自然：
  *    整条队列按 GAP_MS 平滑拉开，不会攒一批然后在同一毫秒灌给大厅。
  *
- * ## 身份
+ * ## 身份与格式（2026-11-26 对着听雨指南原文核过一遍，改掉了两处想当然）
  *
- * `actor.id = qingwu-u<accountId>`，**不用昵称** —— 改名换头像不该产生新身份。
- * 正文首行另外放一份 `[ID:…];[URL:…]`（§46.4 的双格式）：对方前端目前只读结构化里的
- * id / nick / text，头像只能靠正文头还原，所以协议头不能省。
+ * 指南《共享转发账号怎样收发昵称和头像》给的是**正文协议头**这一套：
+ *
+ *   [ID:清吾];[URL:https://…/avatar.webp]
+ *   正文…
+ *
+ * 1. **`[ID:]` 里放昵称，不是用户 id**。原文：「发送端在 ID 填原昵称」「正文协议以昵称
+ *    作为身份键」。我们第一版塞的是 `qingwu-u1`，对方就把人叫成 `qingwu-u1`。
+ * 2. **不能再同时发 `org.tea-room.bridge`（v1）**。原文：「听雨当前会优先读有效的 v1 数据，
+ *    v1 当前读取 ID、昵称和正文」—— 两套一起发时 v1 会盖掉正文头，而 v1 没有头像字段，
+ *    头像就永远打不过去。要头像，只能只发正文头这一套。
+ * 3. **`formatted_body` 里不放协议头**：body 给机器读，formatted_body 给人读
+ *    （Element 这类客户端优先渲染后者），头露在聊天框里就是那串 `[ID:]`。
  */
 import type { Env } from '../types';
-import { avatarFromEmail } from '../auth/avatar';
+import { publicAvatarUrl } from './localAvatar';
 
 /** 站点地址：出站消息的 `site` 字段与相对头像拼绝对地址都用它（rainzt 那边也是带尾斜杠的写法） */
 const SITE_FALLBACK = 'https://www.qingwu.ink';
@@ -59,14 +68,6 @@ function esc(s: string): string {
   );
 }
 
-/** 头像可能是 `/images/...` 这种站内相对路径，Matrix 那头需要绝对地址 */
-function absUrl(u: string, site: string): string {
-  const s = String(u || '').trim();
-  if (!s) return '';
-  if (/^https?:\/\//i.test(s)) return s;
-  const base = site.replace(/\/+$/, '');
-  return base + (s.startsWith('/') ? s : `/${s}`);
-}
 
 /**
  * 排队一条出站。
@@ -112,29 +113,24 @@ export type BridgeRow = {
 /**
  * 出站报文的**全部格式逻辑**都在这儿（纯函数，好单测）。
  *
- * 双格式是 §46.4 定的：正文首行 `[ID:…];[URL:…]` 给「只读得懂正文」的客户端，
- * `org.tea-room.bridge` 给对方的解析器。两边的 `text` 都必须是**原始正文**，
- * 不能带协议头 —— 不然对方前端会把 `[ID:…]` 当成人说的话显示出来。
+ * 格式与取舍见文件头：`[ID:昵称];[URL:头像]` + 换行 + 原文，**不带 v1 结构化**。
  */
-export function bridgeContentOf(cfg: BridgeCfg, row: BridgeRow): Record<string, unknown> {
-  const idKey = `qingwu-u${row.accountId}`;
-  const head = `[ID:${idKey}];[URL:${row.avatar}]`;
-  // 正文首行放协议头，换行接原话
+export function bridgeContentOf(row: BridgeRow): Record<string, unknown> {
+  // 协议头是拿「方括号 + 分号」拼的：昵称里混进这些字符会把对方的解析带偏
+  const nick = String(row.nick || '')
+    .replace(/[[\]\r\n]/g, '')
+    .trim() || '茶客';
+  const head = `[ID:${nick}];[URL:${row.avatar}]`;
+  // 首行协议头，换行接原话
   const body = `${head}\n${row.body}`;
 
   return {
     msgtype: 'm.text',
     body,
     format: 'org.matrix.custom.html',
-    formatted_body: `<p>${esc(head)}</p>\n<p>${esc(row.body).replace(/\n/g, '<br />')}</p>\n`,
+    // 只放正文：协议头是给解析器看的，不该出现在人读的那一版里
+    formatted_body: `<p>${esc(row.body).replace(/\n/g, '<br />')}</p>\n`,
     'm.mentions': {},
-    'org.tea-room.bridge': {
-      actor: { id: idKey, nick: row.nick },
-      site: cfg.site,
-      text: row.body,
-      transactionId: row.txn,
-      version: 1,
-    },
   };
 }
 
@@ -159,7 +155,7 @@ export async function deliverToMatrix(
   cfg: BridgeCfg,
   row: BridgeRow,
 ): Promise<{ err: string | null; eventId?: string }> {
-  const content = bridgeContentOf(cfg, row);
+  const content = bridgeContentOf(row);
 
   const url =
     `${cfg.hs}/_matrix/client/v3/rooms/${pathSeg(cfg.room)}` +
@@ -185,10 +181,92 @@ export async function deliverToMatrix(
 }
 
 /**
+ * 撤回大厅里的那一条（redact）。
+ *
+ * 只有出站成功过的消息才有 `matrix_event_id` —— 那是唯一能把「我们库里第几条」
+ * 和「大厅里哪个事件」对上号的钥匙。还在队列里没发出去的，由 `queueRedact()` 直接销账。
+ *
+ * 返回 null 表示成功；否则是失败原因（同样按 chat_outbox 的退避重试）。
+ */
+export async function redactOnMatrix(cfg: BridgeCfg, eventId: string, txn: string): Promise<string | null> {
+  const url =
+    `${cfg.hs}/_matrix/client/v3/rooms/${pathSeg(cfg.room)}` +
+    `/redact/${pathSeg(eventId)}/${pathSeg(txn)}`;
+
+  try {
+    const res = await fetch(url, {
+      method: 'PUT',
+      headers: { authorization: `Bearer ${cfg.token}`, 'content-type': 'application/json' },
+      // reason 会显示在 Matrix 客户端里，别写内部术语
+      body: JSON.stringify({ reason: '作者撤回了这条消息' }),
+      signal: AbortSignal.timeout(8000),
+    });
+    if (res.ok) return null;
+    const text = (await res.text().catch(() => '')).slice(0, 200);
+    return `${res.status} ${text}`;
+  } catch (err) {
+    return err instanceof Error ? err.message : String(err);
+  }
+}
+
+/**
+ * 撤回时排一条 redact 任务。
+ *
+ * 两种情况分开处理：
+ * - **还没发出去**（`matrix_event_id` 为空）：直接从队列里删掉那条 send —— 大厅里
+ *   从没出现过，再 redact 就是打一个不存在的事件；
+ * - **已经发出去了**：入队 `op='redact'`，由 flush 按同样的平滑节奏去撤。
+ *
+ * 调用点是「作者撤回」和「站长/AI 收走」——凡是不该继续留在大厅的都要走这儿。
+ */
+export async function queueRedact(env: Env, messageId: number): Promise<void> {
+  if (!bridgeOf(env)) return;
+
+  const row = await env.DB.prepare(
+    `SELECT matrix_event_id AS ev FROM chat_messages WHERE id = ?`,
+  )
+    .bind(messageId)
+    .first<{ ev: string | null }>();
+
+  if (!row?.ev) {
+    await env.DB.prepare(
+      `DELETE FROM chat_outbox WHERE message_id = ? AND status = 'queued'`,
+    )
+      .bind(messageId)
+      .run();
+    return;
+  }
+
+  // 已经排过 redact 就不用重复排（连点两下撤回、或者撤回后又删）
+  const dup = await env.DB.prepare(
+    `SELECT id FROM chat_outbox WHERE message_id = ? AND op = 'redact' AND status IN ('queued','sending','done')`,
+  )
+    .bind(messageId)
+    .first<{ id: number }>();
+  if (dup) return;
+
+  const now = Date.now();
+  const tail = await env.DB.prepare(
+    `SELECT MAX(next_at) AS t FROM chat_outbox WHERE status IN ('queued', 'sending')`,
+  ).first<{ t: number | null }>();
+  const floor = Number(tail?.t ?? 0) > now ? Number(tail!.t) : now;
+  const nextAt = floor + (floor === now ? 0 : GAP_MS);
+
+  await env.DB.prepare(
+    `INSERT INTO chat_outbox (message_id, op, txn_id, status, tries, next_at, created_at)
+     VALUES (?, 'redact', ?, 'queued', 0, ?, ?)`,
+  )
+    .bind(messageId, `qingwu-r-${messageId}-${rand(6)}`, nextAt, now)
+    .run();
+}
+
+/**
  * 补发队列（scheduled 每分钟一次；发送成功时也会立刻催一次）。
  *
- * 只有**仍然是 visible 的文字消息**才会出门 —— 消息可能在这中间被作者撤回、
- * 被 AI 收起、被站长删掉，那些都不该再去打扰大厅。
+ * 两支队伍走同一个队列，按 `op` 分流：
+ * - `send`：只有**仍然是 visible 的文字**才出门 —— 消息可能在这中间被作者撤回、
+ *   被 AI 收起、被站长删掉，那些都不该再去打扰大厅；
+ * - `redact`：反过来，**只有确实出站过**的才撤；本来就没发出去的直接销账。
  */
 export async function flushBridge(env: Env, limit = BATCH): Promise<{ sent: number; dropped: number; failed: number }> {
   const cfg = bridgeOf(env);
@@ -196,9 +274,9 @@ export async function flushBridge(env: Env, limit = BATCH): Promise<{ sent: numb
 
   const now = Date.now();
   const rows = await env.DB.prepare(
-    `SELECT o.id AS oid, o.txn_id AS txn, o.tries AS tries,
+    `SELECT o.id AS oid, o.op AS op, o.txn_id AS txn, o.tries AS tries,
             m.id AS mid, m.body AS body, m.kind AS kind, m.status AS status,
-            m.account_id AS account_id,
+            m.account_id AS account_id, m.matrix_event_id AS ev,
             a.display_name AS nick, a.avatar_url AS avatar, a.email AS email
        FROM chat_outbox o
        JOIN chat_messages m ON m.id = o.message_id
@@ -212,6 +290,7 @@ export async function flushBridge(env: Env, limit = BATCH): Promise<{ sent: numb
 
   const list = (rows.results ?? []) as {
     oid: number;
+    op: string;
     txn: string;
     tries: number;
     mid: number;
@@ -219,6 +298,7 @@ export async function flushBridge(env: Env, limit = BATCH): Promise<{ sent: numb
     kind: string;
     status: string;
     account_id: number;
+    ev: string | null;
     nick: string | null;
     avatar: string | null;
     email: string | null;
@@ -229,6 +309,51 @@ export async function flushBridge(env: Env, limit = BATCH): Promise<{ sent: numb
   let failed = 0;
 
   for (const r of list) {
+    // ⚠️ 先用 op 分流，再谈状态：撤回任务对应的消息状态本来就是 recalled/deleted，
+    //    不能拿 send 的「必须 visible」去筛它，否则撤回头永远发不出去。
+    if (r.op === 'redact') {
+      if (!r.ev) {
+        // 从没出站过（或者出站失败了）⇒ 大厅里没有这条，任务直接销账
+        await env.DB.prepare(`DELETE FROM chat_outbox WHERE id = ?`).bind(r.oid).run();
+        dropped += 1;
+        continue;
+      }
+
+      const claimed = await env.DB.prepare(
+        `UPDATE chat_outbox SET status = 'sending' WHERE id = ? AND status = 'queued'`,
+      )
+        .bind(r.oid)
+        .run();
+      if (!changed(claimed)) continue;
+
+      const err = await redactOnMatrix(cfg, r.ev, r.txn);
+      if (err === null) {
+        await env.DB.prepare(`UPDATE chat_outbox SET status = 'done', last_error = NULL WHERE id = ?`)
+          .bind(r.oid)
+          .run();
+        sent += 1;
+        continue;
+      }
+
+      const tries = r.tries + 1;
+      if (tries >= MAX_TRIES) {
+        await env.DB.prepare(
+          `UPDATE chat_outbox SET status = 'failed', tries = ?, last_error = ? WHERE id = ?`,
+        )
+          .bind(tries, err.slice(0, 300), r.oid)
+          .run();
+      } else {
+        const backoff = Math.min(20_000 * 2 ** (tries - 1), 600_000);
+        await env.DB.prepare(
+          `UPDATE chat_outbox SET status = 'queued', tries = ?, next_at = ?, last_error = ? WHERE id = ?`,
+        )
+          .bind(tries, Date.now() + backoff, err.slice(0, 300), r.oid)
+          .run();
+      }
+      failed += 1;
+      continue;
+    }
+
     // 已经不可见 / 不是文字 ⇒ 不用发了，直接从队列里去掉
     if (r.status !== 'visible' || r.kind !== 'text') {
       await env.DB.prepare(`DELETE FROM chat_outbox WHERE id = ?`).bind(r.oid).run();
@@ -244,18 +369,19 @@ export async function flushBridge(env: Env, limit = BATCH): Promise<{ sent: numb
       .run();
     if (!changed(claimed)) continue;
 
-    const nick = r.nick || (r.email ? r.email.split('@')[0]! : `茶客#${r.account_id}`);
+    // 昵称要准：正文协议头的 `[ID:]` 就是它。display_name 为空时别退回邮箱前缀
+    // （那等于把邮箱贴到大厅），给个中性兜底。
+    const nick = (r.nick || '').trim() || `茶客#${r.account_id}`;
     /**
-     * 头像要跟站内显示的那张**完全一致**：多数账号 `avatar_url` 是空的，
-     * 站内走的是 `avatarFromEmail()`（QQ 邮箱取 qlogo、其余取 cravatar）。
-     * 只取 `avatar_url` 会让出站消息变成空头像 —— 而协议头里的 `[URL:]` 正是
-     * 对方还原头像的唯一来源，空了对面就只剩一个色块。
+     * 头像走我们自己的域名（`/api/chat/avatar/u/<id>`），不走 `avatarFromEmail()` 那张：
+     * `q.qlogo.cn` 在境外回 400（自家香港机实测），对方加载不了；而且那个 URL 的
+     * `dst_uin` 是明文 QQ 号。细节见 `localAvatar.ts`。
      */
-    const avatar = r.avatar || (r.email ? avatarFromEmail(r.email) : '');
+    const avatar = publicAvatarUrl(cfg.site, r.account_id);
     const got = await deliverToMatrix(cfg, {
       body: r.body,
       nick,
-      avatar: absUrl(avatar, cfg.site),
+      avatar,
       accountId: r.account_id,
       txn: r.txn,
     });

@@ -15,6 +15,7 @@ import { json } from '../util';
 import type { Admin } from './auth';
 import { RULE_NOTES } from '../chat/screen';
 import { judgeReportById } from '../chat/report';
+import { queueRedact } from '../chat/bridge';
 import { loadSettings } from './settings';
 
 const REPORT_STATUS = new Set(['handled', 'dismissed']);
@@ -228,6 +229,9 @@ export async function deleteChatMessage(
     .bind(now, id)
     .run();
   if (!res.meta?.changes) return json({ ok: false, reason: 'not_found' }, 404);
+
+  // 收走的消息不该继续挂在大厅 —— 撤回任务排队（没出站过的直接销账）
+  await queueRedact(env, id);
 
   await env.DB.prepare(`UPDATE chat_reports SET status = 'handled' WHERE message_id = ? AND status = 'open'`)
     .bind(id)

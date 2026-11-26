@@ -283,7 +283,8 @@ export default {
       pullBridge(env)
         .then((s) => {
           if (s.first) console.log('[cron] 互联入站：已对齐游标（不回灌历史）');
-          else if (s.added) console.log(`[cron] 互联入站：新增 ${s.added} 条，跳过 ${s.skipped}`);
+          else if (s.added || s.redacted)
+            console.log(`[cron] 互联入站：新增 ${s.added} 条，撤回 ${s.redacted} 条，跳过 ${s.skipped}`);
         })
         .catch((err) => console.error('[cron] 互联入站失败:', err instanceof Error ? err.message : err)),
     );

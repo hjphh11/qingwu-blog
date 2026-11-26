@@ -21,6 +21,7 @@ import { json } from '../util';
 import { sessionUser } from '../auth/store';
 import { judgeFreeText } from '../admin/ai';
 import { sendMail } from '../mail';
+import { queueRedact } from './bridge';
 
 /** 和审核口径同一套五类，外加一个 other */
 const REASONS = new Set(['spam', 'abuse', 'porn', 'illegal', 'privacy', 'other']);
@@ -353,6 +354,9 @@ async function removeByAi(
 
   // 已经撤回 / 已被站长收走 / 本来就是 spam：不重复写流水
   if (!res.meta?.changes) return;
+
+  // AI 收起的也撤出大厅 —— 判定违规的话不该还挂在那儿
+  await queueRedact(env, p.messageId);
 
   await env.DB.prepare(`UPDATE chat_reports SET status = 'handled' WHERE id = ?`)
     .bind(p.reportId)

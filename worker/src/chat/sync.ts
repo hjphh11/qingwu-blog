@@ -131,6 +131,34 @@ function isOwnEcho(ev: SyncEvent): boolean {
 }
 
 /**
+ * 处理大厅里的撤回（`m.room.redaction`）。
+ *
+ * 两种写法都要认：v1–v10 把 `redacts` 放在事件顶层，v11 起挪进了 `content.redacts`。
+ * 我们自己撤的那条也会 sync 回来（txn 是 `qingwu-r-…`），跳过 —— 本地状态早就是 recalled 了。
+ */
+async function applyRedactions(env: Env, events: SyncEvent[]): Promise<number> {
+  let n = 0;
+  for (const ev of events) {
+    if (ev.type !== 'm.room.redaction') continue;
+    if (isOwnEcho(ev)) continue;
+
+    const top = (ev as { redacts?: unknown }).redacts;
+    const inner = (ev.content as { redacts?: unknown } | undefined)?.redacts;
+    const target = typeof top === 'string' ? top : typeof inner === 'string' ? inner : '';
+    if (!target) continue;
+
+    const res = await env.DB.prepare(
+      `UPDATE chat_messages SET status = 'recalled', updated_at = ?
+        WHERE matrix_event_id = ? AND origin = 'remote' AND status IN ('visible', 'pending')`,
+    )
+      .bind(Date.now(), target)
+      .run();
+    if (Number(res.meta?.changes ?? 0) > 0) n += 1;
+  }
+  return n;
+}
+
+/**
  * 头像代理地址（前端 `<img>` 直接用）。
  *
  * ⚠️ 必须带 `/api` 前缀：worker 内部路由是 `/chat/avatar/:sender`，但对外一律走
@@ -253,9 +281,11 @@ function transparent1px(): Response {
  *
  * 返回值里 `first` 表示这是接上来的第一轮（只记游标，不入库）。
  */
-export async function pullBridge(env: Env): Promise<{ added: number; skipped: number; first: boolean }> {
+export async function pullBridge(
+  env: Env,
+): Promise<{ added: number; skipped: number; first: boolean; redacted: number }> {
   const cfg = bridgeOf(env);
-  if (!cfg) return { added: 0, skipped: 0, first: false };
+  if (!cfg) return { added: 0, skipped: 0, first: false, redacted: 0 };
 
   const now = Date.now();
 
@@ -273,7 +303,7 @@ export async function pullBridge(env: Env): Promise<{ added: number; skipped: nu
   )
     .bind(now + LOCK_MS, now, now)
     .run();
-  if (Number(lock.meta?.changes ?? 0) === 0) return { added: 0, skipped: 0, first: false };
+  if (Number(lock.meta?.changes ?? 0) === 0) return { added: 0, skipped: 0, first: false, redacted: 0 };
 
   try {
     const row = await env.DB.prepare(`SELECT since, room_id FROM chat_sync WHERE id = 1`).first<{
@@ -296,7 +326,7 @@ export async function pullBridge(env: Env): Promise<{ added: number; skipped: nu
     if (!res.ok) {
       const t = (await res.text().catch(() => '')).slice(0, 160);
       console.error(`[bridge] /sync ${res.status}: ${t}`);
-      return { added: 0, skipped: 0, first: false };
+      return { added: 0, skipped: 0, first: false, redacted: 0 };
     }
 
     const data = (await res.json().catch(() => ({}))) as {
@@ -327,8 +357,11 @@ export async function pullBridge(env: Env): Promise<{ added: number; skipped: nu
       )
         .bind(cfg.room, nextBatch ?? null, Date.now(), members)
         .run();
-      return { added: 0, skipped: events.length, first: true };
+      return { added: 0, skipped: events.length, first: true, redacted: 0 };
     }
+
+    // 撤回：跟新增分开走 —— 撤回事件本身不是消息，不能被当成「一条空消息」跳过
+    const redacted = await applyRedactions(env, events);
 
     let added = 0;
     let skipped = 0;
@@ -386,10 +419,10 @@ export async function pullBridge(env: Env): Promise<{ added: number; skipped: nu
       .bind(cfg.room, nextBatch ?? since, Date.now(), members)
       .run();
 
-    return { added, skipped, first: false };
+    return { added, skipped, first: false, redacted };
   } catch (err) {
     console.error('[bridge] 入站失败:', err instanceof Error ? err.message : err);
-    return { added: 0, skipped: 0, first: false };
+    return { added: 0, skipped: 0, first: false, redacted: 0 };
   } finally {
     // 无论成败都放锁，否则要等 LOCK_MS 自然过期
     await env.DB.prepare(`UPDATE chat_sync SET lock_until = 0 WHERE id = 1`).run().catch(() => {});

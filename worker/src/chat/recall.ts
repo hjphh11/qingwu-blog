@@ -13,6 +13,7 @@
 import type { Env } from '../types';
 import { json } from '../util';
 import { sessionUser } from '../auth/store';
+import { queueRedact } from './bridge';
 
 /** 可撤回窗口 */
 const RECALL_WINDOW = 2 * 60 * 1000;
@@ -69,6 +70,9 @@ export async function recallMessage(
     )
       .bind(Date.now(), id)
       .run();
+
+    // 撤回要跟着同步到大厅：发过的那条 redact 掉，还没发的直接销账（见 bridge.ts queueRedact）
+    await queueRedact(env, id);
 
     return json({ ok: true });
   } catch (err) {
