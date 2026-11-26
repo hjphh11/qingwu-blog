@@ -2157,6 +2157,7 @@ export default function ChatRoom() {
                       onReply={() => setReplyTo(m)}
                       readCount={reads?.id === m.id ? reads.n : 0}
                       readNames={reads?.id === m.id ? reads.names : undefined}
+                      onMediaLoad={followIfAtBottom}
                     />
                   </div>
                 );
@@ -2692,6 +2693,7 @@ function MessageRow({
   onReply,
   readCount,
   readNames,
+  onMediaLoad,
 }: {
   m: ChatMessage;
   grouped: boolean;
@@ -2718,6 +2720,8 @@ function MessageRow({
   readCount: number;
   /** 是谁读的（最多 5 个名字），只用来做悬停提示 */
   readNames?: string[];
+  /** 图/卡片图撑开高度后回调一次（父组件用它做「贴底跟随」） */
+  onMediaLoad?: () => void;
 }) {
   // ⚠️ hook 必须在下面那个「撤回消息直接 return」之前 —— 否则两种状态的 hook
   //    数量不同，React 会报 "Rendered fewer hooks than expected"。
@@ -2920,8 +2924,8 @@ function MessageRow({
                     tabIndex={0}
                     role="button"
                     aria-label="查看大图"
-                    /* 图撑开高度后如果人还在底部，跟上（见 followIfAtBottom） */
-                    onLoad={followIfAtBottom}
+                    /* 图撑开高度后如果人还在底部，跟上（见 ChatRoom 的 followIfAtBottom） */
+                    onLoad={onMediaLoad}
                   />
                 ) : m.media.kind === 'audio' ? (
                   <VoiceBubble
@@ -2944,7 +2948,7 @@ function MessageRow({
               data-zoomable=""
               /* 正文图（卡片封面）是异步撑高的，load 不冒泡但 React 用捕获阶段代理，
                  所以挂在容器上能收到 —— 人还贴着底就跟上去 */
-              onLoadCapture={followIfAtBottom}
+              onLoadCapture={onMediaLoad}
               // renderRich 先整段转义再拼固定标签（见 src/lib/richText.ts 顶部）
               dangerouslySetInnerHTML={{ __html: renderRich(m.body) }}
             />
