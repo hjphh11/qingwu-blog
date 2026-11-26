@@ -663,10 +663,25 @@ export async function pollChat(request: Request, env: Env): Promise<Response> {
           .all<{ name: string | null }>()
           .catch(() => ({ results: [] as Array<{ name: string | null }> }));
         const list = (who.results ?? []) as Array<{ name: string | null }>;
+
+        /**
+         * 大厅那边的已读：/sync 的 m.receipt 已经把人数累进 `remote_reads`。
+         * 两笔账相加才是这条消息真正被多少人看过 —— 分开算是因为数据源完全不同
+         * （本地是 chat_reads 游标，互联是 Matrix 收据），混在一起反而查不清。
+         */
+        const remoteRow = await env.DB.prepare(`SELECT remote_reads FROM chat_messages WHERE id = ?`)
+          .bind(last.id)
+          .first<{ remote_reads: number }>()
+          .catch(() => null);
+        const remoteN = Number(remoteRow?.remote_reads ?? 0);
+
         reads = {
           id: last.id,
-          n: list.length,
-          names: list.slice(0, 5).map((r) => r.name || '有人'),
+          n: list.length + remoteN,
+          names: [
+            ...list.slice(0, 5).map((r) => r.name || '有人'),
+            ...(remoteN > 0 ? [`大厅 ${remoteN} 人`] : []),
+          ],
         };
       }
     }

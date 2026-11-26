@@ -374,6 +374,8 @@ export default function ChatRoom() {
   const [people, setPeople] = useState<ChatMember[]>([]);
   /** 我屏蔽了谁（单向、只有我看不见）。服务端在 who 与屏蔽接口里一起回 */
   const [blocks, setBlocks] = useState<BlockedUser[]>([]);
+  /** 互联大厅的成员数（0 = 没接互联）。与「此刻在长亭 N 人」口径不同，文案分开写 */
+  const [remoteMembers, setRemoteMembers] = useState(0);
   /** 正在看谁的个人主页（null = 没开）。左栏头像 / 左栏「我」/ 右栏成员行共用 */
   const [peek, setPeek] = useState<ChatMember | null>(null);
 
@@ -743,6 +745,7 @@ export default function ChatRoom() {
     setMembers(w.members);
     setPeople(w.people);
     setBlocks(w.blocks);
+    setRemoteMembers(w.remote?.members ?? 0);
   }, []);
 
   /**
@@ -771,6 +774,7 @@ export default function ChatRoom() {
         setMembers(list.members);
         setPeople(list.people);
         setBlocks(list.blocks);
+        setRemoteMembers(list.remote?.members ?? 0);
         setPinState(page.pin);
         lastIdRef.current = page.messages.reduce((max, m) => Math.max(max, m.id), 0);
         readMarkRef.current = page.lastRead;
@@ -1744,6 +1748,7 @@ export default function ChatRoom() {
       onClose={closeInfo}
       onPick={openPeek}
       onUnblock={toggleBlock}
+      remoteMembers={remoteMembers}
     />
   );
 

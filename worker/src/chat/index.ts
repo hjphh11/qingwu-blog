@@ -26,6 +26,7 @@ import type { Env } from '../types';
 import { json } from '../util';
 import { getHistory, markRead, pollChat, sendMessage } from './messages';
 import { getMedia, uploadMedia } from './media';
+import { getRemoteAvatar } from './sync';
 import { reactToMessage } from './react';
 import { recallMessage } from './recall';
 import { searchChat } from './search';
@@ -77,13 +78,17 @@ export async function handleChat(
     return method === 'GET' ? searchChat(request, env) : NOT_ALLOWED();
   }
 
-  // 图片 / 视频：上传（POST）与读取（GET /chat/media/:id）
   if (path === '/chat/media') {
     return method === 'POST' ? uploadMedia(request, env) : NOT_ALLOWED();
   }
   const media = path.match(/^\/chat\/media\/(\d+)$/);
   if (media) {
     return method === 'GET' ? getMedia(env, media[1]!) : NOT_ALLOWED();
+  }
+
+  // 互联头像代理：对方开了 MSC3916 认证媒体，<img> 带不了 token，只能由 worker 中转
+  if (path.startsWith('/chat/avatar/')) {
+    return method === 'GET' ? getRemoteAvatar(request, env) : NOT_ALLOWED();
   }
 
   // /chat/:id/recall

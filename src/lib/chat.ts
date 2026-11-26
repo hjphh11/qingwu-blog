@@ -590,6 +590,8 @@ export interface WhoResult {
   people: ChatMember[];
   /** 我屏蔽了谁（单向：只有我看不见他们） */
   blocks: BlockedUser[];
+  /** 互联的另一头：大厅有多少成员（0 = 没接互联，前端不显示） */
+  remote?: { members: number };
 }
 
 /** 屏蔽名单里的一行。比 ChatMember 轻：这些人对我而言只剩「取消屏蔽」一个动作 */
@@ -624,6 +626,7 @@ export async function fetchWho(): Promise<WhoResult> {
       members?: ChatMember[];
       people?: ChatMember[];
       blocks?: BlockedUser[];
+      remote?: { members?: number };
     };
     const members = Array.isArray(data.members) ? data.members : [];
     return {
@@ -631,6 +634,7 @@ export async function fetchWho(): Promise<WhoResult> {
       // 服务端没给 people（老版本 worker / 查询失败）时退回在线名单，卡片不至于空着
       people: Array.isArray(data.people) && data.people.length ? data.people : members,
       blocks: Array.isArray(data.blocks) ? data.blocks : [],
+      remote: { members: Number(data.remote?.members ?? 0) || 0 },
     };
   } catch {
     return empty;

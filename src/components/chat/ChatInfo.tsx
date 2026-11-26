@@ -87,11 +87,14 @@ export default function ChatInfo({
   onClose,
   onPick,
   onUnblock,
+  remoteMembers = 0,
 }: {
   /** 在线的人（用于标题里的计数兜底） */
   members: ChatMember[];
   /** 所有来过的人（进过门或说过话）；空数组时退回在线名单 */
   people: ChatMember[];
+  /** 互联大厅的成员数（0 = 没接互联，不显示这一段） */
+  remoteMembers?: number;
   /** 我屏蔽了谁（单向：他们不在上面两份名单里，只在这张卡里） */
   blocks: BlockedUser[];
   /** -1 = 还在数人 */
@@ -175,9 +178,9 @@ export default function ChatInfo({
             <span className="q-card__n">
               {loading || online < 0
                 ? '正在数人…'
-                : list.length > online
-                  ? `${list.length} 人来过 · ${online} 在线`
-                  : `${online} 人在长亭`}
+                : `${list.length > online ? `${list.length} 人来过 · ${online} 在线` : `${online} 人在长亭`}${
+                    remoteMembers > 0 ? ` · 大厅 ${remoteMembers} 人` : ''
+                  }`}
             </span>
           </div>
 
@@ -274,6 +277,7 @@ export default function ChatInfo({
                 <span className="q-people__t">空间成员</span>
                 <span className="q-people__n">
                   {list.length} 人来过 · {online} 在线
+                  {remoteMembers > 0 ? ` · 大厅 ${remoteMembers} 人` : ''}
                 </span>
                 <button
                   type="button"

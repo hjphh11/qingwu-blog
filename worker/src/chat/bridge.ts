@@ -144,17 +144,21 @@ export function bridgeContentOf(cfg: BridgeCfg, row: BridgeRow): Record<string, 
  * `encodeURIComponent` 会放过 `! ' ( ) *`，而房间 id 恰好是 `!CKQY…` 开头 ——
  * 有的 Matrix 实现（conduit / 某些反代）在 path 里只认 `%21`，不认裸 `!`。
  */
-function pathSeg(s: string): string {
+export function pathSeg(s: string): string {
   return encodeURIComponent(s).replace(/[!'()*]/g, (c) => `%${c.charCodeAt(0).toString(16).toUpperCase()}`);
 }
 
 /**
- * 投递一条。返回 null 表示成功，否则是失败原因（会写进 last_error）。
+ * 投递一条。返回 `{err:null, eventId}` 表示成功，否则 err 是失败原因（写进 last_error）。
  *
  * Matrix 的 `PUT /rooms/{id}/send/{type}/{txnId}` 是幂等的（同一个 txnId 重复 PUT
  * 只会产生一条事件），所以超时后重试是安全的 —— 不用自己判「到底发出去没有」。
+ * 响应里的 `event_id` 要留下来：那是后面接已读回执（m.receipt）的唯一钥匙。
  */
-export async function deliverToMatrix(cfg: BridgeCfg, row: BridgeRow): Promise<string | null> {
+export async function deliverToMatrix(
+  cfg: BridgeCfg,
+  row: BridgeRow,
+): Promise<{ err: string | null; eventId?: string }> {
   const content = bridgeContentOf(cfg, row);
 
   const url =
@@ -168,12 +172,15 @@ export async function deliverToMatrix(cfg: BridgeCfg, row: BridgeRow): Promise<s
       body: JSON.stringify(content),
       signal: AbortSignal.timeout(8000),
     });
-    if (res.ok) return null;
+    if (res.ok) {
+      const data = (await res.json().catch(() => ({}))) as { event_id?: string };
+      return { err: null, eventId: data.event_id };
+    }
     const text = (await res.text().catch(() => '')).slice(0, 200);
     // 4xx 里除了 429 基本是「发了也没用」（房间没了 / token 失效），重试别太多轮
-    return `${res.status} ${text}`;
+    return { err: `${res.status} ${text}` };
   } catch (err) {
-    return err instanceof Error ? err.message : String(err);
+    return { err: err instanceof Error ? err.message : String(err) };
   }
 }
 
@@ -245,7 +252,7 @@ export async function flushBridge(env: Env, limit = BATCH): Promise<{ sent: numb
      * 对方还原头像的唯一来源，空了对面就只剩一个色块。
      */
     const avatar = r.avatar || (r.email ? avatarFromEmail(r.email) : '');
-    const err = await deliverToMatrix(cfg, {
+    const got = await deliverToMatrix(cfg, {
       body: r.body,
       nick,
       avatar: absUrl(avatar, cfg.site),
@@ -253,14 +260,21 @@ export async function flushBridge(env: Env, limit = BATCH): Promise<{ sent: numb
       txn: r.txn,
     });
 
-    if (!err) {
+    if (got.err === null) {
       await env.DB.batch([
         env.DB.prepare(`UPDATE chat_outbox SET status = 'done', last_error = NULL WHERE id = ?`).bind(r.oid),
-        env.DB.prepare(`UPDATE chat_messages SET matrix_txn_id = ? WHERE id = ?`).bind(r.txn, r.mid),
+        // matrix_event_id 是已读回执的钥匙：/sync 回来的 m.receipt 按 event id 指认
+        env.DB.prepare(`UPDATE chat_messages SET matrix_txn_id = ?, matrix_event_id = ? WHERE id = ?`).bind(
+          r.txn,
+          got.eventId ?? null,
+          r.mid,
+        ),
       ]);
       sent += 1;
       continue;
     }
+
+    const err = got.err;
 
     const tries = r.tries + 1;
     if (tries >= MAX_TRIES) {

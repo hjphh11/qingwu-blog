@@ -12,15 +12,27 @@
  * 3. **自己的回声要丢掉**：我们 PUT 出去的事件 Synapse 也会 /sync 回来，
  *    那些在本地本来就是 `origin='local'` 的消息，再插一条 remote 就重复了。
  *    判据是 `unsigned.transaction_id` 的 `qingwu-` 前缀（出站 txn 的命名规则）。
+ *
+ * ## 另一半：社交信息
+ *
+ * - **头像与昵称**：多数站的 body 不带 `[ID:];[URL:]` 协议头，只能靠 Matrix 成员资料补。
+ *   按 sender 缓存 24h（`chat_remote_profiles`），头像走本 worker 的 `/chat/avatar/:sender`
+ *   代理 —— 对方启用了 MSC3916 的认证媒体，`<img>` 带不了 Authorization 头。
+ * - **已读**：我们出站的每条都存了 `matrix_event_id`；/sync 的 ephemeral 里有 `m.receipt`，
+ *   把直接指到这条消息的 `m.read` 人数写进 `chat_messages.remote_reads`（只增不减）。
+ * - **人数**：`joined_members` 的数量存进 `chat_sync.remote_members`，侧栏显示「大厅 N 人」。
  */
 import type { Env } from '../types';
-import { bridgeOf } from './bridge';
+import { bridgeOf, pathSeg, type BridgeCfg } from './bridge';
 
 /** 投递一次最多入库多少条 —— 大厅很热闹，一轮灌太多会顶到 D1 的写上限 */
 const MAX_INSERT = 30;
 
 /** 抢锁时长：防止 cron 与手动触发撞在一起，同一批事件插两次 */
 const LOCK_MS = 45_000;
+
+/** 资料缓存多久过期（对方改昵称/头像后，一天内会跟上） */
+const PROFILE_TTL = 24 * 60 * 60 * 1000;
 
 type SyncEvent = {
   type?: string;
@@ -31,10 +43,10 @@ type SyncEvent = {
   content?: Record<string, unknown>;
 };
 
-/** /sync 的过滤：只要目标房间、只要最近 50 条，不要全部房间的状态 */
+/** /sync 的过滤：只要目标房间，不要全部房间的状态 */
 function filterOf(room: string): string {
   return JSON.stringify({
-    room: { rooms: [room], timeline: { limit: 50 } },
+    room: { rooms: [room], timeline: { limit: 50 }, ephemeral: { limit: 50 } },
     presence: { not_types: ['*'] },
     account_data: { not_types: ['*'] },
   });
@@ -53,6 +65,8 @@ export type RemoteParsed = {
   avatar: string;
   sender: string;
   site: string;
+  /** 完整 Matrix 用户 ID —— 补资料、代理头像都要它（`sender` 可能是对方的站内身份键） */
+  mxid: string;
   eventId: string;
   ts: number;
 };
@@ -62,6 +76,7 @@ export type RemoteParsed = {
  *
  * 优先读结构化的 `org.tea-room.bridge`（rainzt 用这个）；读不到就退回 body：
  * 首行是协议头就剥掉，那时头像也只能从首行拿 —— 结构化里没有头像字段。
+ * 两样都没有时，头像/昵称由 `resolveProfile()` 去 Matrix 成员资料里补。
  */
 export function parseRemoteEvent(ev: SyncEvent): RemoteParsed | null {
   if (ev.type !== 'm.room.message' || !ev.event_id || !ev.sender) return null;
@@ -78,13 +93,14 @@ export function parseRemoteEvent(ev: SyncEvent): RemoteParsed | null {
   const lines = rawBody.split('\n');
   const head = lines.length > 1 ? parseHead(lines[0]!) : { id: '', avatar: '' };
   // 首行是协议头就剥掉；不是就当正文的一部分
-  const looksLikeHead = lines.length > 1 && (/\[ID:[^\]]*\]/.test(lines[0]!) || /\[URL:[^\]]*\]/.test(lines[0]!));
+  const looksLikeHead =
+    lines.length > 1 && (/\[ID:[^\]]*\]/.test(lines[0]!) || /\[URL:[^\]]*\]/.test(lines[0]!));
   const bodyFromRaw = looksLikeHead ? lines.slice(1).join('\n') : rawBody;
 
   const body = (typeof bf.text === 'string' && bf.text.trim() ? bf.text : bodyFromRaw).trim();
   if (!body) return null;
 
-  // 昵称：结构化优先，其次 `@nick:server` 的 localpart
+  // 昵称：结构化优先，其次 `@nick:server` 的 localpart（资料补全会再盖一层）
   const nick =
     (typeof bf.actor?.nick === 'string' && bf.actor.nick.trim()) ||
     ev.sender.replace(/^@/, '').split(':')[0] ||
@@ -96,9 +112,9 @@ export function parseRemoteEvent(ev: SyncEvent): RemoteParsed | null {
     (ev.sender.includes(':') ? `https://${ev.sender.split(':')[1]}` : '');
 
   return {
-    // 结构化里的 actor.id 是对方站内的身份键（如 rainzt 的 uuid），
-    // 存进 remote_sender 比完整 mxid 更有用（同一人换 MXID 也不会变成两个人）
+    // 结构化里的 actor.id 是对方站内的身份键（如 rainzt 的 uuid），比完整 mxid 更有用
     sender: (typeof bf.actor?.id === 'string' && bf.actor.id.trim()) || ev.sender,
+    mxid: ev.sender,
     nick,
     avatar: head.avatar,
     site,
@@ -112,6 +128,118 @@ export function parseRemoteEvent(ev: SyncEvent): RemoteParsed | null {
 function isOwnEcho(ev: SyncEvent): boolean {
   const txn = ev.unsigned?.transaction_id;
   return typeof txn === 'string' && txn.startsWith('qingwu-');
+}
+
+/** 头像代理地址（同源相对路径，前端 `<img>` 直接用） */
+export function avatarUrlOf(sender: string, size = 96): string {
+  return `/chat/avatar/${encodeURIComponent(sender)}?s=${size}`;
+}
+
+/**
+ * 拿某个 Matrix 用户的昵称与头像（带缓存）。
+ *
+ * 先查 `chat_remote_profiles`；没有就查房间成员状态 `m.room.member`。
+ * 头像存的是 `mxc://` 原文，真正取图由 `/chat/avatar/:sender` 代理 —— 之所以不直接把
+ * mxc 拼成 http，是因为对方开了 MSC3916 的认证媒体，`<img>` 请求带不了 Authorization。
+ */
+export async function resolveProfile(
+  env: Env,
+  cfg: BridgeCfg,
+  mxid: string,
+): Promise<{ nick: string; mxc: string }> {
+  const now = Date.now();
+  const cached = await env.DB.prepare(
+    `SELECT nick, mxc, fetched_at FROM chat_remote_profiles WHERE sender = ?`,
+  )
+    .bind(mxid)
+    .first<{ nick: string | null; mxc: string | null; fetched_at: number }>();
+  if (cached && now - cached.fetched_at < PROFILE_TTL) {
+    return { nick: cached.nick || '', mxc: cached.mxc || '' };
+  }
+
+  try {
+    const res = await fetch(
+      `${cfg.hs}/_matrix/client/v3/rooms/${pathSeg(cfg.room)}/state/m.room.member/${pathSeg(mxid)}`,
+      { headers: { authorization: `Bearer ${cfg.token}` }, signal: AbortSignal.timeout(6000) },
+    );
+    if (res.ok) {
+      const d = (await res.json().catch(() => ({}))) as { displayname?: string; avatar_url?: string };
+      const nick = typeof d.displayname === 'string' ? d.displayname.trim() : '';
+      const mxc = typeof d.avatar_url === 'string' ? d.avatar_url.trim() : '';
+      await env.DB.prepare(
+        `INSERT INTO chat_remote_profiles (sender, nick, avatar, mxc, fetched_at)
+         VALUES (?, ?, ?, ?, ?)
+         ON CONFLICT(sender) DO UPDATE SET nick = excluded.nick, avatar = excluded.avatar,
+           mxc = excluded.mxc, fetched_at = excluded.fetched_at`,
+      )
+        .bind(mxid, nick || null, mxc ? avatarUrlOf(mxid) : null, mxc || null, now)
+        .run();
+      return { nick, mxc };
+    }
+  } catch (err) {
+    console.error('[bridge] 取成员资料失败:', err instanceof Error ? err.message : err);
+  }
+  return { nick: '', mxc: '' };
+}
+
+/**
+ * 头像代理：把 `mxc://server/media` 换成真正能显示的图。
+ *
+ * 先试 MSC3916 的认证媒体端点（新版 Synapse 只认这个），404/400 再退到旧的
+ * `/_matrix/media/v3`。两者都要求 token，所以必须由 worker 中转，不能把 URL 直接丢给前端。
+ */
+export async function getRemoteAvatar(request: Request, env: Env): Promise<Response> {
+  const cfg = bridgeOf(env);
+  if (!cfg) return new Response(null, { status: 404 });
+
+  const url = new URL(request.url);
+  const mxid = decodeURIComponent(url.pathname.replace(/^\/chat\/avatar\//, ''));
+  const size = Math.min(Math.max(Number(url.searchParams.get('s') || 96) || 96, 32), 256);
+  if (!mxid) return new Response(null, { status: 404 });
+
+  const { mxc } = await resolveProfile(env, cfg, mxid);
+  const m = /^mxc:\/\/([^/]+)\/(.+)$/.exec(mxc);
+  if (!m) return transparent1px();
+
+  const [, server, media] = m;
+  const qs = `width=${size}&height=${size}&method=crop`;
+  const tries = [
+    `${cfg.hs}/_matrix/client/v1/media/thumbnail/${pathSeg(server!)}/${pathSeg(media!)}?${qs}`,
+    `${cfg.hs}/_matrix/media/v3/thumbnail/${pathSeg(server!)}/${pathSeg(media!)}?${qs}`,
+  ];
+
+  for (const u of tries) {
+    try {
+      const res = await fetch(u, {
+        headers: { authorization: `Bearer ${cfg.token}` },
+        signal: AbortSignal.timeout(6000),
+      });
+      if (!res.ok) continue;
+      return new Response(res.body, {
+        status: 200,
+        headers: {
+          'content-type': res.headers.get('content-type') || 'image/jpeg',
+          // 浏览器缓存一天；对方换头像时 profile 缓存过期后会拿到新地址（URL 不变但服务端会重新取）
+          'cache-control': 'public, max-age=86400',
+        },
+      });
+    } catch {
+      /* 试下一个端点 */
+    }
+  }
+  return transparent1px();
+}
+
+/** 拿不到头像时回一张透明图，前端不会出现破图图标 */
+function transparent1px(): Response {
+  const png = Uint8Array.from(
+    atob('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII='),
+    (c) => c.charCodeAt(0),
+  );
+  return new Response(png as unknown as BodyInit, {
+    status: 200,
+    headers: { 'content-type': 'image/png', 'cache-control': 'public, max-age=300' },
+  });
 }
 
 /**
@@ -149,6 +277,9 @@ export async function pullBridge(env: Env): Promise<{ added: number; skipped: nu
     // 换了房间就该重新对齐游标，别拿旧房间的 since 去问新房间
     const since = row?.room_id === cfg.room ? row?.since : null;
 
+    // 大厅人数：轻量接口，每分钟一次可接受（只有 user_id 列表）
+    const members = await countMembers(cfg).catch(() => null);
+
     const qs = new URLSearchParams({ timeout: '0', filter: filterOf(cfg.room) });
     if (since) qs.set('since', since);
 
@@ -164,24 +295,38 @@ export async function pullBridge(env: Env): Promise<{ added: number; skipped: nu
 
     const data = (await res.json().catch(() => ({}))) as {
       next_batch?: string;
-      rooms?: { join?: Record<string, { timeline?: { events?: SyncEvent[] } }> };
+      rooms?: {
+        join?: Record<
+          string,
+          {
+            timeline?: { events?: SyncEvent[] };
+            ephemeral?: { events?: { type?: string; content?: Record<string, unknown> }[] };
+          }
+        >;
+      };
     };
 
     const nextBatch = data.next_batch;
-    const events = data.rooms?.join?.[cfg.room]?.timeline?.events ?? [];
+    const joined = data.rooms?.join?.[cfg.room];
+    const events = joined?.timeline?.events ?? [];
+
+    // 已读回执：先处理，跟新增无关（只改 remote_reads）
+    await applyReceipts(env, joined?.ephemeral?.events ?? []);
 
     // 第一轮：只记游标，不回灌历史
     if (!since) {
       await env.DB.prepare(
-        `UPDATE chat_sync SET room_id = ?, since = ?, lock_until = 0, updated_at = ? WHERE id = 1`,
+        `UPDATE chat_sync SET room_id = ?, since = ?, lock_until = 0, updated_at = ?,
+           remote_members = COALESCE(?, remote_members) WHERE id = 1`,
       )
-        .bind(cfg.room, nextBatch ?? null, Date.now())
+        .bind(cfg.room, nextBatch ?? null, Date.now(), members)
         .run();
       return { added: 0, skipped: events.length, first: true };
     }
 
     let added = 0;
     let skipped = 0;
+    let lastEventId = '';
 
     // 从旧到新处理；超过 MAX_INSERT 就留到下一轮（游标不前进时会重来）
     const queue = events.filter((e) => !isOwnEcho(e)).slice(-MAX_INSERT);
@@ -192,6 +337,14 @@ export async function pullBridge(env: Env): Promise<{ added: number; skipped: nu
         skipped += 1;
         continue;
       }
+
+      // 协议头里没有头像/昵称时，去 Matrix 成员资料里补（同一个 sender 一轮只查一次）
+      if (!p.avatar || !p.nick || p.nick === p.mxid.replace(/^@/, '').split(':')[0]) {
+        const prof = await resolveProfile(env, cfg, p.mxid);
+        if (!p.avatar && prof.mxc) p.avatar = avatarUrlOf(p.mxid);
+        if (prof.nick) p.nick = prof.nick;
+      }
+
       // matrix_event_id 有唯一索引：重复插入会抛，用 OR IGNORE 直接当已处理
       const ins = await env.DB.prepare(
         `INSERT OR IGNORE INTO chat_messages
@@ -203,12 +356,17 @@ export async function pullBridge(env: Env): Promise<{ added: number; skipped: nu
         .run();
       if (Number(ins.meta?.changes ?? 0) > 0) added += 1;
       else skipped += 1;
+      lastEventId = p.eventId;
     }
 
+    // 我们读过之后给大厅回一个已读回执 —— 不然对面永远不知道清吾这边有人看了
+    if (lastEventId) void markRead(cfg, lastEventId);
+
     await env.DB.prepare(
-      `UPDATE chat_sync SET room_id = ?, since = ?, lock_until = 0, updated_at = ? WHERE id = 1`,
+      `UPDATE chat_sync SET room_id = ?, since = ?, lock_until = 0, updated_at = ?,
+         remote_members = COALESCE(?, remote_members) WHERE id = 1`,
     )
-      .bind(cfg.room, nextBatch ?? since, Date.now())
+      .bind(cfg.room, nextBatch ?? since, Date.now(), members)
       .run();
 
     return { added, skipped, first: false };
@@ -218,5 +376,65 @@ export async function pullBridge(env: Env): Promise<{ added: number; skipped: nu
   } finally {
     // 无论成败都放锁，否则要等 LOCK_MS 自然过期
     await env.DB.prepare(`UPDATE chat_sync SET lock_until = 0 WHERE id = 1`).run().catch(() => {});
+  }
+}
+
+/** 房间成员数（大厅有多少人） */
+async function countMembers(cfg: BridgeCfg): Promise<number | null> {
+  const res = await fetch(`${cfg.hs}/_matrix/client/v3/rooms/${pathSeg(cfg.room)}/joined_members`, {
+    headers: { authorization: `Bearer ${cfg.token}` },
+    signal: AbortSignal.timeout(6000),
+  });
+  if (!res.ok) return null;
+  const d = (await res.json().catch(() => ({}))) as { joined?: Record<string, unknown> };
+  const n = d.joined ? Object.keys(d.joined).length : 0;
+  return n > 0 ? n : null;
+}
+
+/**
+ * 把 `m.receipt` 里的 `m.read` 人数写进 remote_reads（只增不减）。
+ *
+ * 口径说明：这里统计的是**直接指到这条消息**的已读；读了更晚消息的人也读过它，
+ * 但 Matrix 的收据只推送「最后读到哪」，要精确统计得自己维护每人读到的事件序号 —— 
+ * 那是另一个量级的事。当前口径只会低估、不会虚高。
+ */
+async function applyReceipts(
+  env: Env,
+  events: { type?: string; content?: Record<string, unknown> }[],
+): Promise<number> {
+  let n = 0;
+  for (const ev of events) {
+    if (ev.type !== 'm.receipt' || !ev.content) continue;
+    for (const [eventId, kinds] of Object.entries(ev.content)) {
+      const read = (kinds as Record<string, unknown> | undefined)?.['m.read'];
+      if (!read || typeof read !== 'object') continue;
+      const readers = Object.keys(read as Record<string, unknown>).length;
+      if (readers <= 0) continue;
+      const res = await env.DB.prepare(
+        `UPDATE chat_messages SET remote_reads = MAX(remote_reads, ?)
+          WHERE matrix_event_id = ? AND origin = 'local'`,
+      )
+        .bind(readers, eventId)
+        .run();
+      if (Number(res.meta?.changes ?? 0) > 0) n += 1;
+    }
+  }
+  return n;
+}
+
+/** 给大厅回一个 m.read 收据（失败无所谓，下次还会补） */
+async function markRead(cfg: BridgeCfg, eventId: string): Promise<void> {
+  try {
+    await fetch(
+      `${cfg.hs}/_matrix/client/v3/rooms/${pathSeg(cfg.room)}/receipt/m.read/${pathSeg(eventId)}`,
+      {
+        method: 'POST',
+        headers: { authorization: `Bearer ${cfg.token}`, 'content-type': 'application/json' },
+        body: '{}',
+        signal: AbortSignal.timeout(5000),
+      },
+    );
+  } catch {
+    /* 静默 */
   }
 }

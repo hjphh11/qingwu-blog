@@ -190,7 +190,15 @@ export async function getWho(request: Request, env: Env): Promise<Response> {
       console.error('[chat] blocks 失败:', e instanceof Error ? e.message : e);
     }
 
-    return json({ ok: true, members, people, blocks });
+    /**
+     * 互联的大厅人数。侧栏把它和「此刻在长亭 N 人」并列显示 —— 后者是本站 presence，
+     * 前者是 Matrix 房间的成员数（joined_members），两者口径不同，文案上不要混。
+     */
+    const sync = await env.DB.prepare(`SELECT remote_members FROM chat_sync WHERE id = 1`)
+      .first<{ remote_members: number }>()
+      .catch(() => null);
+
+    return json({ ok: true, members, people, blocks, remote: { members: sync?.remote_members ?? 0 } });
   } catch (err) {
     console.error('[chat] who 失败:', err instanceof Error ? err.message : err);
     // 侧栏挂了不该影响聊天：回空列表，页面照常用
