@@ -328,6 +328,16 @@ export async function pullBridge(env: Env): Promise<{ added: number; skipped: nu
     let skipped = 0;
     let lastEventId = '';
 
+    // 大厅自己的原生用户不该挂「来自 matrix.rainzt.cn」—— 他们本来就是这间屋子的本地人。
+    // 只有结构化里明确写了别的站的 site，才算「从别处来」。
+    const hsHost = (() => {
+      try {
+        return new URL(cfg.hs).host;
+      } catch {
+        return '';
+      }
+    })();
+
     // 从旧到新处理；超过 MAX_INSERT 就留到下一轮（游标不前进时会重来）
     const queue = events.filter((e) => !isOwnEcho(e)).slice(-MAX_INSERT);
 
@@ -337,6 +347,7 @@ export async function pullBridge(env: Env): Promise<{ added: number; skipped: nu
         skipped += 1;
         continue;
       }
+      if (hsHost && p.site === `https://${hsHost}`) p.site = '';
 
       // 协议头里没有头像/昵称时，去 Matrix 成员资料里补（同一个 sender 一轮只查一次）
       if (!p.avatar || !p.nick || p.nick === p.mxid.replace(/^@/, '').split(':')[0]) {
