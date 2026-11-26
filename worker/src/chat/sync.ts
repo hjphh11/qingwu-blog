@@ -69,6 +69,14 @@ export type RemoteParsed = {
   mxid: string;
   eventId: string;
   ts: number;
+  /** text | image —— 媒体这条先只做图片 */
+  kind: 'text' | 'image';
+  /** kind='image' 时的 `mxc://…` */
+  mxc?: string;
+  mime?: string;
+  w?: number | null;
+  h?: number | null;
+  size?: number | null;
 };
 
 /**
@@ -81,7 +89,9 @@ export type RemoteParsed = {
 export function parseRemoteEvent(ev: SyncEvent): RemoteParsed | null {
   if (ev.type !== 'm.room.message' || !ev.event_id || !ev.sender) return null;
   const c = (ev.content ?? {}) as Record<string, unknown>;
-  if (c.msgtype !== 'm.text') return null; // 媒体是下一步的事
+
+  const isImage = c.msgtype === 'm.image';
+  if (!isImage && c.msgtype !== 'm.text') return null; // 视频 / 文件 / 语音是下一步
 
   const bf = (c['org.tea-room.bridge'] ?? {}) as {
     actor?: { id?: string; nick?: string };
@@ -97,8 +107,24 @@ export function parseRemoteEvent(ev: SyncEvent): RemoteParsed | null {
     lines.length > 1 && (/\[ID:[^\]]*\]/.test(lines[0]!) || /\[URL:[^\]]*\]/.test(lines[0]!));
   const bodyFromRaw = looksLikeHead ? lines.slice(1).join('\n') : rawBody;
 
-  const body = (typeof bf.text === 'string' && bf.text.trim() ? bf.text : bodyFromRaw).trim();
+  let body = (typeof bf.text === 'string' && bf.text.trim() ? bf.text : bodyFromRaw).trim();
+  // 图片消息的 body 是文件名/说明，可能整条为空 —— 不能因此丢掉一条图
+  if (isImage && !body) body = '图片';
   if (!body) return null;
+  // 对方的表情 token（`:[miku_漂浮]:`）或裸文件名挂在图下面只会是一行乱码 —— 不显示
+  if (isImage && (/^:\[?[^\]\s]{1,40}\]?:$/.test(body) || /\.(webp|png|jpe?g|gif)$/i.test(body))) {
+    body = '';
+  }
+
+  // 图片只认 `mxc://`：对方若发的是 https 直链，多半是自家 CDN，我们代理不了也没必要伪造
+  const mxc = isImage && typeof c.url === 'string' ? c.url.trim() : '';
+  if (isImage && !/^mxc:\/\//.test(mxc)) return null;
+  const info = (c.info ?? {}) as {
+    mimetype?: string;
+    w?: number;
+    h?: number;
+    size?: number;
+  };
 
   // 昵称：结构化优先，其次 `@nick:server` 的 localpart（资料补全会再盖一层）
   const nick =
@@ -121,6 +147,12 @@ export function parseRemoteEvent(ev: SyncEvent): RemoteParsed | null {
     body,
     eventId: ev.event_id,
     ts: Number(ev.origin_server_ts) || Date.now(),
+    kind: isImage ? 'image' : 'text',
+    mxc: mxc || undefined,
+    mime: typeof info.mimetype === 'string' ? info.mimetype : undefined,
+    w: typeof info.w === 'number' ? info.w : null,
+    h: typeof info.h === 'number' ? info.h : null,
+    size: typeof info.size === 'number' ? info.size : null,
   };
 }
 
@@ -277,6 +309,69 @@ function transparent1px(): Response {
 }
 
 /**
+ * 入站图片的地址：`/api/chat/mxc/<编码后的 mxc://…>`。
+ *
+ * 和头像同一个道理 —— 对方开了认证媒体（MSC3916），`<img>` 带不了 Authorization，
+ * 只能由 worker 取回来转手。存进 `chat_media.url` 的就是这个地址。
+ */
+export function remoteMediaUrl(mxc: string): string {
+  return `/api/chat/mxc/${encodeURIComponent(mxc)}`;
+}
+
+/**
+ * 把 `mxc://` 转成真正的图。
+ *
+ * 只允许指向**我们接的那台 homeserver** —— 这个参数来自 URL，不校验就等于开放代理
+ * （别人能拿它打内网 / 任意地址）。
+ */
+export async function getRemoteMedia(request: Request, env: Env): Promise<Response> {
+  const cfg = bridgeOf(env);
+  if (!cfg) return new Response(null, { status: 404 });
+
+  const url = new URL(request.url);
+  const raw = decodeURIComponent(url.pathname.replace(/^\/chat\/mxc\//, ''));
+  const m = /^mxc:\/\/([^/]+)\/(.+)$/.exec(raw);
+  if (!m) return transparent1px();
+
+  const [, server, media] = m;
+  /**
+   * 请求主机**永远是 `cfg.hs`**（我们登录的那台），路径里的 server 是媒体所属的
+   * 联邦服务器 —— Synapse 会自己去对方那里取（`/_matrix/media/v3/download/<server>/<id>`）。
+   *
+   * 所以不能要求 `server === hs`：大厅里别人站的图，mxc 就长在对方域名下
+   * （实测 lengxiqwq 的是 `mxc://matrix.lengxiqwq.com/…`）。
+   * SSRF 面在别处堵：host 写死、两段都过 `pathSeg`（`/` 会被编码，逃不出路径）。
+   */
+  if (!server || !media || server.length > 255 || media.length > 512) return transparent1px();
+
+  const tries = [
+    `${cfg.hs}/_matrix/client/v1/media/download/${pathSeg(server!)}/${pathSeg(media!)}`,
+    `${cfg.hs}/_matrix/media/v3/download/${pathSeg(server!)}/${pathSeg(media!)}`,
+  ];
+
+  for (const u of tries) {
+    try {
+      const res = await fetch(u, {
+        headers: { authorization: `Bearer ${cfg.token}` },
+        signal: AbortSignal.timeout(15_000),
+      });
+      if (!res.ok) continue;
+      return new Response(res.body, {
+        status: 200,
+        headers: {
+          'content-type': res.headers.get('content-type') || 'application/octet-stream',
+          // 图片内容不变，缓存久一点；对方删了图也只会命中旧缓存，无伤
+          'cache-control': 'public, max-age=604800',
+        },
+      });
+    } catch {
+      /* 试下一个端点 */
+    }
+  }
+  return transparent1px();
+}
+
+/**
  * 拉一次 /sync 并入库。由 scheduled 每分钟调用。
  *
  * 返回值里 `first` 表示这是接上来的第一轮（只记游标，不入库）。
@@ -400,17 +495,33 @@ export async function pullBridge(
         if (needAvatar && prof.mxc) p.avatar = avatarUrlOf(p.mxid);
       }
 
+      // 图片先落一条 chat_media —— 前端渲染走 `media.url`（我们的 mxc 代理），不存字节
+      let mediaId: number | null = null;
+      if (p.kind === 'image' && p.mxc) {
+        const m = await env.DB.prepare(
+          `INSERT INTO chat_media (kind, mime, bytes, data, width, height, duration, account_id, ts, url)
+           VALUES ('image', ?, ?, '', ?, ?, NULL, 0, ?, ?)`,
+        )
+          .bind(p.mime || 'image/*', p.size ?? 0, p.w ?? null, p.h ?? null, p.ts, remoteMediaUrl(p.mxc))
+          .run();
+        mediaId = Number(m.meta?.last_row_id ?? 0) || null;
+      }
+
       // matrix_event_id 有唯一索引：重复插入会抛，用 OR IGNORE 直接当已处理
       const ins = await env.DB.prepare(
         `INSERT OR IGNORE INTO chat_messages
            (account_id, body, kind, status, ts, updated_at, origin,
-            remote_sender, remote_nick, remote_avatar, remote_site, matrix_event_id)
-         VALUES (NULL, ?, 'text', 'visible', ?, ?, 'remote', ?, ?, ?, ?, ?)`,
+            remote_sender, remote_nick, remote_avatar, remote_site, matrix_event_id, image_id)
+         VALUES (NULL, ?, ?, 'visible', ?, ?, 'remote', ?, ?, ?, ?, ?, ?)`,
       )
-        .bind(p.body, p.ts, Date.now(), p.sender, p.nick, p.avatar, p.site, p.eventId)
+        .bind(p.body, p.kind, p.ts, Date.now(), p.sender, p.nick, p.avatar, p.site, p.eventId, mediaId)
         .run();
       if (Number(ins.meta?.changes ?? 0) > 0) added += 1;
-      else skipped += 1;
+      else {
+        // 重复事件：刚为它插的那行 media 是孤儿，删掉（否则要等 7 天清理才回收）
+        if (mediaId) await env.DB.prepare(`DELETE FROM chat_media WHERE id = ?`).bind(mediaId).run();
+        skipped += 1;
+      }
       lastEventId = p.eventId;
     }
 

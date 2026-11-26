@@ -81,8 +81,8 @@ export async function queueBridge(
   opts: { messageId: number; kind: string; status: string },
 ): Promise<void> {
   if (!bridgeOf(env)) return;
-  // 第一阶段只出站文字；图片/语音/文件的格式还要跟对方对（§46.5 第 4 步）
-  if (opts.kind !== 'text') return;
+  // 文字与图片；视频 / 文件 / 语音还没做（§46.5 第 4 步的后半段）
+  if (opts.kind !== 'text' && opts.kind !== 'image') return;
 
   const now = Date.now();
   const delay = opts.status === 'pending' ? PENDING_DELAY_MS : 0;
@@ -167,6 +167,112 @@ export function pathSeg(s: string): string {
   return encodeURIComponent(s).replace(/[!'()*]/g, (c) => `%${c.charCodeAt(0).toString(16).toUpperCase()}`);
 }
 
+/* ────────────────────────────── 媒体（图片 / 表情） ────────────────────────────── */
+
+/** 表情包的目录与扩展名 —— 与 `src/lib/emojis.ts` 的 EMOJI_PACKS 一致 */
+const EMOJI_PACKS = [
+  { base: '/images/emoji/noto', ext: '.webp' },
+  { base: '/images/emoji/alus', ext: '.png' },
+  { base: '/images/emoji/bilibili', ext: '.png' },
+] as const;
+
+/** 整条正文只有一个表情：`:[rofl]` 或 `:rofl`（richText 两种写法都认） */
+const ONLY_EMOJI = /^:\[?([a-z0-9_]{1,40})\]?$/i;
+
+/** 解码库里存的 base64 图片（0029 的注释：`data` 实际是 base64 文本，不是 BLOB） */
+function fromBase64(b64: string): Uint8Array {
+  const bin = atob(b64);
+  const out = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+  return out;
+}
+
+/** 上传到对方的 media 仓库，拿 `mxc://` —— 对方客户端只认这个，直链 https 多数实现不渲染 */
+export async function uploadToMatrix(
+  cfg: BridgeCfg,
+  bytes: Uint8Array,
+  mime: string,
+  filename: string,
+): Promise<{ mxc: string; err: string | null }> {
+  try {
+    const res = await fetch(
+      `${cfg.hs}/_matrix/media/v3/upload?filename=${encodeURIComponent(filename)}`,
+      {
+        method: 'POST',
+        headers: { authorization: `Bearer ${cfg.token}`, 'content-type': mime },
+        body: bytes as unknown as BodyInit,
+        signal: AbortSignal.timeout(25_000),
+      },
+    );
+    if (!res.ok) {
+      const t = (await res.text().catch(() => '')).slice(0, 160);
+      return { mxc: '', err: `upload ${res.status} ${t}` };
+    }
+    const d = (await res.json().catch(() => ({}))) as { content_uri?: string };
+    if (!d.content_uri) return { mxc: '', err: 'upload 没有 content_uri' };
+    return { mxc: d.content_uri, err: null };
+  } catch (err) {
+    return { mxc: '', err: err instanceof Error ? err.message : String(err) };
+  }
+}
+
+/**
+ * 图片消息的 content。
+ *
+ * 与文字不同，`m.image` **没有正文协议头**（body 是文件名/说明），所以这里反而要带
+ * `org.tea-room.bridge` —— 不带的话对方连昵称都拿不到，只能显示共享账号自己的名字。
+ * 头像仍然拿不到（v1 没有头像字段），对方会用成员资料，这是媒体这条路的已知代价。
+ */
+export function imageContentOf(
+  cfg: BridgeCfg,
+  row: BridgeRow,
+  mxc: string,
+  info: { mime: string; w: number | null; h: number | null; size: number; name: string },
+): Record<string, unknown> {
+  const text = (row.body || '').trim() || '图片';
+  return {
+    msgtype: 'm.image',
+    body: info.name || text,
+    url: mxc,
+    info: {
+      mimetype: info.mime,
+      w: info.w ?? undefined,
+      h: info.h ?? undefined,
+      size: info.size,
+    },
+    'org.tea-room.bridge': {
+      version: 1,
+      site: cfg.site,
+      actor: { id: `qingwu-u${row.accountId}`, nick: signOf(row.nick) },
+      text,
+    },
+  };
+}
+
+/**
+ * 找表情图。
+ *
+ * 三套包的目录/扩展名是固定的；key 有 `bb_` / `alus_` 前缀能猜，但 noto 那套是裸名，
+ * 所以直接按顺序试三个路径（打的是自己站，几十毫秒）。
+ */
+async function fetchEmoji(site: string, key: string): Promise<{ bytes: Uint8Array; mime: string } | null> {
+  const base = site.replace(/\/+$/, '');
+  for (const p of EMOJI_PACKS) {
+    try {
+      const res = await fetch(`${base}${p.base}/${encodeURIComponent(key)}${p.ext}`, {
+        signal: AbortSignal.timeout(6000),
+      });
+      if (!res.ok) continue;
+      const ct = res.headers.get('content-type') || '';
+      if (!ct.startsWith('image/')) continue;
+      return { bytes: new Uint8Array(await res.arrayBuffer()), mime: ct };
+    } catch {
+      /* 试下一套 */
+    }
+  }
+  return null;
+}
+
 /**
  * 投递一条。返回 `{err:null, eventId}` 表示成功，否则 err 是失败原因（写进 last_error）。
  *
@@ -178,18 +284,25 @@ export async function deliverToMatrix(
   cfg: BridgeCfg,
   row: BridgeRow,
 ): Promise<{ err: string | null; eventId?: string }> {
-  const content = bridgeContentOf(row);
+  return deliverContent(cfg, bridgeContentOf(row), row.txn);
+}
 
+/** 发任意 content（文字 / 图片共用同一套重试与 event_id 回收） */
+export async function deliverContent(
+  cfg: BridgeCfg,
+  content: Record<string, unknown>,
+  txn: string,
+): Promise<{ err: string | null; eventId?: string }> {
   const url =
     `${cfg.hs}/_matrix/client/v3/rooms/${pathSeg(cfg.room)}` +
-    `/send/m.room.message/${pathSeg(row.txn)}`;
+    `/send/m.room.message/${pathSeg(txn)}`;
 
   try {
     const res = await fetch(url, {
       method: 'PUT',
       headers: { authorization: `Bearer ${cfg.token}`, 'content-type': 'application/json' },
       body: JSON.stringify(content),
-      signal: AbortSignal.timeout(8000),
+      signal: AbortSignal.timeout(15_000),
     });
     if (res.ok) {
       const data = (await res.json().catch(() => ({}))) as { event_id?: string };
@@ -283,13 +396,130 @@ export async function queueRedact(env: Env, messageId: number): Promise<void> {
     .run();
 }
 
+type SendResult = { err: string | null; eventId?: string; skip?: boolean };
+
+type MediaRow = {
+  kind: string;
+  mime: string;
+  bytes: number;
+  data: string;
+  width: number | null;
+  height: number | null;
+  url: string | null;
+  filename: string | null;
+};
+
+/**
+ * 把一条**图片消息**送到大厅。
+ *
+ * 三步：从库里（或 R2）取字节 → 上传到对方的 media 仓库换 `mxc://` → 发 `m.image`。
+ * 为什么不直接把 `img.qingwu.ink/chat/xxx.png` 当 `url` 发：Matrix 规范里 `url` 只认
+ * `mxc://`，多数客户端不会去拉 https 直链，发了等于一张空白。
+ */
+async function deliverImage(
+  env: Env,
+  cfg: BridgeCfg,
+  row: BridgeRow,
+  imageId: number | null,
+): Promise<SendResult> {
+  if (!imageId) return { err: null, skip: true };
+
+  const media = await env.DB.prepare(
+    `SELECT kind, mime, bytes, data, width, height, url, filename FROM chat_media WHERE id = ?`,
+  )
+    .bind(imageId)
+    .first<MediaRow>();
+  if (!media) return { err: null, skip: true };
+
+  // 取字节：R2 的 https 直链优先，早期存库的走 base64
+  let bytes: Uint8Array | null = null;
+  let mime = media.mime || 'application/octet-stream';
+  if (media.url) {
+    const u = /^https?:\/\//i.test(media.url) ? media.url : `${cfg.site.replace(/\/+$/, '')}${media.url}`;
+    try {
+      const res = await fetch(u, { signal: AbortSignal.timeout(12_000) });
+      if (res.ok) {
+        bytes = new Uint8Array(await res.arrayBuffer());
+        mime = res.headers.get('content-type') || mime;
+      }
+    } catch {
+      /* 落到 base64 那一路 */
+    }
+  }
+  if (!bytes && media.data) {
+    try {
+      bytes = fromBase64(media.data);
+    } catch {
+      bytes = null;
+    }
+  }
+  if (!bytes || bytes.length === 0) return { err: null, skip: true };
+
+  const ext = mime.includes('png') ? 'png' : mime.includes('webp') ? 'webp' : mime.includes('gif') ? 'gif' : 'jpg';
+  const name = media.filename || `qingwu-${row.accountId}-${Date.now()}.${ext}`;
+  const up = await uploadToMatrix(cfg, bytes, mime, name);
+  if (up.err) return { err: `图片上传失败：${up.err}` };
+
+  return deliverContent(
+    cfg,
+    imageContentOf(cfg, row, up.mxc, {
+      mime,
+      w: media.width,
+      h: media.height,
+      size: media.bytes || bytes.length,
+      name,
+    }),
+    row.txn,
+  );
+}
+
+/**
+ * 整条消息只有一个表情时，改发 `m.image`。
+ *
+ * 站内表情是 `:[key]` 文本，靠前端渲染成图；对方不认识这个语法，直接发过去就是
+ * 一串 `:[bb_doge]`。所以这里把 token 换成真正的图（先上传到对方 media），
+ * 正文 `body` 仍留 token —— 参考 lengxiqwq 的做法，对方能看出这是表情而不是普通图片。
+ *
+ * 返回 `null` 表示「不是表情 / 找不到图」，调用方按普通文字发。
+ */
+async function deliverEmoji(
+  cfg: BridgeCfg,
+  row: BridgeRow,
+  key: string,
+): Promise<SendResult | null> {
+  const img = await fetchEmoji(cfg.site, key);
+  if (!img) return null;
+
+  const ext = img.mime.includes('webp') ? 'webp' : 'png';
+  const up = await uploadToMatrix(cfg, img.bytes, img.mime, `${key}.${ext}`);
+  if (up.err) return { err: `表情上传失败：${up.err}` };
+
+  const token = row.body.trim();
+  return deliverContent(
+    cfg,
+    {
+      msgtype: 'm.image',
+      body: token,
+      url: up.mxc,
+      info: { mimetype: img.mime, size: img.bytes.length },
+      'org.tea-room.bridge': {
+        version: 1,
+        site: cfg.site,
+        actor: { id: `qingwu-u${row.accountId}`, nick: signOf(row.nick) },
+        text: token,
+      },
+    },
+    row.txn,
+  );
+}
+
 /**
  * 补发队列（scheduled 每分钟一次；发送成功时也会立刻催一次）。
  *
- * 两支队伍走同一个队列，按 `op` 分流：
- * - `send`：只有**仍然是 visible 的文字**才出门 —— 消息可能在这中间被作者撤回、
- *   被 AI 收起、被站长删掉，那些都不该再去打扰大厅；
- * - `redact`：反过来，**只有确实出站过**的才撤；本来就没发出去的直接销账。
+ * 三支队伍走同一个队列，按 `op` / `kind` 分流：
+ * - `redact`：只有确实出站过的才撤；
+ * - `send` + `text`：仍是 visible 才发；整条是一个表情就转成图；
+ * - `send` + `image`：取字节 → 上对方 media → 发 `m.image`。
  */
 export async function flushBridge(env: Env, limit = BATCH): Promise<{ sent: number; dropped: number; failed: number }> {
   const cfg = bridgeOf(env);
@@ -299,7 +529,7 @@ export async function flushBridge(env: Env, limit = BATCH): Promise<{ sent: numb
   const rows = await env.DB.prepare(
     `SELECT o.id AS oid, o.op AS op, o.txn_id AS txn, o.tries AS tries,
             m.id AS mid, m.body AS body, m.kind AS kind, m.status AS status,
-            m.account_id AS account_id, m.matrix_event_id AS ev,
+            m.account_id AS account_id, m.matrix_event_id AS ev, m.image_id AS image_id,
             a.display_name AS nick, a.avatar_url AS avatar, a.email AS email
        FROM chat_outbox o
        JOIN chat_messages m ON m.id = o.message_id
@@ -322,6 +552,7 @@ export async function flushBridge(env: Env, limit = BATCH): Promise<{ sent: numb
     status: string;
     account_id: number;
     ev: string | null;
+    image_id: number | null;
     nick: string | null;
     avatar: string | null;
     email: string | null;
@@ -377,8 +608,14 @@ export async function flushBridge(env: Env, limit = BATCH): Promise<{ sent: numb
       continue;
     }
 
-    // 已经不可见 / 不是文字 ⇒ 不用发了，直接从队列里去掉
-    if (r.status !== 'visible' || r.kind !== 'text') {
+    // 已经不可见 ⇒ 不用发了，直接从队列里去掉
+    if (r.status !== 'visible') {
+      await env.DB.prepare(`DELETE FROM chat_outbox WHERE id = ?`).bind(r.oid).run();
+      dropped += 1;
+      continue;
+    }
+    // 媒体这条只做图片；视频 / 文件 / 语音是后面几步的事，别让它们占着重试次数
+    if (r.kind !== 'text' && r.kind !== 'image') {
       await env.DB.prepare(`DELETE FROM chat_outbox WHERE id = ?`).bind(r.oid).run();
       dropped += 1;
       continue;
@@ -401,13 +638,30 @@ export async function flushBridge(env: Env, limit = BATCH): Promise<{ sent: numb
      * `dst_uin` 是明文 QQ 号。细节见 `localAvatar.ts`。
      */
     const avatar = publicAvatarUrl(cfg.site, r.account_id);
-    const got = await deliverToMatrix(cfg, {
+    const row: BridgeRow = {
       body: r.body,
       nick,
       avatar,
       accountId: r.account_id,
       txn: r.txn,
-    });
+    };
+
+    let got: SendResult;
+    if (r.kind === 'image') {
+      got = await deliverImage(env, cfg, row, r.image_id);
+    } else {
+      // 整条就是一个表情 ⇒ 转成图；不是表情 / 找不到图就按普通文字发
+      const key = ONLY_EMOJI.exec((r.body || '').trim());
+      const emoji = key ? await deliverEmoji(cfg, row, key[1]!) : null;
+      got = emoji ?? (await deliverToMatrix(cfg, row));
+    }
+
+    // 「没什么可发的」（图被清了、库里没有 media 行）—— 删队列，别算失败
+    if (got.skip) {
+      await env.DB.prepare(`DELETE FROM chat_outbox WHERE id = ?`).bind(r.oid).run();
+      dropped += 1;
+      continue;
+    }
 
     if (got.err === null) {
       await env.DB.batch([
