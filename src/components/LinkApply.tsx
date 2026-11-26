@@ -714,7 +714,7 @@ export default function LinkApply({ siteKey = '' }: { siteKey?: string }) {
                           <MorphIcon icon={f.icon as never} size={16} color="currentColor" />
                         </span>
                         {f.label}
-                        {APPLY_REQUIRED_KEYS.includes(f.key) ? (
+                        {(APPLY_REQUIRED_KEYS as readonly string[]).includes(f.key) ? (
                           <span className="text-crimson">*</span>
                         ) : (
                           <span className="text-xs font-normal text-subtle">选填</span>

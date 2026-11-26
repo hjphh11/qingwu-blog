@@ -1,15 +1,17 @@
 {
   "extends": "astro/tsconfigs/base",
   "compilerOptions": {
-    "baseUrl": ".",
     "paths": {
-      "@/*": ["src/*"]
+      "@/*": [
+        "./src/*"
+      ]
     }
   },
   "exclude": [
     "dist",
     ".vercel",
     "node_modules",
-    "admin"
+    "admin",
+    "worker"
   ]
 }

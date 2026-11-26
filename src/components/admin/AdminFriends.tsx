@@ -346,7 +346,7 @@ export default function AdminFriends() {
           } else {
             next[c.field] = (o as unknown as Record<string, unknown>)[c.field];
           }
-          return next as Friend;
+          return next as unknown as Friend;
         }),
       );
     },
