@@ -123,6 +123,8 @@ export type BridgeRow = {
   avatar: string;
   accountId: number;
   txn: string;
+  /** 这条消息在大厅里引用的是哪个事件（`$…`）—— 没有就不带引用关系 */
+  replyEventId?: string;
 };
 
 /**
@@ -162,7 +164,7 @@ export function bridgeContentOf(row: BridgeRow): Record<string, unknown> {
   // 首行协议头，换行接原话
   const body = `${head}\n${row.body}`;
 
-  return {
+  const content: Record<string, unknown> = {
     msgtype: 'm.text',
     body,
     format: 'org.matrix.custom.html',
@@ -170,6 +172,26 @@ export function bridgeContentOf(row: BridgeRow): Record<string, unknown> {
     formatted_body: `<p>${esc(row.body).replace(/\n/g, '<br />')}</p>\n`,
     'm.mentions': {},
   };
+  const rel = replyRelOf(row);
+  if (rel) content['m.relates_to'] = rel;
+  return content;
+}
+
+/**
+ * 引用回复的关系体。
+ *
+ * 只放 `m.relates_to.m.in_reply_to`，**不塞 body fallback**（`> <@user> 原文`）：
+ * 那条 fallback 必须占 body 开头，会顶掉 `[ID:]` 协议头 —— 对方拿不到昵称头像，
+ * 比「看不到引用」严重得多。听雨那边自己发的回复也只有 relates_to、没有 fallback，
+ * 说明读的就是这个字段。
+ *
+ * 被引用的事件在我们库里没有 `matrix_event_id`（那条还没出站成功）时返回 null：
+ * 不带引用关系，让它退化成一句普通发言，而不是指一个大厅里不存在的事件。
+ */
+export function replyRelOf(row: BridgeRow): Record<string, unknown> | null {
+  const ev = String(row.replyEventId ?? '').trim();
+  if (!ev.startsWith('$')) return null;
+  return { 'm.in_reply_to': { event_id: ev } };
 }
 
 /**
@@ -245,7 +267,7 @@ export function imageContentOf(
   info: { mime: string; w: number | null; h: number | null; size: number; name: string },
 ): Record<string, unknown> {
   const text = (row.body || '').trim() || '图片';
-  return {
+  const content: Record<string, unknown> = {
     msgtype: 'm.image',
     body: info.name || text,
     url: mxc,
@@ -262,6 +284,9 @@ export function imageContentOf(
       text,
     },
   };
+  const rel = replyRelOf(row);
+  if (rel) content['m.relates_to'] = rel;
+  return content;
 }
 
 /**
@@ -512,22 +537,22 @@ async function deliverEmoji(
   if (up.err) return { err: `表情上传失败：${up.err}` };
 
   const token = row.body.trim();
-  return deliverContent(
-    cfg,
-    {
-      msgtype: 'm.image',
-      body: token,
-      url: up.mxc,
-      info: { mimetype: img.mime, size: img.bytes.length },
-      'org.tea-room.bridge': {
-        version: 1,
-        site: cfg.site,
-        actor: { id: `qingwu-u${row.accountId}`, nick: signOf(row.nick) },
-        text: token,
-      },
+  const content: Record<string, unknown> = {
+    msgtype: 'm.image',
+    body: token,
+    url: up.mxc,
+    info: { mimetype: img.mime, size: img.bytes.length },
+    'org.tea-room.bridge': {
+      version: 1,
+      site: cfg.site,
+      actor: { id: `qingwu-u${row.accountId}`, nick: signOf(row.nick) },
+      text: token,
     },
-    row.txn,
-  );
+  };
+  const rel = replyRelOf(row);
+  if (rel) content['m.relates_to'] = rel;
+
+  return deliverContent(cfg, content, row.txn);
 }
 
 /**
@@ -547,10 +572,13 @@ export async function flushBridge(env: Env, limit = BATCH): Promise<{ sent: numb
     `SELECT o.id AS oid, o.op AS op, o.txn_id AS txn, o.tries AS tries,
             m.id AS mid, m.body AS body, m.kind AS kind, m.status AS status,
             m.account_id AS account_id, m.matrix_event_id AS ev, m.image_id AS image_id,
+            q.matrix_event_id AS reply_ev,
             a.display_name AS nick, a.avatar_url AS avatar, a.email AS email
        FROM chat_outbox o
        JOIN chat_messages m ON m.id = o.message_id
        LEFT JOIN accounts a ON a.id = m.account_id
+       /* 被引用的那条：只有它已经出站过（有 matrix_event_id）才谈得上引用 */
+       LEFT JOIN chat_messages q ON q.id = m.reply_to_id
       WHERE o.status = 'queued' AND o.next_at <= ?
       ORDER BY o.id
       LIMIT ?`,
@@ -570,6 +598,7 @@ export async function flushBridge(env: Env, limit = BATCH): Promise<{ sent: numb
     account_id: number;
     ev: string | null;
     image_id: number | null;
+    reply_ev: string | null;
     nick: string | null;
     avatar: string | null;
     email: string | null;
@@ -661,6 +690,8 @@ export async function flushBridge(env: Env, limit = BATCH): Promise<{ sent: numb
       avatar,
       accountId: r.account_id,
       txn: r.txn,
+      // 大厅里被引用的那条；空就表示这条不带引用关系
+      replyEventId: r.reply_ev ?? undefined,
     };
 
     let got: SendResult;
