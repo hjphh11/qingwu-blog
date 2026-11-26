@@ -309,39 +309,51 @@ function transparent1px(): Response {
 }
 
 /**
- * 入站图片的地址：`/api/chat/mxc/<编码后的 mxc://…>`。
+ * 入站图片的地址：`/api/chat/mxc/<base64url(mxc://…)>`。
  *
- * 和头像同一个道理 —— 对方开了认证媒体（MSC3916），`<img>` 带不了 Authorization，
- * 只能由 worker 取回来转手。存进 `chat_media.url` 的就是这个地址。
+ * 为什么不是直接把 mxc 塞进路径（`/api/chat/mxc/mxc%3A%2F%2F…`）：
+ * **nginx 默认 `merge_slashes on`**，会把编码后的 `%2F%2F` 还原成 `//` 再合并，
+ * 于是 worker 收到的是 `/chat/mxc/mxc:/matrix…` —— 少一个斜杠，正则匹配不上，
+ * 表现就是「所有入站图片都变成 1px 透明图」。base64url 里没有 `/`，稳。
+ *
+ * 和头像同一个道理的另一半：对方开了认证媒体（MSC3916），`<img>` 带不了
+ * Authorization，只能由 worker 取回来转手。
  */
 export function remoteMediaUrl(mxc: string): string {
-  return `/api/chat/mxc/${encodeURIComponent(mxc)}`;
+  const b64 = btoa(mxc).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+  return `/api/chat/mxc/${b64}`;
+}
+
+function unb64url(s: string): string {
+  const t = s.replace(/-/g, '+').replace(/_/g, '/');
+  try {
+    return atob(t + '='.repeat((4 - (t.length % 4)) % 4));
+  } catch {
+    return '';
+  }
 }
 
 /**
  * 把 `mxc://` 转成真正的图。
  *
- * 只允许指向**我们接的那台 homeserver** —— 这个参数来自 URL，不校验就等于开放代理
- * （别人能拿它打内网 / 任意地址）。
+ * 请求主机**永远是 `cfg.hs`**（我们登录的那台），路径里的 server 是媒体所属的
+ * 联邦服务器 —— Synapse 会自己去对方那里取（`/_matrix/media/v3/download/<server>/<id>`）。
+ * 所以不能要求 `server === hs`：大厅里别人站的图，mxc 就长在对方域名下
+ * （实测 lengxiqwq 的是 `mxc://matrix.lengxiqwq.com/…`）。
  */
 export async function getRemoteMedia(request: Request, env: Env): Promise<Response> {
   const cfg = bridgeOf(env);
   if (!cfg) return new Response(null, { status: 404 });
 
   const url = new URL(request.url);
-  const raw = decodeURIComponent(url.pathname.replace(/^\/chat\/mxc\//, ''));
+  const token = url.pathname.replace(/^\/chat\/mxc\//, '').replace(/\/+$/, '');
+
+  // 旧格式（直接 URL 编码的 mxc）兼容一下，免得已入库的几条图打不开
+  const raw = /^mxc%3A|^mxc:/.test(token) ? decodeURIComponent(token) : unb64url(token);
   const m = /^mxc:\/\/([^/]+)\/(.+)$/.exec(raw);
   if (!m) return transparent1px();
 
   const [, server, media] = m;
-  /**
-   * 请求主机**永远是 `cfg.hs`**（我们登录的那台），路径里的 server 是媒体所属的
-   * 联邦服务器 —— Synapse 会自己去对方那里取（`/_matrix/media/v3/download/<server>/<id>`）。
-   *
-   * 所以不能要求 `server === hs`：大厅里别人站的图，mxc 就长在对方域名下
-   * （实测 lengxiqwq 的是 `mxc://matrix.lengxiqwq.com/…`）。
-   * SSRF 面在别处堵：host 写死、两段都过 `pathSeg`（`/` 会被编码，逃不出路径）。
-   */
   if (!server || !media || server.length > 255 || media.length > 512) return transparent1px();
 
   const tries = [
