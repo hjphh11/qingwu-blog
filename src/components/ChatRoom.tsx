@@ -28,7 +28,7 @@ import VoiceBubble from './chat/VoiceBubble';
 import { useDialogFocus } from '../lib/useDialogFocus';
 import { renderRich } from '../lib/richText';
 import { EMOJI_MAP } from '../lib/emojis';
-import { fetchMe, type AuthConfig, type SessionAccount } from '../lib/auth';
+import { fetchMe, logout as logoutApi, type AuthConfig, type SessionAccount } from '../lib/auth';
 import {
   fetchWho,
   loadHistory,
@@ -751,6 +751,30 @@ export default function ChatRoom() {
     setRemoteMembers(w.remote?.members ?? 0);
     setPeers(w.peers ?? []);
   }, []);
+
+  /**
+   * 退出登录。
+   *
+   * `logoutApi()` 调的是 `/auth/logout`（服务端删会话 + 清 Cookie），
+   * 但**前端状态必须自己清** —— 原来只有 `/account/` 和留言板有退出入口，
+   * 长亭里点了人头像看到的是自己，却没有任何地方能退。
+   *
+   * 顺带把本机会话快照删掉：那份快照带着账号信息，不清的话退出后刷新
+   * 会先按「已登录」画一帧再跳成访客，闪一下很怪。
+   */
+  const doLogout = useCallback(async () => {
+    await logoutApi();
+    try {
+      window.sessionStorage.removeItem(SNAP_KEY);
+    } catch {
+      /* 隐私模式：删不掉就算了，下次 fetchMe 会覆盖 */
+    }
+    setAccount(null);
+    setSignedIn(false);
+    setPeek(null);
+    void refreshWho();
+    setTip({ kind: 'ok', text: '退出了。下次来聊天再收一次验证码 ~' });
+  }, [refreshWho]);
 
   /**
    * 首屏：翻历史 + 认身份 + 侧栏
@@ -2647,6 +2671,7 @@ export default function ChatRoom() {
           blocked={blocks.some((b) => b.id === peek.id)}
           onToggleBlock={toggleBlock}
           account={account}
+          onLogout={doLogout}
           /**
            * 刚存完资料：会话立刻换成新的（左栏「我」跟着改名换头像），
            * 名单也重新拉一遍；人卡手里的 `peek` 是一份快照，得手动并一下 ——

@@ -59,6 +59,7 @@ export default function PersonCard({
   onToggleBlock,
   account,
   onAccount,
+  onLogout,
   onClose,
 }: {
   m: ChatMember;
@@ -72,6 +73,8 @@ export default function PersonCard({
   account?: SessionAccount | null;
   /** 资料存成功：把新账号抛给页面（同步会话、刷新成员名单） */
   onAccount?: (a: SessionAccount | null) => void;
+  /** 自己的卡上多一条「退出登录」；不传就不渲染（别人的卡没有这个） */
+  onLogout?: () => void | Promise<void>;
   onClose: () => void;
 }) {
   const boxRef = useDialogFocus<HTMLDivElement>(true, onClose);
@@ -184,9 +187,21 @@ export default function PersonCard({
               </dl>
 
               {self && account && (
-                <button type="button" className="q-person__edit" onClick={() => setEditing(true)}>
-                  编辑资料
-                </button>
+                <>
+                  <button type="button" className="q-person__edit" onClick={() => setEditing(true)}>
+                    编辑资料
+                  </button>
+                  {onLogout && (
+                    <button
+                      type="button"
+                      className="q-person__logout"
+                      onClick={() => void onLogout()}
+                      title="退出之后要重新收验证码才能聊"
+                    >
+                      退出登录
+                    </button>
+                  )}
+                </>
               )}
 
               {/*

@@ -3547,6 +3547,26 @@
     background: color-mix(in srgb, var(--color-rose) 34%, transparent);
   }
 
+  /* 退出登录：自己那张卡里的第二颗按钮。
+     刻意做得比「编辑资料」轻 —— 它不该是最显眼的动作，但也不能藏起来。 */
+  .q-person__logout {
+    display: block;
+    width: 100%;
+    min-height: 1.9rem;
+    margin-top: 0.45rem;
+    border-radius: 0.6rem;
+    font-size: 0.72rem;
+    color: var(--color-subtle);
+    transition:
+      color var(--dur-micro) ease,
+      background-color var(--dur-micro) ease;
+  }
+
+  .q-person__logout:hover {
+    background: color-mix(in srgb, var(--color-rose) 16%, transparent);
+    color: var(--color-crimson);
+  }
+
   /* ——— 编辑资料（人卡里的第二种形态） ——— */
   .q-pedit {
     display: flex;
