@@ -23,6 +23,7 @@ import { handleAdmin } from './admin/index';
 import { handleChat } from './chat/index';
 import { purgeOrphanMedia } from './chat/media';
 import { flushBridge } from './chat/bridge';
+import { warmOnePeerName } from './chat/peerName';
 import { pullBridge } from './chat/sync';
 import { runBacklinkCheck } from './admin/friends';
 import { deleteFriendComment, getFriendsBoard, postFriendLike, postFriendReply, postFriendsBoard } from './friends-board';
@@ -288,6 +289,15 @@ export default {
           if (s.sent || s.failed) console.log(`[cron] 互联出站：成功 ${s.sent}，丢弃 ${s.dropped}，失败 ${s.failed}`);
         })
         .catch((err) => console.error('[cron] 互联出站失败:', err instanceof Error ? err.message : err)),
+    );
+    // 互联站点的名字：每分钟补一个（去对方首页捞 <title>，缓存 7 天）。
+    // 放在 cron 而不是 who 里，是因为 who 是 30 秒一次的热接口，现抓 8 个网页会把它拖死。
+    ctx.waitUntil(
+      warmOnePeerName(env)
+        .then((r) => {
+          if (r) console.log(`[cron] 互联站名：${r}`);
+        })
+        .catch((err) => console.error('[cron] 互联站名失败:', err instanceof Error ? err.message : err)),
     );
     // 茶室互联入站：拉一次 /sync，把大厅里别人的新消息收进来（首轮只记游标，不回灌历史）
     ctx.waitUntil(

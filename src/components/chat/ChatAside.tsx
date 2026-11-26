@@ -234,8 +234,9 @@ export default function ChatAside({
                     }}
                   />
                 </span>
-                <span className="q-peer__host">{p.host}</span>
-                <span className="q-peer__n">{p.home ? '本站' : `${p.n} 人`}</span>
+                {/* 有站名就显示站名（「冷汐的杂货铺」比域名好认），没有退回域名 */}
+                <span className="q-peer__host">{p.home ? p.host : p.name || p.host}</span>
+                {p.home && <span className="q-peer__n">本站</span>}
               </li>
             ))}
           </ul>

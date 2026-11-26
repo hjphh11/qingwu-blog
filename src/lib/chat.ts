@@ -613,6 +613,8 @@ export interface WhoResult {
  */
 export interface ChatPeer {
   host: string;
+  /** 从对方首页 <title> 抓的站名；抓不到是空串，显示时退回 host */
+  name?: string;
   n: number;
   home: boolean;
 }

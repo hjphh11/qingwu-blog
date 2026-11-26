@@ -17,6 +17,7 @@ import { avatarFromHash } from '../auth/avatar';
 import { sessionUser, type AccountRow } from '../auth/store';
 import { touchPresence } from './messages';
 import { listBlocks } from './block';
+import { hostOfSite, loadPeerNames } from './peerName';
 
 /** 在线判定窗口。与 messages.ts 的 ONLINE_WINDOW 保持一致 */
 const ONLINE_WINDOW = 5 * 60 * 1000;
@@ -233,22 +234,7 @@ export async function getWho(request: Request, env: Env): Promise<Response> {
 /** 只看最近 30 天：更早的站已经不在场了，列出来是假话 */
 const PEER_WINDOW = 30 * 24 * 3600 * 1000;
 
-/**
- * 站点地址归一化。
- *
- * 只剥 `www.` 和 `matrix.` 两个前缀 —— 同一家站两边写法常常不一样
- * （`matrix.lengxiqwq.com` 发消息、`lengxiqwq.com` 写在资料里），
- * 不归一就会在侧栏里并列成两个站。`chat.` 之类故意不剥：那可能真是另一个站。
- */
-function hostOfSite(site: string): string {
-  try {
-    return new URL(site).host.toLowerCase().replace(/^www\./, '').replace(/^matrix\./, '');
-  } catch {
-    return '';
-  }
-}
-
-export type PeerRow = { host: string; n: number; home: boolean };
+export type PeerRow = { host: string; name: string; n: number; home: boolean };
 
 /**
  * 「互联站点」：从**收到的远端消息**反推有哪些站在说话。
@@ -273,6 +259,8 @@ export async function listPeers(env: Env, now: number): Promise<PeerRow[]> {
 
   const hub = hostOfSite(String(env.MATRIX_HS ?? ''));
   const self = hostOfSite(String(env.SITE_URL ?? '')) || 'qingwu.ink';
+  // 站名是从对方首页 <title> 捞的缓存（cron 每分钟补一个）；没有就用域名
+  const names = await loadPeerNames(env);
 
   const map = new Map<string, number>();
   for (const r of rows.results ?? []) {
@@ -282,8 +270,9 @@ export async function listPeers(env: Env, now: number): Promise<PeerRow[]> {
   }
 
   const rest = [...map.entries()]
-    .map(([host, n]) => ({ host, n, home: false }))
+    .map(([host, n]) => ({ host, name: names.get(host) ?? '', n, home: false }))
     .sort((a, b) => b.n - a.n);
 
-  return [{ host: self, n: 0, home: true }, ...rest];
+  // 本站名字取自己的（`清吾长亭`），前端仍然只显示「本站」两个字
+  return [{ host: self, name: '', n: 0, home: true }, ...rest];
 }
