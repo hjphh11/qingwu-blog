@@ -1,204 +1,293 @@
-# 方案 · 自建 Matrix（茶友独立账号）
+# 方案 · 自建 Matrix（Synapse + 茶友独立账号）
 
-> 目标：把长亭的互联从「共享转发账号」升级成「**每个茶友一个真实 Matrix 身份**」，让 rainzt 大厅里各人显示各自的昵称和头像。
-> 起因：共享账号模式下「头像用 Matrix 成员资料」是听雨的设计（`isBridge:false`），`[URL:]` 天然不生效 —— 见 `docs/方案-聊天室.md` §46.6。想让每人头像不同，只有自建 homeserver 这一条路。
-> 前提机器：2 核 E5-4657L v2 / **1.9GB 内存** / 40GB 盘（剩 34GB）；`qingwu-api`（wrangler dev + workerd）常驻 510MB。
+> 一句话：**自建 Synapse，每个茶友一个真账号（用户名 + 密码）；注册可匿名（不填邮箱、不验证）；
+> 大厅里每条消息的 sender 就是本人，昵称和头像由成员资料自动带出。**
+> 这是听雨接入档位的**第 1 档**。现在的第 2 档（共享账号 `@qingwuzf` + 正文协议头）只能全站一个头像，
+> 因为对方「头像用成员资料」是设计如此（见 `docs/方案-聊天室.md` §46.6）。
+> 硬门槛：**内存 ≥ 4GB**（现在是 1.9GB，见 §三）。
 
 ---
 
-## 一、先说清「正常 Matrix」是什么样
+## 一、目标形态
 
-对照听雨的接入档位，我们在第 2 档：
+| | 现在（第 2 档） | 目标（第 1 档） |
+| --- | --- | --- |
+| 大厅里的 sender | 全是 `@qingwuzf` | 每条是不同的人 |
+| 昵称 | `[ID:]` 协议头，对方可能不认 | 取自该账号的 `display_name` |
+| 头像 | 成员资料（全站同一张） | 各自账号的 `avatar_url` |
+| 来源标签 | 一个站名 | 每人都是「清吾长亭」来的 |
 
-| 档 | 形态 | 大厅里看到的 | 我们 |
+验收就一句：**在大厅里看到两条不同茶友的消息，sender 不同、昵称和头像各自正确。**
+
+---
+
+## 二、为什么是 Synapse
+
+Synapse 是 Matrix 的参考实现，功能最全（联邦、媒体、已读、反应、编辑、撤回全齐），长期维护，
+而且**后台管理接口完整**——代建账号、改密码、改显示名、改头像、查房间成员，全有现成 HTTP API，
+正好对上「我们替茶友管账号」这件事。
+
+代价只有一个：内存。它会被「加入的公共房间有多大」撑起来，不是被用户数撑起来。rainzt 大厅
+（136 人）不算巨无霸，但也不是小房间，所以下面的机器门槛不能省。
+
+---
+
+## 三、机器（硬门槛，先解决这个）
+
+| 项 | 现在 | 需要 | 说明 |
 | --- | --- | --- | --- |
-| 1 | **自己的 homeserver，茶友各有独立账号** | 每条消息的 sender 是不同的人，昵称/头像**自动**取自成员资料 | ❌ 没做 |
-| 2 | 共享转发账号 + 正文协议头 `[ID:昵称·站点名];[URL:头像]` | 全部是同一个账号；听雨明确「头像用成员资料」 | ✅ 现状 |
-| 3 | 上架后核对大厅里实际收到的账号与来源 | 验收动作 | 部分做过 |
+| 内存 | **1.9GB**（可用 1.1GB） | **4GB** | Synapse 常驻 400–700MB + Postgres 150–250MB；同机还有 `qingwu-api`(510MB) 和 `astro build` 的峰值 |
+| 磁盘 | 40GB（剩 34GB） | 够 | media_store 会涨，先本地存，超了再迁 R2 |
+| CPU | 2 核 E5-4657L v2 | 够 | Synapse 是 Python，单核弱一点但这点负载无感 |
+| OS | Debian 12 / Python 3.11.2 | ✅ | Synapse 1.163 支持 |
+| Postgres | 未安装 | 要装 | 15.x（Debian 自带） |
 
-第 1 档的好处不只是头像：**来源可追溯**（谁的言论一目了然）、**限流能按人**、以后要做私聊/@ 也能直接走 Matrix 原生能力。代价是要自己养一个 homeserver，并且和一屋子公共房间共存。
-
----
-
-## 二、核心决策：用 Application Service，不给每人发密码
-
-自建之后，最直觉的做法是「每个茶友注册一个 Matrix 账号、我们存密码」。**不这么做**，理由是密码这件事一旦进我们库，改密、找回、泄露、跟站内登录同步全是成本。
-
-改用 Matrix 规范的 **Application Service（AS）**：注册一个「桥」身份，声明一个用户命名空间，之后可以用 AS token **以任意本地用户身份**发消息，不需要那些用户的密码。mautrix-telegram / mautrix-discord 这些成熟桥接全是这个模式。
-
-| 方案 | 需要存密码 | 能随时改资料 | 茶友能用 Element 登录 | 复杂度 |
-| --- | --- | --- | --- | --- |
-| 每人注册 + 存密码 | 要 | 要用户自己改 | 能 | 中，且安全面大 |
-| **AS + 虚拟用户** | **不要** | **我们直接 PUT profile** | 要额外发一次性登录 token | 低 |
-| 继续共享账号 | 不要 | 改一次全员变 | 不能 | 最低（但就是现状） |
-
-选 AS。茶友想用 Element 看大厅，后面可以加「一次性登录 token」功能（`POST /_matrix/client/v3/login` 的 `m.login.token`），不做也不影响主流程。
+**为什么不能就在 1.9G 上跑**：`astro build` 是定时炸弹。一次 push 触发构建，峰值和 Synapse 抢内存，
+一 OOM 就是整站 403（历史事故：构建中断留半套 `dist`）。升到 4G 之前不要上生产。
 
 ---
 
-## 三、选型（2026-10 的现状，不是老文章）
+## 四、账号模型（含「匿名」）
 
-| 实现 | 语言 | 状态 | 桥接(AS) | 内存 | 结论 |
-| --- | --- | --- | --- | --- | --- |
-| **Synapse** 1.163 | Python + Postgres | Active，参考实现，功能最全 | 完善 | 小规模私有 2GB 起；**加入大型公共房间要再加 1GB** | 最稳，但这台 1.9G 机器装不下 |
-| **tuwunel** 1.9.4 | Rust | Active（conduwuit 官方继任者） | 支持 | 单二进制 + 嵌 RocksDB，量级小 | ✅ **本机首选** |
-| continuwuity | Rust | Active（conduwuit 社区延续） | 支持 | 同上 | 备选，二选一看维护活跃度 |
-| Dendrite | Go | **维护模式**（仅安全修复） | 标注「not well tested」 | 中 | ❌ 不用于新部署 |
-| Conduit | Rust | Active 但 beta | 有，未充分测试 | 小 | 被 tuwunel / continuwuity 取代 |
+| 项 | 取值 |
+| --- | --- |
+| 用户名（localpart） | `qw_<accountId>`，用站内自增 id，**不绑昵称**（改名不用重建账号） |
+| 密码 | 16 位随机串，**AES-256-GCM 加密存库**，密钥在 `MATRIX_PW_KEY` |
+| 显示名 | 现有署名规则：茶友 `昵称·清吾长亭`；站长本人 `清吾`（昵称就是站名简称，不重复） |
+| 头像 | 我们站的头像代理图 → 上传到 Synapse media → `PUT avatar_url`（mxc） |
+| 邮箱 | **不收**。这是「匿名」的全部含义：不填邮箱、不发验证信、不留任何真实信息 |
+| 注册入口 | **关掉公开注册**，只允许我们代建（`registration_shared_secret`） |
 
-**结论**：这台机器上跑 **tuwunel**。
+**为什么要关公开注册**：Synapse 一旦 `enable_registration: true`，全世界都能在你机器上注册小号。
+改为关掉它，只用 `registration_shared_secret` 走 `/_synapse/admin/v1/register` 代建——
+茶友在长亭里点「开通大厅身份」，worker 算一个 HMAC 请求把号建出来，外部拿不到这个 secret。
 
-- 我们的房间不是自己建的，是**加入 rainzt 的公共大厅**，Synapse 的内存主要被「房间状态大小」撑起来 —— 这正是它在这台机器上最危险的地方。
-- 想用 Synapse 也可以，**先把内存升到 4GB**，否则每次 `astro build`（本机 45 秒，内存峰值不低）都可能和它抢内存，一 OOM 就是全站 403（历史事故，见 NOTEBOOK）。
-- 换实现的代价：Rust 系与 Synapse **没有数据迁移路径**，以后要换只能重建账号、重新 join。现在还没数据，是换成本最低的时刻。
+**密码存哪、谁能看**：密文进 `accounts.matrix_secret`，长亭「我的身份」里可以查看一次（明文只在
+响应里出现，不进日志）。忘了就重置——我们不需要知道旧密码。
+
+**匿名者的身份稳定性**：不登录就不能发言（长亭现在就是登录才能聊），所以每个发言的人都对应一个
+站内 `accountId`，账号天然稳定、不会一个人建出十个号。
 
 ---
 
-## 四、架构
+## 五、架构
 
 ```
 浏览器 ──► www.qingwu.ink (nginx)
              ├─ /            静态 dist（astro）
              ├─ /api/*  ───► worker 127.0.0.1:8787 (workerd + D1)
-             └─ /.well-known/matrix/*   （静态文件，给联邦用）
+             └─ /.well-known/matrix/*  静态 JSON
 
-worker（出站）AS token ──► matrix.qingwu.ink ──► rainzt 大厅
-worker（入站）/sync  ◄──  matrix.qingwu.ink ◄── rainzt 大厅
-
-matrix.qingwu.ink (nginx server 块) ──► 127.0.0.1:8008 (tuwunel)
+worker 出站：以该用户 token  PUT /rooms/{room}/send/…?   ──┐
+worker 入站：GET /sync（现有的游标）                       ├──► matrix.qingwu.ink
+worker 管号：POST /_synapse/admin/v1/register             ──┘        │
+                                                                    ▼
+                                        nginx (matrix.qingwu.ink) ──► 127.0.0.1:8008 (synapse)
+                                                                          │
+                                                                    127.0.0.1:5432 (postgres)
 ```
 
-- **域名**：`matrix.qingwu.ink` 一个就够；`www.qingwu.ink/.well-known/matrix/{server,client}` 指过去。
-- **不复用 8448**：把 8448 暴露成明文是常见误配。统一走 443 反代 + `.well-known` 委派。
-- **证书**：与主站同一套 certbot，加一个子域即可（DNS 记录 + `certbot --expand`）。
-- **worker 与 homeserver 同机**：走 `127.0.0.1:8008`，不绕公网（避开之前踩过的 NAT 回环）。
+- **一个域名**：`matrix.qingwu.ink`。`www` 上放 `.well-known` 做委派（省一张证书、也省 8448）。
+- **不暴露 8448**：那是联邦明文口，误配很常见；统一 443 反代。
+- **worker 走 127.0.0.1:8008**，不绕公网（吃过 NAT 回环的亏）。
+- **联邦出口**：Synapse 要主动连对方服务器（rainzt），出站 443 保持放行。
 
 ---
 
-## 五、账号模型
+## 六、实施步骤
 
-| 项 | 取值 | 说明 |
-| --- | --- | --- |
-| localpart | `qw_<accountId>` | 用站内自增 id，**不绑昵称**（改昵称不用重建账号） |
-| display_name | 走现有署名规则（`昵称·清吾长亭`） | 与大厅里其他站一致；站长自己那条是否去掉后缀，单独拍板 |
-| avatar_url | 传成 `mxc://` | 源图就是我们站的 `/api/chat/avatar/u/<id>`，上传一次、换头像再传 |
-| 注册 | **关闭** `allow_registration = false` | 只有 AS 能建号，杜绝陌生人注册 |
-| join | 首次发言时按需 join | **不预建、不预 join** —— 每个 join 都是一个 member 事件，几十个人预 join 会把房间状态撑大 |
+### Step 0 · 升内存（阻塞项）
 
-**按需创建流程**（首次在某条消息出现时）：
+VPS 面板从 2G 升到 4G（多数商家支持热升）。升完 `free -m` 确认，再往下走。
 
-1. `PUT /_matrix/client/v3/profile/@qw_1:…/displayname`、`/avatar_url`（AS token）
-2. `POST /_matrix/client/v3/join/{roomId}?user_id=@qw_1:…`（AS token）
-3. `PUT /rooms/{roomId}/send/m.room.message/{txn}?user_id=@qw_1:…`
+### Step 1 · 域名与证书
 
-三条都成功才把消息标出站；失败就按现在的 outbox 退避重试。
+```bash
+# DNS：A 记录 matrix.qingwu.ink → 103.79.185.65
+# 解析生效后：
+certbot --nginx -d matrix.qingwu.ink
+```
 
----
+### Step 2 · PostgreSQL
 
-## 六、代码改动清单
+```bash
+apt install -y postgresql
+sudo -u postgres psql <<'SQL'
+CREATE USER synapse WITH PASSWORD '换成随机串';
+CREATE DATABASE synapse OWNER synapse ENCODING 'UTF8' LC_COLLATE='C' LC_CTYPE='C' template=template0;
+SQL
+```
+
+### Step 3 · Synapse
+
+```bash
+apt install -y matrix-synapse-py3        # 官方源；装的时候会问 server_name
+# 或按官方文档加 apt 源，版本 1.163.x
+```
+
+`/etc/matrix-synapse/homeserver.yaml` 里必须对的几项（其余保持默认）：
+
+```yaml
+server_name: "matrix.qingwu.ink"
+
+listeners:
+  - port: 8008
+    bind_addresses: ['127.0.0.1']
+    type: http
+    tls: false
+    x_forwarded: true
+    resources:
+      - names: [client, federation]
+
+database:
+  name: psycopg2
+  args:
+    user: synapse
+    password: "同 Step 2"
+    database: synapse
+    host: 127.0.0.1
+    cp_min: 5
+    cp_max: 10
+
+# —— 账号：我们代建，不开自助注册 ——
+enable_registration: false
+registration_shared_secret: "改成随机串"
+
+media_store_path: /var/lib/matrix-synapse/media
+max_upload_size: 25M
+url_preview_enabled: false          # 不做链接预览，少一个 SSRF 面
+allow_public_rooms_over_federation: true
+```
+
+```bash
+systemctl enable --now matrix-synapse
+curl -s http://127.0.0.1:8008/_matrix/client/versions | head -c 200
+```
+
+### Step 4 · 管理员与代建通道
+
+```bash
+# 建一个站内服务账号（管理员），它只用来调 admin API
+register_new_matrix_user -c /etc/matrix-synapse/homeserver.yaml \
+  -u qingwu-bot -p '随机强密码' -a http://127.0.0.1:8008
+```
+
+然后登录一次拿长期 token，写进 worker 的 `.dev.vars`：
+
+```bash
+curl -s -X POST http://127.0.0.1:8008/_matrix/client/v3/login \
+  -d '{"type":"m.login.password","user":"qingwu-bot","password":"…","initial_device_display_name":"qingwu-worker"}'
+# 取 access_token → SYNAPSE_ADMIN_TOKEN
+```
+
+代建茶友账号（worker 里做，WebCrypto 算 HMAC-SHA1）：
+
+```
+GET  /_synapse/admin/v1/register            → { nonce }
+POST /_synapse/admin/v1/register
+  { nonce, username, password, admin:false, mac }
+  mac = HMAC_SHA1(registration_shared_secret, `${nonce}\0${username}\0${password}\0notadmin`)
+```
+
+建完立刻用该账号登录，把 `access_token` 存下来（后续发消息用它，不用再登录）。
+
+### Step 5 · nginx + well-known
+
+```nginx
+# matrix.qingwu.ink
+server {
+  listen 443 ssl http2;
+  server_name matrix.qingwu.ink;
+  client_max_body_size 25m;
+
+  location / {
+    proxy_pass http://127.0.0.1:8008;
+    proxy_set_header Host $host;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_read_timeout 300s;     # /sync 长轮询，别用默认 60s
+  }
+}
+```
+
+`www.qingwu.ink` 上放两个静态文件（CSP 已经是 `default-src 'self'`，JSON 不受影响）：
+
+```
+/.well-known/matrix/server → {"m.server":"matrix.qingwu.ink:443"}
+/.well-known/matrix/client → {"m.homeserver":{"base_url":"https://matrix.qingwu.ink"}}
+```
+
+⚠️ 注意 **不要**给 `/.well-known/matrix/` 加 `add_header Content-Type application/json` 之外的花活，
+也不要被现有 `/api/` 或静态缓存规则吃掉。
+
+### Step 6 · 联邦自检
+
+```bash
+# 委派
+curl -s https://www.qingwu.ink/.well-known/matrix/server
+# 本机版本
+curl -s https://matrix.qingwu.ink/_matrix/federation/v1/version
+# 别人能不能连我们（第三方工具，选一个）
+#   https://federationtester.matrix.org/
+```
+
+再让 `@qingwu-bot` join rainzt 大厅（`POST /_matrix/client/v3/join/{roomId}`），
+在 `/sync` 里能看到大厅消息，就算通。
+
+### Step 7 · worker 接入
 
 | 文件 | 改什么 |
 | --- | --- |
-| `worker/migrations/00xx_matrix_accounts.sql` | `accounts.matrix_user_id TEXT`、`chat_sync.appservice_ready INTEGER` |
-| `worker/src/chat/appservice.ts`（新） | AS token、`ensureUser()`（建号+资料）、`ensureJoin()`、`sendAs()` |
-| `worker/src/chat/bridge.ts` | `deliverContent()` 加 `?user_id=`；出站署名改由 profile 承担，正文头保留（见下） |
-| `worker/src/chat/sync.ts` | 入站 `sender` 若是 `@qw_*:本域` → 直接映射本地 account（不再靠 `chat_remote_profiles` 兜底） |
-| `worker/src/types.ts` | `MATRIX_AS_TOKEN`、`MATRIX_AS_USER`、`MATRIX_SELF_HS` |
-| nginx | 新增 `matrix.qingwu.ink` server 块 + `.well-known` 静态 |
+| `migrations/00xx_matrix_accounts.sql` | `accounts.matrix_user_id`、`matrix_token`、`matrix_secret`、`matrix_synced_at` |
+| `worker/src/chat/synapse.ts`（新） | `createUser()`（shared secret 代建 + 登录存 token）、`setProfile()`、`uploadAvatar()`、`joinRoom()`、`sendAs()` |
+| `worker/src/chat/bridge.ts` | `deliverContent()` 改用「该用户的 token」，不再用共享账号 token；正文协议头保留（兼容其它站） |
+| `worker/src/chat/sync.ts` | 入站 sender 若是 `@qw_*.本域` → 反查本地 account（不用再抓 profile 兜底） |
+| `worker/src/types.ts` | `SYNAPSE_HS`、`SYNAPSE_ADMIN_TOKEN`、`MATRIX_REG_SHARED_SECRET`、`MATRIX_PW_KEY` |
+| 前端 | 长亭「我的身份」：显示 Matrix ID、可查看一次密码、可重置、可换头像 |
 
-**正文协议头还发不发？** 继续发。对方的实现是按 `isBridge` 判断的，我们升级后会作为**独立账号**出现（不再走共享账号那条分支），头部对他们是无害的多余信息；但其它接入方（比如还在用第 2 档逻辑的站）仍然需要它。**两套并存，谁认哪套都能显示。**
+几个要点：
 
----
+- **昵称/头像变更要推**：站内改名或换头像后，调 `PUT /_matrix/client/v3/profile/{userId}/displayname|avatar_url`；
+  头像要先 `POST /_matrix/media/v3/upload` 拿 `mxc://`。失败只记日志，不阻塞站内操作。
+- **首次发言才建号**：老用户不必一次性全建，避免几百个空账号 + 几百个 join 事件。
+- **旧共享账号保留**：`@qingwuzf` 继续作为「系统通知」身份，历史消息不迁。
 
-## 七、部署步骤（到命令级）
+### Step 8 · 切换与验收
 
-```bash
-# 1) 域名：A 记录 matrix.qingwu.ink → 本机；证书
-certbot --nginx -d matrix.qingwu.ink
-
-# 2) tuwunel：官方 release 下静态二进制（单文件），放 /usr/local/bin/tuwunel
-#    配置按发行包自带的 conduwuit-example.toml 改，必须动的语义项：
-#      server_name                = "matrix.qingwu.ink"
-#      address / port             = "127.0.0.1" / 8008
-#      database_path              = "/var/lib/tuwunel"
-#      allow_registration         = false
-#      allow_federation           = true
-#      appservice_registration_files = ["/etc/tuwunel/as-qingwu.yaml"]
-#    systemd 单元照 qingwu-api 的写法（Restart=always + 显式 User）
-
-# 3) nginx：matrix.qingwu.ink → proxy_pass http://127.0.0.1:8008;
-#    client_max_body_size 25m;  （媒体上传）
-
-# 4) .well-known（放主站静态目录，nginx 直接给文件）
-#    /.well-known/matrix/server → {"m.server":"matrix.qingwu.ink:443"}
-#    /.well-known/matrix/client → {"m.homeserver":{"base_url":"https://matrix.qingwu.ink"}}
-
-# 5) AS 注册文件（/etc/tuwunel/as-qingwu.yaml，标准规范格式）
-#    id: qingwu / url: http://127.0.0.1:8787/_matrix/app
-#    as_token / hs_token 各生成一串随机
-#    sender_localpart: qingwu
-#    namespaces.users: exclusive, regex "@qw_.*:matrix.qingwu\.ink"
-
-# 6) 验证联邦
-curl -s https://matrix.qingwu.ink/_matrix/federation/v1/version
-curl -s https://www.qingwu.ink/.well-known/matrix/server
-```
-
-> 具体配置键名以所装版本自带的示例为准，上面只列「必须改的语义」。tuwunel 与 conduwuit 的 `CONDUIT_*` 环境变量兼容，务必跟版本号一起记进 NOTEBOOK。
+1. 先只给自己（id=1）建号，在大厅发一条，确认 sender、昵称、头像都对；
+2. 开给 2–3 个活跃茶友；
+3. 全量；
+4. 观察 24h：`journalctl -u matrix-synapse` 无频繁错误、内存曲线平稳。
 
 ---
 
-## 八、资源与风险
+## 七、运维
 
-| 项 | 估算 | 备注 |
-| --- | --- | --- |
-| 常驻内存 | tuwunel 150–350MB（随大厅状态涨） | 现可用 1.2GB，留出 ~700MB 给 build 峰值 |
-| 磁盘 | 首月 < 1GB；媒体是大头 | 可给媒体设配额，或后续接 S3 |
-| 带宽 | 联邦同步 + 头像/封面 | 每次有人发图都会同步到我们；大厅活跃时持续有小流量 |
-| CPU | 低（Rust） | E5 v2 单核弱，但这点负载无感 |
-
-**必须处理的四件事**：
-
-1. **与构建抢内存**：`astro build` 是定时炸弹。要么升级到 4G，要么把 `auto-deploy` 改到凌晨并保证 tuwunel 有 `MemoryMax` 上限（systemd 限制，超了只杀它不杀全机）。
-2. **注册关闭 + 邀请制**：`allow_registration=false`，任何人不能自建号；AS 只在我们这侧触发。
-3. **备份**：RocksDB 目录 + AS 配置，跟现有 `qingwu-backup` 一起做（热备要停服务或用自带 dump 工具）。
-4. **回滚**：保留现有共享账号 `@qingwuzf` 与整套 bridge 不动。新链路出问题 ⇒ 把 `MATRIX_AS_TOKEN` 清空，`bridgeOf()` 自然退回旧路径。
+| 项 | 做法 |
+| --- | --- |
+| 备份 | 每天 `pg_dump synapse` + 打包 `media_store`；跟现有 `qingwu-backup` 合并到一个脚本 |
+| 限额 | `rc_message` / `rc_registration` 保持默认；账号只由我们建，外部打不进来 |
+| 监控 | `systemctl status matrix-synapse` + 现有的 `qingwu-health-check`；加一条「8008 不通就告警」 |
+| 升级 | 跟着 Debian 源走；跨大版本前先备份 DB（Synapse 升级会跑 schema 迁移，不可逆） |
+| 媒体 | `media_store` 涨得快时，加 `media_retention` 或迁到 R2（需要 S3 兼容存储模块） |
+| 房间 | 只加入必要的大厅；别随手 join 大公共房间，那是内存杀手 |
 
 ---
 
-## 九、需要跟听雨对齐的四件事
+## 八、回滚
 
-1. 我们新增 `matrix.qingwu.ink` 作为来源站，**大厅是否允许我们的用户自行 join**（还是需要邀请/白名单）。
-2. 来源标签怎么显示（现在共享账号的 `source.siteName` 是「清吾长亭」）；换成独立账号后来源怎么算。
-3. 我们站有几十个潜在账号，**是否存在成员数上限或频率限制**。
-4. 老账号 `@qingwuzf` 是否继续保留作为「系统通知」身份。
-
----
-
-## 十、验收（对应第 1 档）
-
-- [ ] `/_matrix/federation/v1/version` 公网可达，`.well-known` 两个文件都对
-- [ ] AS 能建号、能 join、能以指定 `user_id` 发言
-- [ ] 在大厅里看到**两条不同茶友**的消息，各自昵称与头像正确
-- [ ] 头像来自成员资料（`mxc://`），不依赖 `[URL:]`
-- [ ] 入站长亭：sender 正确映射回站内账号，不出现「远方的茶客」
-- [ ] 断网/对方 5xx 时 outbox 退避重试，不阻塞站内发送
-- [ ] 全站 build 期间 homeserver 不被 OOM 杀掉
+- 服务和数据都在，只是 worker 不再使用 ⇒ 把 `SYNAPSE_ADMIN_TOKEN` 清空，
+  `bridgeOf()` 退回共享账号链路，站内一切照旧。
+- 已经建出来的 Matrix 账号留着不影响任何东西（它们只在大厅里发言过）。
+- **不要**为此删库、删 media：留着以后还能用。
 
 ---
 
-## 十一、三个需要你拍板的点
+## 九、不做
 
-1. **现在就做，还是等机器升内存**？（tuwunel 可以先跑起来验证，再决定是否长期留）
-2. **站长自己的显示名**：大厅里要「清吾」还是「清吾长亭」？（现在 `signOf` 对「清吾」做了特判，只留站点名）
-3. **茶友要不要能用 Element 登录**？要的话加一次性 token 流程，不要就纯站内使用。
-
----
-
-## 不做
-
-- **不迁历史消息**：老消息仍挂在 `@qingwuzf` 名下，翻历史时是「同一个人」，属于可接受的断层。
-- **不做 E2EE**：大厅是公开房间，AS 也进不了加密房间；站内消息本来就在我们库里。
-- **不上 MAS / OIDC**：个人站规模用不上，多一层认证就多一层故障。
-- **不自建 Element Web**：想用客户端就用公共 Element 或桌面端。
-- **不把 homeserver 暴露成通用注册站**：它只服务我们自己的茶友。
+- **不迁历史消息**：老消息挂在 `@qingwuzf` 名下，翻历史能看到断层，接受。
+- **不做 E2EE**：大厅是公开房间；站内消息本来就在我们库里。
+- **不上 MAS / OIDC**：个人站规模用不上，多一层认证多一层故障。
+- **不自建 Element Web**：茶友想用客户端就用 element.io 或桌面端，账号密码给他了就能登。
+- **不开放注册**：机器只服务我们自己的茶友。
+- **不做游客身份**：长亭发言本来就要求登录，没有「未登录也能在大厅说话」的场景。
