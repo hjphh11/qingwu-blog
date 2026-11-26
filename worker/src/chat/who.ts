@@ -269,8 +269,14 @@ export async function listPeers(env: Env, now: number): Promise<PeerRow[]> {
     map.set(h, (map.get(h) ?? 0) + Number(r.n ?? 0));
   }
 
+  /**
+   * 没有名字的站先不列 —— 列表叫「互联站点」，得有个人能认出来的名字。
+   * 只有域名说明我们还没确认它是个站（抓不到 title 的常常是 Element 应用页 /
+   * 纯 JS 首页），列出来只是噪音；cron 抓到名字后下一轮自己出现。
+   */
   const rest = [...map.entries()]
-    .map(([host, n]) => ({ host, name: names.get(host) ?? '', n, home: false }))
+    .filter(([host]) => Boolean(names.get(host)))
+    .map(([host, n]) => ({ host, name: names.get(host)!, n, home: false }))
     .sort((a, b) => b.n - a.n);
 
   // 本站名字取自己的（`清吾长亭`），前端仍然只显示「本站」两个字

@@ -29,6 +29,17 @@ const TTL_FAIL = 24 * 3600 * 1000;
 const PEER_WINDOW = 30 * 24 * 3600 * 1000;
 
 /**
+ * 手工别名：有些 host 抓不到站名，但人在大厅里已经叫惯了别的名字。
+ *
+ * `chat.gbk.ink` 是 QiuMonster 的 Element Web 应用地址（首页 title 就是 `Element`），
+ * 主域 `gbk.ink` 是另一个东西（接口服务平台）—— 归并过去会显示成「GBK」，不如直接用
+ * 大厅里对它的叫法。加新条目时注意：**只写确认过的**，别凭猜。
+ */
+export const PEER_ALIAS: Record<string, string> = {
+  'chat.gbk.ink': 'Somoe Chat',
+};
+
+/**
  * 标题里这些是「页面名」不是「站名」：
  * 有的站首页 `<title>` 就是 `Element`（默认的 Element Web），抓来当站名只会更迷惑。
  */
@@ -102,7 +113,7 @@ async function grabName(host: string): Promise<string> {
 
 /** 已知的站名（host → name），只返回还没过期的 */
 export async function loadPeerNames(env: Env): Promise<Map<string, string>> {
-  const map = new Map<string, string>();
+  const map = new Map<string, string>(Object.entries(PEER_ALIAS));
   try {
     const rows = await env.DB.prepare(
       `SELECT host, name FROM chat_peer_sites WHERE name <> '' AND fetched_at > ?`,
@@ -156,6 +167,7 @@ export async function warmOnePeerName(env: Env): Promise<string> {
     let target = '';
     let oldest = Infinity;
     for (const h of hosts) {
+      if (PEER_ALIAS[h]) continue;   // 手工给过名字的不用抓
       const rec = recs.get(h);
       const at = rec?.fetched_at ?? 0;
       const ttl = !rec ? 0 : rec.name ? TTL_OK : TTL_FAIL;
