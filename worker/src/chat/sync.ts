@@ -34,6 +34,31 @@ const LOCK_MS = 45_000;
 /** 资料缓存多久过期（对方改昵称/头像后，一天内会跟上） */
 const PROFILE_TTL = 24 * 60 * 60 * 1000;
 
+/**
+ * 「站内有人」的判定窗口。
+ *
+ * 必须和 `messages.ts` 的 `ONLINE_WINDOW`（5 分钟）一致 —— 侧栏「此刻在长亭 N 人」
+ * 就是按它算的。这里如果用更短的窗口，就会出现「侧栏说有人、大厅里我们却显示离线」
+ * 这种自相矛盾的画面。
+ */
+const LOCAL_ONLINE_WINDOW = 5 * 60 * 1000;
+
+/**
+ * 站内此刻有没有人。
+ *
+ * 和侧栏同源（`chat_presence`），不是看「有没有人在轮询」——
+ * 后者会把访客也算上，而且 cron 那条路径根本没人轮询。
+ *
+ * 查不出来时按「有人」处理：宁可让转发账号显示在线，也别把一个正热闹的屋子标成离线。
+ */
+async function hasLocalVisitors(env: Env, now: number): Promise<boolean> {
+  const r = await env.DB.prepare(`SELECT COUNT(*) AS n FROM chat_presence WHERE last_seen > ?`)
+    .bind(now - LOCAL_ONLINE_WINDOW)
+    .first<{ n: number }>()
+    .catch(() => null);
+  return r ? Number(r.n) > 0 : true;
+}
+
 type SyncEvent = {
   type?: string;
   event_id?: string;
@@ -545,7 +570,22 @@ export async function pullBridge(
     // 大厅人数：轻量接口，每分钟一次可接受（只有 user_id 列表）
     const members = await countMembers(cfg).catch(() => null);
 
-    const qs = new URLSearchParams({ timeout: '0', filter: filterOf(cfg.room) });
+    const qs = new URLSearchParams({
+      timeout: '0',
+      filter: filterOf(cfg.room),
+      /**
+       * 站内没人的时候，顺手把转发账号也标成离线。
+       *
+       * 为什么必须显式写：`/sync` 不带这个参数时是 `online`，而 cron 每分钟都会拉一次 ——
+       * 等于每分钟给 `@qingwuzf` 续一次命，大厅里永远显示「清吾长亭 在线」，
+       * 哪怕我们这边一个人都没有。设成 `offline` 之后，最后一个人离开约 5 分钟，
+       * 大厅里就会看到它下线。
+       *
+       * ⚠️ 只影响 presence，**消息照收**：`/sync` 的返回和它无关，
+       * 真停了拉取会漏掉离开期间的消息，那是另一回事。
+       */
+      set_presence: (await hasLocalVisitors(env, now)) ? 'online' : 'offline',
+    });
     if (since) qs.set('since', since);
 
     const res = await fetch(`${cfg.hs}/_matrix/client/v3/sync?${qs.toString()}`, {
