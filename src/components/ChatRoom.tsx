@@ -729,6 +729,15 @@ export default function ChatRoom() {
   /** 页面在后台时攒的新消息数 —— 只用来改页签标题 */
   const [unread, setUnread] = useState(0);
   const atBottomRef = useRef(true);
+  /**
+   * 页面被切到后台（或浏览器被关掉/划掉）那一刻，人是不是贴着底。
+   *
+   * 为什么单独记一份：`atBottomRef` 会被浏览器恢复滚动时触发的 scroll 事件改掉，
+   * 等到 `visibilitychange` 的 visible 分支再看，已经不是「离开时」的那个值了。
+   */
+  const leftAtBottomRef = useRef(true);
+  /** 后台期间攒下的别人的新消息条数（回来时若要转成「N 条新消息」提示） */
+  const hiddenNewRef = useRef(0);
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -741,6 +750,33 @@ export default function ChatRoom() {
     atBottomRef.current = true;
     setAtBottom(true);
   }, []);
+
+  /**
+   * 「稳稳贴到底」：连滚三帧 + 两个延迟各补一次。
+   *
+   * 单次 rAF 不够用的两种场景，都是这次要修的病根：
+   * 1) 页面在后台时 `requestAnimationFrame` 被浏览器暂停，切回来那一刻布局还没重算完，
+   *    按旧高度滚只能滚到「旧的底部」；
+   * 2) 末尾是图片 / 卡片封面，解码后把高度撑开，人又被顶上去半屏。
+   *
+   * 每次滚之前都再看一眼 `atBottomRef` —— 用户在这几百毫秒里往上翻了就别拽他。
+   */
+  const stickBottomSoon = useCallback(() => {
+    let frames = 0;
+    const step = () => {
+      if (!atBottomRef.current) return;
+      scrollToBottom(false);
+      frames += 1;
+      if (frames < 3) requestAnimationFrame(step);
+    };
+    requestAnimationFrame(step);
+    window.setTimeout(() => {
+      if (atBottomRef.current) scrollToBottom(false);
+    }, 150);
+    window.setTimeout(() => {
+      if (atBottomRef.current) scrollToBottom(false);
+    }, 500);
+  }, [scrollToBottom]);
 
   /** 侧栏刷新：只刷在线名单，不动消息流 */
   const refreshWho = useCallback(async () => {
@@ -817,8 +853,10 @@ export default function ChatRoom() {
           lastRead: page.lastRead,
           messages: page.messages,
         });
-        // 首屏一定在底部：进来要看的是最新的
-        requestAnimationFrame(() => scrollToBottom());
+        // 首屏一定在底部：进来要看的是最新的。
+        // 用 stickBottomSoon 而不是单次 rAF —— 关掉浏览器再打开、或手机从后台划掉后
+        // 重开时，末尾常是图片/卡片，解码撑高的那一下会把视口顶上去。
+        stickBottomSoon();
       } catch {
         /**
          * 有快照的时候**不切到整屏错误页**：屏幕上已经有内容了，
@@ -833,7 +871,7 @@ export default function ChatRoom() {
         setIdentityReady(true);
       }
     },
-    [scrollToBottom],
+    [stickBottomSoon],
   );
 
   useEffect(() => {
@@ -1017,8 +1055,9 @@ export default function ChatRoom() {
           const others = incoming.filter((m) => !m.mine).length;
           if (others > 0) {
             if (hidden) {
-              // 人在别的标签页：累加页签数字 + 发桌面提醒，别在他回来时再滚屏
+              // 人在别的标签页 / 别的 App：累加页签数字 + 发桌面提醒，别在他回来时再滚屏
               setUnread((n) => n + others);
+              hiddenNewRef.current += others;
               fireNotify(incoming);
             } else if (!atBottom) {
               setPendingNew((n) => n + others);
@@ -1045,11 +1084,42 @@ export default function ChatRoom() {
     const onVisible = () => {
       if (document.visibilityState === 'visible') {
         setUnread(0);
+        /**
+         * 离开时贴着底 ⇒ 回来就该还在底。
+         *
+         * 这一条正是「关掉浏览器 / 把页面划到后台，再回来时停在半空」的病根：
+         * 后台期间 rAF 被暂停、poll 拉进来的消息只改了 state 没滚动，
+         * 而切回来时又没有「新消息」事件再去触发贴底 effect，视口就僵在那儿。
+         *
+         * 反过来，离开时正在翻历史（`leftAtBottomRef === false`）就绝不拽人，
+         * 后台攒的那些条数转成右下角的「N 条新消息」。
+         */
+        if (leftAtBottomRef.current) {
+          stickBottomSoon();
+        } else if (hiddenNewRef.current > 0) {
+          const n = hiddenNewRef.current;
+          setPendingNew((c) => c + n);
+        }
+        hiddenNewRef.current = 0;
         window.clearTimeout(timer);
         void tick();
+      } else {
+        // 走的那一刻记下位置：等回来时 atBottomRef 可能已经被浏览器改掉了
+        leftAtBottomRef.current = atBottomRef.current;
+        hiddenNewRef.current = 0;
       }
     };
     document.addEventListener('visibilitychange', onVisible);
+
+    // 窗口失焦再回来（最小化、切到别的应用）：有些浏览器不补发 visibilitychange
+    const onFocus = () => {
+      if (document.visibilityState !== 'visible' || !atBottomRef.current) return;
+      const el = scrollRef.current;
+      if (!el) return;
+      // 只在「本该贴底、却被布局撑开」时补一脚；正在翻历史（atBottomRef 为 false）一律不碰
+      if (el.scrollHeight - el.scrollTop - el.clientHeight > 8) stickBottomSoon();
+    };
+    window.addEventListener('focus', onFocus);
 
     // 系统层面恢复联网：不等 10 秒，立刻验一次
     const onOnline = () => {
@@ -1062,9 +1132,10 @@ export default function ChatRoom() {
       alive = false;
       window.clearTimeout(timer);
       document.removeEventListener('visibilitychange', onVisible);
+      window.removeEventListener('focus', onFocus);
       window.removeEventListener('online', onOnline);
     };
-  }, [fireNotify]);
+  }, [fireNotify, stickBottomSoon]);
 
   /**
    * 侧栏 30 秒刷一次。
