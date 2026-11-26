@@ -4,6 +4,7 @@ import { avatarFromHash } from '../../lib/avatar';
 import type { SessionAccount } from '../../lib/auth';
 import type { ChatMember, ChatPeer } from '../../lib/chat';
 import { SITE } from '../../config';
+import linksData from '../../data/links.json';
 
 /**
  * 长亭 · 左侧栏
@@ -30,14 +31,37 @@ function hostOf(url: string): string {
 const HOME_HOST = hostOf(SITE.url);
 
 /**
+ * 注册域（最后两段）：`daily.yybb.us` 和 `yybb.us` 是同一个站。
+ * 友链里填的是主域，大厅消息里带的可能是子域 —— 不归一就配不上头像。
+ */
+function siteKey(host: string): string {
+  const parts = host.replace(/^www\./, '').split('.');
+  return parts.length >= 2 ? parts.slice(-2).join('.') : host;
+}
+
+/**
+ * 友链头像表：**人在友链申请里填的那张**，比 favicon 好认。
+ * 构建时从 `src/data/links.json` 打进来，零请求；匹配不上再退回 favicon。
+ */
+const PEER_AVATARS = new Map<string, string>();
+for (const f of linksData.friends ?? []) {
+  try {
+    PEER_AVATARS.set(siteKey(new URL(f.url).host), f.avatar);
+  } catch {
+    /* 友链里手写的怪 URL 跳过，不影响别人 */
+  }
+}
+
+/**
  * 站点的「头像」。
  *
- * 本站用清吾自己的头像（站内资源，稳）；别的站取它的 `/favicon.ico` ——
- * 不引第三方图标代理（那是又一个会挂、也会看见访客 IP 的外部服务），
- * 加载失败就退回下面那个首字母方块。友链页探速用的也是这个 URL。
+ * 优先级：本站头像 → 友链里填过的头像 → 该站 `/favicon.ico`。
+ * 最后一步不引第三方图标代理（那又是一个会挂、也会看见访客 IP 的外部服务），
+ * 加载失败就退回下面那个首字母方块。
  */
 function peerIcon(host: string): string {
-  return host === HOME_HOST ? '/images/avatar.webp' : `https://${host}/favicon.ico`;
+  if (host === HOME_HOST) return '/images/avatar.webp';
+  return PEER_AVATARS.get(siteKey(host)) || `https://${host}/favicon.ico`;
 }
 
 export default function ChatAside({
