@@ -124,8 +124,37 @@
     color: var(--color-muted);
   }
 
-  /* 表情：跟着字号走，不写死像素 —— 回复框里小一号也协调 */
-  .q-emoji {
+  /* 站外图（`![说明](https://…)`）。对方站分享音乐/链接时整段都是 Markdown，
+     封面就是一张裸图；不认这个写法的话，图上那行会退化成「!曲名」的红链接。
+     尺寸只给上限、不给死宽高 —— 封面 300×300、长截图、表情包都会走这里，
+     定死宽高会把某一种裁坏。 */
+  .q-rich img.q-rich__img {
+    display: block;
+    max-width: 100%;
+    max-height: 360px;
+    width: auto;
+    height: auto;
+    margin: 0.45em 0;
+    border-radius: 0.75rem;
+    /* 图还没加载出来时先占个位置，别让文字被顶来顶去 */
+    background: color-mix(in srgb, var(--color-rose) 14%, transparent);
+    object-fit: contain;
+  }
+
+  /* 以图片开头的引用 = 对方站的卡片消息（音乐分享）。引用外观（竖线 + 缩进 + 灰字）
+     是给「引一段话」用的，套在卡片上会把封面切一道、文字也压暗一档，所以让开。
+     语义仍是 blockquote，只是视觉上不再像引用。 */
+  .q-rich blockquote.q-rich__quote--card {
+    padding-left: 0;
+    border-left: 0;
+    color: var(--color-ink);
+  }
+
+  .q-rich blockquote.q-rich__quote--card img.q-rich__img:first-child {
+    margin-top: 0;
+  }
+
+  /* 表情：跟着字号走，不写死像素 —— 回复框里小一号也协调 */  .q-emoji {
     display: inline-block;
     width: 1.25em;
     height: 1.25em;

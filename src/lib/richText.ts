@@ -14,6 +14,7 @@
  *   ~~删除线~~
  *   ## 小标题       `###` 再小一级；单个 `#` 不认（消息里不该出现 h1）
  *   [文字](https://链接)
+ *   ![说明](https://图片)  站外图（对方站的音乐/链接卡片就是这么发的）
  *   https://裸链接  自动成链
  *   - 项 / * 项     无序列表
  *   1. 项           有序列表
@@ -74,6 +75,24 @@ function inlineText(raw: string): string {
 
   // 删除线：`~~` 在日常输入里几乎没有歧义，不需要额外边界
   t = t.replace(/~~([^~\n]{1,200})~~/g, '<del>$1</del>');
+
+  /**
+   * 图片 `![说明](url)` —— **必须排在链接前面**。
+   *
+   * 排在后面的话 `[说明](url)` 会先被链接规则吃掉，只剩一个孤零零的 `!` 留在前面：
+   * 对方站发来的音乐分享就是这样（`> ![](封面) > **🎵 曲名** …`），
+   * 一串「!曲名」红链接，看着像解析坏了。
+   *
+   * 只认 http(s)；`referrerpolicy=no-referrer` 是给对方的域名省一个来路，
+   * 我们这边的 CSP 本来就是 `img-src https:`，站外封面能正常显示。
+   */
+  t = t.replace(
+    /!\[([^\]\n]{0,200})\]\((https?:\/\/[^\s)]+)\)/g,
+    (m, alt: string, url: string) =>
+      SAFE_URL.test(url)
+        ? `<img class="q-rich__img" src="${url}" alt="${alt}" loading="lazy" decoding="async" referrerpolicy="no-referrer" />`
+        : m,
+  );
 
   // [文字](url) —— 只认 http(s)；非法的一律原样留着
   t = t.replace(/\[([^\]\n]{1,80})\]\((https?:\/\/[^\s)]+)\)/gi, (m, text, url) =>
@@ -177,7 +196,15 @@ export function renderRich(raw: string): string {
         buf.push(lines[i]!.replace(QUOTE, ''));
         i += 1;
       }
-      out.push(`<blockquote>${buf.map(inline).join('<br />')}</blockquote>`);
+      /**
+       * 以图片开头的引用 = 对方站的「卡片消息」（音乐分享就是这个形状）：
+       * `> ![](封面)` 然后标题、来源、两个链接。它本质是**一张卡片**，不是引一段话 ——
+       * 留着左边那根竖线和缩进，图会被竖线切一道，文字也灰一档。
+       * 所以给个 class 让 CSS 把这层引用外观让开（语义仍是 blockquote，读屏不受影响）。
+       */
+      const isCard = /^\s*!\[[^\]\n]{0,200}\]\(https?:\/\//.test(buf[0] ?? '');
+      const cls = isCard ? ' class="q-rich__quote--card"' : '';
+      out.push(`<blockquote${cls}>${buf.map(inline).join('<br />')}</blockquote>`);
       continue;
     }
 
@@ -217,6 +244,8 @@ export function toPlain(raw: string): string {
     .replace(/(^|[^\w*])\*([^*\n]{1,200}?)\*(?![\w*])/g, '$1$2')
     .replace(/~~([^~]*)~~/g, '$1')
     .replace(/^\s*#{2,3}\s+/gm, '')
+    // 图片语法要在链接规则**之前**剥，否则 `![说明](url)` 会剩下一个孤零零的 `!`
+    .replace(/!\[([^\]]{0,200})\]\((https?:\/\/[^\s)]+)\)/gi, '$1')
     .replace(/\[([^\]]{1,80})\]\((https?:\/\/[^\s)]+)\)/gi, '$1（$2）')
     .replace(/^\s*>\s?/gm, '')
     .replace(/^\s*[-*+]\s+/gm, '· ')

@@ -2907,6 +2907,9 @@ function MessageRow({
           {m.body && (
             <div
               className={`q-rich q-chat__bubble${m.status === 'pending' ? ' is-pending' : ''}`}
+              /* 正文里的图（对方站的 Markdown 封面）也要能点开：
+                 灯箱只认 `.prose img` 和 `[data-zoomable] img`，气泡不在其中 */
+              data-zoomable=""
               // renderRich 先整段转义再拼固定标签（见 src/lib/richText.ts 顶部）
               dangerouslySetInnerHTML={{ __html: renderRich(m.body) }}
             />
