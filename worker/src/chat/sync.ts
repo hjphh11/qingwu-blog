@@ -77,6 +77,14 @@ export type RemoteParsed = {
   w?: number | null;
   h?: number | null;
   size?: number | null;
+  /**
+   * 这条消息回复（引用）了哪条 Matrix 事件。
+   *
+   * 入站一直没接这个：大厅里别人「引用回复」时，我们这边只剩一句孤零零的正文，
+   * 读起来像凭空插话。落库时按 event_id 换成我们的 `chat_messages.id` 存进
+   * `reply_to_id`，前端那套引用块（本站消息一直在用）就自动生效了。
+   */
+  replyEventId?: string;
 };
 
 /**
@@ -86,6 +94,25 @@ export type RemoteParsed = {
  * 首行是协议头就剥掉，那时头像也只能从首行拿 —— 结构化里没有头像字段。
  * 两样都没有时，头像/昵称由 `resolveProfile()` 去 Matrix 成员资料里补。
  */
+/**
+ * Element 那一类客户端发「富回复」时，会把被引用的原文塞进 body 开头：
+ *
+ *   > <@qiumonster:chat.gbk.in> 嗯嗯，不做点歌台也可以正常播放的
+ *   你的那个项目倒是可以和mineradio结合。
+ *
+ * 那是引用不是正文，原样收下来我们这边会多出一段「> <@…>」的怪东西。
+ * 引用关系本来就在 `m.relates_to` 里，所以这段整块剥掉（全剥完没正文时保留原样）。
+ */
+function stripReplyPrefix(raw: string): string {
+  const ls = raw.split('\n');
+  if (!/^>\s*<@[^>]+>/.test(ls[0] ?? '')) return raw;
+  let i = 0;
+  while (i < ls.length && /^>/.test(ls[i]!)) i += 1;
+  if (i < ls.length && !ls[i]!.trim()) i += 1;
+  const rest = ls.slice(i).join('\n').trim();
+  return rest || raw.trim();
+}
+
 export function parseRemoteEvent(ev: SyncEvent): RemoteParsed | null {
   if (!ev.event_id || !ev.sender) return null;
 
@@ -111,7 +138,7 @@ export function parseRemoteEvent(ev: SyncEvent): RemoteParsed | null {
     text?: string;
   };
 
-  const rawBody = typeof c.body === 'string' ? c.body : '';
+  const rawBody = stripReplyPrefix(typeof c.body === 'string' ? c.body : '');
   const lines = rawBody.split('\n');
   const head = lines.length > 1 ? parseHead(lines[0]!) : { id: '', avatar: '' };
   // 首行是协议头就剥掉；不是就当正文的一部分
@@ -151,6 +178,17 @@ export function parseRemoteEvent(ev: SyncEvent): RemoteParsed | null {
     (typeof bf.site === 'string' && bf.site.trim()) ||
     (ev.sender.includes(':') ? `https://${ev.sender.split(':')[1]}` : '');
 
+  /**
+   * 回复关系，两种写法都认：
+   * · v1.1 起是 `content['m.relates_to']['m.in_reply_to'].event_id`（现在的客户端都用这个）
+   * · 更早的是顶层 `content['m.in_reply_to'].event_id`
+   */
+  const rel = (c['m.relates_to'] ?? {}) as { 'm.in_reply_to'?: { event_id?: string } };
+  const legacyRel = (c['m.in_reply_to'] ?? {}) as { event_id?: string };
+  const replyEventId =
+    (typeof rel['m.in_reply_to']?.event_id === 'string' ? rel['m.in_reply_to']!.event_id!.trim() : '') ||
+    (typeof legacyRel.event_id === 'string' ? legacyRel.event_id.trim() : '');
+
   return {
     // 结构化里的 actor.id 是对方站内的身份键（如 rainzt 的 uuid），比完整 mxid 更有用
     sender: (typeof bf.actor?.id === 'string' && bf.actor.id.trim()) || ev.sender,
@@ -167,6 +205,7 @@ export function parseRemoteEvent(ev: SyncEvent): RemoteParsed | null {
     w: typeof info.w === 'number' ? info.w : null,
     h: typeof info.h === 'number' ? info.h : null,
     size: typeof info.size === 'number' ? info.size : null,
+    replyEventId: replyEventId || undefined,
   };
 }
 
@@ -593,6 +632,23 @@ export async function pullBridge(
         if (needAvatar && prof.mxc) p.avatar = avatarUrlOf(p.mxid);
       }
 
+      /**
+       * 引用回复：把 Matrix 的 `event_id` 换成本地行号。
+       *
+       * 被引用的那条一定比这条早出站/入库，所以这一眼基本都能查到；
+       * 查不到（引用的是我们没收到的事件，比如对方站内部消息）就留空，
+       * 前端退化成一条普通消息，不会出现空引用块。
+       */
+      let replyToId: number | null = null;
+      if (p.replyEventId) {
+        const t = await env.DB.prepare(
+          `SELECT id FROM chat_messages WHERE matrix_event_id = ? LIMIT 1`,
+        )
+          .bind(p.replyEventId)
+          .first<{ id: number }>();
+        if (t?.id) replyToId = t.id;
+      }
+
       // 图片先落一条 chat_media —— 前端渲染走 `media.url`（我们的 mxc 代理），不存字节
       let mediaId: number | null = null;
       if (p.kind === 'image' && p.mxc) {
@@ -609,10 +665,22 @@ export async function pullBridge(
       const ins = await env.DB.prepare(
         `INSERT OR IGNORE INTO chat_messages
            (account_id, body, kind, status, ts, updated_at, origin,
-            remote_sender, remote_nick, remote_avatar, remote_site, matrix_event_id, image_id)
-         VALUES (NULL, ?, ?, 'visible', ?, ?, 'remote', ?, ?, ?, ?, ?, ?)`,
+            remote_sender, remote_nick, remote_avatar, remote_site, matrix_event_id, image_id, reply_to_id)
+         VALUES (NULL, ?, ?, 'visible', ?, ?, 'remote', ?, ?, ?, ?, ?, ?, ?)`,
       )
-        .bind(p.body, p.kind, p.ts, Date.now(), p.sender, p.nick, p.avatar, p.site, p.eventId, mediaId)
+        .bind(
+          p.body,
+          p.kind,
+          p.ts,
+          Date.now(),
+          p.sender,
+          p.nick,
+          p.avatar,
+          p.site,
+          p.eventId,
+          mediaId,
+          replyToId,
+        )
         .run();
       if (Number(ins.meta?.changes ?? 0) > 0) added += 1;
       else {
