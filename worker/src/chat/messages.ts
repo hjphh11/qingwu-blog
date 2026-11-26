@@ -268,6 +268,39 @@ async function loadQuotes(env: Env, ids: number[]): Promise<Map<number, Quote>> 
   return map;
 }
 
+/**
+ * 把大厅发来的回应并进本地汇总（`loadReactions` 与 `reactToMessage` 共用）。
+ *
+ * 同一个 emoji 两边都有人点时合成一个（`n` 相加），否则各列一行。
+ * `remote: true` 只标「本地没人点过」的那种 —— 前端据此禁掉点击：
+ * 我们不能替别人取消，也不该把 Unicode 键写进只认表情包 key 的 `chat_reactions`。
+ */
+export async function mergeRemoteReactions(
+  env: Env,
+  ids: number[],
+  map: Map<number, Reaction[]>,
+): Promise<void> {
+  if (!ids.length) return;
+  const ph = ids.map(() => '?').join(',');
+  const rows = await env.DB.prepare(
+    `SELECT message_id, emoji, COUNT(*) AS n FROM chat_remote_reactions
+      WHERE message_id IN (${ph})
+      GROUP BY message_id, emoji`,
+  )
+    .bind(...ids)
+    .all<{ message_id: number; emoji: string; n: number }>()
+    .catch(() => ({ results: [] as Array<{ message_id: number; emoji: string; n: number }> }));
+
+  for (const r of rows.results ?? []) {
+    const list = map.get(r.message_id) ?? [];
+    const hit = list.find((x) => x.emoji === r.emoji);
+    if (hit) hit.n += r.n;
+    else list.push({ emoji: r.emoji, n: r.n, mine: false, remote: true });
+    list.sort((a, b) => b.n - a.n || a.emoji.localeCompare(b.emoji));
+    map.set(r.message_id, list);
+  }
+}
+
 /** 一条消息上的表情回应汇总（一种表情一行） */
 export interface Reaction {
   emoji: string;
@@ -315,30 +348,7 @@ async function loadReactions(
       map.set(r.message_id, list);
     }
 
-    /**
-     * 大厅那边的回应在另一张表（0039），在这里合并计数。
-     *
-     * 同一个 emoji 两边都有人点时合成一个（`n` 相加），否则各列一个。
-     * `remote: true` 只标「本地没人点过」的那种，前端据此禁掉点击 ——
-     * 我们不能替别人取消，也不该把 Unicode 键写进本地的 `chat_reactions`。
-     */
-    const remoteRows = await env.DB.prepare(
-      `SELECT message_id, emoji, COUNT(*) AS n FROM chat_remote_reactions
-        WHERE message_id IN (${ph})
-        GROUP BY message_id, emoji`,
-    )
-      .bind(...ids)
-      .all<{ message_id: number; emoji: string; n: number }>()
-      .catch(() => ({ results: [] as Array<{ message_id: number; emoji: string; n: number }> }));
-
-    for (const r of remoteRows.results ?? []) {
-      const list = map.get(r.message_id) ?? [];
-      const hit = list.find((x) => x.emoji === r.emoji);
-      if (hit) hit.n += r.n;
-      else list.push({ emoji: r.emoji, n: r.n, mine: false, remote: true });
-      list.sort((a, b) => b.n - a.n || a.emoji.localeCompare(b.emoji));
-      map.set(r.message_id, list);
-    }
+    await mergeRemoteReactions(env, ids, map);
   } catch {
     /* 表不存在 / 查挂了都当没有：回应是锦上添花，不该让消息列表整个挂掉 */
   }

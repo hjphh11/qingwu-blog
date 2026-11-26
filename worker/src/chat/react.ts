@@ -13,6 +13,7 @@
 import type { Env } from '../types';
 import { json } from '../util';
 import { sessionUser } from '../auth/store';
+import { mergeRemoteReactions, type Reaction } from './messages';
 
 const EMOJI_RE = /^[a-z0-9_]{1,32}$/;
 
@@ -90,15 +91,18 @@ export async function reactToMessage(
       .bind(me.id, id)
       .all<{ emoji: string; n: number; mine: number }>();
 
-    return json({
-      ok: true,
-      reacted: !existing,
-      reactions: (rows.results ?? []).map((r) => ({
-        emoji: r.emoji,
-        n: r.n,
-        mine: r.mine === 1,
-      })),
-    });
+    /**
+     * 回这条消息的最新汇总，前端直接替换。
+     *
+     * ⚠️ 必须也带上大厅那边的（`mergeRemoteReactions`）—— 只回本地的话，
+     * 用户点一下自己的表情，屏幕上对方点的 🔥 会当场消失，下次 poll 才回来。
+     */
+    const map = new Map<number, Reaction[]>([
+      [id, (rows.results ?? []).map((r) => ({ emoji: r.emoji, n: r.n, mine: r.mine === 1 }))],
+    ]);
+    await mergeRemoteReactions(env, [id], map);
+
+    return json({ ok: true, reacted: !existing, reactions: map.get(id) ?? [] });
   } catch (err) {
     console.error('[chat] react 失败:', err instanceof Error ? err.message : err);
     return json({ ok: false, reason: 'storage', message: '没能回应，稍后再试' }, 502);

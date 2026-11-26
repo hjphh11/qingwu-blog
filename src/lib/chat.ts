@@ -206,6 +206,8 @@ function asMessage(raw: unknown): ChatMessage | null {
             emoji: String(x.emoji ?? ''),
             n: Number(x.n) || 0,
             mine: Boolean(x.mine),
+            // 大厅那边点的：只展示、不可点（服务端在 loadReactions 里标的）
+            remote: Boolean(x.remote),
           }))
           .filter((x) => x.emoji && x.n > 0)
       : [],
