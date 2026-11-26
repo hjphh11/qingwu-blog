@@ -258,16 +258,18 @@ export function imageContentOf(
 async function fetchEmoji(site: string, key: string): Promise<{ bytes: Uint8Array; mime: string } | null> {
   const base = site.replace(/\/+$/, '');
   for (const p of EMOJI_PACKS) {
+    const u = `${base}${p.base}/${encodeURIComponent(key)}${p.ext}`;
     try {
-      const res = await fetch(`${base}${p.base}/${encodeURIComponent(key)}${p.ext}`, {
-        signal: AbortSignal.timeout(6000),
-      });
+      const res = await fetch(u, { signal: AbortSignal.timeout(6000) });
       if (!res.ok) continue;
       const ct = res.headers.get('content-type') || '';
-      if (!ct.startsWith('image/')) continue;
+      if (!ct.startsWith('image/')) {
+        console.warn(`[bridge] 表情 content-type 不是图片：${u} → ${ct}`);
+        continue;
+      }
       return { bytes: new Uint8Array(await res.arrayBuffer()), mime: ct };
-    } catch {
-      /* 试下一套 */
+    } catch (err) {
+      console.error(`[bridge] 取表情失败：${u} →`, err instanceof Error ? err.message : err);
     }
   }
   return null;
