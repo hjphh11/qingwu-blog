@@ -1805,6 +1805,28 @@
     color: var(--color-crimson);
   }
 
+  /* 大厅那边点的：只展示，不能点。
+     不加 opacity —— 灰掉会让人以为这个表情失效了，它只是不归我们管。 */
+  .q-chat__react.is-remote,
+  .q-chat__react:disabled {
+    cursor: default;
+    opacity: 1;
+  }
+
+  .q-chat__react.is-remote:hover {
+    border-color: color-mix(in srgb, var(--color-ink) 9%, transparent);
+  }
+
+  /* 对方站的 key（Unicode 🔥 或自定义 token）我们没有素材，按字符显示 */
+  .q-chat__react-char {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 1.05rem;
+    font-size: 0.9rem;
+    line-height: 1;
+  }
+
   /* ——— 悬停操作条 ———
      **贴在气泡右侧、和消息同一行**（自己的消息镜像到左侧）。
      之前试过浮在上方 32px、压在气泡上沿，都不对：前者盖住上一条消息，

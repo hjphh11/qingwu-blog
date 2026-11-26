@@ -274,6 +274,13 @@ export interface Reaction {
   n: number;
   /** 我自己点没点 */
   mine: boolean;
+  /**
+   * 只有大厅那边点过（本地没人点）。
+   *
+   * 前端据此禁掉点击：我们不能替别人取消，也不该把 Unicode 键（🔥）
+   * 写进本地的 `chat_reactions`（那张表的 key 必须是表情包里的 key）。
+   */
+  remote?: boolean;
 }
 
 /**
@@ -305,6 +312,31 @@ async function loadReactions(
     for (const r of rows.results ?? []) {
       const list = map.get(r.message_id) ?? [];
       list.push({ emoji: r.emoji, n: r.n, mine: r.mine === 1 });
+      map.set(r.message_id, list);
+    }
+
+    /**
+     * 大厅那边的回应在另一张表（0039），在这里合并计数。
+     *
+     * 同一个 emoji 两边都有人点时合成一个（`n` 相加），否则各列一个。
+     * `remote: true` 只标「本地没人点过」的那种，前端据此禁掉点击 ——
+     * 我们不能替别人取消，也不该把 Unicode 键写进本地的 `chat_reactions`。
+     */
+    const remoteRows = await env.DB.prepare(
+      `SELECT message_id, emoji, COUNT(*) AS n FROM chat_remote_reactions
+        WHERE message_id IN (${ph})
+        GROUP BY message_id, emoji`,
+    )
+      .bind(...ids)
+      .all<{ message_id: number; emoji: string; n: number }>()
+      .catch(() => ({ results: [] as Array<{ message_id: number; emoji: string; n: number }> }));
+
+    for (const r of remoteRows.results ?? []) {
+      const list = map.get(r.message_id) ?? [];
+      const hit = list.find((x) => x.emoji === r.emoji);
+      if (hit) hit.n += r.n;
+      else list.push({ emoji: r.emoji, n: r.n, mine: false, remote: true });
+      list.sort((a, b) => b.n - a.n || a.emoji.localeCompare(b.emoji));
       map.set(r.message_id, list);
     }
   } catch {

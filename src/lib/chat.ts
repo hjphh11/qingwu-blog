@@ -12,13 +12,21 @@ import { WORKER_BASE as BASE } from './workerBase';
  *     只推增量的话，一条消息被撤回后前端永远不知道，会一直挂在屏幕上
  */
 
-/** 一条消息上的表情回应汇总 */
+/**
+ * 一条消息上的表情回应汇总。
+ *
+ * 大厅那边点的也算进来（`remote`），但两边的 key 未必是同一套：
+ * 本地是 `:key`（我们三套表情包的 key），Matrix 那边可能是 Unicode（🔥）
+ * 也可能是对方站的自定义 token。前端遇到不认识的 key 直接显示字符本身。
+ */
 export interface Reaction {
-  /** 表情 key（就是 `:[key]` 里那个 key） */
+  /** 表情 key，或 Matrix 那边的原始 key（可能是 Unicode） */
   emoji: string;
   n: number;
   /** 我自己点没点 */
   mine: boolean;
+  /** 只有大厅那边点过（本地没人点）—— 不能在我们的面板里取消 */
+  remote?: boolean;
 }
 
 /** 被引用的那条（只带摘要，不带全文） */

@@ -205,6 +205,45 @@ async function applyRedactions(env: Env, events: SyncEvent[]): Promise<number> {
 }
 
 /**
+ * 处理大厅里的表情回应（`m.reaction`）。
+ *
+ * 结构是 `m.relates_to = { rel_type: 'm.annotation', event_id: 原消息, key: '🔥' }`。
+ * 先按 `event_id` 反查本地消息 —— 不是每条都能对上（可能我们没收到那条），对不上就跳过。
+ *
+ * 不回写 `chat_reactions`：那张表用我们的 account_id 当身份，大厅来的人没有 id，
+ * 塞 0 会让「甲点过」变成「乙也点过」。单独一张 `chat_remote_reactions`（0039）。
+ */
+async function applyReactions(env: Env, events: SyncEvent[]): Promise<number> {
+  let n = 0;
+  for (const ev of events) {
+    if (ev.type !== 'm.reaction') continue;
+    const rel = (ev.content as { 'm.relates_to'?: Record<string, unknown> } | undefined)?.[
+      'm.relates_to'
+    ] as { rel_type?: string; event_id?: string; key?: unknown } | undefined;
+    if (!rel || rel.rel_type !== 'm.annotation') continue;
+
+    const target = typeof rel.event_id === 'string' ? rel.event_id : '';
+    const key = typeof rel.key === 'string' ? rel.key.trim() : '';
+    if (!target || !key || !ev.sender) continue;
+
+    const row = await env.DB.prepare(
+      `SELECT id FROM chat_messages WHERE matrix_event_id = ?`,
+    )
+      .bind(target)
+      .first<{ id: number }>();
+    if (!row) continue;
+
+    const res = await env.DB.prepare(
+      `INSERT OR IGNORE INTO chat_remote_reactions (message_id, sender, emoji, ts) VALUES (?, ?, ?, ?)`,
+    )
+      .bind(row.id, ev.sender, key.slice(0, 32), Number(ev.origin_server_ts) || Date.now())
+      .run();
+    if (Number(res.meta?.changes ?? 0) > 0) n += 1;
+  }
+  return n;
+}
+
+/**
  * 头像代理地址（前端 `<img>` 直接用）。
  *
  * ⚠️ 必须带 `/api` 前缀：worker 内部路由是 `/chat/avatar/:sender`，但对外一律走
@@ -428,9 +467,15 @@ export async function pullBridgeIfIdle(env: Env, gapMs = 2500): Promise<void> {
 
 export async function pullBridge(
   env: Env,
-): Promise<{ added: number; skipped: number; first: boolean; redacted: number }> {
+): Promise<{
+  added: number;
+  skipped: number;
+  first: boolean;
+  redacted: number;
+  reacted: number;
+}> {
   const cfg = bridgeOf(env);
-  if (!cfg) return { added: 0, skipped: 0, first: false, redacted: 0 };
+  if (!cfg) return { added: 0, skipped: 0, first: false, redacted: 0, reacted: 0 };
 
   const now = Date.now();
 
@@ -448,7 +493,7 @@ export async function pullBridge(
   )
     .bind(now + LOCK_MS, now, now)
     .run();
-  if (Number(lock.meta?.changes ?? 0) === 0) return { added: 0, skipped: 0, first: false, redacted: 0 };
+  if (Number(lock.meta?.changes ?? 0) === 0) return { added: 0, skipped: 0, first: false, redacted: 0, reacted: 0 };
 
   try {
     const row = await env.DB.prepare(`SELECT since, room_id FROM chat_sync WHERE id = 1`).first<{
@@ -471,7 +516,7 @@ export async function pullBridge(
     if (!res.ok) {
       const t = (await res.text().catch(() => '')).slice(0, 160);
       console.error(`[bridge] /sync ${res.status}: ${t}`);
-      return { added: 0, skipped: 0, first: false, redacted: 0 };
+      return { added: 0, skipped: 0, first: false, redacted: 0, reacted: 0 };
     }
 
     const data = (await res.json().catch(() => ({}))) as {
@@ -502,11 +547,14 @@ export async function pullBridge(
       )
         .bind(cfg.room, nextBatch ?? null, Date.now(), members)
         .run();
-      return { added: 0, skipped: events.length, first: true, redacted: 0 };
+      return { added: 0, skipped: events.length, first: true, redacted: 0, reacted: 0 };
     }
 
     // 撤回：跟新增分开走 —— 撤回事件本身不是消息，不能被当成「一条空消息」跳过
     const redacted = await applyRedactions(env, events);
+
+    // 表情回应：同样不是消息，单独处理（对不上本地消息的直接跳过）
+    const reacted = await applyReactions(env, events);
 
     let added = 0;
     let skipped = 0;
@@ -585,10 +633,10 @@ export async function pullBridge(
       .bind(cfg.room, nextBatch ?? since, Date.now(), members)
       .run();
 
-    return { added, skipped, first: false, redacted };
+    return { added, skipped, first: false, redacted, reacted };
   } catch (err) {
     console.error('[bridge] 入站失败:', err instanceof Error ? err.message : err);
-    return { added: 0, skipped: 0, first: false, redacted: 0 };
+    return { added: 0, skipped: 0, first: false, redacted: 0, reacted: 0 };
   } finally {
     // 无论成败都放锁，否则要等 LOCK_MS 自然过期
     await env.DB.prepare(`UPDATE chat_sync SET lock_until = 0 WHERE id = 1`).run().catch(() => {});

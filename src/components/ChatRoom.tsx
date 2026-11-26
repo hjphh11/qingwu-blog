@@ -2962,18 +2962,31 @@ function MessageRow({
 
           {m.reactions.length > 0 && (
             <div className="q-chat__reacts">
-              {m.reactions.map((r) => (
-                <button
-                  key={r.emoji}
-                  type="button"
-                  className={`q-chat__react${r.mine ? ' is-mine' : ''}`}
-                  onClick={() => onReact(r.emoji)}
-                  title={r.mine ? '再点一下取消' : '也点一个'}
-                >
-                  <img src={EMOJI_MAP[r.emoji]?.src} alt="" loading="lazy" decoding="async" />
-                  <span>{r.n}</span>
-                </button>
-              ))}
+              {m.reactions.map((r) => {
+                const src = EMOJI_MAP[r.emoji]?.src;
+                return (
+                  <button
+                    key={r.emoji}
+                    type="button"
+                    className={`q-chat__react${r.mine ? ' is-mine' : ''}${r.remote ? ' is-remote' : ''}`}
+                    /* 大厅那边点的只展示：我们不能替别人取消，
+                       点下去会把 Unicode 键写进本地表（那张表只认表情包的 key） */
+                    onClick={r.remote ? undefined : () => onReact(r.emoji)}
+                    disabled={r.remote}
+                    title={
+                      r.remote ? `大厅里有人点了 ${r.emoji}` : r.mine ? '再点一下取消' : '也点一个'
+                    }
+                  >
+                    {src ? (
+                      <img src={src} alt="" loading="lazy" decoding="async" />
+                    ) : (
+                      /* 对方站的 key（Unicode 🔥 或自定义 token）我们没有素材，直接显示字符 */
+                      <span className="q-chat__react-char">{r.emoji}</span>
+                    )}
+                    <span>{r.n}</span>
+                  </button>
+                );
+              })}
             </div>
           )}
 
