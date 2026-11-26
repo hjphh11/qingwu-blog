@@ -42,6 +42,15 @@ import type { Env } from './types';
 const ALLOW_METHODS = 'GET, POST, PATCH, DELETE, OPTIONS';
 const ALLOW_HEADERS = 'content-type, authorization';
 
+/**
+ * 转发账号上一次设置过的 presence。
+ *
+ * 只用来省掉重复的 PUT：cron 每分钟都会跑，状态没变就没必要再打一次
+ * （服务端虽然不会重复广播，但没必要每分钟都发一条请求）。进程重启后是 null，
+ * 下一次 cron 会多设一次，无副作用。
+ */
+let bridgePresence: 'online' | 'offline' | null = null;
+
 /** 处理 CORS 预检：/hit 与 /apply 都可能被浏览器直连，都要支持 */
 function preflight(request: Request, env: Env): Response {
   const origin = request.headers.get('origin') || '';
@@ -315,8 +324,19 @@ export default {
          * （`set_presence=offline` 对这台 Synapse 无效，见 `setBridgePresence` 的注释）。
          * 有人回来时 poll 会立刻再 sync 一次，presence 自己就恢复到 online。
          */
-        if (!(await hasLocalVisitors(env, Date.now()))) {
-          await setBridgePresence(env, 'offline');
+        const local = await hasLocalVisitors(env, Date.now());
+        if (!local) {
+          if (bridgePresence !== 'offline') {
+            const ok = await setBridgePresence(env, 'offline');
+            if (ok) {
+              bridgePresence = 'offline';
+              console.log('[cron] 长亭没人了，转发账号已下线');
+            }
+          }
+        } else if (bridgePresence !== 'online') {
+          // 不用单独 PUT：刚跑完的 sync 已经把它标成 online 了
+          bridgePresence = 'online';
+          console.log('[cron] 长亭有人，转发账号在线');
         }
       })().catch((err) => console.error('[cron] 互联入站失败:', err instanceof Error ? err.message : err)),
     );
