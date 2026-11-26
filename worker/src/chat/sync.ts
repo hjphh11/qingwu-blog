@@ -87,10 +87,22 @@ export type RemoteParsed = {
  * 两样都没有时，头像/昵称由 `resolveProfile()` 去 Matrix 成员资料里补。
  */
 export function parseRemoteEvent(ev: SyncEvent): RemoteParsed | null {
-  if (ev.type !== 'm.room.message' || !ev.event_id || !ev.sender) return null;
+  if (!ev.event_id || !ev.sender) return null;
+
+  /**
+   * 除了 `m.room.message`，还要收 **`m.sticker`**。
+   *
+   * Matrix 把贴纸单独定义成一个事件类型（不是 `m.room.message` + msgtype），
+   * 听雨那边的表情包走的就是它 —— 只在 `m.room.message` 上做判断的话，
+   * 大厅里所有表情在长亭里都会凭空消失（站长报的就是这个）。
+   * 结构上它和 `m.image` 一样：`body` + `url` + `info`。
+   */
+  const isSticker = ev.type === 'm.sticker';
+  if (ev.type !== 'm.room.message' && !isSticker) return null;
+
   const c = (ev.content ?? {}) as Record<string, unknown>;
 
-  const isImage = c.msgtype === 'm.image';
+  const isImage = isSticker || c.msgtype === 'm.image';
   if (!isImage && c.msgtype !== 'm.text') return null; // 视频 / 文件 / 语音是下一步
 
   const bf = (c['org.tea-room.bridge'] ?? {}) as {
@@ -115,6 +127,8 @@ export function parseRemoteEvent(ev: SyncEvent): RemoteParsed | null {
   if (isImage && (/^:\[?[^\]\s]{1,40}\]?:$/.test(body) || /\.(webp|png|jpe?g|gif)$/i.test(body))) {
     body = '';
   }
+  // 贴纸的 body 是贴纸名（「听雨茶室表情」这类），对读者没意义 —— 纯图更好看
+  if (isSticker) body = '';
 
   // 图片只认 `mxc://`：对方若发的是 https 直链，多半是自家 CDN，我们代理不了也没必要伪造
   const mxc = isImage && typeof c.url === 'string' ? c.url.trim() : '';
