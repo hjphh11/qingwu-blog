@@ -51,7 +51,7 @@ const LOCAL_ONLINE_WINDOW = 5 * 60 * 1000;
  *
  * 查不出来时按「有人」处理：宁可让转发账号显示在线，也别把一个正热闹的屋子标成离线。
  */
-async function hasLocalVisitors(env: Env, now: number): Promise<boolean> {
+export async function hasLocalVisitors(env: Env, now: number): Promise<boolean> {
   const r = await env.DB.prepare(`SELECT COUNT(*) AS n FROM chat_presence WHERE last_seen > ?`)
     .bind(now - LOCAL_ONLINE_WINDOW)
     .first<{ n: number }>()
@@ -570,22 +570,9 @@ export async function pullBridge(
     // 大厅人数：轻量接口，每分钟一次可接受（只有 user_id 列表）
     const members = await countMembers(cfg).catch(() => null);
 
-    const qs = new URLSearchParams({
-      timeout: '0',
-      filter: filterOf(cfg.room),
-      /**
-       * 站内没人的时候，顺手把转发账号也标成离线。
-       *
-       * 为什么必须显式写：`/sync` 不带这个参数时是 `online`，而 cron 每分钟都会拉一次 ——
-       * 等于每分钟给 `@qingwuzf` 续一次命，大厅里永远显示「清吾长亭 在线」，
-       * 哪怕我们这边一个人都没有。设成 `offline` 之后，最后一个人离开约 5 分钟，
-       * 大厅里就会看到它下线。
-       *
-       * ⚠️ 只影响 presence，**消息照收**：`/sync` 的返回和它无关，
-       * 真停了拉取会漏掉离开期间的消息，那是另一回事。
-       */
-      set_presence: (await hasLocalVisitors(env, now)) ? 'online' : 'offline',
-    });
+    // 注意：`set_presence` 参数对这台 Synapse **无效**（见文件末尾 setBridgePresence 的注释），
+    // 在线状态统一由 cron 在拉完之后单独 PUT，别在这里白试。
+    const qs = new URLSearchParams({ timeout: '0', filter: filterOf(cfg.room) });
     if (since) qs.set('since', since);
 
     const res = await fetch(`${cfg.hs}/_matrix/client/v3/sync?${qs.toString()}`, {
@@ -808,5 +795,62 @@ async function markRead(cfg: BridgeCfg, eventId: string): Promise<void> {
     );
   } catch {
     /* 静默 */
+  }
+}
+
+/* ───────────────────── 转发账号的在线状态 ───────────────────── */
+
+/** token 对应的 Matrix 用户 ID（模块级缓存：worker 常驻，不必每分钟 whoami） */
+let cachedMxUserId = '';
+
+async function mxUserIdOf(cfg: BridgeCfg): Promise<string> {
+  if (cachedMxUserId) return cachedMxUserId;
+  try {
+    const res = await fetch(`${cfg.hs}/_matrix/client/v3/account/whoami`, {
+      headers: { authorization: `Bearer ${cfg.token}` },
+      signal: AbortSignal.timeout(6000),
+    });
+    if (!res.ok) return '';
+    const d = (await res.json().catch(() => ({}))) as { user_id?: string };
+    cachedMxUserId = d.user_id ?? '';
+    return cachedMxUserId;
+  } catch {
+    return '';
+  }
+}
+
+/**
+ * 设转发账号的 presence（在线 / 离线）。
+ *
+ * **为什么不用 `/sync?set_presence=offline`**（2026-11-26 实测）：
+ * rainzt 那台 Synapse 对任何一次 `/sync` 都会把账号标成 online，这个参数被忽略 ——
+ * 停掉 worker 之后 `PUT /presence/.../status {"presence":"offline"}` 立刻生效，
+ * 而一 sync 就变回 online。所以只能「拉完消息再单独 PUT 一次」。
+ *
+ * 每分钟一条 presence 请求的开销可以忽略：presence 没变化时服务端不会重复广播，
+ * 房间里不会看到状态抖动。
+ */
+export async function setBridgePresence(
+  env: Env,
+  presence: 'online' | 'offline',
+): Promise<boolean> {
+  const cfg = bridgeOf(env);
+  if (!cfg) return false;
+  const uid = await mxUserIdOf(cfg);
+  if (!uid) return false;
+  try {
+    const res = await fetch(
+      `${cfg.hs}/_matrix/client/v3/presence/${pathSeg(uid)}/status`,
+      {
+        method: 'PUT',
+        headers: { authorization: `Bearer ${cfg.token}`, 'content-type': 'application/json' },
+        body: JSON.stringify({ presence }),
+        signal: AbortSignal.timeout(6000),
+      },
+    );
+    if (!res.ok) console.error(`[bridge] presence → ${presence} 失败：${res.status}`);
+    return res.ok;
+  } catch {
+    return false;
   }
 }

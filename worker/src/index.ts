@@ -24,7 +24,7 @@ import { handleChat } from './chat/index';
 import { purgeOrphanMedia } from './chat/media';
 import { flushBridge } from './chat/bridge';
 import { warmOnePeerName } from './chat/peerName';
-import { pullBridge } from './chat/sync';
+import { hasLocalVisitors, pullBridge, setBridgePresence } from './chat/sync';
 import { runBacklinkCheck } from './admin/friends';
 import { deleteFriendComment, getFriendsBoard, postFriendLike, postFriendReply, postFriendsBoard } from './friends-board';
 import { deletePostComment, getPostComments, postPostComment, postPostLike, postPostReply } from './post-comments';
@@ -301,15 +301,24 @@ export default {
     );
     // 茶室互联入站：拉一次 /sync，把大厅里别人的新消息收进来（首轮只记游标，不回灌历史）
     ctx.waitUntil(
-      pullBridge(env)
-        .then((s) => {
-          if (s.first) console.log('[cron] 互联入站：已对齐游标（不回灌历史）');
-          else if (s.added || s.redacted || s.reacted)
-            console.log(
-              `[cron] 互联入站：新增 ${s.added} 条，撤回 ${s.redacted} 条，表情 ${s.reacted} 个，跳过 ${s.skipped}`,
-            );
-        })
-        .catch((err) => console.error('[cron] 互联入站失败:', err instanceof Error ? err.message : err)),
+      (async () => {
+        const s = await pullBridge(env);
+        if (s.first) console.log('[cron] 互联入站：已对齐游标（不回灌历史）');
+        else if (s.added || s.redacted || s.reacted)
+          console.log(
+            `[cron] 互联入站：新增 ${s.added} 条，撤回 ${s.redacted} 条，表情 ${s.reacted} 个，跳过 ${s.skipped}`,
+          );
+        /**
+         * 站内一个人都没有 ⇒ 转发账号也别在大厅里亮着。
+         *
+         * 必须放在 sync **之后**：任何一次 `/sync` 都会把它标成 online
+         * （`set_presence=offline` 对这台 Synapse 无效，见 `setBridgePresence` 的注释）。
+         * 有人回来时 poll 会立刻再 sync 一次，presence 自己就恢复到 online。
+         */
+        if (!(await hasLocalVisitors(env, Date.now()))) {
+          await setBridgePresence(env, 'offline');
+        }
+      })().catch((err) => console.error('[cron] 互联入站失败:', err instanceof Error ? err.message : err)),
     );
   },
 } satisfies ExportedHandler<Env>;
