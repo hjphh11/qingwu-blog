@@ -111,15 +111,38 @@ export type BridgeRow = {
 };
 
 /**
+ * 出站署名的站点后缀 —— 站长定的口径：`昵称·清吾长亭`。
+ *
+ * 为什么带站点名：大厅里十几个站的人混在一起，光一个「茶客甲」看不出从哪儿来。
+ * 听雨那边登记转发账号后会另挂来源标签，但 Matrix 原生客户端只看得到这个昵称，
+ * 后缀就是给他们看的。
+ */
+const SITE_SIGN = '清吾长亭';
+
+/**
+ * 拼署名。
+ *
+ * 站长自己的昵称是「清吾」，直接拼会变成「清吾·清吾长亭」—— 重复得难看。
+ * 所以昵称本身是站点名前缀时（「清吾」之于「清吾长亭」）只留后缀。
+ * 用 `startsWith` 而不是硬编码 `=== '清吾'`，以后站名改了不用动这里。
+ */
+export function signOf(rawNick: string): string {
+  // 协议头是拿「方括号 + 分号」拼的：昵称里混进这些字符会把对方的解析带偏
+  const base = String(rawNick || '')
+    .replace(/[[\]\r\n]/g, '')
+    .trim();
+  if (!base) return SITE_SIGN;
+  if (base === SITE_SIGN || (base.length >= 2 && SITE_SIGN.startsWith(base))) return SITE_SIGN;
+  return `${base}·${SITE_SIGN}`;
+}
+
+/**
  * 出站报文的**全部格式逻辑**都在这儿（纯函数，好单测）。
  *
- * 格式与取舍见文件头：`[ID:昵称];[URL:头像]` + 换行 + 原文，**不带 v1 结构化**。
+ * 格式与取舍见文件头：`[ID:昵称·清吾长亭];[URL:头像]` + 换行 + 原文，**不带 v1 结构化**。
  */
 export function bridgeContentOf(row: BridgeRow): Record<string, unknown> {
-  // 协议头是拿「方括号 + 分号」拼的：昵称里混进这些字符会把对方的解析带偏
-  const nick = String(row.nick || '')
-    .replace(/[[\]\r\n]/g, '')
-    .trim() || '茶客';
+  const nick = signOf(row.nick);
   const head = `[ID:${nick}];[URL:${row.avatar}]`;
   // 首行协议头，换行接原话
   const body = `${head}\n${row.body}`;
