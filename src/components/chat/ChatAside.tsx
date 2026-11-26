@@ -1,3 +1,5 @@
+import { useEffect, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { MorphIcon } from 'morphicons/react';
 import { Bell, BellRing, Search, X } from '../../lib/icons';
 import { avatarFromHash } from '../../lib/avatar';
@@ -147,7 +149,36 @@ export default function ChatAside({
    */
   const peerList: ChatPeer[] = peers.length ? peers : [{ host: HOME_HOST, n: 0, home: true }];
 
+  /**
+   * 「要去外站吗」的二次确认。
+   *
+   * 为什么不在点了就直接跳：这个列表混着博客、聊天室、甚至应用页，
+   * 有的是别人的站、有的是别人的 Matrix 前端。一次误触就把人送走，
+   * 回来还得重新翻到这儿 —— 先问一句成本极低。
+   */
+  const [askPeer, setAskPeer] = useState<ChatPeer | null>(null);
+
+  const peerName = (p: ChatPeer) => p.name || p.host;
+
+  useEffect(() => {
+    if (!askPeer) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setAskPeer(null);
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [askPeer]);
+
+  const goPeer = () => {
+    const p = askPeer;
+    if (!p) return;
+    // 新标签打开：长亭可以不关，回来还在原位置
+    window.open(`https://${p.host}`, '_blank', 'noopener,noreferrer');
+    setAskPeer(null);
+  };
+
   return (
+    <>
     <aside className={`q-side q-glass${open ? ' is-open' : ''}`} aria-label="长亭侧栏">
       {/* ——— 品牌 ——— */}
       <div className="q-side__brand">
@@ -241,7 +272,16 @@ export default function ChatAside({
           </div>
           <ul className="q-peers">
             {peerList.map((p) => (
-              <li key={p.host} className={`q-peer${p.home ? ' is-home' : ''}`}>
+              <li key={p.host}>
+                <button
+                  type="button"
+                  className={`q-peer${p.home ? ' is-home' : ''}`}
+                  /* 本站没什么可跳的：点它只会回到同一个页面 */
+                  disabled={p.home}
+                  onClick={() => setAskPeer(p)}
+                  title={p.home ? '你就在这里' : `去「${peerName(p)}」看看（会离开长亭）`}
+                  aria-label={p.home ? '本站' : `去「${peerName(p)}」看看`}
+                >
                 <span className="q-peer__ic" aria-hidden="true">
                   {/* 底下的首字母是兜底：外站 favicon 404 / 防盗链时露出来 */}
                   {p.host.slice(0, 1).toUpperCase()}
@@ -261,6 +301,7 @@ export default function ChatAside({
                 {/* 有站名就显示站名（「冷汐的杂货铺」比域名好认），没有退回域名 */}
                 <span className="q-peer__host">{p.home ? p.host : p.name || p.host}</span>
                 {p.home && <span className="q-peer__n">本站</span>}
+                </button>
               </li>
             ))}
           </ul>
@@ -368,5 +409,51 @@ export default function ChatAside({
         )}
       </div>
     </aside>
+
+    {/* 二次确认：去外站。portal 到 body —— 侧栏是 overflow 容器，
+        弹层留在里面会被裁掉（站内弹层都按这个来）。 */}
+    {askPeer &&
+      createPortal(
+        <div className="q-leave" role="dialog" aria-modal="true" aria-label="离开长亭去外站">
+          <button
+            type="button"
+            className="q-leave__mask"
+            aria-label="关掉"
+            onClick={() => setAskPeer(null)}
+          />
+          <div className="q-leave__box">
+            <span className="q-leave__ic" aria-hidden="true">
+              {peerName(askPeer).slice(0, 1).toUpperCase()}
+              <img
+                src={peerIcon(askPeer.host)}
+                alt=""
+                width={40}
+                height={40}
+                loading="lazy"
+                decoding="async"
+                referrerPolicy="no-referrer"
+                onError={(e) => {
+                  e.currentTarget.style.display = 'none';
+                }}
+              />
+            </span>
+            <p className="q-leave__t">去看看「{peerName(askPeer)}」？</p>
+            <p className="q-leave__s">
+              会打开新的标签页，地址是 <b>{askPeer.host}</b>。
+              那边的登录和这里互不相通，长亭这一页给你留着。
+            </p>
+            <div className="q-leave__opts">
+              <button type="button" className="q-leave__go" onClick={goPeer}>
+                去逛逛
+              </button>
+              <button type="button" className="q-leave__stay" onClick={() => setAskPeer(null)}>
+                留在这儿
+              </button>
+            </div>
+          </div>
+        </div>,
+        document.body,
+      )}
+    </>
   );
 }

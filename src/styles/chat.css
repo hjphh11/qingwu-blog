@@ -672,7 +672,8 @@
     color: var(--color-subtle);
   }
 
-  /* 互联站点：一行一个站，形状跟频道项同一套（不设 hover —— 它不是按钮） */
+  /* 互联站点：一行一个站。现在是**按钮**（点了会弹「要去外站吗」），
+     所以给 hover；本站那行 disabled，没有可去的地方。 */
   .q-peers {
     display: flex;
     flex-direction: column;
@@ -684,11 +685,25 @@
     display: flex;
     align-items: center;
     gap: 0.5rem;
+    width: 100%;
     min-height: 2.25rem;
     padding: 0.35rem 0.4rem;
+    border: 0;
     border-radius: 0.75rem;
+    background: transparent;
+    text-align: left;
     font-size: 0.8125rem;
     color: var(--color-ink);
+    cursor: pointer;
+    transition: background-color var(--dur-micro) ease;
+  }
+
+  .q-peer:hover:not(:disabled) {
+    background: color-mix(in srgb, var(--color-rose) 22%, transparent);
+  }
+
+  .q-peer:disabled {
+    cursor: default;
   }
 
   .q-peer__ic {
@@ -736,6 +751,119 @@
     font-size: 0.6875rem;
     color: var(--color-subtle);
     font-variant-numeric: tabular-nums;
+  }
+
+  /* ——— 「去外站」的二次确认 ———
+     和举报弹层同一套骨架（遮罩 + 卡片），但内容更轻：一张头像、一句话、两个按钮。
+     跳出去就回不到刚才的位置，值得多问一句。 */
+  .q-leave {
+    position: fixed;
+    inset: 0;
+    z-index: 90;
+    display: grid;
+    place-items: center;
+    padding: 1rem;
+  }
+
+  .q-leave__mask {
+    position: absolute;
+    inset: 0;
+    border: 0;
+    background: color-mix(in srgb, var(--color-ink) 30%, transparent);
+    backdrop-filter: blur(4px);
+  }
+
+  .q-leave__box {
+    position: relative;
+    width: min(20rem, 100%);
+    padding: 1.2rem 1.15rem 1rem;
+    border: 1px solid rgba(255, 255, 255, 0.92);
+    border-radius: 1.25rem;
+    background: #fffdfb;
+    box-shadow: 0 24px 60px -20px rgba(74, 55, 40, 0.34);
+    text-align: center;
+  }
+
+  .q-leave__ic {
+    position: relative;
+    display: inline-grid;
+    place-items: center;
+    width: 2.5rem;
+    height: 2.5rem;
+    overflow: hidden;
+    border-radius: 0.7rem;
+    background: color-mix(in srgb, var(--color-rose) 34%, #fff);
+    font-size: 0.9rem;
+    font-weight: 700;
+    color: var(--color-crimson);
+  }
+
+  .q-leave__ic img {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    background: #fff;
+  }
+
+  .q-leave__t {
+    margin-top: 0.7rem;
+    font-size: 0.95rem;
+    font-weight: 700;
+    color: var(--color-ink);
+  }
+
+  .q-leave__s {
+    margin-top: 0.35rem;
+    font-size: 0.75rem;
+    line-height: 1.8;
+    color: var(--color-subtle);
+  }
+
+  .q-leave__s b {
+    font-weight: 600;
+    color: var(--color-brown);
+    overflow-wrap: anywhere;
+  }
+
+  .q-leave__opts {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.4rem;
+    margin-top: 0.95rem;
+  }
+
+  .q-leave__opts button {
+    min-height: 2.5rem;
+    border-radius: 0.7rem;
+    font-size: 0.8125rem;
+    transition:
+      background-color var(--dur-micro) ease,
+      border-color var(--dur-micro) ease,
+      color var(--dur-micro) ease;
+  }
+
+  .q-leave__go {
+    border: 1px solid var(--color-crimson);
+    background: var(--color-crimson);
+    color: var(--color-cream);
+    font-weight: 600;
+  }
+
+  .q-leave__go:hover {
+    background: color-mix(in srgb, var(--color-crimson) 88%, #000);
+  }
+
+  .q-leave__stay {
+    border: 1px solid color-mix(in srgb, var(--color-ink) 10%, transparent);
+    background: #fff;
+    color: var(--color-ink);
+  }
+
+  .q-leave__stay:hover {
+    border-color: color-mix(in srgb, var(--color-crimson) 34%, transparent);
+    color: var(--color-crimson);
   }
 
   .q-me {
