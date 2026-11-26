@@ -326,12 +326,16 @@ export default {
          */
         const local = await hasLocalVisitors(env, Date.now());
         if (!local) {
-          if (bridgePresence !== 'offline') {
-            const ok = await setBridgePresence(env, 'offline');
-            if (ok) {
-              bridgePresence = 'offline';
-              console.log('[cron] 长亭没人了，转发账号已下线');
-            }
+          /**
+           * ⚠️ **每分钟都得 PUT 一次**，不能因为「上次已经设过 offline」就跳过：
+           * 上面那行 `pullBridge` 里的 `/sync` 每次都把账号刷成 online，
+           * 守卫一加，第二分钟起 presence 就会卡在 online。
+           * 重复 PUT 同一个值服务端不会重复广播，代价可以忽略。
+           */
+          const ok = await setBridgePresence(env, 'offline');
+          if (ok) {
+            if (bridgePresence !== 'offline') console.log('[cron] 长亭没人了，转发账号已下线');
+            bridgePresence = 'offline';
           }
         } else if (bridgePresence !== 'online') {
           // 不用单独 PUT：刚跑完的 sync 已经把它标成 online 了
