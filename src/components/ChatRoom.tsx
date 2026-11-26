@@ -1233,6 +1233,33 @@ export default function ChatRoom() {
   }, [messages.length, scrollToBottom]);
 
   /**
+   * 内容一长高就校验一次贴底。
+   *
+   * 这是「贴底」最后一道兜底，也是首屏差一截的真凶：滚动那一下之后，
+   * 内容高度还会继续变 —— 自定义字体应用（中文字体 FOUT）、代码块折行、
+   * 表情图解码、滚动条出现，都会把高度再撑开几十上百像素。
+   * 这些都不触发 `<img onLoad>`，光靠消息条数变化也接不住（实测首屏就差 121px，
+   * 屏幕上直接露出「回到最新」按钮）。
+   *
+   * ResizeObserver 在页面隐藏时同样被暂停，切回前台会自动补一次 ——
+   * 正好和「关掉浏览器 / 划到后台再回来」那个场景对上。
+   */
+  useEffect(() => {
+    const el = scrollRef.current;
+    const inner = el?.querySelector('.q-chat__inner');
+    if (!el || !inner || typeof ResizeObserver === 'undefined') return;
+
+    const ro = new ResizeObserver(() => {
+      if (!atBottomRef.current) return;
+      // 已经贴底就别白滚一次（也防止自己把自己的滚动当成「被顶开」）
+      if (el.scrollHeight - el.scrollTop - el.clientHeight <= 2) return;
+      scrollToBottom(false);
+    });
+    ro.observe(inner);
+    return () => ro.disconnect();
+  }, [messages.length, scrollToBottom]);
+
+  /**
    * 图片消息加载完再补一次贴底。
    *
    * `<img>` 的高度是异步来的：滚到底那一刻图还没解码，`scrollHeight` 是「假底部」，
