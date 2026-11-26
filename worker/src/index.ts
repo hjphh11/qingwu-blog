@@ -245,30 +245,41 @@ export default {
       console.log('[cron] 归档只读模式，跳过友链刷新与补发');
       return;
     }
-    ctx.waitUntil(
-      refreshAllFeeds(env)
-        .then((s) => console.log(`[cron] 友链更新探测：${s.updated}/${s.total} 命中，${s.failed} 未抓到`))
-        .catch((err) => console.error('[cron] 友链更新探测失败:', err instanceof Error ? err.message : err)),
-    );
+    /**
+     * 这个 handler 现在是**每分钟**被调一次（服务器 crontab `* * * * *`），
+     * 所以重活要自己判断「今天跑过没有」——不然回链轮检会每分钟去抓十几个第三方站。
+     * 03:00 那一次额外跑：友链探测、回链轮检、媒体清理。
+     */
+    const clock = new Date();
+    const daily = clock.getHours() === 3 && clock.getMinutes() === 0;
+
+    if (daily) {
+      ctx.waitUntil(
+        refreshAllFeeds(env)
+          .then((s) => console.log(`[cron] 友链更新探测：${s.updated}/${s.total} 命中，${s.failed} 未抓到`))
+          .catch((err) => console.error('[cron] 友链更新探测失败:', err instanceof Error ? err.message : err)),
+      );
+      // 回链轮检：每天一次，串行抓十几个第三方站点（见 admin/friends.ts 里为什么串行）
+      ctx.waitUntil(
+        runBacklinkCheck(env)
+          .then((s) => console.log(`[cron] 回链检查：${s.ok}/${s.total} 仍挂着回链`))
+          .catch((err) => console.error('[cron] 回链检查失败:', err instanceof Error ? err.message : err)),
+      );
+      // 长亭媒体清理：只清「没有 visible/pending 消息引用」且超过 7 天的图/语音。
+      // 别改成按前缀的 R2 lifecycle —— 那条规则不认识库，会把在用的历史图一起删成破图。
+      ctx.waitUntil(
+        purgeOrphanMedia(env)
+          .then((s) => {
+            if (s.removed || s.failed) console.log(`[cron] 长亭媒体清理：删 ${s.removed} 个，失败 ${s.failed}`);
+          })
+          .catch((err) => console.error('[cron] 长亭媒体清理失败:', err instanceof Error ? err.message : err)),
+      );
+    }
+
     ctx.waitUntil(
       flushOutbox(env, 10).catch((err) =>
         console.error('[cron] 补发通知信失败:', err instanceof Error ? err.message : err),
       ),
-    );
-    // 回链轮检：每天一次，串行抓十几个第三方站点（见 admin/friends.ts 里为什么串行）
-    ctx.waitUntil(
-      runBacklinkCheck(env)
-        .then((s) => console.log(`[cron] 回链检查：${s.ok}/${s.total} 仍挂着回链`))
-        .catch((err) => console.error('[cron] 回链检查失败:', err instanceof Error ? err.message : err)),
-    );
-    // 长亭媒体清理：只清「没有 visible/pending 消息引用」且超过 7 天的图/语音。
-    // 别改成按前缀的 R2 lifecycle —— 那条规则不认识库，会把在用的历史图一起删成破图。
-    ctx.waitUntil(
-      purgeOrphanMedia(env)
-        .then((s) => {
-          if (s.removed || s.failed) console.log(`[cron] 长亭媒体清理：删 ${s.removed} 个，失败 ${s.failed}`);
-        })
-        .catch((err) => console.error('[cron] 长亭媒体清理失败:', err instanceof Error ? err.message : err)),
     );
     // 茶室互联出站：发送成功时已经催过一次，这里兜住重试与积压（没配 MATRIX_* 时直接返回）
     ctx.waitUntil(
