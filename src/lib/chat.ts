@@ -602,6 +602,19 @@ export interface WhoResult {
   blocks: BlockedUser[];
   /** 互联的另一头：大厅有多少成员（0 = 没接互联，前端不显示） */
   remote?: { members: number };
+  /** 互联站点：大厅里实际说过话的站（本站排第一，`home: true`） */
+  peers?: ChatPeer[];
+}
+
+/**
+ * 侧栏「互联站点」的一行。
+ *
+ * `n` 是「这个站有多少人在大厅说过话」，不是在线数 —— 文案上别写成「N 人在线」。
+ */
+export interface ChatPeer {
+  host: string;
+  n: number;
+  home: boolean;
 }
 
 /** 屏蔽名单里的一行。比 ChatMember 轻：这些人对我而言只剩「取消屏蔽」一个动作 */
@@ -636,6 +649,7 @@ export async function fetchWho(): Promise<WhoResult> {
       members?: ChatMember[];
       people?: ChatMember[];
       blocks?: BlockedUser[];
+      peers?: ChatPeer[];
       remote?: { members?: number };
     };
     const members = Array.isArray(data.members) ? data.members : [];
@@ -644,6 +658,7 @@ export async function fetchWho(): Promise<WhoResult> {
       // 服务端没给 people（老版本 worker / 查询失败）时退回在线名单，卡片不至于空着
       people: Array.isArray(data.people) && data.people.length ? data.people : members,
       blocks: Array.isArray(data.blocks) ? data.blocks : [],
+      peers: Array.isArray(data.peers) ? data.peers : [],
       remote: { members: Number(data.remote?.members ?? 0) || 0 },
     };
   } catch {

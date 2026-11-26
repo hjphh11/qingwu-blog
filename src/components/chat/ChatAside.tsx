@@ -2,7 +2,7 @@ import { MorphIcon } from 'morphicons/react';
 import { Bell, BellRing, Search, X } from '../../lib/icons';
 import { avatarFromHash } from '../../lib/avatar';
 import type { SessionAccount } from '../../lib/auth';
-import type { ChatMember } from '../../lib/chat';
+import type { ChatMember, ChatPeer } from '../../lib/chat';
 import { SITE } from '../../config';
 
 /**
@@ -43,6 +43,7 @@ function peerIcon(host: string): string {
 export default function ChatAside({
   account,
   members,
+  peers,
   people,
   identityPending,
   online,
@@ -57,6 +58,8 @@ export default function ChatAside({
   account: SessionAccount | null;
   /** 在线的人：左栏只露头像，名字和来源在右侧「空间详情」里 */
   members: ChatMember[];
+  /** 互联站点（由 /chat/who 从远端消息反推，本站排第一） */
+  peers: ChatPeer[];
   /** 所有来过的人（带发言数、首末发言时间）；「我」的人卡从这里取一行 */
   people: ChatMember[];
   /** 身份未确认：画同高的占位块，别说「还没进门」 */
@@ -110,21 +113,15 @@ export default function ChatAside({
     : null;
 
   /**
-   * 互联站点：这间屋子里的人各自从哪个站来。
+   * 互联站点：这间屋子里实际收到过消息的站。
    *
-   * 不做一份手写名单 —— 名单一过期就是假话。这里直接按成员的 `site`
-   * 归并：现在只有本站，将来接了 Matrix 转发，远端成员的服务器会自己冒出来。
-   * 本站永远在列（没人说话时也要让人知道这间屋子连的是谁）。
+   * 数据来自服务端（`/chat/who` 的 `peers`，按远端消息的 `remote_site` 归并），
+   * **不再从成员表的 `site_url` 推** —— 那张表只有我们自己的账号，
+   * 结果永远是「只有本站 1 个」，就是侧栏一直只显示一行 qingwu.ink 的原因。
+   *
+   * 服务端没给（老 worker / 查询失败）时退回「只有本站」，不至于空一块。
    */
-  const peerMap = new Map<string, number>();
-  for (const m of members) {
-    const h = hostOf(m.site || '') || HOME_HOST;
-    peerMap.set(h, (peerMap.get(h) ?? 0) + 1);
-  }
-  if (!peerMap.has(HOME_HOST)) peerMap.set(HOME_HOST, 0);
-  const peers = [...peerMap.entries()]
-    .map(([h, n]) => ({ host: h, n, home: h === HOME_HOST }))
-    .sort((a, b) => (a.home ? -1 : b.home ? 1 : b.n - a.n));
+  const peerList: ChatPeer[] = peers.length ? peers : [{ host: HOME_HOST, n: 0, home: true }];
 
   return (
     <aside className={`q-side q-glass${open ? ' is-open' : ''}`} aria-label="长亭侧栏">
@@ -216,10 +213,10 @@ export default function ChatAside({
         <section className="q-side__group">
           <div className="q-side__grouphead">
             <span>互联站点</span>
-            <span>{peers.length} 个</span>
+            <span>{peerList.length} 个</span>
           </div>
           <ul className="q-peers">
-            {peers.map((p) => (
+            {peerList.map((p) => (
               <li key={p.host} className={`q-peer${p.home ? ' is-home' : ''}`}>
                 <span className="q-peer__ic" aria-hidden="true">
                   {/* 底下的首字母是兜底：外站 favicon 404 / 防盗链时露出来 */}

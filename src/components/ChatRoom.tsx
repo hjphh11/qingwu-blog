@@ -48,6 +48,7 @@ import {
   type ChatMedia,
   type ChatMember,
   type ChatMessage,
+  type ChatPeer,
   type PinInfo,
   type SearchHit,
 } from '../lib/chat';
@@ -376,6 +377,8 @@ export default function ChatRoom() {
   const [blocks, setBlocks] = useState<BlockedUser[]>([]);
   /** 互联大厅的成员数（0 = 没接互联）。与「此刻在长亭 N 人」口径不同，文案分开写 */
   const [remoteMembers, setRemoteMembers] = useState(0);
+  /** 互联站点（服务端从远端消息反推）：侧栏「互联站点」那张卡用它 */
+  const [peers, setPeers] = useState<ChatPeer[]>([]);
   /** 正在看谁的个人主页（null = 没开）。左栏头像 / 左栏「我」/ 右栏成员行共用 */
   const [peek, setPeek] = useState<ChatMember | null>(null);
 
@@ -746,6 +749,7 @@ export default function ChatRoom() {
     setPeople(w.people);
     setBlocks(w.blocks);
     setRemoteMembers(w.remote?.members ?? 0);
+    setPeers(w.peers ?? []);
   }, []);
 
   /**
@@ -775,6 +779,7 @@ export default function ChatRoom() {
         setPeople(list.people);
         setBlocks(list.blocks);
         setRemoteMembers(list.remote?.members ?? 0);
+        setPeers(list.peers ?? []);
         setPinState(page.pin);
         lastIdRef.current = page.messages.reduce((max, m) => Math.max(max, m.id), 0);
         readMarkRef.current = page.lastRead;
@@ -1749,6 +1754,7 @@ export default function ChatRoom() {
     <ChatAside
       account={account}
       members={members}
+      peers={peers}
       people={people}
       identityPending={!identityReady}
       online={loading ? -1 : online}

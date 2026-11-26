@@ -198,10 +198,92 @@ export async function getWho(request: Request, env: Env): Promise<Response> {
       .first<{ remote_members: number }>()
       .catch(() => null);
 
-    return json({ ok: true, members, people, blocks, remote: { members: sync?.remote_members ?? 0 } });
+    /**
+     * 互联站点：这间屋子实际收到过哪些站的消息。
+     *
+     * 不能靠「成员表里有没有别的站」—— 成员表只有我们自己的账号，`site_url` 永远是本域。
+     * 真正能证明「那边有人说话」的只有消息本身：`remote_site` 是出站方带过来的站点地址，
+     * 大厅原生用户的这条会被置空（`sync.ts` 里 hsHost 那段），所以空值归到大厅本体。
+     * 同样兜一层：这张卡片挂了不该让 who 整体失败。
+     */
+    let peers: { host: string; n: number; home: boolean }[] = [];
+    try {
+      peers = await listPeers(env, now);
+    } catch (e) {
+      console.error('[chat] peers 失败:', e instanceof Error ? e.message : e);
+    }
+
+    return json({
+      ok: true,
+      members,
+      people,
+      blocks,
+      peers,
+      remote: { members: sync?.remote_members ?? 0 },
+    });
   } catch (err) {
     console.error('[chat] who 失败:', err instanceof Error ? err.message : err);
     // 侧栏挂了不该影响聊天：回空列表，页面照常用
     return json({ ok: false, reason: 'storage', members: [] }, 502);
   }
+}
+
+/* ─────────────────────────── 互联站点 ─────────────────────────── */
+
+/** 只看最近 30 天：更早的站已经不在场了，列出来是假话 */
+const PEER_WINDOW = 30 * 24 * 3600 * 1000;
+
+/**
+ * 站点地址归一化。
+ *
+ * 只剥 `www.` 和 `matrix.` 两个前缀 —— 同一家站两边写法常常不一样
+ * （`matrix.lengxiqwq.com` 发消息、`lengxiqwq.com` 写在资料里），
+ * 不归一就会在侧栏里并列成两个站。`chat.` 之类故意不剥：那可能真是另一个站。
+ */
+function hostOfSite(site: string): string {
+  try {
+    return new URL(site).host.toLowerCase().replace(/^www\./, '').replace(/^matrix\./, '');
+  } catch {
+    return '';
+  }
+}
+
+export type PeerRow = { host: string; n: number; home: boolean };
+
+/**
+ * 「互联站点」：从**收到的远端消息**反推有哪些站在说话。
+ *
+ * 为什么不用成员表：`members` 只有我们自己的账号，`site_url` 永远是本域 ——
+ * 这正是侧栏一直只显示「qingwu.ink · 1 个」的原因。
+ *
+ * - 空 `remote_site` 归到大厅本体（rainzt.cn）：`sync.ts` 会把大厅原生用户的 site 置空；
+ * - 人数据 `COUNT(DISTINCT remote_sender)`，口径是「这个站有多少人在大厅说过话」，
+ *   不是在线数 —— 前端那行也就只写「N 人」，不加「在线」二字；
+ * - 本站钉在最前面（`home: true`），前端显示「本站」。
+ */
+export async function listPeers(env: Env, now: number): Promise<PeerRow[]> {
+  const rows = await env.DB.prepare(
+    `SELECT remote_site AS site, COUNT(DISTINCT remote_sender) AS n
+       FROM chat_messages
+      WHERE origin = 'remote' AND status <> 'deleted' AND ts > ?
+      GROUP BY remote_site`,
+  )
+    .bind(now - PEER_WINDOW)
+    .all<{ site: string | null; n: number }>();
+
+  const hub = hostOfSite(String(env.MATRIX_HS ?? ''));
+  const self = hostOfSite(String(env.SITE_URL ?? '')) || 'qingwu.ink';
+
+  const map = new Map<string, number>();
+  for (const r of rows.results ?? []) {
+    const h = hostOfSite(String(r.site ?? '')) || hub;
+    if (!h || h === self) continue;
+    map.set(h, (map.get(h) ?? 0) + Number(r.n ?? 0));
+  }
+
+  const rest = [...map.entries()]
+    .map(([host, n]) => ({ host, n, home: false }))
+    .sort((a, b) => b.n - a.n);
+
+  return [{ host: self, n: 0, home: true }, ...rest];
 }
