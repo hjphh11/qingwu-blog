@@ -79,13 +79,27 @@ export async function reportMessage(
   }
 
   const msg = await env.DB.prepare(
-    'SELECT account_id, status FROM chat_messages WHERE id = ?',
+    'SELECT account_id, status, origin FROM chat_messages WHERE id = ?',
   )
     .bind(id)
-    .first<{ account_id: number | null; status: string }>();
+    .first<{ account_id: number | null; status: string; origin: string }>();
 
   if (!msg || (msg.status !== 'visible' && msg.status !== 'pending')) {
     return json({ ok: false, reason: 'not_found', message: '这条消息不在了' }, 404);
+  }
+  /**
+   * 只接受**本站发言**的举报。
+   *
+   * 一旦接上互联，长亭里就有一半话是别人站的人说的（`origin='remote'`，
+   * `account_id` 为 NULL）。那些我们既删不掉（删的只是本地副本，大厅里还在），
+   * 也罚不了（不是我们的账号）—— 收下举报等于许诺一个做不到的处置。
+   * 正确的出口是找大厅管理员，那儿才有权力处理。
+   */
+  if (msg.origin === 'remote') {
+    return json(
+      { ok: false, reason: 'remote', message: '这条来自别的站点，得找大厅的管理员处理' },
+      403,
+    );
   }
   if (msg.account_id === me.id) {
     return json({ ok: false, reason: 'self', message: '自己的话就别举报了' }, 400);

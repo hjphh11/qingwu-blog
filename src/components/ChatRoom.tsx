@@ -3076,7 +3076,9 @@ function MessageRow({
                 {pinned ? '取消置顶' : '置顶'}
               </button>
             )}
-            {!mine && m.status === 'visible' && (
+            {/* 举报只针对本站发言：大厅来的消息（origin='remote'）我们删不掉也罚不了，
+                收下举报等于许诺一个做不到的处置 —— 该找大厅管理员 */}
+            {!mine && m.status === 'visible' && m.origin !== 'remote' && (
               <button
                 type="button"
                 className="q-chat__recall q-chat__report"
