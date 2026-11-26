@@ -44,7 +44,21 @@ const MAX_TRIES = 6;
 /** 待审消息先压一会儿：等审核出结果再决定发不发，别把可能违规的话推到大厅 */
 const PENDING_DELAY_MS = 60_000;
 
-export type BridgeCfg = { hs: string; room: string; token: string; site: string };
+export type BridgeCfg = {
+  hs: string;
+  room: string;
+  token: string;
+  /** 对外站点地址（带尾斜杠），`site` 字段与绝对 URL 拼装用 */
+  site: string;
+  /**
+   * 取站内静态资源（表情图）用的基地址。
+   *
+   * **不能是 `site`**：worker fetch 自己的公网域名会 `Network connection lost`
+   * （NAT 回环被拦），80 端口又整体 301 到 https。生产用 nginx 的
+   * `127.0.0.1:8099`（见 deploy/nginx/conf.d/internal-static.conf）。
+   */
+  assets: string;
+};
 
 /** 三个变量齐了才启用；少一个就当没配（本地开发、CI 都是这个状态） */
 export function bridgeOf(env: Env): BridgeCfg | null {
@@ -53,7 +67,8 @@ export function bridgeOf(env: Env): BridgeCfg | null {
   const token = String(env.MATRIX_TOKEN ?? '').trim();
   if (!hs || !room || !token) return null;
   const base = String(env.SITE_URL ?? '').trim().replace(/\/+$/, '') || SITE_FALLBACK;
-  return { hs, room, token, site: `${base}/` };
+  const assets = String(env.INTERNAL_ORIGIN ?? '').trim().replace(/\/+$/, '') || base;
+  return { hs, room, token, site: `${base}/`, assets };
 }
 
 function rand(n = 10): string {
@@ -489,7 +504,7 @@ async function deliverEmoji(
   row: BridgeRow,
   key: string,
 ): Promise<SendResult | null> {
-  const img = await fetchEmoji(cfg.site, key);
+  const img = await fetchEmoji(cfg.assets, key);
   if (!img) return null;
 
   const ext = img.mime.includes('webp') ? 'webp' : 'png';

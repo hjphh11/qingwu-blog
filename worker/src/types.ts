@@ -239,6 +239,12 @@ export interface Env {
   MATRIX_ROOM?: string;
   /** 转发账号的 access_token（只放服务器 `.dev.vars`，绝不进仓库） */
   MATRIX_TOKEN?: string;
+  /**
+   * 取站内静态资源（表情图）的内部地址，形如 `http://127.0.0.1:8099`。
+   * 不配就退回 SITE_URL —— 但生产上 fetch 自己的公网域名会被拦（NAT 回环），
+   * 所以必须配。见 deploy/nginx/conf.d/internal-static.conf。
+   */
+  INTERNAL_ORIGIN?: string;
 
   // ——— 访客留言后小爱自动回复（见 admin/ai.ts 的 autoReplyTo）———
   /**
