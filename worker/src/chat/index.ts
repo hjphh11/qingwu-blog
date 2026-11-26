@@ -100,7 +100,7 @@ export async function handleChat(
   // /chat/:id/recall
   const recall = path.match(/^\/chat\/(\d+)\/recall$/);
   if (recall) {
-    return method === 'POST' ? recallMessage(request, env, recall[1]!) : NOT_ALLOWED();
+    return method === 'POST' ? recallMessage(request, env, ctx, recall[1]!) : NOT_ALLOWED();
   }
 
   // /chat/:id/react

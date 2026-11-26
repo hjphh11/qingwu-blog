@@ -13,7 +13,10 @@
 import type { Env } from '../types';
 import { json } from '../util';
 import { sessionUser } from '../auth/store';
-import { queueRedact } from './bridge';
+import { queueRedact, flushBridge } from './bridge';
+
+/** 只用到 waitUntil —— 避免依赖全局的 ExecutionContext 类型 */
+type Ctx = { waitUntil(p: Promise<unknown>): void };
 
 /** 可撤回窗口 */
 const RECALL_WINDOW = 2 * 60 * 1000;
@@ -21,6 +24,7 @@ const RECALL_WINDOW = 2 * 60 * 1000;
 export async function recallMessage(
   request: Request,
   env: Env,
+  ctx: Ctx,
   idParam: string,
 ): Promise<Response> {
   const id = Number(idParam);
@@ -73,6 +77,8 @@ export async function recallMessage(
 
     // 撤回要跟着同步到大厅：发过的那条 redact 掉，还没发的直接销账（见 bridge.ts queueRedact）
     await queueRedact(env, id);
+    // 不等 cron（一分钟一次）：用户点了撤回，大厅那边应该几秒内就消失
+    ctx.waitUntil(flushBridge(env, 5).catch(() => undefined));
 
     return json({ ok: true });
   } catch (err) {
