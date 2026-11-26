@@ -18,6 +18,7 @@
  * id / nick / text，头像只能靠正文头还原，所以协议头不能省。
  */
 import type { Env } from '../types';
+import { avatarFromEmail } from '../auth/avatar';
 
 /** 站点地址：出站消息的 `site` 字段与相对头像拼绝对地址都用它（rainzt 那边也是带尾斜杠的写法） */
 const SITE_FALLBACK = 'https://www.qingwu.ink';
@@ -237,10 +238,17 @@ export async function flushBridge(env: Env, limit = BATCH): Promise<{ sent: numb
     if (!changed(claimed)) continue;
 
     const nick = r.nick || (r.email ? r.email.split('@')[0]! : `茶客#${r.account_id}`);
+    /**
+     * 头像要跟站内显示的那张**完全一致**：多数账号 `avatar_url` 是空的，
+     * 站内走的是 `avatarFromEmail()`（QQ 邮箱取 qlogo、其余取 cravatar）。
+     * 只取 `avatar_url` 会让出站消息变成空头像 —— 而协议头里的 `[URL:]` 正是
+     * 对方还原头像的唯一来源，空了对面就只剩一个色块。
+     */
+    const avatar = r.avatar || (r.email ? avatarFromEmail(r.email) : '');
     const err = await deliverToMatrix(cfg, {
       body: r.body,
       nick,
-      avatar: absUrl(r.avatar ?? '', cfg.site),
+      avatar: absUrl(avatar, cfg.site),
       accountId: r.account_id,
       txn: r.txn,
     });

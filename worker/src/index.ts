@@ -23,6 +23,7 @@ import { handleAdmin } from './admin/index';
 import { handleChat } from './chat/index';
 import { purgeOrphanMedia } from './chat/media';
 import { flushBridge } from './chat/bridge';
+import { pullBridge } from './chat/sync';
 import { runBacklinkCheck } from './admin/friends';
 import { deleteFriendComment, getFriendsBoard, postFriendLike, postFriendReply, postFriendsBoard } from './friends-board';
 import { deletePostComment, getPostComments, postPostComment, postPostLike, postPostReply } from './post-comments';
@@ -276,6 +277,15 @@ export default {
           if (s.sent || s.failed) console.log(`[cron] 互联出站：成功 ${s.sent}，丢弃 ${s.dropped}，失败 ${s.failed}`);
         })
         .catch((err) => console.error('[cron] 互联出站失败:', err instanceof Error ? err.message : err)),
+    );
+    // 茶室互联入站：拉一次 /sync，把大厅里别人的新消息收进来（首轮只记游标，不回灌历史）
+    ctx.waitUntil(
+      pullBridge(env)
+        .then((s) => {
+          if (s.first) console.log('[cron] 互联入站：已对齐游标（不回灌历史）');
+          else if (s.added) console.log(`[cron] 互联入站：新增 ${s.added} 条，跳过 ${s.skipped}`);
+        })
+        .catch((err) => console.error('[cron] 互联入站失败:', err instanceof Error ? err.message : err)),
     );
   },
 } satisfies ExportedHandler<Env>;

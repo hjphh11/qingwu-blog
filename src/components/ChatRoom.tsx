@@ -2814,8 +2814,15 @@ function MessageRow({
             {m.admin && <span className="q-chat__tag">站长</span>}
             <span className="q-chat__name">{m.name}</span>
             {m.mentionedMe && <span className="q-chat__tag q-chat__tag--at">@了你</span>}
+            {/*
+              来源标签：`site` 存的是完整 URL（协议/尾斜杠都有，比如 `https://rainzt.cn/`），
+              直接显示会是一长串；这里归一成域名，原始地址留在 title 里。
+              协议里 `site` 只保证是 URL，没有站点名可读，所以域名就是最准的"从哪来"。
+            */}
             {m.origin === 'remote' && m.site && (
-              <span className="q-chat__site">来自 {m.site}</span>
+              <span className="q-chat__site" title={m.site}>
+                来自 {hostOf(m.site) || m.site}
+              </span>
             )}
             {m.editedAt && (
               <span className="q-chat__edited" title={`改于 ${clockOf(m.editedAt)}`}>
