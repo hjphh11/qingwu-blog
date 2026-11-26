@@ -232,6 +232,14 @@ export interface Env {
   /** 公共域，缺省 `https://img.qingwu.ink`（末尾不要带斜杠） */
   R2_PUBLIC_BASE?: string;
 
+  // ——— 茶室互联 · 出站（见 chat/bridge.ts，方案 §46）———
+  /** 对方 homeserver，例如 `https://matrix.rainzt.cn` */
+  MATRIX_HS?: string;
+  /** 大厅房间 id：`!CKQY…` */
+  MATRIX_ROOM?: string;
+  /** 转发账号的 access_token（只放服务器 `.dev.vars`，绝不进仓库） */
+  MATRIX_TOKEN?: string;
+
   // ——— 访客留言后小爱自动回复（见 admin/ai.ts 的 autoReplyTo）———
   /**
    * 总开关。`off` / `0` / `false` / `no` 任意一个即关闭，其余（含不填）都算开。

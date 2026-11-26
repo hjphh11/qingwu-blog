@@ -22,6 +22,7 @@ import { handleAuth } from './auth/index';
 import { handleAdmin } from './admin/index';
 import { handleChat } from './chat/index';
 import { purgeOrphanMedia } from './chat/media';
+import { flushBridge } from './chat/bridge';
 import { runBacklinkCheck } from './admin/friends';
 import { deleteFriendComment, getFriendsBoard, postFriendLike, postFriendReply, postFriendsBoard } from './friends-board';
 import { deletePostComment, getPostComments, postPostComment, postPostLike, postPostReply } from './post-comments';
@@ -267,6 +268,14 @@ export default {
           if (s.removed || s.failed) console.log(`[cron] 长亭媒体清理：删 ${s.removed} 个，失败 ${s.failed}`);
         })
         .catch((err) => console.error('[cron] 长亭媒体清理失败:', err instanceof Error ? err.message : err)),
+    );
+    // 茶室互联出站：发送成功时已经催过一次，这里兜住重试与积压（没配 MATRIX_* 时直接返回）
+    ctx.waitUntil(
+      flushBridge(env)
+        .then((s) => {
+          if (s.sent || s.failed) console.log(`[cron] 互联出站：成功 ${s.sent}，丢弃 ${s.dropped}，失败 ${s.failed}`);
+        })
+        .catch((err) => console.error('[cron] 互联出站失败:', err instanceof Error ? err.message : err)),
     );
   },
 } satisfies ExportedHandler<Env>;

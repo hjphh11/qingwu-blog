@@ -21,6 +21,7 @@ import { sessionUser, type AccountRow } from '../auth/store';
 import { moderateComment } from '../admin/ai';
 import { screen, type ScreenCtx } from './screen';
 import { getPin } from './pin';
+import { flushBridge, queueBridge } from './bridge';
 import { extractUrl, loadPreviews, warmPreview, type LinkPreview } from './link';
 
 /** 正文上限。和 screen.ts 的 MAX_BODY 对齐 —— 那边是审核判据，这里是硬校验 */
@@ -918,6 +919,18 @@ export async function sendMessage(
       .run();
 
     const id = Number(res.meta.last_row_id);
+
+    /**
+     * 出站到「大厅」—— 同样**不在请求路径上**。
+     *
+     * 只入队 + 催一次队列：Matrix 那头慢、挂了、限流，都不该让本站的「发送」变卡。
+     * 没配 MATRIX_* 时 queueBridge / flushBridge 会直接返回，本地开发没有任何副作用。
+     */
+    ctx.waitUntil(
+      queueBridge(env, { messageId: id, kind: media?.kind ?? 'text', status })
+        .then(() => flushBridge(env))
+        .catch((err) => console.error('[bridge] 出站失败:', err instanceof Error ? err.message : err)),
+    );
 
     /**
      * 抓预览 —— 同样**不在请求路径上**。
