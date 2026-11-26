@@ -388,11 +388,16 @@ export async function pullBridge(
       }
       if (hsHost && p.site === `https://${hsHost}`) p.site = '';
 
-      // 协议头里没有头像/昵称时，去 Matrix 成员资料里补（同一个 sender 一轮只查一次）
-      if (!p.avatar || !p.nick || p.nick === p.mxid.replace(/^@/, '').split(':')[0]) {
+      // 昵称与头像**分开补**：只缺头像时不能拿 Matrix 成员资料把已有的昵称盖掉。
+      // （第一版写成 `!avatar || !nick …` 合在一起，结果协议头里的「朝朝听雨」
+      //   被转发账号自己的 displayname 盖成了 `qingwu`。）
+      const localpart = p.mxid.replace(/^@/, '').split(':')[0];
+      const needNick = !p.nick || p.nick === localpart;
+      const needAvatar = !p.avatar;
+      if (needNick || needAvatar) {
         const prof = await resolveProfile(env, cfg, p.mxid);
-        if (!p.avatar && prof.mxc) p.avatar = avatarUrlOf(p.mxid);
-        if (prof.nick) p.nick = prof.nick;
+        if (needNick && prof.nick) p.nick = prof.nick;
+        if (needAvatar && prof.mxc) p.avatar = avatarUrlOf(p.mxid);
       }
 
       // matrix_event_id 有唯一索引：重复插入会抛，用 OR IGNORE 直接当已处理
