@@ -1113,6 +1113,36 @@ export default function ChatRoom() {
     if (near) setPendingNew(0);
   };
 
+  /**
+   * 新消息「贴底跟随」。
+   *
+   * 只在本来就贴着底的时候跟：`atBottomRef` 在用户往上翻的那一刻就变 false，
+   * 这时硬滚会把正在看历史的人拽走 —— 这是聊天室最招人烦的行为之一。
+   * 往上翻的场景由右下角的「N 条新消息」按钮兜着（`pendingNew`）。
+   *
+   * 为什么放在 effect 而不是 poll 回调里：消息有三条来路（轮询 / 自己发 / AI 巡查后补），
+   * 而且必须等 DOM 提交完再滚 —— 在 setMessages 的同一个 tick 里滚，
+   * 读到的是**旧高度**，新消息会把视口顶出底部。
+   *
+   * 用 `auto` 不用 `smooth`：连续来消息时平滑滚动会互相打断，看久了发晕。
+   */
+  useEffect(() => {
+    if (!atBottomRef.current) return;
+    const raf = requestAnimationFrame(() => scrollToBottom(false));
+    return () => cancelAnimationFrame(raf);
+  }, [messages.length, scrollToBottom]);
+
+  /**
+   * 图片消息加载完再补一次贴底。
+   *
+   * `<img>` 的高度是异步来的：滚到底那一刻图还没解码，`scrollHeight` 是「假底部」，
+   * 图一撑开用户又被顶上去半屏。所以只在**本来就在底部**时补滚，
+   * 往上翻历史时 lazy 图陆续加载也不会把人拽回来。
+   */
+  const followIfAtBottom = useCallback(() => {
+    if (atBottomRef.current) scrollToBottom(false);
+  }, [scrollToBottom]);
+
   const loadMore = async () => {
     const oldest = messages[0];
     if (!oldest || loadingMore) return;
@@ -2890,6 +2920,8 @@ function MessageRow({
                     tabIndex={0}
                     role="button"
                     aria-label="查看大图"
+                    /* 图撑开高度后如果人还在底部，跟上（见 followIfAtBottom） */
+                    onLoad={followIfAtBottom}
                   />
                 ) : m.media.kind === 'audio' ? (
                   <VoiceBubble
@@ -2910,6 +2942,9 @@ function MessageRow({
               /* 正文里的图（对方站的 Markdown 封面）也要能点开：
                  灯箱只认 `.prose img` 和 `[data-zoomable] img`，气泡不在其中 */
               data-zoomable=""
+              /* 正文图（卡片封面）是异步撑高的，load 不冒泡但 React 用捕获阶段代理，
+                 所以挂在容器上能收到 —— 人还贴着底就跟上去 */
+              onLoadCapture={followIfAtBottom}
               // renderRich 先整段转义再拼固定标签（见 src/lib/richText.ts 顶部）
               dangerouslySetInnerHTML={{ __html: renderRich(m.body) }}
             />
