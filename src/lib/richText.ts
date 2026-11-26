@@ -42,6 +42,26 @@ function esc(s: string): string {
 
 const SAFE_URL = /^https?:\/\//i;
 
+/** 位图扩展名 —— 裸链接只有长成这样才当封面，`.html` / `.mp3` 不会被误认 */
+const IMG_EXT = /\.(?:jpe?g|png|gif|webp|avif|bmp)(?:[?#]\S*)?$/i;
+
+/**
+ * 整行是不是「一张图」：`![说明](地址)`，或干脆一个裸图片直链。
+ *
+ * 为什么要认裸链接：其他站的卡片消息把封面当**普通一行**发出来，
+ * 没有 `![]()` 包裹（冷汐的「文章分享」就是标题、摘要、文章链接、封面 URL 四行），
+ * 不认的话最后那行就是一条又长又丑的红色链接。
+ */
+export function isImageLine(raw: string): boolean {
+  const s = raw.trim();
+  if (/^!\[[^\]\n]{0,200}\]\(https?:\/\/[^\s)]+\)$/.test(s)) return true;
+  return /^https?:\/\/[^\s]+$/i.test(s) && IMG_EXT.test(s);
+}
+
+function imgTag(src: string, alt = '图片'): string {
+  return `<img class="q-rich__img" src="${src}" alt="${alt}" loading="lazy" decoding="async" referrerpolicy="no-referrer" />`;
+}
+
 /** 行内：代码 → 斜体 → 粗体 → 删除线 → 链接 → 裸链 → 表情 */
 function inline(raw: string): string {
   return raw
@@ -54,6 +74,24 @@ function inline(raw: string): string {
 }
 
 function inlineText(raw: string): string {
+  const lineTrim = raw.trim();
+
+  /**
+   * 整行一张图（裸直链）先处理掉，别让它落到「裸链自动成链」那条规则里。
+   * `![说明](url)` 不用在这里管，下面那条图片规则会接住。
+   */
+  if (/^https?:\/\/[^\s]+$/i.test(lineTrim) && IMG_EXT.test(lineTrim)) return imgTag(esc(lineTrim));
+
+  /**
+   * 整行一个类型标签：`[LX:文章分享]`。
+   *
+   * 这是其他站给消息打的类型前缀（冷汐的卡片都是 `[LX:文章分享]` / `[LX:友链分享]` /
+   * `[LX:动态分享]`），对读者有用的只有后半截。渲染成一个小徽标，原文留在 title 里。
+   * 必须整行匹配：`[ID:清吾];[URL:…]` 这种协议头后面还有东西，不会命中。
+   */
+  const tag = /^\[([A-Za-z0-9_]{2,8}):([^\]\n]{1,12})\]$/.exec(lineTrim);
+  if (tag) return `<span class="q-rich__tag" title="${esc(lineTrim)}">${esc(tag[2]!)}</span>`;
+
   let t = esc(raw);
 
   /**
@@ -88,10 +126,7 @@ function inlineText(raw: string): string {
    */
   t = t.replace(
     /!\[([^\]\n]{0,200})\]\((https?:\/\/[^\s)]+)\)/g,
-    (m, alt: string, url: string) =>
-      SAFE_URL.test(url)
-        ? `<img class="q-rich__img" src="${url}" alt="${alt}" loading="lazy" decoding="async" referrerpolicy="no-referrer" />`
-        : m,
+    (m, alt: string, url: string) => (SAFE_URL.test(url) ? imgTag(url, alt) : m),
   );
 
   // [文字](url) —— 只认 http(s)；非法的一律原样留着
@@ -197,12 +232,33 @@ export function renderRich(raw: string): string {
         i += 1;
       }
       /**
-       * 以图片开头的引用 = 对方站的「卡片消息」（音乐分享就是这个形状）：
-       * `> ![](封面)` 然后标题、来源、两个链接。它本质是**一张卡片**，不是引一段话 ——
-       * 留着左边那根竖线和缩进，图会被竖线切一道，文字也灰一档。
-       * 所以给个 class 让 CSS 把这层引用外观让开（语义仍是 blockquote，读屏不受影响）。
+       * 卡片化：引用块里只要有一张图，就把它提到最前面。
+       *
+       * 其他站的卡片把封面当**最后一行**发（`> 标题 / > 摘要 / > 文章链接 / > 封面 URL`），
+       * 原样渲染出来封面会压在卡片底部，像张贴纸。图的角色是这张卡的门面，
+       * 放回去——只在引用块里做，普通段落不动（那里顺序是作者有意排的）。
        */
-      const isCard = /^\s*!\[[^\]\n]{0,200}\]\(https?:\/\//.test(buf[0] ?? '');
+      const imgAt = buf.findIndex((l, k) => k > 0 && isImageLine(l));
+      if (imgAt > 0) buf.unshift(...buf.splice(imgAt, 1));
+
+      /**
+       * 以图片开头的引用 = 对方站的「卡片消息」（音乐分享 / 文章分享都是这个形状）。
+       * 它本质是**一张卡片**，不是引一段话 —— 留着左边那根竖线和缩进，
+       * 图会被竖线切一道，文字也灰一档。给个 class 让 CSS 把这层引用外观让开
+       * （语义仍是 blockquote，读屏不受影响）。
+       */
+      const isCard = isImageLine(buf[0] ?? '');
+
+      /**
+       * 卡片第二行是标题。其他站发的原文里**不带 `**`**（他们是在前端当标题渲染的），
+       * 我们这边不补就整张卡从封面到链接一个字重，读起来像一坨散文。
+       * 只对「短、不是链接、本来也没加粗」的行动手，正常引用块不受影响。
+       */
+      if (isCard && buf[1]) {
+        const t = buf[1].trim();
+        if (t && t.length <= 80 && !/^(?:https?:\/\/|!\[)/i.test(t) && !/\*\*/.test(t)) buf[1] = `**${t}**`;
+      }
+
       const cls = isCard ? ' class="q-rich__quote--card"' : '';
       out.push(`<blockquote${cls}>${buf.map(inline).join('<br />')}</blockquote>`);
       continue;
