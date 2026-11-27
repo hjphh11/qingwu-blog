@@ -39,6 +39,19 @@ LOCAL=$(git rev-parse HEAD)
 REMOTE=$(git rev-parse origin/main)
 [ "$LOCAL" = "$REMOTE" ] && exit 0
 
+# ⚠️ 只在 origin 真的**领先**时才构建（2026-11-27 事故的补丁）
+#
+# 原来只判 `LOCAL != REMOTE`，于是「本地比 origin 新」也会触发一轮：
+# 那种情况通常是**推送失败**（服务器网络抖），本地代码已经比远端新，
+# 却还是被当成「有新提交」——把 dist 挪走、跑一次 50 秒构建、产物放回。
+# origin 一直不前进 ⇒ 每 2 分钟重来一次 ⇒ 站点长期停在 404。
+#
+# `--is-ancestor LOCAL REMOTE` 为真才算「远端有新东西」；本地领先直接退出。
+if ! git merge-base --is-ancestor "$LOCAL" "$REMOTE"; then
+  log "本地领先 origin（$LOCAL → $REMOTE，多半是上次推送失败），跳过本轮，不重建"
+  exit 0
+fi
+
 if ! git pull --ff-only --quiet >>"$LOG" 2>&1; then
   log "pull 失败：服务器上可能有本地改动，需要人工处理（目标 $REMOTE）"
   exit 1
@@ -69,7 +82,7 @@ if ! PUBLIC_HIT_WORKER_URL=/api PUBLIC_TURNSTILE_SITE_KEY= npm run build >>"$LOG
 fi
 
 # 产物完整性闸门：光看 exit code 不够，必须确认关键页面真的落盘了
-for f in index.html links/index.html music/index.html projects/index.html; do
+for f in index.html chat/index.html links/index.html music/index.html projects/index.html account/index.html; do
   [ -s "$REPO/dist/client/$f" ] || rollback "构建产物缺 $f"
 done
 
