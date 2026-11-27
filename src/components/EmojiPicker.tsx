@@ -104,7 +104,20 @@ export default function EmojiPicker({
             onClick={() => onPick(key)}
             className="q-emoji-cell"
           >
-            <img src={`${pack.base}/${key}${pack.ext}`} alt="" loading="lazy" decoding="async" />
+            <img
+              src={`${pack.base}/${key}${pack.ext}`}
+              alt=""
+              loading="lazy"
+              decoding="async"
+              /* 静态图偶尔会被限流/网络抖一下，浏览器不重试，格子里就留个破图。
+                 失败过就带个参数重取一次，只试一次（data-retried 标记）。 */
+              onError={(e) => {
+                const img = e.currentTarget;
+                if (img.dataset.retried) return;
+                img.dataset.retried = '1';
+                img.src = `${pack.base}/${key}${pack.ext}?r=1`;
+              }}
+            />
           </button>
         ))}
       </div>
