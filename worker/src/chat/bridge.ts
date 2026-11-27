@@ -206,11 +206,21 @@ export function pathSeg(s: string): string {
 
 /* ────────────────────────────── 媒体（图片 / 表情） ────────────────────────────── */
 
-/** 表情包的目录与扩展名 —— 与 `src/lib/emojis.ts` 的 EMOJI_PACKS 一致 */
+/**
+ * 表情包的目录、扩展名与**文件名前缀** —— 必须与 `src/lib/emojis.ts` 的 EMOJI_PACKS 一致。
+ *
+ * `prefix` 是为了少探路：八套包里，除了 noto 是裸名，其余都带 `qq_` / `tieba_` 这类前缀。
+ * 没有它就得按顺序 404 八次才轮到对的那一套（每次都是一次真实的 HTTP 请求）。
+ */
 const EMOJI_PACKS = [
-  { base: '/images/emoji/noto', ext: '.webp' },
-  { base: '/images/emoji/alus', ext: '.png' },
-  { base: '/images/emoji/bilibili', ext: '.png' },
+  { base: '/images/emoji/noto', ext: '.webp', prefix: '' },
+  { base: '/images/emoji/alus', ext: '.png', prefix: 'alus_' },
+  { base: '/images/emoji/bilibili', ext: '.png', prefix: 'bb_' },
+  { base: '/images/emoji/qq', ext: '.gif', prefix: 'qq_' },
+  { base: '/images/emoji/tieba', ext: '.png', prefix: 'tieba_' },
+  { base: '/images/emoji/coolapk', ext: '.png', prefix: 'coolapk_' },
+  { base: '/images/emoji/hi3', ext: '.webp', prefix: 'hi3_' },
+  { base: '/images/emoji/douyin', ext: '.png', prefix: 'douyin_' },
 ] as const;
 
 /** 整条正文只有一个表情：`:[rofl]` 或 `:rofl`（richText 两种写法都认） */
@@ -292,12 +302,17 @@ export function imageContentOf(
 /**
  * 找表情图。
  *
- * 三套包的目录/扩展名是固定的；key 有 `bb_` / `alus_` 前缀能猜，但 noto 那套是裸名，
- * 所以直接按顺序试三个路径（打的是自己站，几十毫秒）。
+ * 目录/扩展名是固定的，但 key 属于哪一套得猜：带 `qq_` / `hi3_` 这类前缀的直接命中，
+ * noto 那套是裸名。所以先按前缀分两组，命中的包排前面，其余兜底 ——
+ * 正常情况一次请求就拿到，最坏情况才顺序试完八套（打的是自己站，几十毫秒）。
  */
 async function fetchEmoji(site: string, key: string): Promise<{ bytes: Uint8Array; mime: string } | null> {
   const base = site.replace(/\/+$/, '');
-  for (const p of EMOJI_PACKS) {
+  const ordered = [
+    ...EMOJI_PACKS.filter((p) => p.prefix && key.startsWith(p.prefix)),
+    ...EMOJI_PACKS.filter((p) => !(p.prefix && key.startsWith(p.prefix))),
+  ];
+  for (const p of ordered) {
     const u = `${base}${p.base}/${encodeURIComponent(key)}${p.ext}`;
     try {
       const res = await fetch(u, { signal: AbortSignal.timeout(6000) });

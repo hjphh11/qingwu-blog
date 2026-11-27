@@ -66,25 +66,29 @@ export default function EmojiPicker({
         placement === 'top' ? 'bottom-full right-0 mb-2' : 'top-full left-0 mt-2'
       }`}
     >
-      <div className="mb-1.5 flex items-center gap-1 border-b border-rose/20 pb-1.5">
-        {EMOJI_PACKS.map((p, idx) => (
-          <button
-            key={p.id}
-            type="button"
-            onClick={() => setTab(idx)}
-            aria-pressed={idx === tab}
-            className={`rounded-full px-2 py-0.5 text-[11px] transition-colors ${
-              idx === tab ? 'bg-crimson/10 text-crimson' : 'text-subtle hover:text-crimson'
-            }`}
-          >
-            {p.label}
-          </button>
-        ))}
+      {/* 八套包的 tab 一行放不下（2 字标签 + 内边距约 40px，八个就 300px+），
+          所以 tab 自己换行，关闭按钮靠右单独站住，别跟着一起挤 */}
+      <div className="mb-1.5 flex items-start gap-1 border-b border-rose/20 pb-1.5">
+        <div className="flex min-w-0 flex-1 flex-wrap gap-1">
+          {EMOJI_PACKS.map((p, idx) => (
+            <button
+              key={p.id}
+              type="button"
+              onClick={() => setTab(idx)}
+              aria-pressed={idx === tab}
+              className={`rounded-full px-2 py-0.5 text-[11px] transition-colors ${
+                idx === tab ? 'bg-crimson/10 text-crimson' : 'text-subtle hover:text-crimson'
+              }`}
+            >
+              {p.label}
+            </button>
+          ))}
+        </div>
         <button
           type="button"
           onClick={onClose}
           aria-label="收起表情"
-          className="ml-auto grid h-6 w-6 place-items-center rounded-full text-subtle transition-colors hover:bg-rose/12 hover:text-crimson"
+          className="grid h-6 w-6 shrink-0 place-items-center rounded-full text-subtle transition-colors hover:bg-rose/12 hover:text-crimson"
         >
           <MorphIcon icon={X} size={12} color="currentColor" />
         </button>
