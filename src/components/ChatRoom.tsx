@@ -1766,6 +1766,25 @@ export default function ChatRoom() {
   };
 
   /**
+   * 点引用块跳到被引用的那条。
+   *
+   * 和 jumpToPin 同一套做法（`data-mid` + `highlightId`），不主动 loadMore：
+   * 引用可能是很久以前的一句，为它把几十条历史拉进来会把滚动位置冲掉 ——
+   * 找不到就直说「往上翻一翻」，比把人扔到列表半空强。
+   */
+  const jumpToQuote = (id: number) => {
+    if (!id) return;
+    const el = document.querySelector(`[data-mid="${id}"]`);
+    if (!el) {
+      setTip({ kind: 'warn', text: '被引用的那条更早，往上翻一翻就看到了' });
+      return;
+    }
+    setHighlightId(id);
+    el.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    window.setTimeout(() => setHighlightId(0), 2400);
+  };
+
+  /**
    * 从搜索结果跳过去。
    *
    * 那条可能比当前页更早（还没加载），所以先把它的精简形态并进列表再滚过去；
@@ -2286,6 +2305,7 @@ export default function ChatRoom() {
                       readCount={reads?.id === m.id ? reads.n : 0}
                       readNames={reads?.id === m.id ? reads.names : undefined}
                       onMediaLoad={followIfAtBottom}
+                      onJumpQuote={jumpToQuote}
                     />
                   </div>
                 );
@@ -2823,6 +2843,7 @@ function MessageRow({
   readCount,
   readNames,
   onMediaLoad,
+  onJumpQuote,
 }: {
   m: ChatMessage;
   grouped: boolean;
@@ -2851,6 +2872,8 @@ function MessageRow({
   readNames?: string[];
   /** 图/卡片图撑开高度后回调一次（父组件用它做「贴底跟随」） */
   onMediaLoad?: () => void;
+  /** 点引用块跳到被引用的那条（找不到时由父组件负责提示） */
+  onJumpQuote?: (id: number) => void;
 }) {
   // ⚠️ hook 必须在下面那个「撤回消息直接 return」之前 —— 否则两种状态的 hook
   //    数量不同，React 会报 "Rendered fewer hooks than expected"。
@@ -3083,12 +3106,29 @@ function MessageRow({
             />
           )}
           {/* 引用放在正文**下面**（和微信一致）：先看谁说了什么，再看他在回哪句 */}
-          {m.quote && (
-            <div className="q-chat__quote" title="引用的是更早的一条">
-              <b>{m.quote.name}：</b>
-              <span>{m.quote.excerpt || '（空）'}</span>
-            </div>
-          )}
+          {m.quote &&
+            (m.quote.id > 0 && onJumpQuote ? (
+              /* 可点：跳到被引用的那条并闪一下。`stopPropagation` 必须加 ——
+                 整行 onClick 是「展开操作条」，点引用不该顺带把操作条也打开 */
+              <button
+                type="button"
+                className="q-chat__quote is-jumpable"
+                title={`跳到「${m.quote.name}」说的那条`}
+                aria-label={`跳到 ${m.quote.name} 被引用的那条消息`}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onJumpQuote(m.quote!.id);
+                }}
+              >
+                <b>{m.quote.name}：</b>
+                <span>{m.quote.excerpt || '（空）'}</span>
+              </button>
+            ) : (
+              <div className="q-chat__quote">
+                <b>{m.quote.name}：</b>
+                <span>{m.quote.excerpt || '（空）'}</span>
+              </div>
+            ))}
           {/*
             链接预览卡片。
             服务端抓到 OG 才有（在 bubblewrap 里、气泡外面：它是「这条消息指向的东西」，

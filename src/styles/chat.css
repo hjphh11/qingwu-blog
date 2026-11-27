@@ -1544,6 +1544,37 @@
   }
 
   /**
+   * 可点的引用块（跳到被引用的那条）。
+   *
+   * 为什么用 `<button>` 而不是给 div 加 onClick：键盘和读屏要能聚焦、能回车。
+   * 但按钮自带字体/对齐/背景，这里只把它「还原成原来那块」，再补 hover 反馈 ——
+   * 别加边框、别改字号，否则引用块会突然比别的块胖一圈。
+   */
+  .q-chat__quote.is-jumpable {
+    width: 100%;
+    font-family: inherit;
+    text-align: left;
+    cursor: pointer;
+    transition:
+      background-color var(--dur-micro) ease,
+      border-left-color var(--dur-micro) ease;
+  }
+
+  .q-chat__quote.is-jumpable:hover {
+    background: color-mix(in srgb, var(--color-rose) 40%, transparent);
+    border-left-color: color-mix(in srgb, var(--color-crimson) 80%, #000);
+  }
+
+  .q-chat__quote.is-jumpable:active {
+    background: color-mix(in srgb, var(--color-rose) 52%, transparent);
+  }
+
+  .q-chat__quote.is-jumpable:focus-visible {
+    outline: 2px solid color-mix(in srgb, var(--color-crimson) 52%, transparent);
+    outline-offset: 2px;
+  }
+
+  /**
    * 引用块是气泡的**兄弟节点**（渲染在 bubblewrap 里，不在 bubble 内），
    * 所以它落在浅色卡片上，不能跟着自己的气泡上反白 ——
    * 之前那版给了米白字，实测白底白字 1.03:1。自己的消息这里和别人的一致。
