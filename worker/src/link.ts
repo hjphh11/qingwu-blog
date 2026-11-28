@@ -173,12 +173,15 @@ export async function getLinkPosts(request: Request, env: Env): Promise<Response
 
   try {
     const rows = await env.DB.prepare(
-      `SELECT url, host, title, published FROM link_posts
+      `SELECT * FROM link_posts
        ORDER BY (published IS NULL), published DESC, fetched_at DESC
        LIMIT 60`,
-    ).all<{ url: string; host: string; title: string; published: string | null }>();
+    ).all<{ url: string; host: string; title: string; published: string | null; excerpt?: string; image?: string }>();
 
-    return json({ ok: true, items: rows.results ?? [] }, 200, headers);
+    const items = (rows.results ?? []).map(({ url, host, title, published, excerpt, image }) => ({
+      url, host, title, published, excerpt: excerpt ?? null, image: image ?? null,
+    }));
+    return json({ ok: true, items }, 200, headers);
   } catch {
     // 迁移还没应用 / 表还没建 —— 回空列表，前端显示空状态，不报错
     return json({ ok: false, items: [] }, 200, headers);

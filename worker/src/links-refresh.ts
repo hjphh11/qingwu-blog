@@ -221,6 +221,39 @@ export interface FeedItem {
   host: string;
   title: string;
   published: string | null;
+  excerpt: string | null;
+  image: string | null;
+}
+
+/** Read only preview metadata from the feed itself. Never fetch article pages or image URLs here. */
+function feedPreview(block: string, articleUrl: string) {
+  const field = (name: string) => decodeEntities(
+    block.match(new RegExp(`<${name}(?:\\s[^>]*)?>([\\s\\S]*?)</${name}>`, 'i'))?.[1] ?? '',
+  );
+  const summary = field('summary') || field('description');
+  const content = field('content:encoded') || field('content');
+  const plain = (html: string) => decodeEntities(html
+    .replace(/<(script|style)\b[^>]*>[\s\S]*?<\/\1>/gi, ' ')
+    .replace(/<[^>]+>/g, ' ')).replace(/&nbsp;|\s+/gi, ' ').replace(/\s+/g, ' ').trim();
+  const text = plain(summary) || plain(content);
+  const excerpt = text.length > 180 ? text.slice(0, 179) + '…' : text || null;
+  const media = block.match(/<media:thumbnail\b[^>]*>/i)?.[0]
+    || block.match(/<(?:media:content|enclosure)\b(?=[^>]*(?:type=["']image\/|medium=["']image["']))[^>]*>/i)?.[0];
+  const inline = (content + summary).match(/<img\b[^>]*>/gi) ?? [];
+  const illustration = inline.find(tag => {
+    const size = tag.match(/\b(?:width|height)=["'](\d{1,2})["']/i);
+    return !size && !/(?:avatar|favicon|emoji|shields\.io|\/deploy\.svg)/i.test(tag);
+  });
+  const raw = media?.match(/\burl=["']([^"']+)["']/i)?.[1]
+    || illustration?.match(/\s(?:data-src|src)=["']([^"']+)["']/i)?.[1];
+  let image: string | null = null;
+  if (raw) {
+    try {
+      const url = new URL(decodeEntities(raw), articleUrl);
+      if (url.protocol === 'https:' && !isPrivateHostname(url.hostname) && !url.username && !url.password) image = url.href;
+    } catch { /* malformed optional cover */ }
+  }
+  return { excerpt, image };
 }
 
 /**
@@ -230,7 +263,7 @@ export interface FeedItem {
  * 不用 XML 解析器：Workers 里塞一个解析器要么体积大、要么对残缺 feed 直接抛错；
  * 正则切块对「格式不标准但结构还在」的 feed 反而更皮实，这也是 pickLatestDate 的口径。
  */
-function parseFeedItems(text: string, host: string, limit = ITEMS_PER_SITE): FeedItem[] {
+export function parseFeedItems(text: string, host: string, limit = ITEMS_PER_SITE): FeedItem[] {
   const blocks = [
     ...text.matchAll(/<item\b[\s\S]*?<\/item>/gi),
     ...text.matchAll(/<entry\b[\s\S]*?<\/entry>/gi),
@@ -253,7 +286,7 @@ function parseFeedItems(text: string, host: string, limit = ITEMS_PER_SITE): Fee
     const dateRaw =
       block.match(/<(?:pubDate|published|updated|dc:date)[^>]*>([\s\S]*?)<\//i)?.[1] ?? '';
 
-    out.push({ url, host, title: title.slice(0, 200), published: toIsoDate(dateRaw) });
+    out.push({ url, host, title: title.slice(0, 200), published: toIsoDate(dateRaw), ...feedPreview(block, url) });
   }
   return out;
 }
@@ -401,12 +434,14 @@ export async function refreshAllFeeds(env: Env): Promise<RefreshSummary> {
     for (const item of r.value.items) {
       postStatements.push(
         env.DB.prepare(
-          `INSERT INTO link_posts (url, host, title, published, fetched_at) VALUES (?, ?, ?, ?, ?)
+          `INSERT INTO link_posts (url, host, title, published, fetched_at, excerpt, image) VALUES (?, ?, ?, ?, ?, ?, ?)
            ON CONFLICT(url) DO UPDATE SET
              title = excluded.title,
              published = excluded.published,
-             fetched_at = excluded.fetched_at`,
-        ).bind(item.url, item.host, item.title, item.published, now),
+             fetched_at = excluded.fetched_at,
+             excerpt = excluded.excerpt,
+             image = excluded.image`,
+        ).bind(item.url, item.host, item.title, item.published, now, item.excerpt, item.image),
       );
     }
   }
