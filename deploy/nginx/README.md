@@ -1,6 +1,6 @@
 # 服务器 nginx 配置副本
 
-线上真实生效的文件（香港机 `103.79.185.65`）在这里留一份副本，**只用于查阅与灾难重建**。
+线上真实生效的文件（现役机 `206.187.213.203`）在这里留一份副本，**只用于查阅与灾难重建**。
 改了这里不会改变线上行为，必须另行登上服务器改并 `nginx -t && systemctl reload nginx`。
 
 | 仓库内 | 服务器路径 |
@@ -9,25 +9,26 @@
 | `00-limits.conf` | `/etc/nginx/conf.d/00-limits.conf` |
 | `00-geoip2.conf` | `/etc/nginx/conf.d/geoip2.conf` |
 | `snippets/security-headers.conf` | `/etc/nginx/snippets/security-headers.conf` |
+| `matrix.conf` | `/etc/nginx/sites-enabled/matrix.conf`（自建 Synapse 的 `matrix.qingwu.ink`；443 由 certbot 补） |
 
 ## 同步方式
 
 拉（服务器 → 仓库）：
 
 ```bash
-scp -i ~/.ssh/qingwu_admin root@103.79.185.65:/etc/nginx/conf.d/00-limits.conf deploy/nginx/
-scp -i ~/.ssh/qingwu_admin root@103.79.185.65:/etc/nginx/conf.d/geoip2.conf deploy/nginx/00-geoip2.conf
-scp -i ~/.ssh/qingwu_admin root@103.79.185.65:/etc/nginx/sites-enabled/qingwu deploy/nginx/qingwu.conf
-scp -i ~/.ssh/qingwu_admin root@103.79.185.65:/etc/nginx/snippets/security-headers.conf deploy/nginx/snippets/
+scp -i ~/.ssh/qingwu_admin root@206.187.213.203:/etc/nginx/conf.d/00-limits.conf deploy/nginx/
+scp -i ~/.ssh/qingwu_admin root@206.187.213.203:/etc/nginx/conf.d/geoip2.conf deploy/nginx/00-geoip2.conf
+scp -i ~/.ssh/qingwu_admin root@206.187.213.203:/etc/nginx/sites-enabled/qingwu deploy/nginx/qingwu.conf
+scp -i ~/.ssh/qingwu_admin root@206.187.213.203:/etc/nginx/snippets/security-headers.conf deploy/nginx/snippets/
 ```
 
 推（仓库 → 服务器，**先备份**）：
 
 ```bash
-ssh -i ~/.ssh/qingwu_admin root@103.79.185.65 \
+ssh -i ~/.ssh/qingwu_admin root@206.187.213.203 \
   'cp -a /etc/nginx/sites-enabled/qingwu /data/backup/qingwu.conf.bak-$(date +%Y%m%d-%H%M)'
-scp -i ~/.ssh/qingwu_admin deploy/nginx/qingwu.conf root@103.79.185.65:/etc/nginx/sites-enabled/qingwu
-ssh -i ~/.ssh/qingwu_admin root@103.79.185.65 'nginx -t && systemctl reload nginx'
+scp -i ~/.ssh/qingwu_admin deploy/nginx/qingwu.conf root@206.187.213.203:/etc/nginx/sites-enabled/qingwu
+ssh -i ~/.ssh/qingwu_admin root@206.187.213.203 'nginx -t && systemctl reload nginx'
 ```
 
 或者用一键脚本（备份 + `nginx -t` 自动回滚 + 验证）：`bash deploy/apply-hardening-2026-11-14.sh`
