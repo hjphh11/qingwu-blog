@@ -62,9 +62,10 @@ for (const f of linksData.friends ?? []) {
  * 加载失败就退回下面那个首字母方块。
  */
 function peerIcon(p: ChatPeer): string {
-  // 名册（federated-chat/members.json）里对方自己填的图标最准，先用它
-  if (p.icon) return p.icon;
+  // 本站用本地那张（名册里填的是同一个域的另一份 jpg，没必要多走一次网络）
   if (p.home) return '/images/avatar.webp';
+  // 外站优先用名册（federated-chat/members.json）里对方自己填的图标
+  if (p.icon) return p.icon;
   return PEER_AVATARS.get(siteKey(p.host)) || `https://${p.host}/favicon.ico`;
 }
 
