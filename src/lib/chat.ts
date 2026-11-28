@@ -613,10 +613,18 @@ export interface WhoResult {
  */
 export interface ChatPeer {
   host: string;
-  /** 从对方首页 <title> 抓的站名；抓不到是空串，显示时退回 host */
+  /** 站名：优先取联邦名册（members.json）的 siteName，老逻辑才去抓对方 <title> */
   name?: string;
   n: number;
   home: boolean;
+  /** 名册里对方自己填的图标；没有时前端退回「友链头像 → /favicon.ico」 */
+  icon?: string;
+  /** 点「去看看」跳哪儿（名册的 siteUrl）；没有就用 https://host */
+  url?: string;
+  /** 一句话简介，做 title / 提示用 */
+  desc?: string;
+  /** 对方填的主题色（oklch/hex），前端可选用来染色 */
+  color?: string;
 }
 
 /** 屏蔽名单里的一行。比 ChatMember 轻：这些人对我而言只剩「取消屏蔽」一个动作 */

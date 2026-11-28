@@ -246,6 +246,9 @@ export interface Env {
    */
   INTERNAL_ORIGIN?: string;
 
+  /** 互联站点名册地址（默认吃 federated-chat 的 members.json，本地想试别的可覆盖） */
+  ROSTER_URL?: string;
+
   // ——— 访客留言后小爱自动回复（见 admin/ai.ts 的 autoReplyTo）———
   /**
    * 总开关。`off` / `0` / `false` / `no` 任意一个即关闭，其余（含不填）都算开。

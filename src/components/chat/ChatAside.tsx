@@ -61,9 +61,11 @@ for (const f of linksData.friends ?? []) {
  * 最后一步不引第三方图标代理（那又是一个会挂、也会看见访客 IP 的外部服务），
  * 加载失败就退回下面那个首字母方块。
  */
-function peerIcon(host: string): string {
-  if (host === HOME_HOST) return '/images/avatar.webp';
-  return PEER_AVATARS.get(siteKey(host)) || `https://${host}/favicon.ico`;
+function peerIcon(p: ChatPeer): string {
+  // 名册（federated-chat/members.json）里对方自己填的图标最准，先用它
+  if (p.icon) return p.icon;
+  if (p.home) return '/images/avatar.webp';
+  return PEER_AVATARS.get(siteKey(p.host)) || `https://${p.host}/favicon.ico`;
 }
 
 export default function ChatAside({
@@ -172,8 +174,14 @@ export default function ChatAside({
   const goPeer = () => {
     const p = askPeer;
     if (!p) return;
+    /**
+     * 跳哪儿：名册里对方填的 `siteUrl` 优先 —— 有几个站的**站点**和 **homeserver/聊天室**
+     * 不同域（比如 `chat.gbk.ink` 的站是 `somoe.xyz`），拿 host 拼会把人送到 Element 首页。
+     * 名册没给才退回 `https://host`。
+     */
+    const target = p.url || `https://${p.host}`;
     // 新标签打开：长亭可以不关，回来还在原位置
-    window.open(`https://${p.host}`, '_blank', 'noopener,noreferrer');
+    window.open(target, '_blank', 'noopener,noreferrer');
     setAskPeer(null);
   };
 
@@ -279,14 +287,14 @@ export default function ChatAside({
                   /* 本站没什么可跳的：点它只会回到同一个页面 */
                   disabled={p.home}
                   onClick={() => setAskPeer(p)}
-                  title={p.home ? '你就在这里' : `去「${peerName(p)}」看看（会离开长亭）`}
+                  title={p.home ? '你就在这里' : p.desc ? `${peerName(p)} · ${p.desc}` : `去「${peerName(p)}」看看（会离开长亭）`}
                   aria-label={p.home ? '本站' : `去「${peerName(p)}」看看`}
                 >
                 <span className="q-peer__ic" aria-hidden="true">
                   {/* 底下的首字母是兜底：外站 favicon 404 / 防盗链时露出来 */}
                   {p.host.slice(0, 1).toUpperCase()}
                   <img
-                    src={peerIcon(p.host)}
+                    src={peerIcon(p)}
                     alt=""
                     width={22}
                     height={22}
@@ -425,7 +433,7 @@ export default function ChatAside({
             <span className="q-leave__ic" aria-hidden="true">
               {peerName(askPeer).slice(0, 1).toUpperCase()}
               <img
-                src={peerIcon(askPeer.host)}
+                src={peerIcon(askPeer)}
                 alt=""
                 width={40}
                 height={40}

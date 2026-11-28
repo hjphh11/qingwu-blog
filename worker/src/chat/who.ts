@@ -18,6 +18,7 @@ import { sessionUser, type AccountRow } from '../auth/store';
 import { touchPresence } from './messages';
 import { listBlocks } from './block';
 import { hostOfSite, loadPeerNames } from './peerName';
+import { getRoster, hostOfUrl } from './roster';
 
 /** 在线判定窗口。与 messages.ts 的 ONLINE_WINDOW 保持一致 */
 const ONLINE_WINDOW = 5 * 60 * 1000;
@@ -207,7 +208,7 @@ export async function getWho(request: Request, env: Env): Promise<Response> {
      * 大厅原生用户的这条会被置空（`sync.ts` 里 hsHost 那段），所以空值归到大厅本体。
      * 同样兜一层：这张卡片挂了不该让 who 整体失败。
      */
-    let peers: { host: string; n: number; home: boolean }[] = [];
+    let peers: PeerRow[] = [];
     try {
       peers = await listPeers(env, now);
     } catch (e) {
@@ -234,7 +235,20 @@ export async function getWho(request: Request, env: Env): Promise<Response> {
 /** 只看最近 30 天：更早的站已经不在场了，列出来是假话 */
 const PEER_WINDOW = 30 * 24 * 3600 * 1000;
 
-export type PeerRow = { host: string; name: string; n: number; home: boolean };
+export type PeerRow = {
+  host: string;
+  name: string;
+  n: number;
+  home: boolean;
+  /** 名册里对方自己填的图标（没有就走前端的老兜底：友链头像 → favicon） */
+  icon?: string;
+  /** 点「去看看」跳哪儿（名册的 siteUrl；没有就 https://host） */
+  url?: string;
+  /** 一句话简介（名册的 siteDescription） */
+  desc?: string;
+  /** 对方填的主题色，前端可用来染卡片 */
+  color?: string;
+};
 
 /**
  * 「互联站点」：从**收到的远端消息**反推有哪些站在说话。
@@ -247,11 +261,16 @@ export type PeerRow = { host: string; name: string; n: number; home: boolean };
  *   不是在线数 —— 前端那行也就只写「N 人」，不加「在线」二字；
  * - 本站钉在最前面（`home: true`），前端显示「本站」。
  */
+/** `www.` 前缀对「是不是同一个站」没意义，比较前一律剥掉 */
+function bare(host: string): string {
+  return host.replace(/^www\./i, '').toLowerCase();
+}
+
 export async function listPeers(env: Env, now: number): Promise<PeerRow[]> {
   const rows = await env.DB.prepare(
     `SELECT remote_site AS site, COUNT(DISTINCT remote_sender) AS n
        FROM chat_messages
-      WHERE origin = 'remote' AND status <> 'deleted' AND ts > ?
+      WHERE origin = 'remote' AND status <> 'deleted' AND ts > ? AND remote_site IS NOT NULL
       GROUP BY remote_site`,
   )
     .bind(now - PEER_WINDOW)
@@ -259,26 +278,67 @@ export async function listPeers(env: Env, now: number): Promise<PeerRow[]> {
 
   const hub = hostOfSite(String(env.MATRIX_HS ?? ''));
   const self = hostOfSite(String(env.SITE_URL ?? '')) || 'qingwu.ink';
-  // 站名是从对方首页 <title> 捞的缓存（cron 每分钟补一个）；没有就用域名
-  const names = await loadPeerNames(env);
 
-  const map = new Map<string, number>();
+  /** 每个 host 有多少人在我们这儿说过话（只用于排序与「说没说过话」的判断） */
+  const counts = new Map<string, number>();
   for (const r of rows.results ?? []) {
     const h = hostOfSite(String(r.site ?? '')) || hub;
-    if (!h || h === self) continue;
-    map.set(h, (map.get(h) ?? 0) + Number(r.n ?? 0));
+    if (!h) continue;
+    const k = bare(h);
+    counts.set(k, (counts.get(k) ?? 0) + Number(r.n ?? 0));
   }
 
   /**
-   * 没有名字的站先不列 —— 列表叫「互联站点」，得有个人能认出来的名字。
-   * 只有域名说明我们还没确认它是个站（抓不到 title 的常常是 Element 应用页 /
-   * 纯 JS 首页），列出来只是噪音；cron 抓到名字后下一轮自己出现。
+   * 名册优先：站名 / 图标 / 站点地址都是人家自己在 `members.json` 里填的，
+   * 比「抓首页 title + 友链头像」准得多，而且不依赖「最近说过话」。
    */
-  const rest = [...map.entries()]
+  const roster = await getRoster(env, now);
+  if (roster.length) {
+    const keyOf = (m: (typeof roster)[number]) =>
+      new Set([bare(m.host), bare(m.homeserver), bare(hostOfUrl(m.chatUrl))].filter(Boolean));
+
+    const homeEntry = roster.find((m) => keyOf(m).has(bare(self)));
+    const others = roster
+      .filter((m) => m !== homeEntry)
+      .map((m) => {
+        let n = 0;
+        for (const k of keyOf(m)) n += counts.get(k) ?? 0;
+        return {
+          host: m.host,
+          name: m.name,
+          n,
+          home: false,
+          icon: m.icon || undefined,
+          url: m.url || undefined,
+          desc: m.desc || undefined,
+          color: m.color || undefined,
+        };
+      })
+      // 说过话的排前面（聊得多的更靠前），没说过话的按站名排，顺序稳定不跳
+      .sort((a, b) => b.n - a.n || a.name.localeCompare(b.name, 'zh-Hans-CN'));
+
+    return [
+      {
+        host: homeEntry?.host || self,
+        name: '',
+        n: 0,
+        home: true,
+        icon: homeEntry?.icon || undefined,
+        url: homeEntry?.url || undefined,
+      },
+      ...others,
+    ];
+  }
+
+  /* ───────── 名册拿不到（离线 / 表还没建）→ 退回老逻辑 ───────── */
+
+  // 站名是从对方首页 <title> 捞的缓存（cron 每分钟补一个）；没有就用域名
+  const names = await loadPeerNames(env);
+  const rest = [...counts.entries()]
+    .filter(([h]) => bare(h) !== bare(self))
     .filter(([host]) => Boolean(names.get(host)))
     .map(([host, n]) => ({ host, name: names.get(host)!, n, home: false }))
     .sort((a, b) => b.n - a.n);
 
-  // 本站名字取自己的（`清吾长亭`），前端仍然只显示「本站」两个字
   return [{ host: self, name: '', n: 0, home: true }, ...rest];
 }
