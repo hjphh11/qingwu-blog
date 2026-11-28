@@ -9,7 +9,7 @@
 | `00-limits.conf` | `/etc/nginx/conf.d/00-limits.conf` |
 | `00-geoip2.conf` | `/etc/nginx/conf.d/geoip2.conf` |
 | `snippets/security-headers.conf` | `/etc/nginx/snippets/security-headers.conf` |
-| `matrix.conf` | `/etc/nginx/sites-enabled/matrix.conf`（自建 Synapse 的 `matrix.qingwu.ink`；443 由 certbot 补） |
+| `matrix.conf` | `/etc/nginx/sites-enabled/matrix.conf`（自建 Synapse 的 `matrix.qingwu.ink`；443 和 8448 共用该域名的证书） |
 
 ## 同步方式
 
