@@ -791,8 +791,8 @@ async function bumpRules(env: Env, hits: string[], now: number): Promise<void> {
 
 /** 发送限流：一分钟窗口内最多几条（访客比登录用户紧一档） */
 const RATE_WINDOW_MS = 60_000;
-const RATE_GUEST = 4;
-const RATE_USER = 12;
+const RATE_GUEST = 5;
+const RATE_USER = 15;
 
 export async function sendMessage(
   request: Request,
@@ -851,7 +851,7 @@ export async function sendMessage(
    * 发送频率限制（互联要求里写死的「服务端限制每个发言账号的发送频率」）。
    *
    * 按 `account_id` 算：访客是每浏览器一个账号，所以访客也是按人算的。
-   * 一分钟窗口，访客 4 条、其他 12 条 —— 正常聊天碰不到，手速再快也不会误伤；
+   * 一分钟窗口，访客 5 条、其他 15 条（15 是既有文档里的口径） —— 正常聊天碰不到，手速再快也不会误伤；
    * 超限回 429 + `retryAfterMs`，前端直接显示「再等 N 秒」。
    *
    * 为什么不用 Redis 计数：这台机器就一个进程，D1 一次聚合一两毫秒，
