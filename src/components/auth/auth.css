@@ -1,0 +1,102 @@
+.q-auth-modal,
+.q-auth-page {
+  width: min(27rem, calc(100% - 2rem));
+  margin: auto;
+  border: 1px solid var(--color-rose, #e6c7cb);
+  border-radius: 1rem;
+  background: #fffdfb;
+  color: var(--color-ink, #382c30);
+}
+.q-auth-modal {
+  padding: 0;
+  max-height: 90dvh;
+  overflow: auto;
+}
+.q-auth-modal::backdrop {
+  background: rgb(47 32 37 / 0.32);
+}
+.q-auth-modal > div {
+  position: relative;
+}
+.q-auth-close {
+  position: absolute;
+  right: 0.75rem;
+  top: 0.5rem;
+  font-size: 1.5rem;
+  width: 2.5rem;
+}
+.q-auth {
+  padding: 1.6rem;
+}
+.q-auth h1 {
+  font-family: var(--font-display, serif);
+  font-size: 1.6rem;
+}
+.q-auth fieldset,
+.q-security form {
+  display: grid;
+  gap: 0.7rem;
+  min-width: 0;
+}
+.q-auth p,
+.q-auth small,
+.q-security p {
+  font-size: 0.82rem;
+  line-height: 1.65;
+}
+.q-auth > p {
+  margin: 0.4rem 0 1rem;
+}
+.q-auth label,
+.q-security label {
+  display: grid;
+  gap: 0.25rem;
+  font-size: 0.85rem;
+}
+.q-auth label input,
+.q-security input {
+  border: 1px solid #d8c5c9;
+  background: white;
+  border-radius: 0.6rem;
+  padding: 0.55rem 0.75rem;
+  width: 100%;
+  font-size: 1rem;
+}
+.q-auth-primary,
+.q-security button {
+  padding: 0.6rem 0.9rem;
+  border-radius: 0.6rem;
+  background: var(--color-crimson, #96374f);
+  color: white;
+}
+.q-auth footer {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.8rem;
+  margin-top: 0.6rem;
+}
+.q-auth footer,
+.q-auth button[type='button']:not(.q-auth-close) {
+  font-size: 0.82rem;
+  color: var(--color-crimson, #96374f);
+}
+.q-auth :disabled,
+.q-security :disabled {
+  opacity: 0.65;
+}
+.q-security {
+  margin: 1rem 0;
+  padding: 1.25rem;
+  border: 1px solid #e6c7cb;
+  border-radius: 1rem;
+  background: #fffdfb;
+}
+.q-security details {
+  padding: 0.6rem 0;
+}
+.q-security summary {
+  cursor: pointer;
+}
+.q-security form {
+  margin: 0.75rem 0;
+}

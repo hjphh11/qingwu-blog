@@ -196,7 +196,7 @@ export default function PersonCard({
                       type="button"
                       className="q-person__logout"
                       onClick={() => void onLogout()}
-                      title="退出之后要重新收验证码才能聊"
+                      title="退出后需要重新登录才能聊天"
                     >
                       退出登录
                     </button>

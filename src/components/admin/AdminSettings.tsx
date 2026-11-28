@@ -1,3 +1,5 @@
+import '../auth/auth.css';
+import { authPost } from '../../lib/auth';
 /*
  * 后台 · 设置
  *
@@ -473,6 +475,25 @@ export default function AdminSettings() {
   return (
     <>
       <AdminTop active="settings" />
+      <details className="q-security"><summary>老账号迁移</summary>
+        <button type="button" onClick={async()=>{
+          if (!confirm('向尚未收到迁移提醒的老账号发送用户名确认邮件？')) return;
+          try {
+            const result=await api<{queued:number}>('/accounts/migration-notices',{method:'POST'});
+            setToast(result.queued+' 封提醒已加入发信队列');
+          } catch { setToast('邮件未加入队列，请检查发信通道'); }
+        }}>发送用户名确认提醒</button>
+        <form onSubmit={async e => {
+          e.preventDefault();
+          const data = new FormData(e.currentTarget);
+          if (!window.confirm('为账号 '+data.get('id')+' 永久确认用户名 '+data.get('username')+'？')) return;
+          const r = await authPost('username/confirm',{account_id:Number(data.get('id')),username:data.get('username')});
+          setToast(r.ok ? '已确认用户名' : r.message);
+        }}>
+          <label>账号 ID<input name="id" type="number" min="1" required/></label>
+          <label>最终用户名<input name="username" required/></label><button>确认用户名</button>
+        </form>
+      </details>
 
       <main className="q-admin-main">
         <div className="q-admin-head">

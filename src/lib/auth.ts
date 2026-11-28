@@ -23,6 +23,11 @@ export interface SessionAccount {
   name: string;
   /** 已打码，原文不出网 */
   email: string;
+  username: string;
+  usernameProvisional: boolean;
+  hasPassword: boolean;
+  emailVerified: boolean;
+  matrix: { status: string; userId: string | null; passwordSyncPending: boolean };
   emailHash: string;
   avatar: string;
   /** 头像是不是自己设的（false = 按邮箱算出来的，QQ 邮箱就是 QQ 头像） */
@@ -72,64 +77,16 @@ export async function fetchMe(): Promise<{ account: SessionAccount | null; confi
 
 type Result<T> = ({ ok: true } & T) | { ok: false; message: string; retryAfter?: number; cooldown?: number };
 
-/** 发验证码。**无论邮箱是否注册过，回答都一样** —— 首次登录即注册 */
-export async function startEmailLogin(
-  rawEmail: string,
-): Promise<Result<{ cooldown?: number; devCode?: string }>> {
+export async function authPost<T>(path: string, body: Record<string,unknown>): Promise<Result<T>> {
   try {
-    const res = await fetch(`${BASE}/auth/email/start`, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ email: rawEmail.trim() }),
-      credentials: 'include',
-      signal: AbortSignal.timeout(12000),
+    const res = await fetch(BASE+'/auth/'+path, {
+      method: 'POST', credentials: 'include', headers: {'content-type':'application/json'},
+      body: JSON.stringify(body), signal: AbortSignal.timeout(20000),
     });
-    const data = (await res.json().catch(() => ({}))) as {
-      ok?: boolean;
-      message?: string;
-      retryAfter?: number;
-      /** 仅本机预览（AUTH_DEV_CODE=1）会带回来 */
-      devCode?: string;
-    };
-    if (res.ok && data.ok) return { ok: true, devCode: data.devCode };
-    return { ok: false, message: data.message || '验证码没发出去，稍后再试', retryAfter: data.retryAfter };
-  } catch {
-    return { ok: false, message: '网络好像不太顺，稍后再试一次' };
-  }
-}
-
-/** 验码登录（首次会自动建号，并把同邮箱的历史留言归到这个账号下） */
-export async function verifyEmailLogin(
-  rawEmail: string,
-  code: string,
-): Promise<Result<{ account: SessionAccount; config: AuthConfig; created?: boolean }>> {
-  try {
-    const res = await fetch(`${BASE}/auth/email/verify`, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ email: rawEmail.trim(), code: code.trim() }),
-      credentials: 'include',
-      signal: AbortSignal.timeout(12000),
-    });
-    const data = (await res.json().catch(() => ({}))) as {
-      ok?: boolean;
-      message?: string;
-      account?: SessionAccount;
-      config?: AuthConfig;
-      created?: boolean;
-    };
-    if (res.ok && data.ok && data.account) {
-      return {
-        ok: true,
-        account: data.account,
-        config: { ...DEFAULT_CONFIG, ...(data.config ?? {}) },
-        created: data.created,
-      };
-    }
-    return { ok: false, message: data.message || '验证码不对，再看看？' };
-  } catch {
-    return { ok: false, message: '网络好像不太顺，稍后再试一次' };
-  }
+    const data = await res.json();
+    if (res.ok && data.ok) return data;
+    return {ok:false, message:data.message || '操作未完成，请重试', retryAfter:data.retryAfter};
+  } catch { return {ok:false,message:'连接失败，请稍后重试'}; }
 }
 
 export async function logout(): Promise<void> {

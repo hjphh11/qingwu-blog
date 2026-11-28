@@ -5,6 +5,7 @@
 //
 // 设计见 docs/方案-后台-admin.md 第四节。
 
+import { queueAccountNotices } from './account-migration';
 import type { Env } from '../types';
 import { json } from '../util';
 import { getAiStatus, postAiDraft, postAiJudge, postFriendReply } from './ai';
@@ -49,6 +50,9 @@ export async function handleAdmin(request: Request, env: Env, path: string): Pro
   if (path === '/admin/dev-login' && m === 'GET') return getDevLogin(request, env);
 
   // —— 以下全部要求会话 ——
+  if (path === '/admin/accounts/migration-notices' && m === 'POST') {
+    return requireAdmin(request,env,()=>queueAccountNotices(request,env));
+  }
   if (path === '/admin/comments' && m === 'GET') {
     return requireAdmin(request, env, (admin) => listComments(request, env, admin));
   }

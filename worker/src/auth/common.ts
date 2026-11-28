@@ -96,13 +96,13 @@ export function clearCookieOf(request: Request, name: string, path = '/'): strin
 
 /** 邮箱归一：**必须与 avatar.ts / md5.ts 的口径一致**，否则哈希对不上 */
 export function normalizeEmail(raw: unknown): string {
-  return String(raw ?? '').trim().toLowerCase().slice(0, 254);
+  return String(raw ?? '').trim().toLowerCase();
 }
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
 
 export function isEmail(v: string): boolean {
-  return EMAIL_RE.test(v);
+  return v.length <= 254 && EMAIL_RE.test(v);
 }
 
 /** 只露前 3 位 + 域名：145****@qq.com */

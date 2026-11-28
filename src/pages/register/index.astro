@@ -1,0 +1,7 @@
+---
+import Layout from '../../layouts/Layout.astro';
+import AuthPage from '../../components/auth/AuthPage';
+---
+<Layout title="注册 · 清吾" description="注册清吾账号，参与长亭、留言板和文章评论。">
+  <main class="page-shell"><AuthPage mode="register" client:only="react" /></main>
+</Layout>

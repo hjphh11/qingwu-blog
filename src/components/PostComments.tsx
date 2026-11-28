@@ -21,7 +21,7 @@ import {
 import GithubMark from './auth/GithubMark';
 import EmojiPicker from './EmojiPicker';
 import AccountStrip from './auth/AccountStrip';
-import LoginDialog from './auth/LoginDialog';
+import AuthDialog from './auth/AuthDialog';
 import { renderRich } from '../lib/richText';
 import { APPLY_LIMITS } from '../lib/applyValidation';
 import { avatarFromEmail, avatarFromHash, emailHash as emailHashOf } from '../lib/avatar';
@@ -137,7 +137,7 @@ export default function PostComments({ path }: { path: string }) {
   const [config, setConfig] = useState<AuthConfig>({ requireLogin: true, github: false });
   /** 身份还没读回来时先别判「未登录」，否则会闪一下「请登录」 */
   const [authReady, setAuthReady] = useState(false);
-  const [loginOpen, setLoginOpen] = useState(false);
+  const [authMode, setAuthMode] = useState<'login' | 'register' | null>(null);
   const [emojiOpen, setEmojiOpen] = useState(false);
   const introRef = useRef<HTMLTextAreaElement | null>(null);
 
@@ -285,7 +285,7 @@ export default function PostComments({ path }: { path: string }) {
     setNotice(null);
     // 必须登录时，未登录点发送直接把登录打开 —— 别让人写完一大段才被拒
     if (config.requireLogin && !me) {
-      setLoginOpen(true);
+      setAuthMode('login');
       return;
     }
     if (!validate()) return;
@@ -297,7 +297,7 @@ export default function PostComments({ path }: { path: string }) {
     if (!res.ok) {
       setNotice({ kind: 'warn', text: res.message });
       // 会话过期（换设备 / 清 cookie）也会走到这里：把登录打开，草稿还在输入框里
-      if (res.reason === 'login') setLoginOpen(true);
+      if (res.reason === 'login') setAuthMode('login');
       return;
     }
 
@@ -455,19 +455,19 @@ export default function PostComments({ path }: { path: string }) {
             <div>
               <p className="text-sm font-medium text-ink">先说一声你是谁</p>
               <p className="mx-auto mt-1 max-w-[21rem] text-balance text-xs leading-relaxed text-muted">
-                和友链留言板是同一个账号 —— 用邮箱收个验证码就行，不用设密码。
-                登录一次，之后在站内哪儿说话都不用再填名字。
+                文章评论、留言板和长亭共用一个账号。
               </p>
             </div>
             <div className="flex flex-wrap items-center justify-center gap-2">
               <button
                 type="button"
-                onClick={() => setLoginOpen(true)}
+                onClick={() => setAuthMode('login')}
                 className="inline-flex min-h-9 items-center gap-1.5 rounded-lg bg-crimson px-4 text-sm font-medium text-white shadow-[0_6px_18px_rgba(194,58,85,0.25)] transition-[transform,background-color] duration-300 hover:scale-[1.03] q-press"
               >
                 <MorphIcon icon={KeyRound} size={14} color="currentColor" />
-                登录 / 注册
+                登录
               </button>
+              <button type="button" className="px-3 py-2 text-sm text-crimson underline" onClick={() => setAuthMode('register')}>去注册</button>
               {config.github && (
                 <a
                   href={githubLoginUrl()}
@@ -492,15 +492,15 @@ export default function PostComments({ path }: { path: string }) {
             {authReady && !me && !config.requireLogin && (
               <div className="flex flex-wrap items-center gap-x-1.5 gap-y-1 border-b border-dashed border-rose/25 px-4 py-2 text-[11px] text-subtle">
                 <MorphIcon icon={UserRound} size={11} color="currentColor" />
-                <span>以前说过话？</span>
+                <span>一个账号全站通用。</span>
                 <button
                   type="button"
-                  onClick={() => setLoginOpen(true)}
+                  onClick={() => setAuthMode('login')}
                   className="font-medium text-crimson underline underline-offset-2 transition-colors hover:text-crimson/80"
                 >
                   登录
                 </button>
-                <span>一下，之后不用再填，也能管自己的评论</span>
+                <button type="button" onClick={() => setAuthMode('register')} className="text-crimson underline underline-offset-2">去注册</button>
                 {config.github && (
                   <a
                     href={githubLoginUrl()}
@@ -785,7 +785,7 @@ export default function PostComments({ path }: { path: string }) {
                   onDelete={() => void removeEntry(e.id)}
                   account={me}
                   requireLogin={config.requireLogin}
-                  onNeedLogin={() => setLoginOpen(true)}
+                  onNeedLogin={() => setAuthMode('login')}
                 />
               ))}
 
@@ -821,13 +821,14 @@ export default function PostComments({ path }: { path: string }) {
         )}
       </div>
 
-      <LoginDialog
-        open={loginOpen}
+      <AuthDialog
+        open={authMode !== null}
+        mode={authMode ?? 'login'}
         config={config}
-        onClose={() => setLoginOpen(false)}
+        onClose={() => setAuthMode(null)}
         onDone={(account) => {
           setMe(account);
-          setLoginOpen(false);
+          setAuthMode(null);
           setNotice({ kind: 'ok', text: '登录好了，写吧 ~' });
           // 身份变了，「我的」标记与点赞态都要重算 —— 重新拉一遍第一页
           void loadPostComments(path)

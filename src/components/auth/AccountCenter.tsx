@@ -12,7 +12,8 @@ import {
   UserRound,
 } from '../../lib/icons';
 import GithubMark from './GithubMark';
-import LoginDialog from './LoginDialog';
+import AccountSecurity from './AccountSecurity';
+import AuthDialog from './AuthDialog';
 import MyCommentList from './MyCommentList';
 import {
   DEFAULT_CONFIG,
@@ -180,7 +181,7 @@ export default function AccountCenter() {
       return;
     }
     adopt(r.account);
-    setMsg({ kind: 'ok', text: 'GitHub 解绑了，以后用邮箱登录。' });
+    setMsg({ kind: 'ok', text: 'GitHub 已解绑。' });
   }
 
   async function doLogout() {
@@ -220,7 +221,7 @@ export default function AccountCenter() {
               className="inline-flex min-h-9 items-center gap-1.5 rounded-full bg-crimson px-4 text-xs font-medium text-white transition-transform hover:scale-[1.02]"
             >
               <MorphIcon icon={Mail} size={13} color="currentColor" />
-              用邮箱登录
+              登录
             </button>
             {config.github && (
               <a
@@ -239,7 +240,7 @@ export default function AccountCenter() {
             </a>
           </div>
         </div>
-        <LoginDialog
+        <AuthDialog
           open={loginOpen}
           config={config}
           onClose={() => setLoginOpen(false)}
@@ -263,6 +264,8 @@ export default function AccountCenter() {
   return (
     <div className="mx-auto max-w-[44rem]">
       <PageTitle />
+      {new URLSearchParams(location.search).has('registered') && <p role="status">账号已注册，以后可以用用户名和密码登录。</p>}
+      <AccountSecurity account={account} adopt={adopt}/>
       {/* ── 头部：头像 + 名字 + 一句话身份 ── */}
       <div className="rounded-[var(--radius-card)] border border-rose/25 bg-white/60 p-6">
         <div className="flex flex-col items-center gap-4 sm:flex-row sm:items-start">
@@ -369,7 +372,7 @@ export default function AccountCenter() {
             <span className="mb-1 block text-[10.5px] text-subtle">署名</span>
             <input
               value={name}
-              maxLength={30}
+              maxLength={40}
               onChange={(ev) => setName(ev.target.value)}
               className="w-full rounded-lg border border-rose/25 bg-white px-2.5 py-2 text-xs text-ink outline-none focus:border-crimson/50"
             />
@@ -434,7 +437,7 @@ export default function AccountCenter() {
 
       {/* ── 登录方式 ── */}
       <section className="mt-4 rounded-[var(--radius-card)] border border-rose/25 bg-white/60 p-6">
-        <h3 className="font-display text-base text-ink">登录方式</h3>
+        <h3 className="font-display text-base text-ink">绑定的应用</h3>
         <p className="mt-0.5 text-[11px] text-subtle">邮箱是主身份，GitHub 只是方便 —— 少了哪个都能用另一个进。</p>
 
         <ul className="mt-3 flex flex-col gap-2">

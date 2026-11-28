@@ -18,6 +18,7 @@
 // 第 3~5 步的路由（/comments、/likes、Cron）以后再加，别现在就把口子开着。
 
 import { getApply, patchApply, postApply } from './apply';
+import { syncMatrixName } from './auth/matrix';
 import { handleAuth } from './auth/index';
 import { handleAdmin } from './admin/index';
 import { handleChat } from './chat/index';
@@ -260,6 +261,7 @@ export default {
      * 所以重活要自己判断「今天跑过没有」——不然回链轮检会每分钟去抓十几个第三方站。
      * 03:00 那一次额外跑：友链探测、回链轮检、媒体清理。
      */
+    ctx.waitUntil(syncMatrixName(env).catch(()=>console.warn('[cron] Matrix 昵称同步暂未完成')));
     const clock = new Date();
     const daily = clock.getHours() === 3 && clock.getMinutes() === 0;
 

@@ -151,7 +151,7 @@ export async function editMessage(
       judgeLater(env, {
         id,
         body,
-        author: me.display_name || me.email.split('@')[0] || '茶客',
+        author: me.display_name || '茶客',
         wasPending: false,
       }),
     );

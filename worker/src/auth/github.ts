@@ -26,7 +26,7 @@ import {
   readCookie,
   siteUrl,
 } from './common';
-import { attachIdentity, createSession, sessionUser } from './store';
+import { attachIdentity, createSession, findAccountById, identityOwner, sessionUser } from './store';
 import { anchorLogin } from './account';
 import { claimLikes, visitorKey } from '../visitor';
 
@@ -131,7 +131,6 @@ export async function githubCallback(request: Request, env: Env): Promise<Respon
   // ② 用户 + 邮箱
   let uid = '';
   let login = '';
-  let name = '';
   let avatar = '';
   let htmlUrl = '';
   let email = '';
@@ -140,7 +139,6 @@ export async function githubCallback(request: Request, env: Env): Promise<Respon
     const u = await readJson(await gh('/user'));
     uid = String(u.id ?? '');
     login = String(u.login ?? '');
-    name = String(u.name ?? '') || login;
     avatar = String(u.avatar_url ?? '');
     htmlUrl = String(u.html_url ?? '');
 
@@ -173,16 +171,17 @@ export async function githubCallback(request: Request, env: Env): Promise<Respon
   }
 
   // ④ 登录模式：邮箱锚点
+  const owner = await identityOwner(env, "github", uid);
+  const linked = owner && await findAccountById(env,owner);
   const anchored = await anchorLogin(env, {
-    email,
+    email: linked ? linked.email : email,
     provider: 'github',
     uid,
     meta,
-    profile: { name, avatar },
   });
   if (!anchored.ok) return redirectBack(env, 'conflict', clear);
 
-  const sessionToken = await createSession(env, request, anchored.account.id, 'visitor');
+  const sessionToken = await createSession(env, request, anchored.account.id, 'visitor',{email:anchored.account.email});
 
   // 同邮箱验证码那条路：把匿名点过的赞搬到账号上，否则同一个人会占两个 key
   await claimLikes(env, await visitorKey(request, env), anchored.account.id);

@@ -8,7 +8,6 @@ import { maskEmail, normalizeEmail } from './common';
 import { avatarFromEmail } from './avatar';
 import {
   attachIdentity,
-  createAccount,
   findAccountByEmail,
   listIdentities,
   touchAccount,
@@ -28,6 +27,11 @@ export interface PublicAccount {
   name: string;
   /** 打码后的邮箱，**原文永不出网** */
   email: string;
+  username: string;
+  usernameProvisional: boolean;
+  hasPassword: boolean;
+  emailVerified: boolean;
+  matrix: { status: string; userId: string | null; passwordSyncPending: boolean };
   emailHash: string;
   avatar: string;
   /** 头像是自己传的（true）还是按邮箱算出来的（false）—— 前端据此决定输入框里要不要回填 */
@@ -52,7 +56,7 @@ function metaOf(raw: string | null): Record<string, unknown> {
 
 export async function publicAccount(env: Env, account: AccountRow): Promise<PublicAccount> {
   const list = await listIdentities(env, account.id);
-  const identities: PublicIdentity[] = list.map((i) => {
+  const identities: PublicIdentity[] = list.filter(i => i.provider !== 'email' || i.uid === account.email).map((i) => {
     if (i.provider === 'github') {
       const meta = metaOf(i.meta);
       const login = String(meta.login ?? '') || `github:${i.uid}`;
@@ -68,7 +72,13 @@ export async function publicAccount(env: Env, account: AccountRow): Promise<Publ
 
   return {
     id: account.id,
-    name: account.display_name || account.email.split('@')[0] || '匿名朋友',
+    username: account.username,
+    usernameProvisional: Boolean(account.username_provisional),
+    hasPassword: Boolean(account.has_password),
+    emailVerified: Boolean(account.email_verified_at),
+    matrix: { status: account.matrix_status, userId: account.matrix_user_id,
+      passwordSyncPending: account.matrix_status === 'active' && !account.matrix_pw_synced_at },
+    name: account.display_name || '匿名朋友',
     email: maskEmail(account.email),
     emailHash: account.email_hash,
     avatar: account.avatar_url || avatarFromEmail(account.email),
@@ -82,7 +92,7 @@ export async function publicAccount(env: Env, account: AccountRow): Promise<Publ
 }
 
 export type AnchorResult =
-  | { ok: true; account: AccountRow; created: boolean }
+  | { ok: true; account: AccountRow }
   | { ok: false; reason: 'conflict' };
 
 /**
@@ -118,16 +128,7 @@ export async function claimComments(env: Env, account: AccountRow): Promise<numb
   }
 }
 
-/**
- * 邮箱锚点：**任何拿到已验证邮箱的入口都走这里**。
- *
- *   · 邮箱已存在 → 登进那个账号（把本次 provider 记上，这就是「多登录方式互通」）
- *   · 邮箱不存在 → 建号 + 记 email identity
- *   · 该 provider 的 uid 已属于**另一个**账号 → 冲突（不自动合并，见方案 §3）
- *
- * `profile` 只用于建号时的初始档案；已存在的账号不会被覆盖 ——
- * 否则每次用 GitHub 登录都会把用户自己改过的署名冲掉。
- */
+/** 验证过的邮箱或已绑定的 GitHub 只登录已有账号。 */
 export async function anchorLogin(
   env: Env,
   input: {
@@ -135,25 +136,11 @@ export async function anchorLogin(
     provider: 'email' | 'github';
     uid: string;
     meta?: Record<string, unknown>;
-    profile?: { name?: string; site?: string; avatar?: string };
   },
 ): Promise<AnchorResult> {
   const email = normalizeEmail(input.email);
-  let account = await findAccountByEmail(env, email);
-  let created = false;
-
-  if (!account) {
-    account = await createAccount(env, {
-      email,
-      displayName: input.profile?.name,
-      siteUrl: input.profile?.site,
-      // **只存真正自定义的头像**（比如 GitHub 带回来的那张）。
-      // 按邮箱算出来的（Cravatar / QQ 头像）不落库 —— 每次读的时候现算，
-      // 这样 `avatarCustom` 才有意义，邮箱变了头像也跟着变。
-      avatarUrl: input.profile?.avatar,
-    });
-    created = true;
-  }
+  const account = await findAccountByEmail(env, email);
+  if (!account || account.status !== 'active') return { ok: false, reason: 'conflict' };
 
   const primary = await attachIdentity(env, account.id, 'email', email);
   if (primary === 'taken') return { ok: false, reason: 'conflict' };
@@ -170,5 +157,5 @@ export async function anchorLogin(
   const claimed = await claimComments(env, account);
   if (claimed) console.log(`[auth] 认领 ${claimed} 条历史留言 → 账号 ${account.id}`);
 
-  return { ok: true, account, created };
+  return { ok: true, account };
 }

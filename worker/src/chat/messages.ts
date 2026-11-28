@@ -109,8 +109,7 @@ interface MessageRow {
   acc_avatar: string | null;
   acc_role: string | null;
   acc_site: string | null;
-  /** 邮箱前缀 —— display_name 为空时的署名兜底（与 comments.ts 的口径一致） */
-  acc_prefix: string | null;
+
   email_hash: string | null;
   /** 这条消息里第一个链接（发送时算好存下）；null = 没有链接 */
   link_url: string | null;
@@ -120,8 +119,7 @@ const COLS = `m.id, m.account_id, m.body, m.status, m.ts, m.edited_at, m.origin,
               m.reply_to_id, m.mentions, m.link_url,
               m.remote_nick, m.remote_avatar, m.remote_site,
               a.display_name AS acc_name, a.avatar_url AS acc_avatar,
-              a.role AS acc_role, a.site_url AS acc_site, a.email_hash AS email_hash,
-              substr(a.email, 1, instr(a.email, '@') - 1) AS acc_prefix`;
+              a.role AS acc_role, a.site_url AS acc_site, a.email_hash AS email_hash`;
 
 /**
  * 可见性：正常消息人人可见；pending **只有发送者自己**可见。
@@ -225,8 +223,7 @@ async function loadQuotes(env: Env, ids: number[]): Promise<Map<number, Quote>> 
     const ph = uniq.map(() => '?').join(',');
     const rows = await env.DB.prepare(
       `SELECT m.id, m.body, m.status, m.origin, m.remote_nick,
-              a.display_name AS acc_name,
-              substr(a.email, 1, instr(a.email, '@') - 1) AS acc_prefix
+              a.display_name AS acc_name
          FROM chat_messages m LEFT JOIN accounts a ON a.id = m.account_id
         WHERE m.id IN (${ph})`,
     )
@@ -238,7 +235,7 @@ async function loadQuotes(env: Env, ids: number[]): Promise<Map<number, Quote>> 
         origin: string;
         remote_nick: string | null;
         acc_name: string | null;
-        acc_prefix: string | null;
+
       }>();
 
     for (const r of rows.results ?? []) {
@@ -256,7 +253,7 @@ async function loadQuotes(env: Env, ids: number[]): Promise<Map<number, Quote>> 
         name:
           r.origin === 'remote'
             ? r.remote_nick || '远方的茶客'
-            : r.acc_name || r.acc_prefix || '茶客',
+            : r.acc_name || '茶客',
         excerpt: visible
           ? String(r.body || '').replace(/\s+/g, ' ').slice(0, 60)
           : '（原消息已不可见）',
@@ -376,7 +373,7 @@ function toItem(
    */
   const name = remote
     ? r.remote_nick || '远方的茶客'
-    : r.acc_name || r.acc_prefix || `茶客#${r.account_id ?? 0}`;
+    : r.acc_name || `茶客#${r.account_id ?? 0}`;
 
   /** 这条 @ 了当前看的人没有 —— 前端据此挂一个「@了你」的小标 */
   let mentionedMe = false;
@@ -672,8 +669,7 @@ export async function pollChat(
      * 排除自己 —— 没人需要看到「你正在输入」。
      */
     const typingRows = await env.DB.prepare(
-      `SELECT p.account_id AS id, a.display_name AS name,
-              substr(a.email, 1, instr(a.email, '@') - 1) AS prefix
+      `SELECT p.account_id AS id, a.display_name AS name
          FROM chat_presence p JOIN accounts a ON a.id = p.account_id
         WHERE p.typing_at > ? AND p.account_id != ?
           AND NOT EXISTS (
@@ -682,8 +678,8 @@ export async function pollChat(
         LIMIT 5`,
     )
       .bind(now - TYPING_WINDOW, meId ?? -1, meId ?? -1)
-      .all<{ id: number; name: string | null; prefix: string | null }>()
-      .catch(() => ({ results: [] as Array<{ id: number; name: string | null; prefix: string | null }> }));
+      .all<{ id: number; name: string | null }>()
+      .catch(() => ({ results: [] as Array<{ id: number; name: string | null }> }));
 
     /**
      * 已读回执：**只算「我最新那一条」**。
@@ -709,7 +705,7 @@ export async function pollChat(
          * 真到几百人这个回执也没意义了。
          */
         const who = await env.DB.prepare(
-          `SELECT COALESCE(NULLIF(a.display_name, ''), substr(a.email, 1, instr(a.email, '@') - 1)) AS name
+          `SELECT COALESCE(NULLIF(a.display_name, ''), '茶客') AS name
              FROM chat_reads r JOIN accounts a ON a.id = r.account_id
             WHERE r.last_read_id >= ? AND r.account_id != ?
               AND NOT EXISTS (
@@ -762,7 +758,7 @@ export async function pollChat(
       online: await onlineOf(env, now, meId ?? -1),
       /** 每次 poll 都带 —— 一百来个字节，换取「站长一置顶，所有人两秒内看见」 */
       pin: await getPin(env, meId ?? -1),
-      typing: (typingRows.results ?? []).map((r) => r.name || r.prefix || '有人'),
+      typing: (typingRows.results ?? []).map((r) => r.name || '有人'),
       reads,
       auth: { signedIn: Boolean(me), canSend: Boolean(me) },
     });
@@ -1027,7 +1023,7 @@ export async function sendMessage(
         judgeLater(env, {
           id,
           body,
-          author: me.display_name || me.email.split('@')[0] || '茶客',
+          author: me.display_name || '茶客',
           wasPending: status === 'pending',
         }),
       );
@@ -1040,7 +1036,7 @@ export async function sendMessage(
         /** 作者账号 id：前端「当场屏蔽」靠它把屏上已加载的消息摘掉 */
         authorId: me.id,
         // 和 toItem 的兜底顺序一致，否则「刚发的这条」和「刷新后看到的那条」署名不一样
-        name: me.display_name || me.email.split('@')[0] || `茶客#${me.id}`,
+        name: me.display_name || `茶客#${me.id}`,
         avatar: me.avatar_url || avatarFromEmail(me.email),
         site: me.site_url || '',
         admin: me.role === 'admin',

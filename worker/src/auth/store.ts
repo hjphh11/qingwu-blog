@@ -2,10 +2,11 @@
 //
 // 「邮箱是唯一锚点」这条规则只在这里实现一次 —— 别在路由里再写一份。
 //
-//   findAccountByEmail → 命中就登进去（补记本次 provider），未命中才建号
+//   findAccountByEmail → 命中就登进去（补记本次 provider）；新账号通过邮箱验证注册创建
 //
 // 会话表同时服务前台与后台：`kind` 决定它过不过得了 requireAdmin。
 
+import { AuthError } from './error';
 import type { Env } from '../types';
 import {
   SESSION_COOKIE,
@@ -16,9 +17,15 @@ import {
   readCookie,
   sha256Hex,
 } from './common';
-import { emailHashOf } from './md5';
 
 export interface AccountRow {
+  username: string;
+  username_provisional: number;
+  email_verified_at: number | null;
+  has_password: number;
+  matrix_status: string;
+  matrix_user_id: string | null;
+  matrix_pw_synced_at: number | null;
   id: number;
   email: string;
   email_hash: string;
@@ -34,7 +41,7 @@ export interface AccountRow {
 }
 
 const ACCOUNT_COLS =
-  'id, email, email_hash, display_name, site_url, avatar_url, bio, role, status, created_at, last_seen_at';
+  'username, username_provisional, email_verified_at, pass_hash IS NOT NULL AS has_password, matrix_status, matrix_user_id, matrix_pw_synced_at, id, email, email_hash, display_name, site_url, avatar_url, bio, role, status, created_at, last_seen_at';
 
 export async function findAccountByEmail(env: Env, email: string): Promise<AccountRow | null> {
   const e = normalizeEmail(email);
@@ -48,37 +55,6 @@ export async function findAccountById(env: Env, id: number): Promise<AccountRow 
   return env.DB.prepare(`SELECT ${ACCOUNT_COLS} FROM accounts WHERE id = ?`)
     .bind(id)
     .first<AccountRow>();
-}
-
-/**
- * 建号。**只由「已验证邮箱」的路径调用** —— 未验证的邮箱不能占位，
- * 否则别人可以先填你的邮箱把账号抢走。
- */
-export async function createAccount(
-  env: Env,
-  input: { email: string; displayName?: string; siteUrl?: string; avatarUrl?: string; role?: string },
-): Promise<AccountRow> {
-  const email = normalizeEmail(input.email);
-  const now = Date.now();
-  const res = await env.DB.prepare(
-    `INSERT INTO accounts (email, email_hash, display_name, site_url, avatar_url, role, created_at, last_seen_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-  )
-    .bind(
-      email,
-      emailHashOf(email),
-      input.displayName?.trim() || null,
-      input.siteUrl?.trim() || null,
-      input.avatarUrl?.trim() || null,
-      input.role === 'admin' ? 'admin' : 'visitor',
-      now,
-      now,
-    )
-    .run();
-
-  const row = await findAccountById(env, Number(res.meta.last_row_id));
-  if (!row) throw new Error('account_create_failed');
-  return row;
 }
 
 export async function touchAccount(env: Env, id: number): Promise<void> {
@@ -102,12 +78,14 @@ export async function createSession(
   request: Request,
   accountId: number,
   kind: 'visitor' | 'admin',
+  expected?: { hash?: string; email: string },
 ): Promise<string> {
   const token = randomToken(32);
   const now = Date.now();
-  await env.DB.prepare(
+  const session = await env.DB.prepare(
     `INSERT INTO auth_sessions (token_hash, account_id, kind, created_at, expires_at, ip_hash, ua)
-     VALUES (?, ?, ?, ?, ?, ?, ?)`,
+     SELECT ?, ?, ?, ?, ?, ?, ? WHERE EXISTS(SELECT 1 FROM accounts WHERE id=? AND status='active'
+       AND (? IS NULL OR pass_hash=?) AND (? IS NULL OR email=?))`,
   )
     .bind(
       await sha256Hex(token),
@@ -117,8 +95,14 @@ export async function createSession(
       now + SESSION_TTL_SEC * 1000,
       await ipHash(request, env),
       (request.headers.get('user-agent') || '').slice(0, 200),
+      accountId,
+      expected?.hash ?? null,
+      expected?.hash ?? null,
+      expected?.email ?? null,
+      expected?.email ?? null,
     )
     .run();
+  if (!session.meta.changes) throw new AuthError(401, 'changed', '凭据已更改，请重新登录');
   // 顺手清过期会话，别让表无限长（失败不影响登录）
   await env.DB.prepare('DELETE FROM auth_sessions WHERE expires_at < ?')
     .bind(now - 86_400_000)
@@ -142,7 +126,8 @@ export async function sessionUser(request: Request, env: Env): Promise<SessionUs
   const tokenHash = await sha256Hex(token);
 
   const row = await env.DB.prepare(
-    `SELECT a.id AS id, a.email AS email, a.email_hash AS email_hash, a.display_name AS display_name,
+    `SELECT a.username, a.username_provisional, a.email_verified_at, a.pass_hash IS NOT NULL AS has_password,
+            a.matrix_status, a.matrix_user_id, a.matrix_pw_synced_at, a.id AS id, a.email AS email, a.email_hash AS email_hash, a.display_name AS display_name,
             a.site_url AS site_url, a.avatar_url AS avatar_url, a.bio AS bio,
             a.role AS role, a.status AS status,
             a.created_at AS created_at, a.last_seen_at AS last_seen_at,
@@ -161,7 +146,7 @@ export async function sessionUser(request: Request, env: Env): Promise<SessionUs
       .catch(() => undefined);
     return null;
   }
-  if (row.status === 'banned' || row.status === 'muted') {
+  if (row.status !== 'active') {
     // 封禁/禁言：会话留着也没用，直接当作未登录（前台会看到只读态）
     return null;
   }
@@ -236,17 +221,15 @@ export async function attachIdentity(
   uid: string,
   meta?: Record<string, unknown>,
 ): Promise<'ok' | 'taken'> {
-  const owner = await identityOwner(env, provider, uid);
-  if (owner && owner !== accountId) return 'taken';
   const now = Date.now();
-  await env.DB.prepare(
+  const result = await env.DB.prepare(
     `INSERT INTO account_identities (account_id, provider, uid, meta, created_at, last_used_at)
      VALUES (?, ?, ?, ?, ?, ?)
-     ON CONFLICT(provider, uid) DO UPDATE SET last_used_at = excluded.last_used_at`,
+     ON CONFLICT(provider, uid) DO UPDATE SET last_used_at = excluded.last_used_at WHERE account_id = excluded.account_id`,
   )
     .bind(accountId, provider, uid, meta ? JSON.stringify(meta) : null, now, now)
     .run();
-  return 'ok';
+  return result.meta.changes ? 'ok' : 'taken';
 }
 
 export async function removeIdentity(env: Env, accountId: number, provider: string): Promise<boolean> {
@@ -260,9 +243,7 @@ export async function removeIdentity(env: Env, accountId: number, provider: stri
 
 /** 是否还剩至少一种可登录方式（解绑前的守卫） */
 export async function identityCount(env: Env, accountId: number): Promise<number> {
-  const row = await env.DB.prepare(
-    'SELECT COUNT(*) AS n FROM account_identities WHERE account_id = ?',
-  )
+  const row = await env.DB.prepare('SELECT COUNT(*) AS n FROM account_identities WHERE account_id = ?')
     .bind(accountId)
     .first<{ n: number }>();
   return row?.n ?? 0;

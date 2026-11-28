@@ -330,7 +330,7 @@ async function loadBoardRows(
 ): Promise<{ roots: CommentRow[]; reps: CommentRow[]; hasMore: boolean; nextBefore: number }> {
   const joined = `SELECT c.id, c.parent_id, c.author, c.author_url, c.avatar, c.body, c.status,
                           c.ts, c.email_hash, c.notify, c.account_id, c.reply_to_id,
-                          a.avatar_url AS acc_avatar, a.display_name AS acc_name, a.role AS acc_role
+                          a.avatar_url AS acc_avatar, CASE WHEN a.id IS NOT NULL THEN COALESCE(NULLIF(a.display_name,''),'匿名朋友') END AS acc_name, a.role AS acc_role
                      FROM comments c LEFT JOIN accounts a ON a.id = c.account_id`;
   const plain = `SELECT id, parent_id, author, author_url, avatar, body, status,
                         ts, email_hash, notify, account_id
@@ -521,7 +521,7 @@ export async function postComment(
      * 邮箱反过来 —— 登录后一律不落明文，通知走 `accounts.email`。
      */
     const author = account
-      ? (account.display_name || account.email.split('@')[0] || '').slice(0, LIMITS.author)
+      ? (account.display_name || '匿名朋友').slice(0, LIMITS.author)
       : v.v.name.slice(0, LIMITS.author);
     const site = account ? account.site_url || '' : v.v.url;
     const avatar = account ? account.avatar_url || avatarFromEmail(account.email) : v.v.avatar;
@@ -783,7 +783,7 @@ export async function postReply(
   const replyToId = Number(body.replyTo ?? 0) || 0;
   const target = replyToId
     ? await env.DB.prepare(
-        `SELECT c.author AS author, c.email AS email, a.email AS acc_email, a.display_name AS acc_name,
+        `SELECT c.author AS author, c.email AS email, a.email AS acc_email, CASE WHEN a.id IS NOT NULL THEN COALESCE(NULLIF(a.display_name,''),'匿名朋友') END AS acc_name,
                 c.account_id AS acc_id
            FROM comments c LEFT JOIN accounts a ON a.id = c.account_id
           WHERE c.id = ? AND c.parent_id = ? AND c.post_slug = ? AND c.status != 'deleted'`,
@@ -823,7 +823,7 @@ export async function postReply(
 
     // 同留言：登录后署名/站点/头像一律取档案，不接受前端覆盖（防冒充）
     const author = account
-      ? (account.display_name || account.email.split('@')[0] || '').slice(0, LIMITS.author)
+      ? (account.display_name || '匿名朋友').slice(0, LIMITS.author)
       : v.v.name.slice(0, LIMITS.author);
     const site = account ? account.site_url || '' : v.v.url;
     const avatar = account ? account.avatar_url || avatarFromEmail(account.email) : v.v.avatar;

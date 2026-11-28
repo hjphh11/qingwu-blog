@@ -43,7 +43,7 @@ interface BlockRow {
   avatar: string | null;
   hash: string | null;
   site: string | null;
-  prefix: string | null;
+
 }
 
 /**
@@ -58,8 +58,7 @@ export async function listBlocks(env: Env, meId: number): Promise<BlockEntry[]> 
   const rows = await env.DB.prepare(
     `SELECT b.blocked_id AS id, b.ts AS ts,
             a.display_name AS name, a.avatar_url AS avatar,
-            a.email_hash AS hash, a.site_url AS site,
-            substr(a.email, 1, instr(a.email, '@') - 1) AS prefix
+            a.email_hash AS hash, a.site_url AS site
        FROM chat_blocks b LEFT JOIN accounts a ON a.id = b.blocked_id
       WHERE b.blocker_id = ?
       ORDER BY b.ts DESC
@@ -72,7 +71,7 @@ export async function listBlocks(env: Env, meId: number): Promise<BlockEntry[]> 
     id: r.id,
     // LEFT JOIN：账号注销后仍留着一行占位，不然名单里会凭空少一行、
     // 而消息过滤还在按那个 id 生效（用户会找不到自己到底屏蔽了谁）
-    name: r.name || r.prefix || `账号#${r.id}`,
+    name: r.name || `账号#${r.id}`,
     avatar: r.avatar || avatarFromHash(r.hash || ''),
     site: r.site || '',
     at: r.ts,

@@ -1,15 +1,4 @@
-// 清吾 · 邮箱验证码（登录 / 绑定共用）
-//
-// 首次登录即注册：账号这会儿可能还不存在，所以用 email 定位、account_id 可空。
-//
-// 四道闸，缺一不可（6 位数字没有限流等于没有）：
-//   ① 同邮箱 60 秒冷却        ② 同邮箱 24h 最多 10 封
-//   ③ 同 IP 1h 最多 10 封     ④ 单码最多试 5 次
-// 验证失败另按 IP 计数：15 分钟内 15 次失败就锁 15 分钟。
-//
-// ⚠️ 隐私边界：**邮箱是否存在不影响响应**。发码一律说「发出去了」，
-//    失败也只说「没发出去」，绝不暗示「这个邮箱没注册过」。
-
+// 邮箱验证码按用途隔离。每次最多试错三次，五分钟有效。
 import type { Env } from '../types';
 import { secretEqual } from '../util';
 import { sendMail } from '../mail';
@@ -27,7 +16,7 @@ import {
 
 const CODE_TTL_MS = 5 * 60 * 1000;
 const CODE_COOLDOWN_MS = 60 * 1000;
-const CODE_MAX_TRIES = 5;
+const CODE_MAX_TRIES = 3;
 const EMAIL_DAY_MAX = 10;
 const IP_HOUR_MAX = 10;
 const LOCK_WINDOW_MS = 15 * 60 * 1000;
@@ -76,6 +65,7 @@ async function codeHashOf(
   email: string,
   code: string,
   salt: string,
+  legacyHmac = false,
 ): Promise<string> {
   if (!env.OTP_PEPPER) return sha256Hex(`${code}|${salt}`);
   const enc = new TextEncoder();
@@ -86,8 +76,12 @@ async function codeHashOf(
     false,
     ['sign'],
   );
-  const sig = await crypto.subtle.sign('HMAC', key, enc.encode(`${purpose}|${email}|${code}`));
-  return `hmac1:${hexOf(sig)}`;
+  const sig = await crypto.subtle.sign(
+    'HMAC',
+    key,
+    enc.encode(legacyHmac ? `${purpose}|${email}|${code}` : `${purpose}|${email}|${salt}|${code}`),
+  );
+  return `${legacyHmac ? 'hmac1' : 'hmac2'}:${hexOf(sig)}`;
 }
 
 async function lockRemain(env: Env, iph: string): Promise<number> {
@@ -131,7 +125,12 @@ export async function sendLoginCode(
   const iph = await ipHash(request, env);
   const locked = await lockRemain(env, iph);
   if (locked > 0) {
-    return { ok: false, reason: 'locked', message: `试得太频繁了，${Math.ceil(locked / 60)} 分钟后再来`, retryAfter: locked };
+    return {
+      ok: false,
+      reason: 'locked',
+      message: `试得太频繁了，${Math.ceil(locked / 60)} 分钟后再来`,
+      retryAfter: locked,
+    };
   }
 
   const now = Date.now();
@@ -144,7 +143,12 @@ export async function sendLoginCode(
     .first<{ sent_at: number }>();
   if (last && now - last.sent_at < CODE_COOLDOWN_MS) {
     const wait = Math.ceil((CODE_COOLDOWN_MS - (now - last.sent_at)) / 1000);
-    return { ok: false, reason: 'cooldown', message: `刚发过一封，${wait} 秒后再点一次`, retryAfter: wait };
+    return {
+      ok: false,
+      reason: 'cooldown',
+      message: `刚发过一封，${wait} 秒后再点一次`,
+      retryAfter: wait,
+    };
   }
 
   // ② 同邮箱每日上限
@@ -178,28 +182,54 @@ export async function sendLoginCode(
 
   const ins = await env.DB.prepare(
     `INSERT INTO auth_codes (email, account_id, code_hash, salt, purpose, ip_hash, sent_at, expires_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+     SELECT ?, ?, ?, ?, ?, ?, ?, ?
+     WHERE NOT EXISTS (SELECT 1 FROM auth_codes WHERE email=? AND sent_at>?)
+       AND (SELECT count(*) FROM auth_codes WHERE email=? AND sent_at>?) < ?
+       AND (SELECT count(*) FROM auth_codes WHERE ip_hash=? AND sent_at>?) < ?`,
   )
-    .bind(email, account?.id ?? null, codeHash, salt, purpose, iph, now, now + CODE_TTL_MS)
+    .bind(
+      email,
+      account?.id ?? null,
+      codeHash,
+      salt,
+      purpose,
+      iph,
+      now,
+      now + CODE_TTL_MS,
+      email,
+      now - CODE_COOLDOWN_MS,
+      email,
+      now - 86400000,
+      EMAIL_DAY_MAX,
+      iph,
+      now - 3600000,
+      IP_HOUR_MAX,
+    )
     .run();
 
-  // 本地预览：不发信，把码直接回给前端（只有回环地址 + AUTH_DEV_CODE=1 才有）
+  if (!ins.meta.changes)
+    return { ok: false, reason: 'cooldown', message: '刚请求过验证码，请稍后重试', retryAfter: 60 };
+
+  // 本地预览：不发信，把码直接回给前端。
   if (devMode) {
-    console.log(`[auth][dev] ${email} 的验证码是 ${code}`);
     return { ok: true, devCode: code };
   }
 
-  const sent = await sendMail(env, {
-    to: email,
-    subject: `清吾 · 登录验证码 ${code}`,
-    text: [
-      `你的验证码是 ${code}，5 分钟内有效。`,
-      '',
-      '没在清吾留过言？那可能是有人把邮箱填错了，忽略这封信就好。',
-      '',
-      `${siteUrl(env)}/links/`,
-    ].join('\n'),
-  });
+  const sent = await sendMail(
+    env,
+    {
+      to: email,
+      subject: `清吾 · 邮箱验证码 ${code}`,
+      text: [
+        `你的验证码是 ${code}，5 分钟内有效。`,
+        '',
+        '没在清吾留过言？那可能是有人把邮箱填错了，忽略这封信就好。',
+        '',
+        `${siteUrl(env)}/links/`,
+      ].join('\n'),
+    },
+    false,
+  );
 
   if (!sent) {
     // 发不出去就把码作废，别留一个「有效但没人收到」的记录
@@ -234,33 +264,55 @@ export async function verifyLoginCode(
   const iph = await ipHash(request, env);
   const locked = await lockRemain(env, iph);
   if (locked > 0) {
-    return { ok: false, reason: 'locked', message: `试得太频繁了，${Math.ceil(locked / 60)} 分钟后再来` };
+    return {
+      ok: false,
+      reason: 'locked',
+      message: `试得太频繁了，${Math.ceil(locked / 60)} 分钟后再来`,
+    };
   }
 
   const now = Date.now();
   const row = await env.DB.prepare(
-    `SELECT id, code_hash, salt, tries, expires_at FROM auth_codes
-      WHERE email = ? AND purpose = ? AND used = 0
-      ORDER BY sent_at DESC LIMIT 1`,
+    `SELECT id, code_hash, salt, tries, expires_at, used FROM auth_codes
+      WHERE email = ? AND purpose = ?
+      ORDER BY sent_at DESC, id DESC LIMIT 1`,
   )
     .bind(email, purpose)
-    .first<{ id: number; code_hash: string; salt: string; tries: number; expires_at: number }>();
+    .first<{
+      id: number;
+      code_hash: string;
+      salt: string;
+      tries: number;
+      used: number;
+      expires_at: number;
+    }>();
 
-  if (!row) return { ok: false, reason: 'no_code', message: '先点「发验证码」，再填收到的 6 位数字' };
-  if (row.expires_at < now) return { ok: false, reason: 'expired', message: '这封验证码过期了，重新发一封吧' };
+  if (!row || row.used)
+    return { ok: false, reason: 'no_code', message: '先点「发验证码」，再填收到的 6 位数字' };
+  if (row.expires_at < now)
+    return { ok: false, reason: 'expired', message: '这封验证码过期了，重新发一封吧' };
   if (row.tries >= CODE_MAX_TRIES) {
     return { ok: false, reason: 'bad_code', message: '这条码试错太多次了，重新发一封吧', left: 0 };
   }
 
   // 定长比较：同一套哈希口径算出来的两个 hex 串，用 secretEqual 走同一条路径
-  const given = await codeHashOf(env, purpose, email, code, row.salt ?? '');
+  const attempt = await env.DB.prepare(
+    'UPDATE auth_codes SET tries=tries+1 WHERE id=? AND used=0 AND tries<? AND expires_at>? RETURNING tries',
+  )
+    .bind(row.id, CODE_MAX_TRIES, Date.now())
+    .first<{ tries: number }>();
+  if (!attempt) return { ok: false, reason: 'bad_code', message: '这条码已失效，请重新发码' };
+  const given = await codeHashOf(
+    env,
+    purpose,
+    email,
+    code,
+    row.salt,
+    row.code_hash.startsWith('hmac1:'),
+  );
   if (!(await secretEqual(given, row.code_hash))) {
-    await env.DB.prepare('UPDATE auth_codes SET tries = tries + 1 WHERE id = ?')
-      .bind(row.id)
-      .run()
-      .catch(() => undefined);
     await recordAttempt(env, iph, false);
-    const left = Math.max(0, CODE_MAX_TRIES - row.tries - 1);
+    const left = Math.max(0, CODE_MAX_TRIES - attempt.tries);
     return {
       ok: false,
       reason: 'bad_code',
@@ -269,7 +321,12 @@ export async function verifyLoginCode(
     };
   }
 
-  await env.DB.prepare('UPDATE auth_codes SET used = 1 WHERE id = ?').bind(row.id).run();
+  const used = await env.DB.prepare(
+    'UPDATE auth_codes SET used = 1 WHERE id = ? AND used = 0 AND expires_at > ?',
+  )
+    .bind(row.id, Date.now())
+    .run();
+  if (!used.meta.changes) return { ok: false, reason: 'bad_code', message: '请重新获取验证码' };
   await recordAttempt(env, iph, true);
   return { ok: true, email };
 }

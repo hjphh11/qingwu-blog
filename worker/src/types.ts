@@ -235,6 +235,9 @@ export interface Env {
   // ——— 茶室互联 · 出站（见 chat/bridge.ts，方案 §46）———
   /** 对方 homeserver，例如 `https://matrix.rainzt.cn` */
   MATRIX_HS?: string;
+  ACCOUNT_MATRIX_HS?: string;
+  ACCOUNT_MATRIX_SECRET?: string;
+  ACCOUNT_MATRIX_ADMIN_TOKEN?: string;
   /** 大厅房间 id：`!CKQY…` */
   MATRIX_ROOM?: string;
   /** 转发账号的 access_token（只放服务器 `.dev.vars`，绝不进仓库） */

@@ -33,7 +33,7 @@ interface WhoRow {
   site: string | null;
   /** 自己写的一句简介（人卡用） */
   bio: string | null;
-  prefix: string | null;
+
 }
 
 /** 「来过的人」那一条：多一个 last_seen */
@@ -55,13 +55,12 @@ interface PeopleRow extends WhoRow {
  *
  * 上限 200：这间屋子不大，真到几百人时这个名单也该分页了。
  */
-async function listPeople(env: Env, now: number, meId: number): Promise<PeopleRow[]> {
+async function listPeople(env: Env, meId: number): Promise<PeopleRow[]> {
   const rows = await env.DB.prepare(
     `SELECT a.id AS id,
             a.display_name AS name, a.avatar_url AS avatar,
             a.email_hash AS hash, a.role AS role, a.site_url AS site,
             a.bio AS bio,
-            substr(a.email, 1, instr(a.email, '@') - 1) AS prefix,
             (SELECT MAX(last_seen) FROM chat_presence p WHERE p.account_id = a.id) AS seen,
             (SELECT COUNT(*) FROM chat_messages m
               WHERE m.account_id = a.id AND m.status = 'visible') AS posts,
@@ -96,7 +95,7 @@ async function currentAccount(request: Request, env: Env): Promise<AccountRow | 
 function peopleOf(rows: PeopleRow[], now: number) {
   return rows.map((r) => ({
     id: r.id,
-    name: r.name || r.prefix || `茶客#${r.id}`,
+    name: r.name || `茶客#${r.id}`,
     avatar: r.avatar || avatarFromHash(r.hash || ''),
     site: r.site || '',
     bio: r.bio || '',
@@ -122,8 +121,7 @@ export async function getWho(request: Request, env: Env): Promise<Response> {
       `SELECT p.account_id AS id,
               a.display_name AS name, a.avatar_url AS avatar,
               a.email_hash AS hash, a.role AS role, a.site_url AS site,
-              a.bio AS bio,
-              substr(a.email, 1, instr(a.email, '@') - 1) AS prefix
+              a.bio AS bio
          FROM chat_presence p JOIN accounts a ON a.id = p.account_id
         WHERE p.last_seen > ?
           AND NOT EXISTS (
@@ -138,7 +136,7 @@ export async function getWho(request: Request, env: Env): Promise<Response> {
     const raw = (rows.results ?? []) as WhoRow[];
     const members = raw.map((r) => ({
       id: r.id,
-      name: r.name || r.prefix || `茶客#${r.id}`,
+      name: r.name || `茶客#${r.id}`,
       avatar: r.avatar || avatarFromHash(r.hash || ''),
       site: r.site || '',
       bio: r.bio || '',
@@ -158,7 +156,7 @@ export async function getWho(request: Request, env: Env): Promise<Response> {
       if (!members.some((m) => m.id === me.id)) {
         members.unshift({
           id: me.id,
-          name: me.display_name || me.email.split('@')[0] || `茶客#${me.id}`,
+          name: me.display_name || `茶客#${me.id}`,
           avatar: me.avatar_url || avatarFromHash(me.email_hash || ''),
           site: me.site_url || '',
           bio: me.bio || '',
@@ -173,7 +171,7 @@ export async function getWho(request: Request, env: Env): Promise<Response> {
      */
     let people: ReturnType<typeof peopleOf> = [];
     try {
-      people = peopleOf(await listPeople(env, now, me?.id ?? -1), now);
+      people = peopleOf(await listPeople(env, me?.id ?? -1), now);
     } catch (e) {
       console.error('[chat] people 失败:', e instanceof Error ? e.message : e);
     }

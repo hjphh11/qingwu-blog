@@ -16,8 +16,7 @@ import { SESSION_COOKIE, clearCookieOf, cookieOf, isOn } from '../auth/common';
 import { createSession, destroySession, sessionUser } from '../auth/store';
 import { sendLoginCode, verifyLoginCode } from '../auth/codes';
 
-/** 与脚本 `scripts/create-admin.mjs` 必须一致，否则登录永远失败 */
-export const PBKDF2_ITER = 150_000;
+import { pbkdf2, PBKDF2_ITER } from '../auth/password';
 
 const CODE_TTL_SEC = 300; // 验证码有效期 5 分钟
 const CODE_COOLDOWN_SEC = 60; // 重发冷却
@@ -41,16 +40,6 @@ function hex(buf: ArrayBuffer | Uint8Array): string {
 
 async function sha256(text: string): Promise<string> {
   return hex(await crypto.subtle.digest('SHA-256', enc.encode(text)));
-}
-
-export async function pbkdf2(password: string, salt: string, iterations = PBKDF2_ITER): Promise<string> {
-  const key = await crypto.subtle.importKey('raw', enc.encode(password), 'PBKDF2', false, ['deriveBits']);
-  const bits = await crypto.subtle.deriveBits(
-    { name: 'PBKDF2', salt: enc.encode(salt), iterations, hash: 'SHA-256' },
-    key,
-    256,
-  );
-  return hex(bits);
 }
 
 /** 32 字节随机 token（十六进制 64 字符） */
@@ -272,7 +261,7 @@ export async function postLogin(request: Request, env: Env): Promise<Response> {
 
   // 统一账号：验证码走 auth_codes，与访客同一套发信、同一套限流
   if (!resolved.legacy && resolved.accountId) {
-    const r = await sendLoginCode(env, request, resolved.email, 'login');
+    const r = await sendLoginCode(env, request, resolved.email, 'admin_login');
     if (!r.ok) {
       const status = r.reason === 'mail' ? 502 : r.reason === 'bad_email' ? 400 : 429;
       return json(
@@ -340,7 +329,7 @@ export async function postVerify(request: Request, env: Env): Promise<Response> 
   // 统一账号：验证码在 auth_codes 里（与访客同一套发信/限流），会话写 auth_sessions
   const resolved = await resolveAdmin(env, username);
   if (resolved && !resolved.legacy && resolved.accountId) {
-    const v = await verifyLoginCode(env, request, resolved.email, code, 'login');
+    const v = await verifyLoginCode(env, request, resolved.email, code, 'admin_login');
     if (!v.ok) {
       return json(
         { ok: false, reason: v.reason, left: v.left, message: v.message },

@@ -43,8 +43,7 @@ export async function searchChat(request: Request, env: Env): Promise<Response> 
       `SELECT m.id, m.body, m.ts, m.origin, m.account_id, m.status,
               m.remote_nick, m.remote_avatar,
               a.display_name AS acc_name, a.avatar_url AS acc_avatar,
-              a.email_hash AS hash,
-              substr(a.email, 1, instr(a.email, '@') - 1) AS prefix
+              a.email_hash AS hash
          FROM chat_messages m LEFT JOIN accounts a ON a.id = m.account_id
         WHERE m.body LIKE ? ESCAPE '\\'
           AND (m.status IN ('visible','recalled')
@@ -68,7 +67,7 @@ export async function searchChat(request: Request, env: Env): Promise<Response> 
         acc_name: string | null;
         acc_avatar: string | null;
         hash: string | null;
-        prefix: string | null;
+
       }>()
       .catch(() => ({ results: [] }));
 
@@ -80,7 +79,7 @@ export async function searchChat(request: Request, env: Env): Promise<Response> 
         authorId: remote ? 0 : (r.account_id ?? 0),
         name: remote
           ? r.remote_nick || '远方的茶客'
-          : r.acc_name || r.prefix || `茶客#${r.account_id ?? 0}`,
+          : r.acc_name || `茶客#${r.account_id ?? 0}`,
         avatar: remote
           ? r.remote_avatar || ''
           : r.acc_avatar || avatarFromHash(r.hash || ''),

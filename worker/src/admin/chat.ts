@@ -73,7 +73,7 @@ interface ReportRow {
 }
 
 /** 举报列表（open 在前）+ 当前生效的封禁 */
-export async function getChatOverview(request: Request, env: Env, _admin: Admin): Promise<Response> {
+export async function getChatOverview(_request: Request, env: Env, _admin: Admin): Promise<Response> {
   const now = Date.now();
 
   const reports = await env.DB.prepare(
@@ -217,7 +217,7 @@ export async function setChatReportStatus(
 
 /** 删一条消息（软删）。它名下的 open 举报一起标成 handled */
 export async function deleteChatMessage(
-  request: Request,
+  _request: Request,
   env: Env,
   _admin: Admin,
   id: number,
@@ -268,7 +268,7 @@ export async function setChatBan(request: Request, env: Env, _admin: Admin): Pro
 
 /** 解封 */
 export async function clearChatBan(
-  request: Request,
+  _request: Request,
   env: Env,
   _admin: Admin,
   accountId: number,
@@ -331,7 +331,7 @@ export async function getChatMessages(request: Request, env: Env, _admin: Admin)
  * 单条消息的「这条没问题」将来可以接这里（直接在消息上点），现在先给规则记。
  */
 export async function markRuleHurt(
-  request: Request,
+  _request: Request,
   env: Env,
   _admin: Admin,
   id: string,

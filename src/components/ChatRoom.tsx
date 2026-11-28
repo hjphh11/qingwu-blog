@@ -19,7 +19,7 @@ import {
   X,
 } from '../lib/icons';
 import EmojiPicker from './EmojiPicker';
-import LoginDialog from './auth/LoginDialog';
+import AuthDialog from './auth/AuthDialog';
 import ChatAside from './chat/ChatAside';
 import ChatInfo from './chat/ChatInfo';
 import ChatSearch from './chat/ChatSearch';
@@ -364,7 +364,7 @@ export default function ChatRoom() {
   const [online, setOnline] = useState(0);
   const [signedIn, setSignedIn] = useState(false);
   const [config, setConfig] = useState<AuthConfig | null>(null);
-  const [loginOpen, setLoginOpen] = useState(false);
+  const [authMode, setAuthMode] = useState<'login' | 'register' | null>(null);
 
   /** 侧栏数据：在线的人（「我是谁」直接用会话里的 account，服务端不再算一遍） */
   const [account, setAccount] = useState<SessionAccount | null>(boot?.account ?? null);
@@ -809,7 +809,7 @@ export default function ChatRoom() {
     setSignedIn(false);
     setPeek(null);
     void refreshWho();
-    setTip({ kind: 'ok', text: '退出了。下次来聊天再收一次验证码 ~' });
+    setTip({ kind: 'ok', text: '退出了。下次来聊天时再登录 ~' });
   }, [refreshWho]);
 
   /**
@@ -1344,7 +1344,7 @@ export default function ChatRoom() {
 
   const attachFile = async (file: File) => {
     if (!signedIn) {
-      setLoginOpen(true);
+      setAuthMode('login');
       return;
     }
     if (uploading) return;
@@ -1475,7 +1475,7 @@ export default function ChatRoom() {
       const res = await send('', { mediaId: up.media.id });
       if (!res.ok) {
         setTip({ kind: 'warn', text: res.message });
-        if (res.reason === 'login') setLoginOpen(true);
+        if (res.reason === 'login') setAuthMode('login');
         return;
       }
       setMessages((prev) => mergeMessages(prev, [res.message], []));
@@ -1491,7 +1491,7 @@ export default function ChatRoom() {
 
   const startRec = async () => {
     if (!signedIn) {
-      setLoginOpen(true);
+      setAuthMode('login');
       return;
     }
     if (typeof MediaRecorder === 'undefined' || !navigator.mediaDevices?.getUserMedia) {
@@ -1619,7 +1619,7 @@ export default function ChatRoom() {
     }
 
     if (res.reason === 'login') {
-      setLoginOpen(true);
+      setAuthMode('login');
       setTip({ kind: 'warn', text: res.message });
       return;
     }
@@ -1689,7 +1689,7 @@ export default function ChatRoom() {
    */
   const doReact = async (id: number, emoji: string) => {
     if (!signedIn) {
-      setLoginOpen(true);
+      setAuthMode('login');
       return;
     }
     const res = await react(id, emoji);
@@ -1844,7 +1844,7 @@ export default function ChatRoom() {
   // —— 渲染 ——
   //
   // 左栏在三个分支里都渲染：加载骨架如果只有右边一列，加载完一变两列会横向跳一下。
-  // 加载阶段登录按钮点了没反应（LoginDialog 要等 config 才有），属于必然，不是 bug。
+  // 加载阶段登录按钮点了没反应（AuthDialog 要等 config 才有），属于必然，不是 bug。
 
   /** 侧栏（三个分支共用一份配置，避免 props 写三遍） */
   /**
@@ -1873,7 +1873,7 @@ export default function ChatRoom() {
     const r = await setBlock(target.id, on);
     if (!r.ok) {
       setTip({ kind: 'warn', text: r.message });
-      if (r.reason === 'login') setLoginOpen(true);
+      if (r.reason === 'login') setAuthMode('login');
       return;
     }
     setBlocks(r.blocks);
@@ -1906,7 +1906,7 @@ export default function ChatRoom() {
         setSideOpen(false);
         setSearchOpen(true);
       }}
-      onLogin={() => setLoginOpen(true)}
+      onLogin={() => setAuthMode('login')}
       onClose={() => setSideOpen(false)}
       onPick={openPeek}
     />
@@ -2246,7 +2246,7 @@ export default function ChatRoom() {
                     <button
                       type="button"
                       className="q-chat__blank__cta"
-                      onClick={() => setLoginOpen(true)}
+                      onClick={() => setAuthMode('login')}
                     >
                       坐下聊聊
                     </button>
@@ -2673,21 +2673,23 @@ export default function ChatRoom() {
           ) : (
             <div className="q-chat__composer">
               <div className="q-chat__guest">
-                <p>登录之后就能一起聊了 ~</p>
-                <button type="button" onClick={() => setLoginOpen(true)}>
+                <p>用密码或邮箱验证码登录，就能一起聊。一个账号全站通用。</p>
+                <button type="button" onClick={() => setAuthMode('login')}>
                   登录
                 </button>
+                <button type="button" className="px-3 py-2 text-sm text-crimson underline" onClick={() => setAuthMode('register')}>去注册</button>
               </div>
             </div>
           )}
 
           {config && (
-            <LoginDialog
-              open={loginOpen}
+            <AuthDialog
+              open={authMode !== null}
+              mode={authMode ?? 'login'}
               config={config}
-              onClose={() => setLoginOpen(false)}
+              onClose={() => setAuthMode(null)}
               onDone={(account) => {
-                setLoginOpen(false);
+                setAuthMode(null);
                 setSignedIn(Boolean(account));
                 void init();
               }}

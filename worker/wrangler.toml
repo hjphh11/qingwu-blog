@@ -56,6 +56,10 @@ migrations_dir = "migrations"
 crons = ["0 3 * * *"]
 
 [vars]
+# 个人 Matrix 账号使用自建服，与聊天室桥接的 MATRIX_HS / MATRIX_TOKEN 分开配置。
+# ACCOUNT_MATRIX_HS = "https://matrix.qingwu.ink"
+# ACCOUNT_MATRIX_SECRET 对应 Synapse registration_shared_secret，使用 secret 或 .dev.vars。
+# ACCOUNT_MATRIX_ADMIN_TOKEN 用于已开通账号同步昵称及密码，同样按 secret 配置。
 # 允许跨源调用 /hit 的站点（逗号分隔；* 表示不限制）。
 # 站点默认走**同源 /api/hit 薄转发**，所以正常情况下用不到 CORS；
 # 这里留着是为了「哪天想让浏览器直连 Worker」时不用改代码。

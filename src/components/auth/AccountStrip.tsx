@@ -272,7 +272,7 @@ export default function AccountStrip({
                 <span className="mb-1 block text-[10.5px] text-subtle">署名</span>
                 <input
                   value={name}
-                  maxLength={30}
+                  maxLength={40}
                   tabIndex={editing ? 0 : -1}
                   onChange={(ev) => setName(ev.target.value)}
                   className="w-full rounded-lg border border-rose/25 bg-white px-2.5 py-1.5 text-xs text-ink outline-none focus:border-crimson/50"

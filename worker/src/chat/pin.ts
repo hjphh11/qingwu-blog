@@ -35,7 +35,7 @@ export async function getPin(env: Env, meId = -1): Promise<PinInfo | null> {
   try {
     const row = await env.DB.prepare(
       `SELECT m.id, m.body, m.ts,
-              COALESCE(a.display_name, substr(a.email, 1, instr(a.email, '@') - 1)) AS name
+              COALESCE(a.display_name, '茶客') AS name
          FROM chat_pins p
          JOIN chat_messages m ON m.id = p.message_id
          LEFT JOIN accounts a ON a.id = m.account_id

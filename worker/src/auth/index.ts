@@ -9,7 +9,11 @@
 //   · 所有写接口都发 no-store，别让 CDN / 浏览器缓存住会话相关响应
 
 import type { Env } from '../types';
-import { json } from '../util';
+import { json, originAllowed, parseOrigins } from '../util';
+import { register } from './register';
+import { security, passwordLogin } from './security';
+import { AuthError } from './flow';
+import { validNickname } from './rules';
 import {
   SESSION_COOKIE,
   SESSION_TTL_SEC,
@@ -17,6 +21,8 @@ import {
   cookieOf,
   corsHeaders,
   isOn,
+  isEmail,
+  normalizeEmail,
 } from './common';
 import { sendLoginCode, verifyLoginCode } from './codes';
 import { anchorLogin, claimComments, publicAccount } from './account';
@@ -24,6 +30,7 @@ import {
   createSession,
   destroySession,
   findAccountById,
+  findAccountByEmail,
   listIdentities,
   removeIdentity,
   sessionUser,
@@ -32,7 +39,6 @@ import { githubCallback, githubEnabled, githubStart } from './github';
 import { clearAvatar, getAvatar, putAvatar } from './avatar-store';
 import { claimLikes, visitorKey } from '../visitor';
 
-const NAME_MAX = 30;
 const URL_MAX = 300;
 /** 一句简介。120 字够写「在哪儿念书 / 做什么 / 常聊什么」，再长就不是人卡了 */
 const BIO_MAX = 120;
@@ -46,7 +52,10 @@ async function readJson(request: Request): Promise<Record<string, unknown>> {
   }
 }
 
-const str = (v: unknown, max: number): string => String(v ?? '').trim().slice(0, max);
+const str = (v: unknown, max: number): string =>
+  String(v ?? '')
+    .trim()
+    .slice(0, max);
 
 function normalizeUrl(raw: string): string {
   const t = (raw || '').trim();
@@ -80,12 +89,20 @@ async function getMe(request: Request, env: Env): Promise<Response> {
 async function postEmailStart(request: Request, env: Env): Promise<Response> {
   const headers = corsHeaders(request, env);
   const body = await readJson(request);
+  if (!isEmail(normalizeEmail(body.email)))
+    return json({ ok: false, reason: 'bad_email', message: '邮箱格式看起来不对' }, 400, headers);
+  if (!(await findAccountByEmail(env, String(body.email ?? ''))))
+    return json({ ok: true }, 200, headers);
   const r = await sendLoginCode(env, request, body.email, 'login');
   if (!r.ok) {
     const status = r.reason === 'locked' ? 429 : r.reason === 'cooldown' ? 429 : 400;
-    return json({ ok: false, reason: r.reason, message: r.message, retryAfter: r.retryAfter }, status, headers);
+    return json(
+      { ok: false, reason: r.reason, message: r.message, retryAfter: r.retryAfter },
+      status,
+      headers,
+    );
   }
-  // ⚠️ 文案不暗示邮箱是否注册过 —— 首次登录即注册，两条路长得一样
+  // 发码响应不透露邮箱是否已经注册。
   return json(
     {
       ok: true,
@@ -107,20 +124,27 @@ async function postEmailVerify(request: Request, env: Env): Promise<Response> {
     return json({ ok: false, reason: v.reason, message: v.message, left: v.left }, status, headers);
   }
 
+  const verified = await findAccountByEmail(env, v.email);
+  if (!verified)
+    return json({ ok: false, reason: 'unregistered', message: '请先注册账号' }, 409, headers);
+  if (verified.status !== 'active')
+    return json({ ok: false, reason: 'disabled', message: '账号已停用，请联系站长' }, 403, headers);
   const anchored = await anchorLogin(env, {
     email: v.email,
     provider: 'email',
     uid: v.email,
-    profile: {},
   });
   if (!anchored.ok) {
-    return json({ ok: false, reason: 'conflict', message: '这个邮箱和已有的登录方式冲突了，先联系站长' }, 409, headers);
+    return json({ ok: false, reason: 'conflict', message: '邮箱绑定冲突，请联系站长' }, 409, headers);
   }
   if (anchored.account.status !== 'active') {
     return json({ ok: false, reason: 'disabled', message: '这个账号现在不能发言' }, 403, headers);
   }
 
-  const token = await createSession(env, request, anchored.account.id, 'visitor');
+  await env.DB.prepare('UPDATE accounts SET failed_logins=0, locked_until=NULL WHERE id=?')
+    .bind(anchored.account.id)
+    .run();
+  const token = await createSession(env, request, anchored.account.id, 'visitor', { email: v.email });
 
   // 把「没登录时点的赞」搬到账号名下 —— 不搬的话同一个人会占两个 key，
   // 一条留言能被他自己点出两票（实测过）。搬不动也只是留条旧票，不影响登录。
@@ -130,7 +154,7 @@ async function postEmailVerify(request: Request, env: Env): Promise<Response> {
     {
       ok: true,
       account: await publicAccount(env, anchored.account),
-      created: anchored.created,
+      suggestSetPassword: !anchored.account.has_password,
       config: configOf(env),
     },
     200,
@@ -140,6 +164,11 @@ async function postEmailVerify(request: Request, env: Env): Promise<Response> {
 
 async function postLogout(request: Request, env: Env): Promise<Response> {
   const headers = corsHeaders(request, env);
+  if ((await readJson(request)).all === true) {
+    const me = await sessionUser(request, env);
+    if (me)
+      await env.DB.prepare('DELETE FROM auth_sessions WHERE account_id=?').bind(me.account.id).run();
+  }
   await destroySession(request, env);
   return json({ ok: true }, 200, {
     ...headers,
@@ -153,7 +182,17 @@ async function patchProfile(request: Request, env: Env): Promise<Response> {
   if (!me) return json({ ok: false, reason: 'unauthorized' }, 401, headers);
 
   const body = await readJson(request);
-  const name = str(body.display_name, NAME_MAX);
+  const name = typeof body.display_name === 'string' ? body.display_name : '';
+  if (!validNickname(name))
+    return json(
+      {
+        ok: false,
+        reason: 'bad_nickname',
+        message: '昵称需为 1–20 个字，最多 3 个 emoji，首尾不能有空格',
+      },
+      400,
+      headers,
+    );
   const site = normalizeUrl(str(body.site_url, URL_MAX));
   /**
    * 简介：**只有请求里带了 `bio` 这个键才动它**。
@@ -171,18 +210,14 @@ async function patchProfile(request: Request, env: Env): Promise<Response> {
   // 头像走独立接口（上传见 postAvatar）—— 这里**不碰** avatar_url。
   // 曾经把「署名 + 站点 + 头像」写进同一个 UPDATE，结果「只改署名」也会把
   // 头像一起覆盖掉；分开之后各自说得清。
-  await (bioGiven
-    ? env.DB.prepare('UPDATE accounts SET display_name = ?, site_url = ?, bio = ? WHERE id = ?').bind(
-        name || null,
-        site || null,
-        bio || null,
-        me.account.id,
-      )
-    : env.DB.prepare('UPDATE accounts SET display_name = ?, site_url = ? WHERE id = ?').bind(
-        name || null,
-        site || null,
-        me.account.id,
-      )
+  await (
+    bioGiven
+      ? env.DB.prepare(
+          'UPDATE accounts SET matrix_name_synced_at=NULL, display_name = ?, site_url = ?, bio = ? WHERE id = ?',
+        ).bind(name || null, site || null, bio || null, me.account.id)
+      : env.DB.prepare(
+          'UPDATE accounts SET matrix_name_synced_at=NULL, display_name = ?, site_url = ? WHERE id = ?',
+        ).bind(name || null, site || null, me.account.id)
   ).run();
 
   const fresh = await findAccountById(env, me.account.id);
@@ -304,11 +339,49 @@ async function deleteIdentity(request: Request, env: Env, provider: string): Pro
 
 export async function handleAuth(request: Request, env: Env, path: string): Promise<Response> {
   const m = request.method;
+  const origin = request.headers.get('origin');
+  const allowed = parseOrigins(env.ALLOWED_ORIGINS).filter((host) => host !== '*');
+  allowed.push(new URL(request.url).origin);
+  if (env.SITE_URL) allowed.push(env.SITE_URL);
+  if (m !== 'GET' && !originAllowed(origin, allowed)) return json({ ok: false, reason: 'origin' }, 403);
+  if (m === 'POST') {
+    try {
+      if (['/auth/register/start', '/auth/register/verify', '/auth/register/complete'].includes(path)) {
+        return await register(env, request, path, await readJson(request));
+      }
+      if (path === '/auth/email/verify') return await postEmailVerify(request, env);
+      if (path === '/auth/login') return await passwordLogin(env, request, await readJson(request));
+      if (
+        [
+          '/auth/password',
+          '/auth/password/reset/start',
+          '/auth/email/change/start',
+          '/auth/email/change/verify',
+          '/auth/username/confirm',
+          '/auth/matrix/activate',
+        ].includes(path)
+      )
+        return await security(env, request, path, await readJson(request));
+    } catch (e) {
+      if (e instanceof AuthError)
+        return json(
+          { ok: false, reason: e.reason, message: e.message },
+          e.status,
+          corsHeaders(request, env),
+        );
+      if (String(e).includes('UNIQUE constraint'))
+        return json(
+          { ok: false, reason: 'conflict', message: '用户名或邮箱已被使用' },
+          409,
+          corsHeaders(request, env),
+        );
+      throw e;
+    }
+  }
 
   // 只做 GET / POST / PATCH / DELETE，其余一律 405（别默认放行）
   if (path === '/auth/me' && m === 'GET') return getMe(request, env);
   if (path === '/auth/email/start' && m === 'POST') return postEmailStart(request, env);
-  if (path === '/auth/email/verify' && m === 'POST') return postEmailVerify(request, env);
   if (path === '/auth/logout' && m === 'POST') return postLogout(request, env);
   if (path === '/auth/profile' && m === 'PATCH') return patchProfile(request, env);
   if (path === '/auth/my-comments' && m === 'GET') return getMyComments(request, env);
@@ -333,7 +406,8 @@ export async function handleAuth(request: Request, env: Env, path: string): Prom
   if (un && m === 'DELETE') return deleteIdentity(request, env, un[1]!);
 
   // 兜底：不是 404 而是 405，方便区分「路径写错」和「方法写错」
-  if (/^\/auth\//.test(path)) return json({ ok: false, reason: 'not_found' }, 404, corsHeaders(request, env));
+  if (/^\/auth\//.test(path))
+    return json({ ok: false, reason: 'not_found' }, 404, corsHeaders(request, env));
   return json({ ok: false, reason: 'not_found' }, 404);
 }
 
@@ -342,6 +416,6 @@ export function loginRequiredMessage(): { ok: false; reason: string; message: st
   return {
     ok: false,
     reason: 'login_required',
-    message: '登录之后才能留言 —— 用邮箱收个验证码就行，之后回访不用再填',
+    message: '登录之后才能留言，账号在全站通用',
   };
 }

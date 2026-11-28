@@ -170,7 +170,7 @@ async function enqueue(env: Env, msg: MailInput, reason: string): Promise<void> 
 }
 
 /** 发一封纯文本信。没配 RESEND_KEY / 没给收件人 → 直接 false，不打网络 */
-export async function sendMail(env: Env, input: MailInput): Promise<boolean> {
+export async function sendMail(env: Env, input: MailInput, queueOnFailure = true): Promise<boolean> {
   const to = headerSafe(input.to, 254);
   if (!env.RESEND_KEY || !to) return false;
   // 收件人必须是「长得像邮箱」的一串：防止把奇怪的东西塞进 To
@@ -194,7 +194,7 @@ export async function sendMail(env: Env, input: MailInput): Promise<boolean> {
     if (r.failure === 'config') {
       // 授权码/配置问题：当场不再试，但进队（改好配置后还能补发）
       console.warn('[mail] 发信配置异常（不重试）:', r.reason);
-      await enqueue(env, msg, r.reason || 'config');
+      if (queueOnFailure) await enqueue(env, msg, r.reason || 'config');
       return false;
     }
 
@@ -205,7 +205,7 @@ export async function sendMail(env: Env, input: MailInput): Promise<boolean> {
       continue;
     }
     console.warn('[mail] 重试耗尽，入待发队列:', r.reason);
-    await enqueue(env, msg, r.reason || 'transient');
+    if (queueOnFailure) await enqueue(env, msg, r.reason || 'transient');
     return false;
   }
   return false;

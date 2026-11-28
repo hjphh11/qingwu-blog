@@ -131,7 +131,7 @@ async function readCapped(res: Response, cap: number): Promise<string> {
     all.set(c.subarray(0, take), at);
     at += take;
   }
-  return new TextDecoder('utf-8', { fatal: false }).decode(all);
+  return new TextDecoder('utf-8').decode(all);
 }
 
 /** 抓一个页面，自己跟重定向（每一跳都重新过 safeUrl） */
