@@ -28,6 +28,7 @@
  */
 import type { Env } from '../types';
 import { publicAvatarUrl } from './localAvatar';
+import { bridgePaused } from './pause';
 
 /** 站点地址：出站消息的 `site` 字段与相对头像拼绝对地址都用它（rainzt 那边也是带尾斜杠的写法） */
 const SITE_FALLBACK = 'https://www.qingwu.ink';
@@ -47,7 +48,7 @@ const PENDING_DELAY_MS = 60_000;
 /** 出站限流的统计窗口 */
 const OUT_WINDOW_MS = 10 * 60 * 1000;
 /** 一个访客在窗口内最多往大厅推几条（访客共用 @guest，那边没法单独封） */
-const GUEST_OUT_CAP = 5;
+const GUEST_OUT_CAP = 10;
 /** 登录用户给宽一点，正常聊天碰不到 */
 const USER_OUT_CAP = 30;
 
@@ -106,6 +107,9 @@ export async function queueBridge(
   // 文字与图片；视频 / 文件 / 语音还没做（§46.5 第 4 步的后半段）
   if (opts.kind !== 'text' && opts.kind !== 'image') return;
 
+  // 维护者按了「暂停互联」：不入队。恢复后也不会补发（见 pause.ts 的说明）
+  if (await bridgePaused(env)) return;
+
   const now = Date.now();
 
   /**
@@ -115,7 +119,7 @@ export async function queueBridge(
    * 所以那边没法单独封某一个访客 —— 一封就把所有访客一起封了。
    * 控制权必须留在我们这里：**谁超限，谁的这条就只留在站内，不往大厅推**。
    *
-   * 阈值故意给得宽（访客 10 分钟 5 条、登录用户 30 条），正常聊天根本碰不到；
+   * 阈值故意给得宽（访客 10 分钟 10 条、登录用户 30 条），正常聊天根本碰不到；
    * 真碰到就是在刷屏，这时候「少转几条」远好过「整个大厅被淹」。
    */
   const who = await env.DB.prepare(
@@ -624,6 +628,8 @@ async function deliverEmoji(
 export async function flushBridge(env: Env, limit = BATCH): Promise<{ sent: number; dropped: number; failed: number }> {
   const cfg = bridgeOf(env);
   if (!cfg) return { sent: 0, dropped: 0, failed: 0 };
+  // 暂停期间一条都不发（队列在进暂停时已被清空，这里再兜一层）
+  if (await bridgePaused(env)) return { sent: 0, dropped: 0, failed: 0 };
 
   const now = Date.now();
   const rows = await env.DB.prepare(

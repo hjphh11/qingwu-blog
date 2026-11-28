@@ -2449,6 +2449,10 @@ export default function ChatRoom() {
 
           {signedIn ? (
             <div className="q-chat__composer">
+              {/* 互联要求：发言入口要常驻说明同步范围（公开消息 → Matrix 大厅 → 其它互联站点） */}
+              <p className="q-chat__sync">
+                公开消息会同步到 Matrix 与互联站点，私聊与资料不会
+              </p>
               <div className="q-chat__inputwrap">
                 {mention && mentionList.length > 0 && (
                   <div className="q-chat__mentions" role="listbox" aria-label="选择要提及的人">

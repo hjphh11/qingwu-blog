@@ -11,6 +11,7 @@
 //   · 举报状态只有 open / handled / dismissed 三种，不做「已读未读」这种中间态。
 
 import type { Env } from '../types';
+import { bridgeState, setBridgePaused } from '../chat/pause';
 import { json } from '../util';
 import type { Admin } from './auth';
 import { RULE_NOTES } from '../chat/screen';
@@ -191,6 +192,8 @@ export async function getChatOverview(_request: Request, env: Env, _admin: Admin
     /** AI 判定的拦截阈值（0~100），举报卡按它算建议动作 */
     threshold,
     rules,
+    /** 互联总开关：后台要能看出「现在是暂停还是通的」 */
+    bridge: await bridgeState(env),
   });
 }
 
@@ -408,4 +411,34 @@ export async function restoreChatMessage(
     .bind(id, now)
     .run();
   return json({ ok: true });
+}
+
+
+/**
+ * 暂停 / 恢复互联（临时断联）。
+ *
+ * 互联要求里的硬条款：维护者要能一把停掉双向同步，确认问题解决再恢复，
+ * **暂停期间的消息不得在恢复后自动补发**。
+ * 语义细节（出站清队、入站丢弃但推进游标）全在 `chat/pause.ts` 里。
+ *
+ * 调用：`POST /admin/chat/bridge`，body `{ paused: true|false, reason?: string }`。
+ * 前端后台的「长亭」页用了它；也可以直接 curl（维护者会话 cookie / Bearer 均可）。
+ */
+export async function setChatBridge(
+  request: Request,
+  env: Env,
+  admin: Admin,
+): Promise<Response> {
+  let body: { paused?: unknown; reason?: unknown };
+  try {
+    body = (await request.json()) as typeof body;
+  } catch {
+    return json({ ok: false, message: '请求格式不对' }, 400);
+  }
+  if (typeof body.paused !== 'boolean') {
+    return json({ ok: false, message: 'paused 必须是 true 或 false' }, 400);
+  }
+  const reason = typeof body.reason === 'string' ? body.reason.slice(0, 200) : '';
+  const state = await setBridgePaused(env, body.paused, admin.username, reason);
+  return json({ ok: true, bridge: state });
 }

@@ -789,6 +789,11 @@ async function bumpRules(env: Env, hits: string[], now: number): Promise<void> {
   }
 }
 
+/** 发送限流：一分钟窗口内最多几条（访客比登录用户紧一档） */
+const RATE_WINDOW_MS = 60_000;
+const RATE_GUEST = 4;
+const RATE_USER = 12;
+
 export async function sendMessage(
   request: Request,
   env: Env,
@@ -840,6 +845,42 @@ export async function sendMessage(
       },
       403,
     );
+  }
+
+  /**
+   * 发送频率限制（互联要求里写死的「服务端限制每个发言账号的发送频率」）。
+   *
+   * 按 `account_id` 算：访客是每浏览器一个账号，所以访客也是按人算的。
+   * 一分钟窗口，访客 4 条、其他 12 条 —— 正常聊天碰不到，手速再快也不会误伤；
+   * 超限回 429 + `retryAfterMs`，前端直接显示「再等 N 秒」。
+   *
+   * 为什么不用 Redis 计数：这台机器就一个进程，D1 一次聚合一两毫秒，
+   * 而且**重启后不会把限流状态丢掉**（内存计数重启就清零，刷屏的人正好卡这个窗口）。
+   */
+  {
+    const window = RATE_WINDOW_MS;
+    const cap = me.role === 'chat_guest' ? RATE_GUEST : RATE_USER;
+    const recent = await env.DB.prepare(
+      `SELECT COUNT(*) AS n, MIN(ts) AS oldest FROM chat_messages
+        WHERE account_id = ? AND ts > ?`,
+    )
+      .bind(me.id, now0 - window)
+      .first<{ n: number; oldest: number | null }>()
+      .catch(() => null);
+
+    if (Number(recent?.n ?? 0) >= cap) {
+      const oldest = Number(recent?.oldest ?? now0);
+      const wait = Math.max(1, Math.ceil((oldest + window - now0) / 1000));
+      return json(
+        {
+          ok: false,
+          reason: 'too_fast',
+          retryAfterMs: wait * 1000,
+          message: `说得有点快，等 ${wait} 秒再发吧`,
+        },
+        429,
+      );
+    }
   }
 
   /**

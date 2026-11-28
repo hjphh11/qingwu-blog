@@ -24,6 +24,7 @@
  */
 import type { Env } from '../types';
 import { bridgeOf, pathSeg, type BridgeCfg } from './bridge';
+import { bridgePaused } from './pause';
 
 /** 投递一次最多入库多少条 —— 大厅很热闹，一轮灌太多会顶到 D1 的写上限 */
 const MAX_INSERT = 30;
@@ -555,6 +556,8 @@ export async function pullBridge(
   if (!cfg) return { added: 0, skipped: 0, first: false, redacted: 0, reacted: 0 };
 
   const now = Date.now();
+  /** 维护者按了「暂停互联」：入站照常拉、照常推进游标，但**丢弃**事件（不补发） */
+  const paused = await bridgePaused(env);
 
   // 抢锁：先确保有一行，再 CAS 式地拿到锁
   await env.DB.prepare(
@@ -650,7 +653,8 @@ export async function pullBridge(
     })();
 
     // 从旧到新处理；超过 MAX_INSERT 就留到下一轮（游标不前进时会重来）
-    const queue = events.filter((e) => !isOwnEcho(e)).slice(-MAX_INSERT);
+    // 暂停时整批丢掉：游标在下面照常前进，恢复后不会补进来
+    const queue = paused ? [] : events.filter((e) => !isOwnEcho(e)).slice(-MAX_INSERT);
 
     for (const ev of queue) {
       const p = parseRemoteEvent(ev);

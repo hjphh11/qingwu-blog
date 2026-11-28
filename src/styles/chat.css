@@ -2422,6 +2422,18 @@
     color: var(--color-subtle);
   }
 
+  /*
+   * 互联同步提示。互联要求里写死了「在发言入口明确提示消息会同步到 Matrix 和其他互联站点」。
+   * 常驻、不做成一次性提示 —— 新来的人随时可能从任何一个时刻开始打字。
+   */
+  .q-chat__sync {
+    margin: 0 0 0.3rem;
+    padding-left: 0.15rem;
+    font-size: 0.71875rem;
+    line-height: 1.35;
+    color: var(--color-subtle);
+  }
+
   /* 底栏里的快捷键提示：宽度不够时整条隐藏，不要让它把工具条挤成省略号 */
   .q-chat__hint {
     order: 3;

@@ -23,6 +23,7 @@ import {
   markRuleHurt,
   restoreChatMessage,
   setChatBan,
+  setChatBridge,
   setChatReportStatus,
 } from './chat';
 import { getStats } from './stats';
@@ -125,6 +126,11 @@ export async function handleAdmin(request: Request, env: Env, path: string): Pro
 
   if (path === '/admin/chat/messages' && m === 'GET') {
     return requireAdmin(request, env, (admin) => getChatMessages(request, env, admin));
+  }
+
+  // 临时断联：暂停 / 恢复与大厅的双向同步（暂停期间的消息不补发）
+  if (path === '/admin/chat/bridge' && m === 'POST') {
+    return requireAdmin(request, env, (admin) => setChatBridge(request, env, admin));
   }
 
   const chatHurt = path.match(/^\/admin\/chat\/rules\/([A-Za-z0-9-]+)\/hurt$/);
