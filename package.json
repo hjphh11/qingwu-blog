@@ -8,7 +8,7 @@
     "dev": "astro dev",
     "dev:admin": "node scripts/dev-admin.mjs",
     "new:post": "node scripts/new-post.mjs",
-    "build": "npm run check:types && astro build",
+    "build": "astro sync && npm run check:types && astro build",
     "check:types": "tsc --noEmit",
     "preview": "astro preview",
     "check": "astro check",
