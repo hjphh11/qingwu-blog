@@ -415,6 +415,12 @@ const hitEndpoint = `${WORKER_BASE}/hit`;
             : null;
         function observeReveals() {
           document.documentElement.classList.add('qjs');
+          // Keep the opening text and anchor headings immediately readable.
+          var blocks = document.querySelectorAll('[data-reading-reveal] > :is(p, blockquote, figure):not(.reveal)');
+          var belowFold = Array.from(blocks).filter(function (el) {
+            return el.getBoundingClientRect().top >= window.innerHeight;
+          });
+          belowFold.forEach(function (el) { el.classList.add('reveal'); });
           var els = document.querySelectorAll('.reveal:not(.is-visible)');
           if (!io) {
             els.forEach(function (el) {
@@ -427,6 +433,7 @@ const hitEndpoint = `${WORKER_BASE}/hit`;
           });
         }
         observeReveals();
+        document.addEventListener('astro:before-swap', function () { if (io) io.disconnect(); });
         document.addEventListener('astro:page-load', observeReveals);
       }
     </script>

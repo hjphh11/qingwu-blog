@@ -38,7 +38,7 @@ const date = (day: Date) => day.toISOString().slice(0, 10);
     const feature = currentPage === 1 && index === 0;
     const day = date(post.data.pubDate);
     return (
-      <article class:list={['entry', { feature }]}>
+      <article class:list={['entry', 'reveal', { feature }]}>
         <a class="entry-link" href={`/blog/${post.id}/`}>
           {feature ? (
             <img class="feature-cover" src={post.data.cover || 'https://img.qingwu.ink/site/covers/home-friends-9d8b71630bd3.webp'}

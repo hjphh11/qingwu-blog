@@ -27,7 +27,7 @@ const stories = posts.map(({ id, data, body }) => ({
         {stories.map((story) => (
           <article class="story">
             <div class="sheet">
-              <a class="article-link" href={`/blog/${story.id}`}>
+              <a class="article-link reveal" href={`/blog/${story.id}`}>
                 <div class="cover">
                   <img src={story.cover || 'https://img.qingwu.ink/site/covers/home-friends-9d8b71630bd3.webp'} width="1200" height="675" loading="lazy" decoding="async" alt="" />
                 </div>

@@ -10,19 +10,19 @@
    仅在 JS 可用(<html>.qjs)时隐藏待展示元素,避免无 JS 时内容缺失;
    进入视口后上浮淡入(is-visible),由 Layout 全局 IntersectionObserver 驱动。
 
-   性能:不再给每个待展示元素挂 `will-change` —— 那会把页面上每个区块都提成
-   独立合成层(首页 5 张卡 + 5 个侧栏块 + 每个页面的区块),层多了 GPU 内存和
-   合成开销反而更大。改用 `backface-visibility: hidden` 触发一次性提升,
-   动画结束后由 .is-visible 撤掉。 */
+   文章可能有数十段，交由浏览器在过渡期间管理合成层。 */
 .qjs .reveal {
   opacity: 0;
-  transform: translateY(22px);
-  transition: opacity var(--dur-move) var(--ease-out-expo), transform var(--dur-move) var(--ease-out-expo);
+  transform: translateY(var(--reveal-rise, 22px));
 }
-.qjs .reveal:not(.is-visible) {
-  will-change: opacity, transform;
+[data-reading-reveal] {
+  --reveal-rise: 6px;
 }
 .qjs .reveal.is-visible {
+  transition: opacity var(--dur-move) var(--ease-out-expo), transform var(--dur-move) var(--ease-out-expo);
+}
+.qjs .reveal.is-visible,
+.qjs .reveal:focus-within {
   opacity: 1;
   transform: none;
 }
@@ -119,7 +119,10 @@
     transition: none;
   }
 
-  .qjs .reveal {
+  .qjs .reveal,
+  .qjs .reveal.is-visible {
+    opacity: 1;
+    transform: none;
     transition: none;
   }
 
