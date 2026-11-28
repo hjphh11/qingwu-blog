@@ -1,7 +1,8 @@
-import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { authPost, githubLoginUrl, type AuthConfig, type SessionAccount } from '../../lib/auth';
 import { usernameError, validNickname, validPassword } from '../../../worker/src/auth/rules';
+import ChatGuestForm from '../chat/ChatGuestForm';
 import CodeInput from './CodeInput';
 import './auth.css';
 
@@ -13,8 +14,7 @@ type Props = {
   onClose: () => void;
   onDone: (account: SessionAccount, created?: boolean) => void;
   page?: boolean;
-  guestForm?: ReactNode;
-  onGuest?: () => void;
+  chat?: { initialMode: 'guest' | 'login'; onGuestDone: () => void };
 };
 
 export default function AuthDialog(props: Props) {
@@ -24,6 +24,9 @@ export default function AuthDialog(props: Props) {
 
 function Modal(props: Props) {
   const ref = useRef<HTMLDialogElement>(null);
+  const [loginMode, setLoginMode] = useState(props.chat?.initialMode);
+  const [busy, setBusy] = useState(false);
+  const group = useId();
   useEffect(() => {
     const el = ref.current;
     el?.showModal();
@@ -33,23 +36,49 @@ function Modal(props: Props) {
     <dialog
       ref={ref}
       className="q-auth-modal"
-      aria-label={props.guestForm ? '访客进入长亭' : '登录与注册'}
+      aria-label={props.chat ? '长亭登录' : '登录与注册'}
       onCancel={props.onClose}
       onClick={(e) => {
         if (e.target === ref.current) props.onClose();
       }}
     >
       <div>
+        {props.chat && (
+          <fieldset className="q-auth-switch" disabled={busy}>
+            <legend className="sr-only">登录方式</legend>
+            {(['guest', 'login'] as const).map((mode) => (
+              <label key={mode}>
+                <input
+                  className="sr-only"
+                  type="radio"
+                  name={group}
+                  checked={loginMode === mode}
+                  onChange={() => setLoginMode(mode)}
+                />
+                <span>{mode === 'guest' ? '访客登录' : '账号登录'}</span>
+              </label>
+            ))}
+          </fieldset>
+        )}
         <button className="q-auth-close" type="button" aria-label="关闭" onClick={props.onClose}>
           ×
         </button>
-        {props.guestForm ?? <AuthForm {...props} />}
+        {props.chat ? (
+          <>
+            <div hidden={loginMode !== 'guest'}>
+              <ChatGuestForm onDone={props.chat.onGuestDone} onBusyChange={setBusy} />
+            </div>
+            <div hidden={loginMode !== 'login'}>
+              <AuthForm {...props} onBusyChange={setBusy} />
+            </div>
+          </>
+        ) : <AuthForm {...props} />}
       </div>
     </dialog>
   );
 }
 
-function AuthForm({ mode: initial = 'login', config, onDone, onGuest }: Props) {
+function AuthForm({ mode: initial = 'login', config, onDone, chat, onBusyChange }: Props & { onBusyChange?: (busy: boolean) => void }) {
   const [mode, setMode] = useState<Mode>(initial);
   const [method, setMethod] = useState<'password' | 'code'>('password');
   const [sent, setSent] = useState(false);
@@ -66,6 +95,7 @@ function AuthForm({ mode: initial = 'login', config, onDone, onGuest }: Props) {
   const [cool, setCool] = useState(0);
   const hp = useRef<HTMLInputElement>(null);
   const registering = mode === 'register';
+  useEffect(() => onBusyChange?.(busy), [busy, onBusyChange]);
   useEffect(() => {
     if (cool) {
       const t = setTimeout(() => setCool(cool - 1), 1000);
@@ -173,7 +203,7 @@ function AuthForm({ mode: initial = 'login', config, onDone, onGuest }: Props) {
         void submit();
       }}
     >
-      <h1>{registering ? '注册账号' : '登录'}</h1>
+      {(registering || !chat) && <h1>{registering ? '注册账号' : '登录'}</h1>}
       <p>
         {registering
           ? sent
@@ -293,7 +323,6 @@ function AuthForm({ mode: initial = 'login', config, onDone, onGuest }: Props) {
           </p>
         )}
         <footer>
-          {onGuest && <button type="button" onClick={onGuest}>以访客身份进入长亭</button>}
           {!registering && (
             <button
               type="button"

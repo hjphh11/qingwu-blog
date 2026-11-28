@@ -19,7 +19,6 @@ import {
   X,
 } from '../lib/icons';
 import EmojiPicker from './EmojiPicker';
-import ChatGuestForm from './chat/ChatGuestForm';
 import AuthDialog from './auth/AuthDialog';
 import ChatAside from './chat/ChatAside';
 import ChatInfo from './chat/ChatInfo';
@@ -2699,16 +2698,13 @@ export default function ChatRoom() {
           {config && (
             <AuthDialog
               open={authMode !== null}
-              onGuest={() => setAuthMode('guest')}
-              guestForm={authMode === 'guest' ? (
-                <ChatGuestForm
-                  onLogin={() => setAuthMode('login')}
-                  onDone={() => {
-                    setAuthMode(null);
-                    void init();
-                  }}
-                />
-              ) : undefined}
+              chat={{
+                initialMode: authMode ?? 'guest',
+                onGuestDone: () => {
+                  setAuthMode(null);
+                  void init();
+                },
+              }}
               config={config}
               onClose={() => setAuthMode(null)}
               onDone={(account) => {
