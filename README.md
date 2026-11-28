@@ -16,7 +16,7 @@
 - **Tailwind CSS**（暖色设计 tokens）
 - **Motion**（motion/react，克制动效）
 - **Hanzi Writer**（笔顺书写动画）
-- **Vercel**（部署托管，绑定 `qingwu.ink`）
+- **自建香港服务器**（nginx 服务静态产物 + 本地 Worker），Vercel 只留适配器产出 SSR 产物，不部署
 
 ## 🚀 本地运行
 ```bash
@@ -27,18 +27,19 @@ npm run check    # 类型检查
 ```
 
 ## 📦 部署
-推送到 GitHub 的 `main` 分支 → Vercel 通过 GitHub 集成自动构建并上线：
-- Build：`npm run build`（静态输出到 `dist/`）
-- Output：`dist`
-- 绑定域名：`qingwu.ink` / `www.qingwu.ink`
+推送到 GitHub 的 `main` 分支 → 服务器上的 `qingwu-deploy.timer` **每 2 分钟**拉取并构建：
+- Build：`PUBLIC_HIT_WORKER_URL=/api PUBLIC_TURNSTILE_SITE_KEY= npm run build`（静态输出到 `dist/client`）
+- 站点根：nginx `root /data/qingwu/dist/client`
+- 接口：Worker 跑在 `127.0.0.1:8787`，nginx 反代 `/api/` 与 `/admin/`
+- 域名：`qingwu.ink` / `www.qingwu.ink`（Let's Encrypt 自动续期）
 
 > 部署的更多细节与备注，保存在**本地** `docs/部署说明.md`，不随仓库公开。
 
 ## 📈 访问统计
 访客打点走 **Cloudflare Worker**（`https://api.qingwu.ink/hit`）→ 写入 D1，后台读 `GET /stats`。
 
-- 前端默认由浏览器**直连 Worker**（`Layout.astro`）。为什么不走同源转发：那样请求由 Vercel 的
-  数据中心 IP 发出，Cloudflare 的 Managed Challenge 会回 403。
+- 前端默认由浏览器**直连 Worker**（`Layout.astro`）。为什么不走同源转发：历史上那样请求由 Vercel 的
+  数据中心 IP 发出，Cloudflare 的 Managed Challenge 会回 403（现在自建机上已不适用，但链路保持原样）。
 - 同源的 `/api/hit` 仍然保留，作一层**薄转发**（`src/pages/api/hit.ts`），方便排查与兜底调用；
   **它不再回退 Upstash** —— Worker 不可达就是少记一次访问，只留服务端日志。
 - 旧的 Upstash + GitHub Action 汇总链路已于 2026-10-31 整条删除。

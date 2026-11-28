@@ -1,31 +1,29 @@
-# worker/ —— 清吾的动态运行时（Cloudflare Workers + D1）
+# worker/ —— 清吾的动态运行时（Worker + 本地 workerd + 本地 SQLite）
 
-> 方案：`docs/后台迁移-Cloudflare方案.md`。
-> **当前只做到第 1 步：访问统计（`POST /hit` + `GET /stats`）。**
-> 友链申请（第 2 步）、后台 API（第 3 步）、定时发布（第 4 步）、评论/点赞（第 5 步）都在后面，
-> `migrations/0001_init.sql` 里的对应表已经建好，但**现在没有任何路由会写它们**。
+> **现在的形态**：这套代码不再跑在 Cloudflare 上，而是**跑在自己服务器上**
+> （`wrangler dev --local`，workerd 进程 `qingwu-api.service`，监听 `127.0.0.1:8787`），
+> nginx 把 `/api/` 与 `/admin/` 反代进来；数据库是本地 miniflare D1 的 SQLite 文件
+> （`worker/.wrangler/state/v3/d1/…sqlite`，**唯一主库**，CF D1 只读归档）。
+> 部署、备份、排障看 `docs/部署说明.md`；换机看 `docs/迁移-新服务器.md`。
+>
+> ⚠️ 本文 28 行以后是 **2026-10-31「只做到第 1 步（访问统计）」时期的原始记录**，
+> 目录树、路由表、手工步骤都已过时，只当历史参考。以代码和 `docs/AI说明.md` 为准。
 
-## 它替换掉了什么
+## 现在它负责什么
 
-```
-迁移前：访客 → Vercel /api/hit → Upstash Redis → GitHub Action（每 6h）→ 私有仓库 stats.json → 后台读文件
-迁移后：访客 → Vercel /api/hit（薄转发）→ 本 Worker → D1
-        后台 ─────────────────────────→ GET /stats ────────────┘
-```
+| 块 | 入口 |
+|---|---|
+| 访客统计 | `hit.ts`（`POST /hit`、`GET /stats`）、`summary.ts`（`GET /site-summary`） |
+| 身份 | `auth/`（邮箱验证码、GitHub 登录、会话、头像） |
+| 评论 | `comments.ts`（留言板/友链页）、`post-comments.ts`（文章评论） |
+| 友链 | `friends-board.ts`、`apply.ts`（申请）、`link.ts` / `links-refresh.ts`（探测与回链） |
+| 长亭（聊天室） | `chat/`（本地优先，Matrix 只是出站/入站出口，见 `docs/方案-聊天室.md`） |
+| 后台 | `admin/`（`/admin/*`，对外经 nginx 是 `/api/admin/*`） |
+| 发信 | `mail.ts`（走 `MAIL_ENDPOINT`；现在仍指向本机中继，见 `docs/方案-发信-Resend.md`） |
 
-- 访客上报仍然是**同源** `/api/hit`（前端一行都没改），由那个 Vercel 函数转发过来，所以没有 CORS 问题。
-- 后台只读一个 HTTP 接口，**不再需要 GitHub token 读统计文件**，也不再等 6 小时。
+路由以 `src/index.ts` 的分发为准，别信下面的旧路由表。
 
-## 路由
-
-| 方法 | 路径 | 说明 |
-|---|---|---|
-| POST | `/hit` | 访客上报，写 D1。**永远回 200**（`{ok, reason?, mode?, counted?}`）。 |
-| GET | `/hit` | 能力探测，回 `{enabled}`（与旧 `/api/hit` 同形）。 |
-| GET | `/stats` | 后台读取统计。需要 `Authorization: Bearer <ADMIN_STATS_TOKEN>`（若配了口令）。 |
-| GET | `/health` | 健康检查，回 `{ok, service, time}`。 |
-
-## 手工步骤（按顺序，一次做完）
+## 手工步骤（按顺序，一次做完，**2026-10 存档**）
 
 ### 1. 装依赖
 
