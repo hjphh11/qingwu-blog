@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import HanziWriter from 'hanzi-writer';
-import { motion, useReducedMotion, useScroll, useTransform } from 'motion/react';
+import { useReducedMotion } from 'motion/react';
+import { connectGuidePortrait } from '../lib/guidePortrait';
 
 const GREETING = '欢迎来到清吾的小屋';
 const CHARS = Array.from(GREETING);
@@ -34,7 +35,7 @@ function paintStatic(container: HTMLElement) {
   });
 }
 
-// 首页 Hero:左=Hanzi Writer 笔顺问候,右=爱弥斯(随滚动缩小)。
+// 首页 Hero:左=Hanzi Writer 笔顺问候,右=爱弥斯（随滚动移入文章导读）。
 export default function Hero() {
   const heroRef = useRef<HTMLElement>(null);
   const greetingRef = useRef<HTMLDivElement>(null);
@@ -48,12 +49,10 @@ export default function Hero() {
   const [idle, setIdle] = useState(false);
   const reduce = useReducedMotion();
 
-  const { scrollYProgress } = useScroll({
-    target: heroRef,
-    offset: ['start start', 'end start'],
-  });
-  const scale = useTransform(scrollYProgress, [0, 1], [1, 0.6]);
-  const opacity = useTransform(scrollYProgress, [0, 0.85], [1, 0]);
+  useEffect(() => {
+    if (!idle || !stageRef.current || !emisRef.current) return;
+    return connectGuidePortrait(stageRef.current, emisRef.current);
+  }, [idle]);
 
   useEffect(() => {
     const container = greetingRef.current;
@@ -221,7 +220,7 @@ export default function Hero() {
   return (
     <section
       ref={heroRef}
-      className="relative flex min-h-[min(88svh,44rem)] items-stretch px-6 pb-16 pt-24 sm:pt-28"
+      className="relative z-[2] flex min-h-[min(88svh,44rem)] items-stretch px-6 pb-16 pt-24 sm:pt-28"
     >
       <div className="mx-auto flex w-full max-w-[var(--shell-max)] flex-col items-center gap-8 md:flex-row md:items-start md:justify-between md:gap-12">
         {/* 左:大号笔顺问候,顶到左上角。
@@ -286,7 +285,7 @@ export default function Hero() {
           </p>
         </div>
 
-        {/* 右:爱弥斯(偏大、垂直居中,随滚动缩小并淡出)
+        {/* 右:爱弥斯（外层保留原位，内层立绘移向文章导读）
             小屏上单独给一个较小的高度上限 —— 之前一律 h-[75svh],在手机上立绘
             几乎占满一屏,把问候挤到下面且首屏完全看不到正文。
 
@@ -294,8 +293,7 @@ export default function Hero() {
             这个元素的矩形上(运行时测量,所以三档视口共用一段代码)。
             它的 drop-shadow 也必须与 Splash.tsx 里的 SHADOW_* 三个常量一致 ——
             交接时两张图重叠,阴影不同就能看出换手。 */}
-        <motion.div
-          style={{ scale, opacity }}
+        <div
           className="order-1 flex shrink-0 justify-center md:order-2 md:self-center"
         >
           {/* 2.5D 在场（v6 第 5 条）。三层各管一件事，样式见 styles/emis.css：
@@ -332,7 +330,7 @@ export default function Hero() {
               </div>
             </div>
           </div>
-        </motion.div>
+        </div>
       </div>
     </section>
   );

@@ -1,6 +1,8 @@
 ---
 title: "没有逐字时间戳，也能一个字一个字地唱"
 description: "音乐页重做时最想要的效果是「歌词跟着唱」。但 LRC 只有行级时间，没有字级。这篇记三个自己找出来的替代方案、一个被 CSS 宽度骗了很久的问题，以及 3D 纵深为什么非要往左歪。"
+cover: https://img.qingwu.ink/site/covers/home-lyrics-e701fd5f7a0d.webp
+guide: "一行歌词只有一个时间戳，怎么让每个字跟着唱？清吾试了三种办法，还找到了歌词向左倾斜更好读的原因。"
 pubDate: 2026-11-23
 category: tech
 tags: ["CSS", "React", "动效", "音乐", "踩坑"]

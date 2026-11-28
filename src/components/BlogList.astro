@@ -1,178 +1,134 @@
 ---
-import MorphIcon from 'morphicons/astro';
+import type { CollectionEntry } from 'astro:content';
 import { categories, categoryLabel } from '../data/categories';
-import { categoryIcon } from '../lib/categoryIcons';
+import { PAGE_SIZE } from '../lib/posts';
 
 interface Props {
-  posts: any[];
-  currentPage: number;
-  lastPage: number;
+  allPosts: CollectionEntry<'blog'>[];
+  currentPage?: number;
+  category?: string;
 }
-const { posts, currentPage, lastPage } = Astro.props;
-
-// 筛选按钮由分类表动态生成（后台加分类后这里自动跟着变，不再写死 tech/life）
+const { allPosts, currentPage = 1, category } = Astro.props;
+const selected = category ? allPosts.filter(post => post.data.category === category) : allPosts;
+const lastPage = Math.max(1, Math.ceil(selected.length / PAGE_SIZE));
+const posts = selected.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE);
 const filters = [
-  { key: 'all', label: '全部' },
-  ...categories.map((c) => ({ key: c.id, label: c.label })),
+  { id: undefined, label: '全部', count: allPosts.length },
+  ...categories.map(c => ({ ...c, count: allPosts.filter(p => p.data.category === c.id).length })),
 ];
-const pageHref = (n: number) => (n === 1 ? '/blog' : `/blog/page/${n}/`);
-const pages = Array.from({ length: lastPage }, (_, i) => i + 1);
-const prevHref = currentPage > 1 ? pageHref(currentPage - 1) : null;
-const nextHref = currentPage < lastPage ? pageHref(currentPage + 1) : null;
+const base = category ? `/blog/category/${category}/` : '/blog/';
+const pageHref = (n: number) => n === 1 ? base : `${base}page/${n}/`;
+const date = (day: Date) => day.toISOString().slice(0, 10);
 ---
-
-<header class="page-head reveal">
-  <h1 class="page-head__title">文章</h1>
-  <p class="page-head__sub">写下的故事，都收在这里 ~</p>
+<header class="archive-head">
+  <h1>文章</h1>
+  <p>写下的故事，都收在这里。</p>
 </header>
-
-<div class="mb-10 flex flex-wrap gap-2" id="post-filters" role="group" aria-label="按分类筛选">
-  {
-    filters.map((f) => (
-      <button
-        type="button"
-        data-filter={f.key}
-        aria-pressed={f.key === 'all' ? 'true' : 'false'}
-        class="filter-chip btn-ripple"
-      >
-        {f.label}
-      </button>
-    ))
-  }
-</div>
-
-{
-  posts.length > 0 ? (
-    /* 宽屏两列：版心放到 1240（净 1160）之后，单列卡片会有半张空着 ——
-       摘要按阅读舒适区限在 34em，剩下一半只有标签和右下角那个小图标。
-       一列 1160 的卡不是「大气」而是「没加载完」。所以 ≥1100 转两列（每张 572），
-       筛选按钮还是按 display 隐藏卡片，grid 下照样能收。
-       ⚠️ 两列的卡片顺序变成**从左到右**读，条目多时扫读反而更快（列表页不是正文）。 */
-    <div
-      id="post-list"
-      class="reveal flex flex-col gap-6 min-[1100px]:grid min-[1100px]:grid-cols-2 min-[1100px]:items-stretch"
-    >
-      {posts.map((post) => (
-        <a
-          href={`/blog/${post.id}`}
-          data-category={post.data.category}
-          class="glass-card card-spotlight group relative block p-7 card-lift sm:p-8"
-        >
-          <span
-            class="absolute right-5 top-5 text-rose transition-colors group-hover:text-crimson"
-            aria-hidden="true"
-          >
-            <MorphIcon
-              icon={categoryIcon(post.data.category) as never}
-              size={18}
-              color="currentColor"
-            />
-          </span>
-          <div class="list-card-meta">
-            <span class="chip chip--category">{categoryLabel(post.data.category)}</span>
-            <time datetime={post.data.pubDate.toISOString()}>
-              {post.data.pubDate.toLocaleDateString('zh-CN')}
-            </time>
-          </div>
-          <h2 class="list-card-title pr-8">{post.data.title}</h2>
-          <p class="list-card-desc line-clamp-2">{post.data.description}</p>
-          <div class="list-card-foot">
-            {post.data.tags.map((tag: string) => <span class="chip chip--tag">#{tag}</span>)}
-          </div>
-        </a>
-      ))}
-    </div>
-  ) : (
-    /* 空态是构建期内容决定的,「重新加载」给不出任何出口 —— 所以按钮指向
-       一个真实去处,而不是假装刷新一下(见 global.css 的 .q-empty*)。 */
-    <div class="glass-card q-empty p-12">
-      <p class="q-empty__hand">这里还很空 ~</p>
-      <p class="q-empty__sub">内容还在路上，稍后再来逛逛</p>
-      <a href="/" class="q-empty-btn">回首页看看</a>
-    </div>
-  )
-}
-
-<nav aria-label="分页" class="mt-14 flex items-center justify-center gap-2">
-  {
-    prevHref ? (
-      <a href={prevHref} class="page-link page-link--edge">
-        上一页
-      </a>
-    ) : (
-      <span class="page-link page-link--edge page-link--disabled" aria-disabled="true">
-        上一页
-      </span>
-    )
-  }
-  {
-    pages.map((n) => (
-      <a
-        href={pageHref(n)}
-        aria-current={n === currentPage ? 'page' : undefined}
-        class={`page-link${n === currentPage ? ' page-link--current' : ''}`}
-      >
-        {n}
-      </a>
-    ))
-  }
-  {
-    nextHref ? (
-      <a href={nextHref} class="page-link page-link--edge">
-        下一页
-      </a>
-    ) : (
-      <span class="page-link page-link--edge page-link--disabled" aria-disabled="true">
-        下一页
-      </span>
-    )
-  }
+<nav class="archive-tabs" aria-label="按分类看文章">
+  {filters.map(f => (
+    <a href={f.id ? `/blog/category/${f.id}/` : '/blog/'} data-filter={f.id}
+      aria-current={f.id === category ? 'page' : undefined}>
+      {f.label}<span>{f.count}</span>
+    </a>
+  ))}
 </nav>
 
+<div class="archive-list">
+  {posts.map((post, index) => {
+    const feature = currentPage === 1 && index === 0;
+    const day = date(post.data.pubDate);
+    return (
+      <article class:list={['entry', { feature }]}>
+        <a class="entry-link" href={`/blog/${post.id}/`}>
+          {feature ? (
+            <img class="feature-cover" src={post.data.cover || 'https://img.qingwu.ink/site/covers/home-friends-9d8b71630bd3.webp'}
+              width="1200" height="675" alt="" decoding="async" />
+          ) : (
+            <time class="index-date" datetime={day}><strong>{day.slice(5).replace('-', '.')}</strong><span>{day.slice(0,4)}</span></time>
+          )}
+          <div class="entry-copy">
+            <div class="byline">
+              <span>{categoryLabel(post.data.category)}</span>
+              {feature && <time datetime={day}>{day.replaceAll('-', '.')}</time>}
+              {post.data.pinned && <span>置顶</span>}
+            </div>
+            <h2>{post.data.title}</h2>
+            {post.data.description && <p class="excerpt">{post.data.description}</p>}
+            {feature
+              ? <span class="read">阅读全文 <span aria-hidden="true">→</span></span>
+              : post.data.tags.length > 0 && <div class="tags">{post.data.tags.map(tag => <span>#{tag}</span>)}</div>}
+          </div>
+          {!feature && post.data.cover && <img class="thumbnail" src={post.data.cover} alt="" width="176" height="112" loading="lazy" />}
+        </a>
+      </article>
+    );
+  })}
+  {!posts.length && <div class="q-empty"><p class="q-empty__hand">这里还没有文章</p><a class="q-empty-btn" href={category ? '/blog/' : '/'}>{category ? '查看全部文章' : '回首页看看'}</a></div>}
+</div>
+{lastPage > 1 && <nav class="pager" aria-label="分页">
+  {currentPage > 1 && <a href={pageHref(currentPage-1)} aria-label="上一页">←</a>}
+  {Array.from({length:lastPage}, (_,i) => i+1).map(n => <a href={pageHref(n)} aria-label={`第 ${n} 页`} aria-current={n === currentPage ? 'page' : undefined}>{n}</a>)}
+  {currentPage < lastPage && <a href={pageHref(currentPage+1)} aria-label="下一页">→</a>}
+</nav>}
+
 <script>
-  /*
-   * ⚠️ 两个坑都在这里：
-   * ① 直接 querySelector 绑事件在客户端路由下会失效（模块脚本首屏只跑一次，
-   *    ClientRouter 换掉 body 后不重跑）—— 从首页点进文章列表时筛选按钮是死的。
-   *    所以包成 init()：监听 astro:page-load，**并且 DOM 就绪自己也跑一次**
-   *    （首屏的 page-load 可能在本脚本求值之前就派发完了）。
-   * ② 首页左栏的分类链接带 ?category=xxx，之前读都没读，点过来还是「全部」。
-   */
-  let teardown = () => {};
-
-  function init() {
-    teardown();
-
-    const list = document.getElementById('post-list');
-    const buttons = Array.from(document.querySelectorAll<HTMLButtonElement>('#post-filters button'));
-    if (!buttons.length) return;
-
-    const setActive = (key: string) => {
-      buttons.forEach((b) => {
-        const on = b.getAttribute('data-filter') === key;
-        b.setAttribute('aria-pressed', on ? 'true' : 'false');
-        b.classList.toggle('is-active', on);
-      });
-      if (!list) return;
-      list.querySelectorAll<HTMLElement>('[data-category]').forEach((card) => {
-        const cat = card.getAttribute('data-category');
-        const show = key === 'all' || cat === key;
-        card.style.display = show ? '' : 'none';
-      });
-    };
-
-    // 先存「绑定好的函数」再 addEventListener，否则 removeEventListener
-    // 拿到的是另一个新闭包，摘不掉（切回页面会叠监听）
-    const hooks = buttons.map((b) => [b, () => setActive(b.getAttribute('data-filter') || 'all')] as const);
-    hooks.forEach(([b, fn]) => b.addEventListener('click', fn));
-    teardown = () => hooks.forEach(([b, fn]) => b.removeEventListener('click', fn));
-
-    // 从首页左栏的分类进来：/blog?category=tech
-    const wanted = new URLSearchParams(location.search).get('category');
-    if (wanted && buttons.some((b) => b.getAttribute('data-filter') === wanted)) setActive(wanted);
+  // Preserve bookmarks from the original query-based filter.
+  function openLegacyCategory() {
+    const category = new URLSearchParams(location.search).get('category');
+    if (!category) return;
+    const link = Array.from(document.querySelectorAll<HTMLAnchorElement>('.archive-tabs [data-filter]'))
+      .find(item => item.dataset.filter === category);
+    if (link) location.replace(link.href);
   }
-
-  document.addEventListener('astro:page-load', init);
-  if (document.readyState !== 'loading') init();
-  else document.addEventListener('DOMContentLoaded', init, { once: true });
+  openLegacyCategory();
+  document.addEventListener('astro:page-load', openLegacyCategory);
 </script>
+
+<style>
+  .archive-head { display:flex; align-items:baseline; gap:1.4rem; flex-wrap:wrap; margin-bottom:1.6rem; }
+  h1, h2, .index-date strong { font-family:var(--font-display); font-weight:400; }
+  h1 { font-size:clamp(2.6rem,5vw,4rem); line-height:1.12; }
+  .archive-head p,.excerpt,.tags,.index-date span { color:var(--color-muted); }
+  .archive-head p { font-size:.96rem; }
+  .archive-tabs { display:flex; flex-wrap:wrap; column-gap:1.7rem; border-block:1px solid var(--color-hairline); margin-bottom:1.5rem; }
+  .archive-tabs a { display:flex; align-items:baseline; gap:.45rem; padding:.7rem .1rem; border-bottom:2px solid transparent; }
+  .archive-tabs a[aria-current] { color:var(--color-accent); border-color:currentColor; }
+  .archive-tabs a span { font-size:.72rem; font-variant-numeric:tabular-nums; }
+  .entry { border-bottom:1px solid var(--color-hairline); }
+  .entry-link { display:flex; gap:clamp(1rem,3vw,2.6rem); align-items:center; padding:1.6rem 0; }
+  .entry-copy { min-width:0; flex:1; }
+  .feature { border:0; margin-bottom:.8rem; }
+  .feature .entry-link { display:grid; grid-template-columns:minmax(0,1.18fr) minmax(0,1fr); gap:0; padding:0; overflow:hidden; border-radius:1.1rem; background:var(--color-cream); box-shadow:0 10px 28px -22px var(--color-brown); }
+  .feature-cover { width:100%; height:100%; min-height:18rem; object-fit:cover; }
+  .feature .entry-copy { padding:clamp(1.35rem,3.2vw,3rem); }
+  .byline { display:flex; align-items:baseline; gap:1em; color:var(--color-accent); font-size:.8rem; }
+  .byline time { color:var(--color-subtle); font-variant-numeric:tabular-nums; }
+  h2 { color:var(--color-ink); font-size:clamp(1.25rem,2vw,1.65rem); line-height:1.4; margin:.35rem 0; overflow-wrap:anywhere; }
+  .feature h2 { font-size:clamp(1.7rem,3vw,2.7rem); line-height:1.25; margin:.75rem 0 1rem; text-wrap:balance; }
+  .entry-link:hover h2,.archive-tabs a:hover,.read { color:var(--color-accent); }
+  .excerpt { line-height:1.7; font-size:.93rem; display:-webkit-box; -webkit-box-orient:vertical; -webkit-line-clamp:2; overflow:hidden; }
+  .feature .excerpt { -webkit-line-clamp:3; }
+  .read { display:inline-flex; gap:.65rem; align-items:center; border-bottom:1px solid var(--color-hairline); margin-top:1.35rem; padding-bottom:.15rem; font-size:.88rem; }
+  .index-date { display:grid; align-self:start; width:clamp(4.2rem,9vw,7.5rem); flex:none; margin-top:.15rem; }
+  .index-date strong { font-size:clamp(1.5rem,3vw,2.35rem); line-height:1.1; color:var(--color-ink); }
+  .index-date span,.tags { font-size:.75rem; }
+  .tags { display:flex; flex-wrap:wrap; gap:.3rem .9rem; margin-top:.55rem; }
+  .thumbnail { width:clamp(7.5rem,15vw,11rem); aspect-ratio:11/7; height:auto; object-fit:cover; border-radius:.6rem; }
+  .pager { display:flex; flex-wrap:wrap; justify-content:center; gap:.4rem; margin:2.5rem 0 1rem; }
+  .pager a { display:grid; place-items:center; min-width:2.75rem; min-height:2.75rem; border-radius:50%; }
+  .pager a[aria-current],.pager a:hover { background:var(--color-cream); color:var(--color-accent); }
+  .pager a[aria-current] { outline:1px solid var(--color-hairline); }
+  :is(.entry-link,.archive-tabs a,.pager a):focus-visible { outline:2px solid var(--color-accent); outline-offset:3px; }
+  @media(max-width:700px) {
+    .archive-head { gap:.8rem; margin-bottom:1rem; }
+    .feature .entry-link { grid-template-columns:1fr; }
+    .feature-cover { min-height:0; height:auto; aspect-ratio:1.95; }
+    .feature .entry-copy { padding:1.2rem; }
+    .entry:not(.feature) .entry-link { display:grid; grid-template-columns:1fr auto; align-items:start; gap:.3rem 1rem; }
+    .index-date { width:auto; display:flex; flex-direction:row-reverse; gap:.3rem; justify-content:end; align-items:baseline; grid-row:1; grid-column:2; }
+    .index-date strong,.index-date span { font:inherit; font-size:.78rem; }
+    .entry:not(.feature) .entry-copy { grid-column:1/-1; grid-row:1/3; }
+    .entry:not(.feature) .byline { padding-right:7rem; }
+    .thumbnail { display:none; }
+  }
+</style>

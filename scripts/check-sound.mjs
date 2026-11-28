@@ -5,7 +5,7 @@
  *   ① 13 首歌可播、歌词逐行高亮
  *   ② 翻卡 3D 正常，**正反面文字不镜像**
  *   ③ 暂停播放后频谱回落到静止
- *   ④ 分享页从客户端路由进入后筛选/翻卡仍然可用（新修的 bug）
+ *   ④ 分享页从客户端路由进入后翻卡仍然可用（新修的 bug）
  *
  * 「切 tab 只改光场色温、场景不重建」依赖已回退的光场，做不了（见 §8.5）。
  *
@@ -264,7 +264,7 @@ verdict(
   `inner(${matrix.inner}) × back(${matrix.back}) = (${matrix.composed})`,
 );
 
-// ④ 从客户端路由进入分享页，筛选仍然可用（修的是「直接绑元素」的老 bug）
+// ④ 从客户端路由进入分享页，翻卡仍然可用（修的是「直接绑元素」的老 bug）
 const routeProbe = await page.evaluate(async () => {
   // 先离开，再点站内链接回来 —— 模拟 ClientRouter 换 body
   const home = document.querySelector('a[href="/"]');
@@ -281,31 +281,14 @@ const back = await page.evaluate(async () => {
   return { path: location.pathname };
 });
 await sleep(900);
-const filterWorks = await page.evaluate(() => {
-  const btn = document.querySelector('[data-share-filters] button[data-filter="quote"]');
-  if (!btn) return { ok: false, reason: '筛选按钮不在' };
-  btn.click();
-  const pressed = btn.getAttribute('aria-pressed');
-  const visible = Array.from(document.querySelectorAll('[data-share-list] [data-type]')).filter(
-    (c) => !c.classList.contains('is-hidden'),
-  );
-  return {
-    ok: true,
-    pressed,
-    visibleTypes: [...new Set(visible.map((c) => c.getAttribute('data-type')))],
-  };
+const flipWorks = await page.evaluate(() => {
+  const card = document.querySelector('.notebook .flip-card');
+  if (!card) return false;
+  card.click();
+  return card.getAttribute('aria-pressed') === 'true';
 });
 verdict(back.path === '/share/', '经客户端路由回到了分享页', `path=${back.path}`);
-verdict(
-  filterWorks.ok && filterWorks.pressed === 'true',
-  '客户端路由进入后筛选按钮仍可用（老 bug 已修）',
-  `aria-pressed=${filterWorks.pressed}`,
-);
-verdict(
-  filterWorks.ok && filterWorks.visibleTypes.length === 1 && filterWorks.visibleTypes[0] === 'quote',
-  '筛选真的生效（只剩语录卡）',
-  `剩下 ${filterWorks.visibleTypes.join(',') || '无'}`,
-);
+verdict(flipWorks, '客户端路由进入后仍可翻看出处');
 
 /* ── 收尾 ─────────────────────────────────────────────── */
 const severe = errors.filter((e) => !/favicon|net::ERR|Failed to load resource/i.test(e));

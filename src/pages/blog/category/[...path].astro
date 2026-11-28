@@ -1,0 +1,22 @@
+---
+import Layout from '../../../layouts/Layout.astro';
+import BlogList from '../../../components/BlogList.astro';
+import { categories, categoryLabel } from '../../../data/categories';
+import { getPublishedPosts, PAGE_SIZE } from '../../../lib/posts';
+
+export async function getStaticPaths() {
+  const allPosts = await getPublishedPosts();
+  return categories.flatMap(({ id }) => {
+    const count = allPosts.filter(post => post.data.category === id).length;
+    const pages = Math.max(1, Math.ceil(count / PAGE_SIZE));
+    return Array.from({ length: pages }, (_, i) => ({
+      params: { path: i ? `${id}/page/${i + 1}` : id },
+      props: { allPosts, category: id, currentPage: i + 1 },
+    }));
+  });
+}
+const { allPosts, category, currentPage } = Astro.props;
+---
+<Layout title={`${categoryLabel(category)}文章 · 第 ${currentPage} 页 · 清吾`}>
+  <div class="page-shell"><BlogList {allPosts} {category} {currentPage} /></div>
+</Layout>

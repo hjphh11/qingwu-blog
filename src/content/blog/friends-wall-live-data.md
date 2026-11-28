@@ -1,6 +1,8 @@
 ---
 title: "给友链墙通上电：实测速度、真实点击、最近更新"
 description: "友链页这一轮加了三样「活的数据」：用 favicon 探 RTT、用 sendBeacon 记点击、由 Worker 每天抓对方的 RSS。附多列布局、hover 浮层和一串静默失败的坑。"
+cover: https://img.qingwu.ink/site/covers/home-friends-9d8b71630bd3.webp
+guide: "友链墙上的朋友最近写了什么，点过去要等多久？这些小数字背后，有测速、点击计数，还有每天来收信的 RSS。"
 pubDate: 2026-11-07
 category: tech
 tags: ["前端", "无障碍", "性能", "踩坑"]

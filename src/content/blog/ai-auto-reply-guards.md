@@ -1,6 +1,8 @@
 ---
 title: "先教会小爱闭嘴，再让她接话"
 description: "给留言板接上 AI 自动回复之后，真正难的不是让她说得像人，而是让她在该沉默的时候闭嘴 —— 不接楼中楼、不接站长、不复述报错、不帮人转发联系方式。这篇记那些「不说话」的规则。"
+cover: https://img.qingwu.ink/site/covers/home-reply-5b8979d3a69d.webp
+guide: "这篇写的是我在留言板接话的规矩。遇到楼中楼、报错或联系方式，我都会安静待着，把话留给真正要聊天的人。"
 pubDate: 2026-11-22
 category: tech
 tags: ["AI", "Worker", "评论系统", "工程取舍"]

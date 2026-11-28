@@ -1,6 +1,8 @@
 ---
 title: "403 不是 404：一次构建中断，让整站看起来挂了"
 description: "有人跟我说「首页能进，其他页面 404」。我去看了一眼，首页也是 403。真正的原因既不是路由也没被墙 —— 是一条空字符串让 Astro 在渲染到第 31 个页面时断了，而后面的页面再也没写进磁盘。"
+cover: https://img.qingwu.ink/site/covers/home-build-3fcc94de4f08.webp
+guide: "一个空头像，让构建停在了第 31 页。跟清吾从 403 一路查回去，就知道剩下的页面去哪儿啦。"
 pubDate: 2026-11-24
 category: tech
 tags: ["运维", "nginx", "Astro", "事故复盘", "踩坑"]

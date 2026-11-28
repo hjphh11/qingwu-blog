@@ -4,27 +4,14 @@ import BlogList from '../../../components/BlogList.astro';
 import { getPublishedPosts, PAGE_SIZE } from '../../../lib/posts';
 
 export async function getStaticPaths() {
-  const ALL = await getPublishedPosts();
-  const totalPages = Math.max(1, Math.ceil(ALL.length / PAGE_SIZE));
-  const paths = [];
-  for (let p = 2; p <= totalPages; p++) {
-    paths.push({
-      params: { page: String(p) },
-      props: {
-        pageNum: p,
-        pagePosts: ALL.slice((p - 1) * PAGE_SIZE, p * PAGE_SIZE),
-        lastPage: totalPages,
-      },
-    });
-  }
-  return paths;
+  const allPosts = await getPublishedPosts();
+  const pages = Math.ceil(allPosts.length / PAGE_SIZE);
+  return Array.from({ length: Math.max(0, pages - 1) }, (_, i) => ({
+    params: { page: String(i + 2) }, props: { allPosts, currentPage: i + 2 },
+  }));
 }
-
-const { pageNum, pagePosts, lastPage } = Astro.props;
+const { allPosts, currentPage } = Astro.props;
 ---
-
-<Layout title="文章 · 清吾">
-  <div class="page-shell">
-    <BlogList posts={pagePosts} currentPage={pageNum} lastPage={lastPage} />
-  </div>
+<Layout title={`文章 · 第 ${currentPage} 页 · 清吾`}>
+  <div class="page-shell"><BlogList {allPosts} {currentPage} /></div>
 </Layout>

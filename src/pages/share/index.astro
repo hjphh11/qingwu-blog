@@ -1,254 +1,170 @@
 ---
 import Layout from '../../layouts/Layout.astro';
-import MorphIcon from 'morphicons/astro';
-import { Bookmark } from '../../lib/icons';
 import { shares } from '../../data/share';
 
-const filters = [
-  { key: 'all', label: '全部' },
-  { key: 'link', label: '收藏夹' },
-  { key: 'quote', label: '语录' },
+const links = shares.filter(s => s.type === 'link');
+const quotes = shares.filter(s => s.type === 'quote');
+const sections = [
+  { kind: 'postcard', title: '语录明信片', items: quotes.slice(0, 1) },
+  { kind: 'bookmarks', title: '收藏夹', items: links },
+  { kind: 'notebook', title: '摘录页', items: quotes.slice(1) },
 ];
-
-// 标签由数据汇总出来（方案第 38 条：分享加标签，前台可按标签筛选）
-const allTags = [...new Set(shares.flatMap((s) => s.tags ?? []))].sort((a, b) =>
-  a.localeCompare(b, 'zh'),
-);
-const tagsOf = (item: { tags?: string[] }) => (item.tags ?? []).join('|');
+const tags = [...new Set(shares.flatMap(s => s.tags))].sort((a,b) => a.localeCompare(b,'zh'));
 ---
-
 <Layout title="分享 · 清吾">
   <div class="page-shell">
-    <header class="page-head">
-      <h1 class="page-head__title">分享</h1>
-      <p class="page-head__sub">收藏的好东西 + 打动的句子，都放在这里 ~</p>
+    <header class="share-head">
+      <h1>分享</h1>
+      <p>收藏的好东西，和打动我的句子。</p>
     </header>
+    {shares.length ? <qingwu-share>
+      {tags.length > 0 && <div class="tag-bar" role="group" aria-label="按标签筛选">
+        {tags.map(tag => <button type="button" data-tag={tag} aria-pressed="false">#{tag}</button>)}
+      </div>}
 
-    {/* 类型 + 标签筛选 */}
-    <div class="mb-3 flex flex-wrap gap-2" data-share-filters role="group" aria-label="按类型筛选">
-      {
-        filters.map((f, i) => (
-          <button
-            type="button"
-            data-filter={f.key}
-            aria-pressed={i === 0 ? 'true' : 'false'}
-            class:list={['filter-chip btn-ripple', { 'is-active': i === 0 }]}
-          >
-            {f.label}
-          </button>
-        ))
-      }
-    </div>
-
-    {
-      allTags.length > 0 && (
-        <div class="mb-10 flex flex-wrap items-center gap-2" data-share-tags>
-          <span class="text-[length:var(--text-label)] text-subtle">按标签：</span>
-          {allTags.map((t) => (
-            <button
-              type="button"
-              data-tag={t}
-              aria-pressed="false"
-              class="chip chip--tag border border-rose/20 bg-white/40 px-3 py-1.5 transition-all hover:border-rose/50 hover:text-accent q-press"
-            >
-              #{t}
-            </button>
-          ))}
-        </div>
-      )
-    }
-
-    {/* 空态:分享页原来没有空态 —— 内容清空后只剩两排筛选按钮,访客停在原地。
-        补一个带真实去处的空态(见 global.css 的 .q-empty*)。 */}
-    {
-      shares.length === 0 && (
-        <div class="glass-card q-empty p-12">
-          <p class="q-empty__hand">这里还很空 ~</p>
-          <p class="q-empty__sub">收藏和语录都还在攒，先去友链认识几个新朋友？</p>
-          <a href="/links" class="q-empty-btn">
-            去友链看看
-          </a>
-        </div>
-      )
-    }
-
-    {/* 混排内容 —— 用 CSS 多列做成瀑布流:
-        收藏卡(矮)和语录卡(高)混排时,等宽的 grid 会把矮卡那一行整体拉到
-        最高卡的高度,于是每张语录卡下面都留一截空白。多列布局让每张卡各按内容取高。 */}
-    <div data-share-list class="reveal gap-6 sm:columns-2 [&>*]:mb-6 [&>*]:break-inside-avoid">
-      {
-        shares.map((item) =>
-          item.type === 'link' ? (
-            <a
-              href={item.url}
-              target="_blank"
-              rel="noreferrer"
-              data-type="link"
-              data-tags={tagsOf(item)}
-              class="glass-card card-spotlight group block p-6 card-lift"
-            >
-              <div class="flex items-center gap-2 text-[length:var(--text-label)] text-accent">
-                <MorphIcon icon={Bookmark} size={14} color="currentColor" /> 收藏
-              </div>
-              <p class="list-card-title">{item.title}</p>
-              <p class="list-card-desc">{item.note}</p>
-              <p class="mt-4 text-[length:var(--text-label)] text-subtle">
-                <span class="block truncate">{item.url}</span>
-              </p>
-              {
-                (item.tags ?? []).length > 0 && (
-                  <div class="mt-3 flex flex-wrap gap-1.5">
-                    {item.tags.map((t: string) => (
-                      <span class="chip chip--tag bg-rose/15 px-2">#{t}</span>
-                    ))}
-                  </div>
-                )
-              }
-            </a>
-          ) : (
-            /* 语录:3D 翻转卡(借鉴 MotionVault FlipCard,MIT,暖色)。正面=语录,背面=作者+一句标注。
-               注意:.flip-inner 上**不能**放 glass-card 这类带 backdrop-filter 的样式,
-               那会让 preserve-3d 失效、翻转后文字镜像(见 global.css 里的说明)。
-               所以玻璃效果分给两个面各自承担。
-               高度不再写死:按内容自然撑开(min-h 保证短句也有一张卡的样子),
-               两面用 grid 叠在一起,高度始终跟正面走。 */
-            <div
-              data-type="quote"
-              data-tags={tagsOf(item)}
-              class="flip-card min-h-[9.5rem] cursor-pointer select-none"
-              tabindex="0"
-              role="button"
-              aria-label={`语录卡片,点击查看出处:${item.text}`}
-            >
-              <div class="flip-inner grid">
-                <div class="flip-face glass-card flex flex-col border-l-4 border-rose/40 p-6">
-                  <p class="font-display text-lg leading-[1.75] text-ink">
-                    「{item.text}」
-                  </p>
-                  {
-                    (item.tags ?? []).length > 0 && (
-                      <div class="mt-auto flex flex-wrap gap-1.5 pt-4">
-                        {item.tags.map((t: string) => (
-                          <span class="chip chip--tag bg-rose/15 px-2">#{t}</span>
-                        ))}
-                      </div>
-                    )
-                  }
-                </div>
-                <div class="flip-face flip-back glass-card flip-back-tint flex flex-col items-center justify-center gap-1.5 border-l-4 border-rose/40 p-6">
-                  <p class="font-display text-xl text-accent">一句摘录</p>
-                  {item.author && <p class="text-sm text-muted">— {item.author}</p>}
-                  <p class="mt-1.5 text-[length:var(--text-label)] text-subtle">点击翻回</p>
-                </div>
-              </div>
+      <div class="collection" data-share-list>
+        {sections.filter(section => section.items.length).map(group => (
+          <section class={group.kind} data-share-section aria-labelledby={`share-${group.kind}`}>
+            <h2 id={`share-${group.kind}`}>{group.title}</h2>
+            <div class="items">
+              {group.items.map(item => item.type === 'link' ? (
+                <a class="bookmark" data-type="link" data-tags={JSON.stringify(item.tags)}
+                  href={item.url} target="_blank" rel="noopener noreferrer">
+                  <span class="domain">{item.url.replace(/^https?:\/\//,'').split('/')[0] || item.url}</span>
+                  <span class="bookmark-title">{item.title}<span class="arrow" aria-hidden="true">↗</span></span>
+                  {item.note && <span class="note">{item.note}</span>}
+                  {item.tags.length > 0 && <span class="labels">{item.tags.map(tag => <span>#{tag}</span>)}</span>}
+                </a>
+              ) : (
+                <button class="flip-card" data-type="quote" data-tags={JSON.stringify(item.tags)}
+                  type="button" aria-pressed="false" aria-label={`翻面：${item.text}`}>
+                  <span class="flip-inner">
+                    <span class="flip-face front">
+                      {group.kind === 'postcard' && <img class="illustration" src="https://img.qingwu.ink/site/covers/home-reply-5b8979d3a69d.webp" width="1440" height="810" alt="" />}
+                      <span class="writing">
+                        <span class="quotation">{item.text}</span>
+                        {item.tags.length > 0 && <span class="labels">{item.tags.map(tag => <span>#{tag}</span>)}</span>}
+                      </span>
+                    </span>
+                    <span class="flip-face flip-back" aria-hidden="true">
+                      <span class="source-label">摘录来源</span>
+                      <span class="source">{item.author || '未署名'}</span>
+                    </span>
+                  </span>
+                </button>
+              ))}
             </div>
-          ),
-        )
-      }
-    </div>
+          </section>
+        ))}
+      </div>
+    </qingwu-share> : <div class="q-empty">
+      <p class="q-empty__hand">这里还很空 ~</p><p class="q-empty__sub">收藏和语录都还在攒，先去友链认识几个新朋友？</p>
+      <a href="/links" class="q-empty-btn">去友链看看</a>
+    </div>}
   </div>
 </Layout>
 
 <script>
-  /*
-   * ⚠️ 和文章页同一个坑：这里的模块脚本**首屏只执行一次**，而 ClientRouter
-   * 会换掉整个 body —— 直接 querySelector 绑事件的话，从别的页面点进分享页时
-   * 筛选按钮和翻卡全都是死的（既有 bug，2026-11-01 修）。
-   * 所以包成 init()：监听 astro:page-load，**并且 DOM 就绪自己也跑一次**
-   * （首屏的 page-load 可能在本脚本求值之前就派发完了）。
-   */
-  let teardown = () => {};
-
-  function init() {
-    teardown();
-
-    const list = document.querySelector('[data-share-list]');
-    if (!list) return;
-
-    const filters = Array.from(document.querySelectorAll('[data-share-filters] button'));
-    const tagBtns = Array.from(document.querySelectorAll('[data-share-tags] button'));
-
-    // 类型 + 标签**叠加**筛选（方案第 38 条）
-    let activeType = 'all';
-    let activeTag: string | null = null;
-
-    const apply = () => {
-      list.querySelectorAll<HTMLElement>('[data-type]').forEach((card) => {
-        const typeOk = activeType === 'all' || card.getAttribute('data-type') === activeType;
-        const tags = (card.getAttribute('data-tags') || '').split('|').filter(Boolean);
-        const tagOk = !activeTag || tags.includes(activeTag);
-        card.classList.toggle('is-hidden', !(typeOk && tagOk));
-      });
-    };
-
-    // 选中态统一走 aria-pressed + .is-active,不再靠临时拼 Tailwind 类名
-    // （旧写法 classList.remove('bg-rose/70') 里的斜杠会被当成普通字符，
-    //   实际能不能生效全看构建出的类名，脆而且初始态完全没有高亮）
-    const markActive = (btn: Element | null | undefined) => {
-      filters.forEach((b) => {
-        const on = b === btn;
-        b.setAttribute('aria-pressed', on ? 'true' : 'false');
-        b.classList.toggle('is-active', on);
-      });
-    };
-
-    const onFilter = (btn: Element) => () => {
-      activeType = btn.getAttribute('data-filter') || 'all';
-      markActive(btn);
-      apply();
-    };
-
-    const onTag = (btn: Element) => () => {
-      const tag = btn.getAttribute('data-tag');
-      // 再点一次取消选中
-      activeTag = activeTag === tag ? null : tag;
-      tagBtns.forEach((b) => {
-        const on = b.getAttribute('data-tag') === activeTag;
-        b.setAttribute('aria-pressed', on ? 'true' : 'false');
-        b.classList.toggle('is-active', on);
-      });
-      apply();
-    };
-
-    /* 先把「绑定好的函数」存下来再 addEventListener —— 否则 removeEventListener
-       拿到的是另一次 onFilter(btn) 产生的新闭包，摘不掉（内存泄漏 + 切回页面时
-       同一张卡上叠两个 listener，点一下翻两次 = 看起来没反应）。 */
-    const filterHooks = filters.map((btn) => [btn, onFilter(btn)] as const);
-    const tagHooks = tagBtns.map((btn) => [btn, onTag(btn)] as const);
-    filterHooks.forEach(([el, fn]) => el.addEventListener('click', fn));
-    tagHooks.forEach(([el, fn]) => el.addEventListener('click', fn));
-
-    // 点击 / 回车 / 空格 都能翻转(桌面 + 触屏 + 键盘统一)
-    const cards = Array.from(
-      document.querySelectorAll<HTMLElement>('.flip-card[data-type="quote"]'),
-    );
-    const flipOf = (card: HTMLElement) => () => card.classList.toggle('is-flipped');
-    const keyOf = (card: HTMLElement) => (e: KeyboardEvent) => {
-      if (e.key === 'Enter' || e.key === ' ') {
-        e.preventDefault();
-        card.classList.toggle('is-flipped');
+  class ShareCollection extends HTMLElement {
+    private tag: string | null = null;
+    connectedCallback() { this.addEventListener('click', this.handleClick); }
+    disconnectedCallback() { this.removeEventListener('click', this.handleClick); }
+    private handleClick = (event: MouseEvent) => {
+      const button = event.target instanceof Element ? event.target.closest('button') : null;
+      if (!button) return;
+      if (button.matches('.flip-card')) {
+        const back = button.classList.toggle('is-flipped');
+        button.setAttribute('aria-pressed', String(back));
+        button.querySelector('.front')?.setAttribute('aria-hidden', String(back));
+        button.querySelector('.flip-back')?.setAttribute('aria-hidden', String(!back));
+        const text = button.querySelector(back ? '.source' : '.quotation')?.textContent;
+        button.setAttribute('aria-label', back ? `摘录来源：${text}，翻回正面` : `翻面：${text}`);
+        return;
       }
-    };
-
-    const flips = cards.map((card) => {
-      const f = flipOf(card);
-      const k = keyOf(card);
-      card.addEventListener('click', f);
-      card.addEventListener('keydown', k);
-      return { card, f, k };
-    });
-
-    teardown = () => {
-      filterHooks.forEach(([el, fn]) => el.removeEventListener('click', fn));
-      tagHooks.forEach(([el, fn]) => el.removeEventListener('click', fn));
-      flips.forEach(({ card, f, k }) => {
-        card.removeEventListener('click', f);
-        card.removeEventListener('keydown', k);
+      if (button.dataset.tag === undefined) return;
+      this.tag = this.tag === button.dataset.tag ? null : button.dataset.tag;
+      this.querySelectorAll<HTMLElement>('[data-tag]').forEach(control => {
+        control.setAttribute('aria-pressed', String(control.dataset.tag === this.tag));
+      });
+      this.querySelectorAll<HTMLElement>('[data-type]').forEach(item => {
+        item.hidden = this.tag !== null && !JSON.parse(item.dataset.tags || '[]').includes(this.tag);
+      });
+      this.querySelectorAll<HTMLElement>('[data-share-section]').forEach(section => {
+        section.hidden = !section.querySelector('[data-type]:not([hidden])');
       });
     };
   }
-
-  document.addEventListener('astro:page-load', init);
-  if (document.readyState !== 'loading') init();
-  else document.addEventListener('DOMContentLoaded', init, { once: true });
+  if (!customElements.get('qingwu-share')) customElements.define('qingwu-share', ShareCollection);
 </script>
+
+<style>
+  qingwu-share { display:block; }
+  qingwu-share [hidden] { display:none; }
+  .share-head { display:flex; align-items:baseline; flex-wrap:wrap; gap:.5rem 1.4rem; margin-bottom:1.6rem; }
+  h1,h2,.quotation,.source,.bookmark-title { font-family:var(--font-display); font-weight:400; }
+  h1 { font-size:clamp(2.6rem,5vw,4rem); line-height:1.12; }
+  .share-head p,.note,.domain,.labels { color:var(--color-muted); }
+  .tag-bar,.labels { display:flex; align-items:baseline; flex-wrap:wrap; gap:.5rem 1.6rem; }
+  .labels,.domain,.source-label { font-size:.78rem; }
+  .tag-bar { margin-top:1rem; gap:.6rem; }
+  .tag-bar button { padding:.35rem .65rem; font-size:.85rem; }
+  .tag-bar [aria-pressed=true] { color:var(--color-accent); text-decoration:underline; }
+  .collection { display:grid; grid-template-columns:minmax(0,1.4fr) minmax(0,1fr); gap:2.5rem clamp(2rem,5vw,4.5rem); margin-top:1.65rem; align-items:start; }
+  .collection:not(:has(.postcard:not([hidden]))) .bookmarks,.notebook { grid-column:1/-1; }
+  h2 { font-size:1.45rem; margin-bottom:.9rem; }
+  .flip-card { display:block; width:100%; text-align:start; color:var(--color-ink); }
+  .flip-face { display:flex; flex-direction:column; background:var(--color-cream); backdrop-filter:blur(8px); }
+  .postcard .flip-face { padding:.55rem; border-radius:.35rem; box-shadow:0 12px 24px -16px var(--color-brown); }
+  .illustration { width:100%; height:clamp(11rem,18vw,15rem); object-fit:cover; object-position:50% 47%; }
+  .writing { display:flex; flex:1; align-items:start; flex-direction:column; gap:.6rem; padding:1.25rem; }
+  .quotation { font-size:clamp(1.12rem,1.7vw,1.45rem); line-height:1.65; overflow-wrap:anywhere; }
+  .postcard .quotation { font-size:clamp(1.45rem,2.35vw,2rem); line-height:1.5; }
+  .flip-back { align-items:center; justify-content:center; gap:.55rem; background:var(--color-cream); }
+  .source { font-size:1.5rem; }
+  .source-label { color:var(--color-subtle); }
+  .bookmark { display:flex; flex-direction:column; gap:.45rem; padding:1.2rem .15rem; border-top:1px solid var(--color-hairline); overflow-wrap:anywhere; }
+  .bookmarks .items { border-bottom:1px solid var(--color-hairline); }
+  .bookmark-title { display:flex; align-items:baseline; justify-content:space-between; gap:.7rem; font-size:clamp(1.25rem,2.3vw,1.8rem); }
+  .arrow,.bookmark:hover .bookmark-title { color:var(--color-accent); }
+  .arrow { font:1.1rem system-ui; }
+  .domain { letter-spacing:.04em; }
+  .note { font-size:.94rem; }
+  .notebook .items { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:1rem 1.25rem; }
+  .notebook .flip-card { position:relative; border-radius:1.3rem; }
+  /* The glass stays in the page plane so it samples the background as the text flips. */
+  .notebook .flip-card::before {
+    content:''; position:absolute; inset:0; border-radius:inherit; pointer-events:none;
+    background-color:rgba(255,248,242,.76);
+    background-image:
+      radial-gradient(ellipse at 7% 0%, rgba(255,255,255,.65), transparent 46%),
+      linear-gradient(132deg,rgba(255,255,255,.25),transparent 43%,rgba(255,210,192,.12) 77%,rgba(255,255,255,.35));
+    box-shadow:inset 1px 1.5px 1px rgba(255,255,255,.97),
+      inset -1px -1.5px 1px rgba(255,255,255,.8), inset 0 -3px 5px rgba(178,103,104,.16),
+      0 5px 15px -9px rgba(110,54,67,.36);
+  }
+  @supports (backdrop-filter:blur(1px)) {
+    .notebook .flip-card::before {
+      background-color:rgba(255,249,245,.18);
+
+      backdrop-filter:blur(11px) saturate(150%);
+    }
+  }
+  .notebook .flip-face {
+    min-height:6.25rem; justify-content:center; padding:1.25rem clamp(1.1rem,2.5vw,2rem);
+    border-radius:inherit; background:transparent; backdrop-filter:none;
+  }
+  .notebook .writing { flex:0; padding:0; }
+  .notebook .flip-card:hover::before { background-color:rgba(255,249,245,.4); }
+  :global(html.q-contrast) .notebook .flip-card::before { background:var(--color-cream); }
+  @media (prefers-reduced-transparency: reduce) {
+    .notebook .flip-card::before { background:var(--color-cream); backdrop-filter:none; }
+  }
+  .tag-bar button:focus-visible,.bookmark:focus-visible,.flip-card:focus-visible { outline:2px solid var(--color-accent); outline-offset:3px; }
+  @media (max-width:720px) {
+    .collection,.notebook .items { grid-template-columns:1fr; }
+    .collection { gap:1.8rem; }
+    .share-head { margin-bottom:1rem; }
+    .writing { padding:1rem .75rem .7rem; }
+  }
+  @media (prefers-reduced-motion: reduce) { .flip-inner { transition:none; } }
+</style>

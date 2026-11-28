@@ -1,0 +1,147 @@
+---
+import type { CollectionEntry } from 'astro:content';
+import { categoryLabel } from '../../data/categories';
+
+interface Props { posts: CollectionEntry<'blog'>[] }
+const { posts } = Astro.props;
+const stories = posts.map(({ id, data, body }) => ({
+  id, ...data,
+  summary: data.guide || data.description || body?.split(/\r?\n/).find(line => /^[\p{L}]/u.test(line.trim()))?.trim().slice(0, 100) || data.title,
+}));
+---
+<section class="page-shell q-reading" aria-labelledby="recent-title">
+  <header class="reading-head">
+    <h2 class="section-head" id="recent-title">最近文章</h2>
+    <a href="/blog">全部文章 <span aria-hidden="true">↗</span></a>
+  </header>
+  {stories.length ? (
+    <qingwu-article-guide>
+      <aside class="companion" aria-hidden="true">
+        <div class="bubble">
+          <b>小爱</b>
+          <p class="speech"><span data-measure>{stories[0].summary}</span><span data-output></span></p>
+        </div>
+        <img class="standing" src="/images/emis/full.webp" alt="" width="300" height="500" loading="lazy" />
+      </aside>
+      <div class="stories">
+        {stories.map((story) => (
+          <article class="story">
+            <div class="sheet">
+              <a class="article-link" href={`/blog/${story.id}`}>
+                <div class="cover">
+                  <img src={story.cover || 'https://img.qingwu.ink/site/covers/home-friends-9d8b71630bd3.webp'} width="1200" height="675" loading="lazy" decoding="async" alt="" />
+                </div>
+                <div class="caption">
+                  <div class="meta"><span>{categoryLabel(story.category)}</span><time datetime={story.pubDate.toISOString()}>{story.pubDate.toISOString().slice(0,10).replaceAll('-', '.')}</time></div>
+                  <h3>{story.title}</h3>
+                  <div class="article-foot"><span class="tags">{story.tags.slice(0,3).map(tag => <span>#{tag}</span>)}</span><span class="read">阅读全文 <span aria-hidden="true">→</span></span></div>
+                </div>
+              </a>
+              <div class="local-guide">
+                <img src="/images/emis/portrait.webp" alt="" width="64" height="76" loading="lazy" />
+                <div><b>小爱</b><p class="speech"><span data-summary>{story.summary}</span><span data-output aria-hidden="true"></span></p></div>
+              </div>
+            </div>
+          </article>
+        ))}
+      </div>
+    </qingwu-article-guide>
+  ) : <p class="py-8 text-muted">还没有已发布的文章。</p>}
+</section>
+<script>
+  class ArticleGuide extends HTMLElement {
+    static observedAttributes = ['docked'];
+    private updateSpeech?: () => void;
+    attributeChangedCallback() { this.updateSpeech?.(); }
+    private observer?: IntersectionObserver;
+    private frame = 0;
+    connectedCallback() {
+      const measure = this.querySelector<HTMLElement>('[data-measure]');
+      const desktop = this.querySelector<HTMLElement>('.companion [data-output]');
+      if (!measure || !desktop || !('IntersectionObserver' in window)) return;
+      this.setAttribute('ready', '');
+      const reduced = matchMedia('(prefers-reduced-motion: reduce)');
+      let article: Element | undefined;
+      this.updateSpeech = () => {
+        cancelAnimationFrame(this.frame);
+        const mobile = article?.querySelector<HTMLElement>('[data-output]');
+        if (!this.hasAttribute('docked')) {
+          desktop.textContent = '';
+          if (mobile) mobile.textContent = '';
+          return;
+        }
+        const summary = article?.querySelector('[data-summary]')?.textContent;
+        if (!summary || !mobile) return;
+        measure.textContent = summary;
+        const characters = Array.from(summary);
+        const start = performance.now();
+        let written = 0;
+        const write = (now: number) => {
+          const count = reduced.matches ? characters.length :
+            Math.min(characters.length, 1 + Math.floor((now - start) / 42));
+          if (count !== written) {
+            const excerpt = characters.slice(0, count).join('');
+            desktop.textContent = mobile.textContent = excerpt;
+            written = count;
+          }
+          if (count < characters.length) this.frame = requestAnimationFrame(write);
+        };
+        write(start);
+      };
+      this.observer = new IntersectionObserver(entries => {
+        const entry = entries.filter(item => item.isIntersecting).pop();
+        if (!entry || entry.target === article) return;
+        article = entry.target;
+        this.updateSpeech?.();
+      }, { rootMargin: '-49% 0px -50% 0px' });
+      this.querySelectorAll('.story').forEach(item => this.observer!.observe(item));
+    }
+    disconnectedCallback() { this.updateSpeech = undefined; this.observer?.disconnect(); cancelAnimationFrame(this.frame); }
+  }
+  if (!customElements.get('qingwu-article-guide')) customElements.define('qingwu-article-guide', ArticleGuide);
+</script>
+<style>
+  .q-reading { padding-block: 2rem 4rem; }
+  .reading-head, .article-foot, .meta { display:flex; align-items:center; }
+  .reading-head, .article-foot { justify-content:space-between; gap:1rem; }
+  .reading-head { padding-bottom:1rem; border-bottom:1px solid var(--color-hairline); }
+  .reading-head a, .read { color:var(--color-accent); font-size:.875rem; }
+  qingwu-article-guide { display:block; }
+  .companion { display:none; }
+  .story { min-height:calc(100svh - 4rem); display:grid; align-content:center; padding-block:2rem; }
+  .sheet { min-width:0; }
+  .article-link { display:block; overflow:hidden; background:var(--color-cream); border-radius:1rem; box-shadow:0 14px 38px -18px rgba(98,52,37,.35); }
+  .article-link:focus-visible { outline:3px solid var(--color-accent); outline-offset:4px; }
+  .cover { position:relative; background:var(--color-rose); }
+  .cover img { width:100%; height:clamp(12rem,38svh,26rem); object-fit:cover; }
+  .caption { padding:clamp(1.1rem,2.4vw,2rem); }
+  .meta { gap:.75rem; font-size:.8rem; color:var(--color-subtle); }
+  .meta span { color:var(--color-accent); }
+  h3 { color:var(--color-ink); font:500 clamp(1.5rem,2.8vw,2.55rem)/1.32 var(--font-display); margin:.6rem 0 1rem; text-wrap:pretty; }
+  .article-link:hover h3 { color:var(--color-accent); }
+  .article-foot { border-top:1px solid var(--color-hairline); padding-top:.9rem; }
+  .tags { display:flex; flex-wrap:wrap; gap:.25rem .65rem; color:var(--color-subtle); font-size:.8rem; }
+  .read { white-space:nowrap; }
+  .speech { display:grid; }
+  .speech > span { grid-area:1 / 1; }
+  /* Keep the complete sentence in the layout and accessibility tree as the visible copy grows. */
+  [ready] :is([data-summary], [data-measure]) { opacity:0; }
+  /* Keep both landing slots measurable while the portrait is travelling. */
+  [ready]:not([docked]) :is(.bubble, .local-guide > div) { visibility:hidden; }
+  .bubble, .local-guide > div { position:relative; border-radius:1.15rem 1.15rem 1.15rem .25rem; background:#fff9f5; color:var(--color-ink); padding:1.15rem 1.3rem; box-shadow:0 7px 22px -14px rgba(98,52,37,.45); }
+  b { display:block; font:500 1.15rem var(--font-hand); color:var(--color-accent); margin-bottom:.25rem; }
+  .local-guide { display:flex; align-items:flex-end; gap:.65rem; margin-top:1rem; font-size:.9375rem; line-height:1.65; }
+  .local-guide img { flex:none; width:clamp(4rem,18vw,4.75rem); height:auto; aspect-ratio:52 / 67; object-fit:contain; }
+  @media(min-width:760px) {
+    qingwu-article-guide[ready] { display:grid; grid-template-columns:minmax(0,.72fr) minmax(0,1.65fr); gap:clamp(2rem,6vw,5rem); }
+    [ready] .companion { display:flex; position:sticky; align-self:start; top:4rem; height:calc(100svh - 4rem); flex-direction:column; align-items:center; justify-content:center; gap:1.1rem; }
+    .bubble { line-height:1.75; max-width:21rem; }
+    .bubble::after { content:''; position:absolute; bottom:-.55rem; left:45%; width:1.2rem; height:1.2rem; background:inherit; transform:rotate(45deg); }
+    .standing { height:clamp(8rem,56svh,34rem); width:100%; min-height:0; object-fit:contain; }
+    [ready] .local-guide { position:absolute; width:1px; height:1px; overflow:hidden; clip-path:inset(50%); }
+  }
+  @media(max-width:759px) {
+    .story { min-height:calc(100svh - 4rem); padding-block:1.5rem; }
+    .cover img { height:auto; aspect-ratio:16/10; }
+  }
+</style>

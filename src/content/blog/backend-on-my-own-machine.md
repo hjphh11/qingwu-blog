@@ -1,6 +1,8 @@
 ---
 title: "把后端从边缘搬回一台小机器"
 description: "这个站的后端原本跑在 Cloudflare 的 Worker 上，用 D1 存数据。现在它跑在香港一台 2 核 2G 的机器里，用 workerd 和 SQLite。这篇记搬家的原因、四个真正的坑，以及「自己的机器」到底换来了什么、要付什么代价。"
+cover: https://img.qingwu.ink/site/covers/home-backend-f9d933869ace.webp
+guide: "清吾把后端搬进了香港的一台小机器。现在能亲手翻日志、看数据库了，备份和半夜排障也得自己来啦。"
 pubDate: 2026-11-24
 category: tech
 tags: ["后端", "Cloudflare", "SQLite", "运维", "架构"]
