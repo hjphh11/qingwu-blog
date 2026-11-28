@@ -44,6 +44,13 @@ const MAX_TRIES = 6;
 /** 待审消息先压一会儿：等审核出结果再决定发不发，别把可能违规的话推到大厅 */
 const PENDING_DELAY_MS = 60_000;
 
+/** 出站限流的统计窗口 */
+const OUT_WINDOW_MS = 10 * 60 * 1000;
+/** 一个访客在窗口内最多往大厅推几条（访客共用 @guest，那边没法单独封） */
+const GUEST_OUT_CAP = 5;
+/** 登录用户给宽一点，正常聊天碰不到 */
+const USER_OUT_CAP = 30;
+
 export type BridgeCfg = {
   hs: string;
   room: string;
@@ -100,6 +107,42 @@ export async function queueBridge(
   if (opts.kind !== 'text' && opts.kind !== 'image') return;
 
   const now = Date.now();
+
+  /**
+   * 出站按「发送者」限流。
+   *
+   * 大厅那边看到的是**一个账号**（现在是共享转发账号，将来访客仍是共用的 `@guest`），
+   * 所以那边没法单独封某一个访客 —— 一封就把所有访客一起封了。
+   * 控制权必须留在我们这里：**谁超限，谁的这条就只留在站内，不往大厅推**。
+   *
+   * 阈值故意给得宽（访客 10 分钟 5 条、登录用户 30 条），正常聊天根本碰不到；
+   * 真碰到就是在刷屏，这时候「少转几条」远好过「整个大厅被淹」。
+   */
+  const who = await env.DB.prepare(
+    `SELECT a.role AS role, a.id AS aid
+       FROM chat_messages m LEFT JOIN accounts a ON a.id = m.account_id
+      WHERE m.id = ?`,
+  )
+    .bind(opts.messageId)
+    .first<{ role: string | null; aid: number | null }>();
+
+  if (who?.aid) {
+    const cap = who.role === 'chat_guest' ? GUEST_OUT_CAP : USER_OUT_CAP;
+    const recent = await env.DB.prepare(
+      `SELECT COUNT(*) AS n
+         FROM chat_outbox o JOIN chat_messages m ON m.id = o.message_id
+        WHERE m.account_id = ? AND o.created_at > ?`,
+    )
+      .bind(who.aid, now - OUT_WINDOW_MS)
+      .first<{ n: number }>();
+
+    if (Number(recent?.n ?? 0) >= cap) {
+      console.warn(
+        `[bridge] 出站限流：account=${who.aid} role=${who.role ?? '?'} 近期已发 ${recent?.n} 条（上限 ${cap}），这条只留在站内`,
+      );
+      return;
+    }
+  }
   const delay = opts.status === 'pending' ? PENDING_DELAY_MS : 0;
 
   // 排在队列末尾：取当前最大的 next_at 再加一个 GAP，保证平滑出站
