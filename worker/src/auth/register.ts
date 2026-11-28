@@ -2,7 +2,7 @@ import type { Env } from '../types';
 import { json } from '../util';
 import { usernameError, validNickname, validPassword } from './rules';
 import { corsHeaders, ipHash, isEmail, normalizeEmail, randomToken, sha256Hex } from './common';
-import { findAccountByEmail, identityOwner } from './store';
+import { findAccountByEmail, identityOwner, type AccountRow } from './store';
 import { emailHashOf } from './md5';
 import { checkCode, fail, sendCode, signedIn, stringField, takeAttempt } from './flow';
 import { pbkdf2, PBKDF2_ITER } from './password';
@@ -17,12 +17,14 @@ type Ticket = {
   token_hash: string | null;
 };
 
-export async function checkUsername(env: Env, username: string, exceptId = 0) {
+export async function checkUsername(env: Env, username: string, target?: Pick<AccountRow, 'id' | 'role'>) {
   const error = usernameError(username);
-  if (error) fail(error[0] === 'username_reserved' ? 409 : 400, error[0], error[1]);
+  // Only the original site owner can confirm the reserved site name during migration.
+  const ownerClaim = username === 'qingwu' && target?.id === 1 && target.role === 'admin';
+  if (error && !ownerClaim) fail(error[0] === 'username_reserved' ? 409 : 400, error[0], error[1]);
   if (
     await env.DB.prepare('SELECT 1 FROM accounts WHERE username=? AND id<>?')
-      .bind(username, exceptId)
+      .bind(username, target?.id ?? 0)
       .first()
   ) {
     fail(409, 'username_taken', '这个用户名已经有人用了，换一个吧');

@@ -34,6 +34,7 @@ try {
   for (const file of (await readdir(migrations)).filter((f) => f.endsWith('.sql')).sort()) {
     if (file === '0043_accounts_v2.sql') {
       schema.push(
+        "INSERT INTO accounts(id,email,email_hash,display_name,role,created_at) VALUES (1,'owner@example.test','owner','清吾','admin',100);",
         "INSERT INTO accounts(email,email_hash,display_name,created_at) VALUES ('legacy@example.test','hash','同名茶友',100);",
       );
     }
@@ -111,6 +112,18 @@ try {
   const legacy = await call('email/verify', { email: legacyEmail, code: legacyCode.devCode });
   assert.equal(legacy.account.name, created.account.name);
   assert(legacy.account.usernameProvisional && legacy.suggestSetPassword);
+  const publicClaim = await call('register/start', { username: 'qingwu', email: 'new@example.test', nickname: '清吾' }, '', 409);
+  assert.equal(publicClaim.reason, 'username_reserved');
+  const visitorClaim = await call('username/confirm', { username: 'qingwu' }, legacy.cookie, 409);
+  assert.equal(visitorClaim.reason, 'username_reserved');
+  const ownerEmail = 'owner@example.test';
+  const ownerCode = await call('email/start', { email: ownerEmail });
+  const owner = await call('email/verify', { email: ownerEmail, code: ownerCode.devCode });
+  assert.equal((await call('username/confirm', { username: 'root' }, owner.cookie, 409)).reason, 'username_reserved');
+  const claim = await call('username/confirm', { username: 'qingwu' }, owner.cookie);
+  assert.equal(claim.account.username, 'qingwu');
+  assert.equal(claim.account.usernameProvisional, false);
+  await call('username/confirm', { username: 'newname' }, owner.cookie, 409);
   await call('username/confirm', { username: 'oldfriend' }, legacy.cookie);
   await call('username/confirm', { username: 'secondname' }, legacy.cookie, 409);
   await call('password', { new_password: newPassword }, legacy.cookie);

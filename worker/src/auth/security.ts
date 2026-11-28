@@ -95,7 +95,7 @@ export async function security(env: Env, request: Request, path: string, body: R
       fail(403, 'matrix_active', 'Matrix 用户名已经确定');
     if (!account.username_provisional) fail(409, 'confirmed', '用户名已经确认');
     const name = stringField(body.username);
-    await checkUsername(env, name, account.id);
+    await checkUsername(env, name, account);
     const update = await env.DB.prepare(
       `UPDATE accounts SET username=?, username_provisional=0
       WHERE id=? AND username_provisional=1 AND matrix_user_id IS NULL AND matrix_status<>'active'
