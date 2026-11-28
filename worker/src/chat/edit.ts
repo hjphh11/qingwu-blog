@@ -14,7 +14,7 @@
 
 import type { Env } from '../types';
 import { json } from '../util';
-import { sessionUser } from '../auth/store';
+import { chatSessionUser } from '../auth/store';
 import { screen, type ScreenCtx } from './screen';
 import { judgeLater, trustedHosts } from './messages';
 import { extractUrl, warmPreview } from './link';
@@ -33,7 +33,7 @@ export async function editMessage(
   const id = Number(idParam);
   if (!Number.isInteger(id) || id <= 0) return json({ ok: false, reason: 'not_found' }, 404);
 
-  const me = (await sessionUser(request, env))?.account ?? null;
+  const me = (await chatSessionUser(request, env))?.account ?? null;
   if (!me) {
     return json(
       { ok: false, reason: 'login_required', message: '登录之后才能改自己的话' },

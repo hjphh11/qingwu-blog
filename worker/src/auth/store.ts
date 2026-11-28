@@ -46,7 +46,7 @@ const ACCOUNT_COLS =
 export async function findAccountByEmail(env: Env, email: string): Promise<AccountRow | null> {
   const e = normalizeEmail(email);
   if (!e) return null;
-  return env.DB.prepare(`SELECT ${ACCOUNT_COLS} FROM accounts WHERE email = ?`)
+  return env.DB.prepare(`SELECT ${ACCOUNT_COLS} FROM accounts WHERE email = ? AND role <> 'chat_guest'`)
     .bind(e)
     .first<AccountRow>();
 }
@@ -69,7 +69,7 @@ export async function touchAccount(env: Env, id: number): Promise<void> {
 // ——————————————————————————————————————————————————————————
 export interface SessionUser {
   account: AccountRow;
-  kind: 'visitor' | 'admin';
+  kind: 'visitor' | 'admin' | 'chat_guest';
   /** 直接回给前端的形状（**不含邮箱原文**） */
 }
 
@@ -108,6 +108,11 @@ export async function createSession(
     .bind(now - 86_400_000)
     .run()
     .catch(() => undefined);
+  const guestToken = readCookie(request, CHAT_GUEST_COOKIE);
+  if (guestToken) {
+    await env.DB.prepare("DELETE FROM auth_sessions WHERE kind='chat_guest' AND token_hash=?")
+      .bind(await sha256Hex(guestToken)).run();
+  }
   return token;
 }
 
@@ -120,8 +125,18 @@ export async function createSession(
  *     不该把人踢下线，但换设备/换浏览器会立刻失效。
  * 以前 `ip_hash`/`ua` 写了却从不比对，cookie 一泄露就能异地重放 30 天。
  */
-export async function sessionUser(request: Request, env: Env): Promise<SessionUser | null> {
-  const token = readCookie(request, SESSION_COOKIE);
+export const CHAT_GUEST_COOKIE = 'q_chat_guest';
+
+export function sessionUser(request: Request, env: Env) {
+  return readSession(request, env, false);
+}
+
+export async function chatSessionUser(request: Request, env: Env) {
+  return (await sessionUser(request, env)) ?? readSession(request, env, true);
+}
+
+async function readSession(request: Request, env: Env, guest: boolean): Promise<SessionUser | null> {
+  const token = readCookie(request, guest ? CHAT_GUEST_COOKIE : SESSION_COOKIE);
   if (!token || token.length < 32) return null;
   const tokenHash = await sha256Hex(token);
 
@@ -139,6 +154,9 @@ export async function sessionUser(request: Request, env: Env): Promise<SessionUs
     .first<AccountRow & { s_kind: string; s_exp: number; s_ua: string | null }>();
 
   if (!row) return null;
+  const guestSession = row.s_kind === 'chat_guest' && row.role === 'chat_guest';
+  const siteSession = (row.s_kind === 'admin' || row.s_kind === 'visitor') && row.role !== 'chat_guest';
+  if (!(guest ? guestSession : siteSession)) return null;
   if (row.s_exp < Date.now()) {
     await env.DB.prepare('DELETE FROM auth_sessions WHERE token_hash = ?')
       .bind(tokenHash)
@@ -167,7 +185,7 @@ export async function sessionUser(request: Request, env: Env): Promise<SessionUs
     }
   }
 
-  return { account: row, kind: row.s_kind === 'admin' ? 'admin' : 'visitor' };
+  return { account: row, kind: guest ? 'chat_guest' : row.s_kind === 'admin' ? 'admin' : 'visitor' };
 }
 
 export async function destroySession(request: Request, env: Env): Promise<void> {

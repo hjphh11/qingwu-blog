@@ -19,6 +19,7 @@ import {
   X,
 } from '../lib/icons';
 import EmojiPicker from './EmojiPicker';
+import ChatGuestForm from './chat/ChatGuestForm';
 import AuthDialog from './auth/AuthDialog';
 import ChatAside from './chat/ChatAside';
 import ChatInfo from './chat/ChatInfo';
@@ -30,6 +31,8 @@ import { renderRich } from '../lib/richText';
 import { EMOJI_MAP } from '../lib/emojis';
 import { fetchMe, logout as logoutApi, type AuthConfig, type SessionAccount } from '../lib/auth';
 import {
+  changeGuestSession,
+  type ChatGuest,
   fetchWho,
   loadHistory,
   markRead,
@@ -316,7 +319,7 @@ interface Snapshot {
    * 登录身份一到又换成 60px 的我的卡 —— 侧栏和页脚一起抖。
    * 这点数据约 200 字节，换来的是首屏不再出现「我明明是登录的，却让我登录」。
    */
-  account: SessionAccount | null;
+  account: SessionAccount | ChatGuest | null;
   hasMore: boolean;
   lastId: number;
   lastRead: number;
@@ -364,10 +367,10 @@ export default function ChatRoom() {
   const [online, setOnline] = useState(0);
   const [signedIn, setSignedIn] = useState(false);
   const [config, setConfig] = useState<AuthConfig | null>(null);
-  const [authMode, setAuthMode] = useState<'login' | 'register' | null>(null);
+  const [authMode, setAuthMode] = useState<'login' | 'guest' | null>(null);
 
   /** 侧栏数据：在线的人（「我是谁」直接用会话里的 account，服务端不再算一遍） */
-  const [account, setAccount] = useState<SessionAccount | null>(boot?.account ?? null);
+  const [account, setAccount] = useState<SessionAccount | ChatGuest | null>(boot?.account ?? null);
   /** 身份是否已经确认。false = 还不知道登录没登录，侧栏先画同高占位，别急着说「还没进门」 */
   const [identityReady, setIdentityReady] = useState(Boolean(boot));
   const [members, setMembers] = useState<ChatMember[]>([]);
@@ -781,6 +784,7 @@ export default function ChatRoom() {
   /** 侧栏刷新：只刷在线名单，不动消息流 */
   const refreshWho = useCallback(async () => {
     const w = await fetchWho();
+    if (w.guest) setAccount(w.guest);
     setMembers(w.members);
     setPeople(w.people);
     setBlocks(w.blocks);
@@ -799,7 +803,15 @@ export default function ChatRoom() {
    * 会先按「已登录」画一帧再跳成访客，闪一下很怪。
    */
   const doLogout = useCallback(async () => {
-    await logoutApi();
+    if (account?.role === 'chat_guest') {
+      const error = await changeGuestSession();
+      if (error) {
+        setTip({ kind: 'warn', text: error });
+        return;
+      }
+    } else {
+      await logoutApi();
+    }
     try {
       window.sessionStorage.removeItem(SNAP_KEY);
     } catch {
@@ -810,7 +822,7 @@ export default function ChatRoom() {
     setPeek(null);
     void refreshWho();
     setTip({ kind: 'ok', text: '退出了。下次来聊天时再登录 ~' });
-  }, [refreshWho]);
+  }, [refreshWho, account?.role]);
 
   /**
    * 首屏：翻历史 + 认身份 + 侧栏
@@ -833,7 +845,8 @@ export default function ChatRoom() {
         setOnline(page.online);
         setSignedIn(page.signedIn);
         setConfig(who.config);
-        setAccount(who.account);
+        const identity = who.account ?? list.guest ?? null;
+        setAccount(identity);
         setIdentityReady(true);
         setMembers(list.members);
         setPeople(list.people);
@@ -846,8 +859,8 @@ export default function ChatRoom() {
         // 冷启动（没有快照）时，首批消息不该有入场动画
         if (firstMaxRef.current < 0) firstMaxRef.current = lastIdRef.current;
         writeSnapshot({
-          accountId: who.account?.id ?? null,
-          account: who.account ?? null,
+          accountId: identity?.id ?? null,
+          account: identity,
           hasMore: page.hasMore,
           lastId: lastIdRef.current,
           lastRead: page.lastRead,
@@ -1029,6 +1042,7 @@ export default function ChatRoom() {
 
         setOnline(r.online);
         setSignedIn(r.signedIn);
+        if (!r.signedIn) setAccount(null);
         {
           const now = Date.now();
           const seen = typingSeenRef.current;
@@ -1344,7 +1358,7 @@ export default function ChatRoom() {
 
   const attachFile = async (file: File) => {
     if (!signedIn) {
-      setAuthMode('login');
+      setAuthMode('guest');
       return;
     }
     if (uploading) return;
@@ -1475,7 +1489,7 @@ export default function ChatRoom() {
       const res = await send('', { mediaId: up.media.id });
       if (!res.ok) {
         setTip({ kind: 'warn', text: res.message });
-        if (res.reason === 'login') setAuthMode('login');
+        if (res.reason === 'login') setAuthMode('guest');
         return;
       }
       setMessages((prev) => mergeMessages(prev, [res.message], []));
@@ -1491,7 +1505,7 @@ export default function ChatRoom() {
 
   const startRec = async () => {
     if (!signedIn) {
-      setAuthMode('login');
+      setAuthMode('guest');
       return;
     }
     if (typeof MediaRecorder === 'undefined' || !navigator.mediaDevices?.getUserMedia) {
@@ -1619,7 +1633,7 @@ export default function ChatRoom() {
     }
 
     if (res.reason === 'login') {
-      setAuthMode('login');
+      setAuthMode('guest');
       setTip({ kind: 'warn', text: res.message });
       return;
     }
@@ -1689,7 +1703,7 @@ export default function ChatRoom() {
    */
   const doReact = async (id: number, emoji: string) => {
     if (!signedIn) {
-      setAuthMode('login');
+      setAuthMode('guest');
       return;
     }
     const res = await react(id, emoji);
@@ -1873,7 +1887,7 @@ export default function ChatRoom() {
     const r = await setBlock(target.id, on);
     if (!r.ok) {
       setTip({ kind: 'warn', text: r.message });
-      if (r.reason === 'login') setAuthMode('login');
+      if (r.reason === 'login') setAuthMode('guest');
       return;
     }
     setBlocks(r.blocks);
@@ -1906,7 +1920,7 @@ export default function ChatRoom() {
         setSideOpen(false);
         setSearchOpen(true);
       }}
-      onLogin={() => setAuthMode('login')}
+      onLogin={() => setAuthMode('guest')}
       onClose={() => setSideOpen(false)}
       onPick={openPeek}
     />
@@ -2246,7 +2260,7 @@ export default function ChatRoom() {
                     <button
                       type="button"
                       className="q-chat__blank__cta"
-                      onClick={() => setAuthMode('login')}
+                      onClick={() => setAuthMode('guest')}
                     >
                       坐下聊聊
                     </button>
@@ -2673,11 +2687,11 @@ export default function ChatRoom() {
           ) : (
             <div className="q-chat__composer">
               <div className="q-chat__guest">
-                <p>用密码或邮箱验证码登录，就能一起聊。一个账号全站通用。</p>
-                <button type="button" onClick={() => setAuthMode('login')}>
-                  登录
+                <p>填名字和邮箱，就能以访客身份聊天。</p>
+                <button type="button" onClick={() => setAuthMode('guest')}>
+                  访客进入
                 </button>
-                <button type="button" className="px-3 py-2 text-sm text-crimson underline" onClick={() => setAuthMode('register')}>去注册</button>
+                <button type="button" onClick={() => setAuthMode('login')}>账号登录</button>
               </div>
             </div>
           )}
@@ -2685,7 +2699,16 @@ export default function ChatRoom() {
           {config && (
             <AuthDialog
               open={authMode !== null}
-              mode={authMode ?? 'login'}
+              onGuest={() => setAuthMode('guest')}
+              guestForm={authMode === 'guest' ? (
+                <ChatGuestForm
+                  onLogin={() => setAuthMode('login')}
+                  onDone={() => {
+                    setAuthMode(null);
+                    void init();
+                  }}
+                />
+              ) : undefined}
               config={config}
               onClose={() => setAuthMode(null)}
               onDone={(account) => {
@@ -2790,7 +2813,7 @@ export default function ChatRoom() {
           self={!!account && peek.id === account.id}
           blocked={blocks.some((b) => b.id === peek.id)}
           onToggleBlock={toggleBlock}
-          account={account}
+          account={account?.role === 'chat_guest' ? null : account}
           onLogout={doLogout}
           /**
            * 刚存完资料：会话立刻换成新的（左栏「我」跟着改名换头像），

@@ -11,12 +11,12 @@
 
 import type { Env } from '../types';
 import { json } from '../util';
-import { sessionUser } from '../auth/store';
+import { chatSessionUser } from '../auth/store';
 
 export async function markTyping(request: Request, env: Env): Promise<Response> {
   let me;
   try {
-    me = (await sessionUser(request, env))?.account ?? null;
+    me = (await chatSessionUser(request, env))?.account ?? null;
   } catch {
     me = null;
   }

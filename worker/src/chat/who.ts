@@ -14,7 +14,7 @@
 import type { Env } from '../types';
 import { json } from '../util';
 import { avatarFromHash } from '../auth/avatar';
-import { sessionUser, type AccountRow } from '../auth/store';
+import { chatSessionUser, type AccountRow } from '../auth/store';
 import { touchPresence } from './messages';
 import { listBlocks } from './block';
 import { hostOfSite, loadPeerNames } from './peerName';
@@ -85,7 +85,7 @@ async function listPeople(env: Env, meId: number): Promise<PeopleRow[]> {
 
 async function currentAccount(request: Request, env: Env): Promise<AccountRow | null> {
   try {
-    return (await sessionUser(request, env))?.account ?? null;
+    return (await chatSessionUser(request, env))?.account ?? null;
   } catch {
     return null;
   }
@@ -215,6 +215,10 @@ export async function getWho(request: Request, env: Env): Promise<Response> {
 
     return json({
       ok: true,
+      guest: me?.role === 'chat_guest' ? {
+        id: me.id, name: me.display_name, role: 'chat_guest', avatar: me.avatar_url,
+        avatarCustom: false, emailHash: me.email_hash, site: '',
+      } : null,
       members,
       people,
       blocks,

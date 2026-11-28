@@ -186,11 +186,11 @@ export default function PersonCard({
                 </div>
               </dl>
 
-              {self && account && (
+              {self && (
                 <>
-                  <button type="button" className="q-person__edit" onClick={() => setEditing(true)}>
+                  {account && <button type="button" className="q-person__edit" onClick={() => setEditing(true)}>
                     编辑资料
-                  </button>
+                  </button>}
                   {onLogout && (
                     <button
                       type="button"

@@ -21,7 +21,7 @@
 
 import type { Env } from '../types';
 import { json } from '../util';
-import { sessionUser } from '../auth/store';
+import { chatSessionUser } from '../auth/store';
 
 /**
  * 上限（解码后的字节）。有 R2 时放宽 —— R2 出网不计费，且没有单行大小限制。
@@ -269,7 +269,7 @@ async function putToR2(
 export async function uploadMedia(request: Request, env: Env): Promise<Response> {
   let me;
   try {
-    me = (await sessionUser(request, env))?.account ?? null;
+    me = (await chatSessionUser(request, env))?.account ?? null;
   } catch {
     me = null;
   }

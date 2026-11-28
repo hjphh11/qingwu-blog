@@ -594,8 +594,35 @@ export interface ChatMember {
   lastPost?: number;
 }
 
+export interface ChatGuest {
+  role: 'chat_guest';
+  id: number;
+  name: string;
+  avatar: string;
+  avatarCustom: false;
+  emailHash: string;
+  site: string;
+}
+
+export async function changeGuestSession(input?: { name: string; email: string }): Promise<string> {
+  try {
+    const res = await fetch(BASE + '/chat/guest', {
+      method: input ? 'POST' : 'DELETE',
+      credentials: 'include',
+      headers: { 'content-type': 'application/json' },
+      body: input && JSON.stringify(input),
+      signal: AbortSignal.timeout(12000),
+    });
+    const data = await res.json();
+    return res.ok && data.ok ? '' : data.message || '操作失败，请再试一次。';
+  } catch {
+    return '连接失败，请稍后重试。';
+  }
+}
+
 /** 「空间成员」那张卡要的两份名单：在线的人 + 所有来过的人 */
 export interface WhoResult {
+  guest?: ChatGuest | null;
   members: ChatMember[];
   people: ChatMember[];
   /** 我屏蔽了谁（单向：只有我看不见他们） */
@@ -656,6 +683,7 @@ export async function fetchWho(): Promise<WhoResult> {
     });
     if (!res.ok) return empty;
     const data = (await res.json()) as {
+      guest?: ChatGuest | null;
       members?: ChatMember[];
       people?: ChatMember[];
       blocks?: BlockedUser[];
@@ -664,6 +692,7 @@ export async function fetchWho(): Promise<WhoResult> {
     };
     const members = Array.isArray(data.members) ? data.members : [];
     return {
+      guest: data.guest,
       members,
       // 服务端没给 people（老版本 worker / 查询失败）时退回在线名单，卡片不至于空着
       people: Array.isArray(data.people) && data.people.length ? data.people : members,

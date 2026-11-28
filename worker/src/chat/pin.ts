@@ -12,7 +12,7 @@
 
 import type { Env } from '../types';
 import { json } from '../util';
-import { sessionUser } from '../auth/store';
+import { chatSessionUser } from '../auth/store';
 
 export interface PinInfo {
   id: number;
@@ -61,7 +61,7 @@ export async function getPin(env: Env, meId = -1): Promise<PinInfo | null> {
 }
 
 export async function setPin(request: Request, env: Env): Promise<Response> {
-  const me = (await sessionUser(request, env))?.account ?? null;
+  const me = (await chatSessionUser(request, env))?.account ?? null;
   if (!me) return json({ ok: false, reason: 'login_required', message: '登录之后才能置顶' }, 401);
   if (me.role !== 'admin') {
     return json({ ok: false, reason: 'forbidden', message: '只有站长能置顶' }, 403);

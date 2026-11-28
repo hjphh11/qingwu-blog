@@ -32,6 +32,7 @@ import { reactToMessage } from './react';
 import { recallMessage } from './recall';
 import { searchChat } from './search';
 import { markTyping } from './typing';
+import { guestSession } from './guest';
 import { getWho } from './who';
 import { editMessage } from './edit';
 import { reportMessage } from './report';
@@ -47,6 +48,10 @@ export async function handleChat(
   path: string,
 ): Promise<Response> {
   const method = request.method;
+
+  if (path === '/chat/guest' && (method === 'POST' || method === 'DELETE')) {
+    return guestSession(request, env);
+  }
 
   if (path === '/chat/history') {
     return method === 'GET' ? getHistory(request, env) : NOT_ALLOWED();

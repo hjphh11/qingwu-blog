@@ -12,7 +12,7 @@
 
 import type { Env } from '../types';
 import { json } from '../util';
-import { sessionUser } from '../auth/store';
+import { chatSessionUser } from '../auth/store';
 import { queueRedact, flushBridge } from './bridge';
 
 /** 只用到 waitUntil —— 避免依赖全局的 ExecutionContext 类型 */
@@ -34,7 +34,7 @@ export async function recallMessage(
 
   let me;
   try {
-    me = (await sessionUser(request, env))?.account ?? null;
+    me = (await chatSessionUser(request, env))?.account ?? null;
   } catch {
     me = null;
   }

@@ -19,7 +19,7 @@
 import type { Env } from '../types';
 import { json } from '../util';
 import { avatarFromHash } from '../auth/avatar';
-import { sessionUser } from '../auth/store';
+import { chatSessionUser } from '../auth/store';
 
 /**
  * 上限。够用（正常人就屏蔽个位数），也挡住了「脚本把整间屋子都屏蔽一遍」
@@ -80,7 +80,7 @@ export async function listBlocks(env: Env, meId: number): Promise<BlockEntry[]> 
 
 async function meOf(request: Request, env: Env) {
   try {
-    return (await sessionUser(request, env))?.account ?? null;
+    return (await chatSessionUser(request, env))?.account ?? null;
   } catch {
     return null;
   }

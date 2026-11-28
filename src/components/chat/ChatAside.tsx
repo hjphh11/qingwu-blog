@@ -4,7 +4,7 @@ import { MorphIcon } from 'morphicons/react';
 import { Bell, BellRing, Search, X } from '../../lib/icons';
 import { avatarFromHash } from '../../lib/avatar';
 import type { SessionAccount } from '../../lib/auth';
-import type { ChatMember, ChatPeer } from '../../lib/chat';
+import type { ChatGuest, ChatMember, ChatPeer } from '../../lib/chat';
 import { SITE } from '../../config';
 import linksData from '../../data/links.json';
 
@@ -84,7 +84,7 @@ export default function ChatAside({
   onClose,
   onPick,
 }: {
-  account: SessionAccount | null;
+  account: SessionAccount | ChatGuest | null;
   /** 在线的人：左栏只露头像，名字和来源在右侧「空间详情」里 */
   members: ChatMember[];
   /** 互联站点（由 /chat/who 从远端消息反推，本站排第一） */
@@ -410,7 +410,7 @@ export default function ChatAside({
         ) : (
           <div className="q-me q-me--guest">
             <b>还没进门</b>
-            <p>登录之后就有一个位置，说过的话也会留下。</p>
+            <p>访客填名字和邮箱即可入座。</p>
             <button type="button" className="q-me__cta" onClick={onLogin}>
               坐下聊聊
             </button>

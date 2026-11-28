@@ -1131,6 +1131,16 @@
     color: var(--color-cream);
   }
 
+  .q-chat__guest p {
+    flex: 1;
+  }
+
+  .q-chat__guest button + button {
+    background: transparent;
+    color: var(--color-crimson);
+    padding-inline: 0.5rem;
+  }
+
   /* @ 候选里的名字与站长标 */
   .q-chat__mentions__n {
     flex: 1;

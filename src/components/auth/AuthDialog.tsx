@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { authPost, githubLoginUrl, type AuthConfig, type SessionAccount } from '../../lib/auth';
 import { usernameError, validNickname, validPassword } from '../../../worker/src/auth/rules';
@@ -13,6 +13,8 @@ type Props = {
   onClose: () => void;
   onDone: (account: SessionAccount, created?: boolean) => void;
   page?: boolean;
+  guestForm?: ReactNode;
+  onGuest?: () => void;
 };
 
 export default function AuthDialog(props: Props) {
@@ -31,7 +33,7 @@ function Modal(props: Props) {
     <dialog
       ref={ref}
       className="q-auth-modal"
-      aria-label="登录与注册"
+      aria-label={props.guestForm ? '访客进入长亭' : '登录与注册'}
       onCancel={props.onClose}
       onClick={(e) => {
         if (e.target === ref.current) props.onClose();
@@ -41,13 +43,13 @@ function Modal(props: Props) {
         <button className="q-auth-close" type="button" aria-label="关闭" onClick={props.onClose}>
           ×
         </button>
-        <AuthForm {...props} />
+        {props.guestForm ?? <AuthForm {...props} />}
       </div>
     </dialog>
   );
 }
 
-function AuthForm({ mode: initial = 'login', config, onDone }: Props) {
+function AuthForm({ mode: initial = 'login', config, onDone, onGuest }: Props) {
   const [mode, setMode] = useState<Mode>(initial);
   const [method, setMethod] = useState<'password' | 'code'>('password');
   const [sent, setSent] = useState(false);
@@ -291,6 +293,7 @@ function AuthForm({ mode: initial = 'login', config, onDone }: Props) {
           </p>
         )}
         <footer>
+          {onGuest && <button type="button" onClick={onGuest}>以访客身份进入长亭</button>}
           {!registering && (
             <button
               type="button"

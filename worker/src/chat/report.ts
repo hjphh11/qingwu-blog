@@ -18,7 +18,7 @@
 
 import type { Env } from '../types';
 import { json } from '../util';
-import { sessionUser } from '../auth/store';
+import { chatSessionUser } from '../auth/store';
 import { judgeFreeText } from '../admin/ai';
 import { sendMail } from '../mail';
 import { queueRedact } from './bridge';
@@ -62,7 +62,7 @@ export async function reportMessage(
   const id = Number(idParam);
   if (!Number.isInteger(id) || id <= 0) return json({ ok: false, reason: 'not_found' }, 404);
 
-  const me = (await sessionUser(request, env))?.account ?? null;
+  const me = (await chatSessionUser(request, env))?.account ?? null;
   if (!me) {
     return json({ ok: false, reason: 'login_required', message: '登录之后才能举报' }, 401);
   }

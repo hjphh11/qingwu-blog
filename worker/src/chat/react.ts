@@ -12,7 +12,7 @@
 
 import type { Env } from '../types';
 import { json } from '../util';
-import { sessionUser } from '../auth/store';
+import { chatSessionUser } from '../auth/store';
 import { mergeRemoteReactions, type Reaction } from './messages';
 
 const EMOJI_RE = /^[a-z0-9_]{1,32}$/;
@@ -29,7 +29,7 @@ export async function reactToMessage(
 
   let me;
   try {
-    me = (await sessionUser(request, env))?.account ?? null;
+    me = (await chatSessionUser(request, env))?.account ?? null;
   } catch {
     me = null;
   }

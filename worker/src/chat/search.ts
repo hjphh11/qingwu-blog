@@ -11,7 +11,7 @@
 import type { Env } from '../types';
 import { json } from '../util';
 import { avatarFromHash } from '../auth/avatar';
-import { sessionUser } from '../auth/store';
+import { chatSessionUser } from '../auth/store';
 
 /** 关键词最短长度 —— 一个汉字搜出来的是整个聊天室 */
 const MIN_Q = 2;
@@ -33,7 +33,7 @@ export async function searchChat(request: Request, env: Env): Promise<Response> 
 
   let meId: number | null = null;
   try {
-    meId = (await sessionUser(request, env))?.account?.id ?? null;
+    meId = (await chatSessionUser(request, env))?.account?.id ?? null;
   } catch {
     meId = null;
   }

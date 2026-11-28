@@ -17,7 +17,7 @@ import type { Env } from '../types';
 import { json, plainOf } from '../util';
 import { visitorKey } from '../visitor';
 import { avatarFromEmail, avatarFromHash } from '../auth/avatar';
-import { sessionUser, type AccountRow } from '../auth/store';
+import { chatSessionUser, type AccountRow } from '../auth/store';
 import { moderateComment } from '../admin/ai';
 import { screen, type ScreenCtx } from './screen';
 import { getPin } from './pin';
@@ -56,7 +56,7 @@ const RELEASE_WINDOW = 30 * 1000;
  */
 async function currentAccount(request: Request, env: Env): Promise<AccountRow | null | undefined> {
   try {
-    return (await sessionUser(request, env))?.account ?? null;
+    return (await chatSessionUser(request, env))?.account ?? null;
   } catch {
     return undefined;
   }
@@ -809,7 +809,7 @@ export async function sendMessage(
       {
         ok: false,
         reason: 'login_required',
-        message: '登录之后才能一起聊 —— 用邮箱收个验证码就行',
+        message: '以访客身份进入或登录账号，就能一起聊',
       },
       401,
     );

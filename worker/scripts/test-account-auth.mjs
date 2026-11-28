@@ -40,6 +40,7 @@ try {
     }
     schema.push(await readFile(join(migrations, file), 'utf8'));
   }
+  schema.push(`INSERT OR REPLACE INTO chat_roster(id,body,fetched_at) VALUES (1,'[]',${Date.now()});`);
   const fixture = join(dir, 'schema.sql');
   await writeFile(fixture, schema.join('\n'));
   execFileSync(
@@ -70,9 +71,9 @@ try {
     experimental: { disableExperimentalWarning: true, disableDevRegistry: true },
   });
 
-  async function call(path, body, cookie = '', status = 200) {
-    const res = await worker.fetch('/auth/' + path, {
-      method: body ? 'POST' : 'GET',
+  async function call(path, body, cookie = '', status = 200, method = body ? 'POST' : 'GET') {
+    const res = await worker.fetch(path.startsWith('/') ? path : '/auth/' + path, {
+      method,
       headers: { 'content-type': 'application/json', cookie },
       body: body ? JSON.stringify(body) : undefined,
     });
@@ -90,6 +91,30 @@ try {
   assert.equal(created.account.matrix.status, 'pending');
   assert.equal((await call('me', null, created.cookie)).account.username, username);
   await call('register/complete', { ticket, password }, '', 400);
+
+  // Two browsers may supply identical unverified details. Only the cookie owns the chat history.
+  const profile = { name: '同名茶友', email };
+  await call('/chat/guest', { ...profile, email: 'bad' }, '', 400);
+  const firstGuest = await call('/chat/guest', profile);
+  const secondGuest = await call('/chat/guest', profile);
+  assert.notEqual(firstGuest.cookie, secondGuest.cookie);
+  assert.equal((await call('me', null, firstGuest.cookie)).account, null);
+  await call('password', { new_password: 'guest-password' }, firstGuest.cookie, 401);
+  assert.equal((await call('/chat/history', null, firstGuest.cookie)).auth.signedIn, true);
+  const who = await call('/chat/who', null, firstGuest.cookie);
+  assert.equal(who.guest.name, profile.name + '（访客）');
+  assert.equal((await call('/chat/who', null, created.cookie + '; ' + firstGuest.cookie)).guest, null);
+  const sent = await call('/chat/send', { body: '你好' }, firstGuest.cookie);
+  assert.equal(sent.message.name, profile.name + '（访客）');
+  assert.equal(sent.message.mine, true);
+  assert.notEqual(sent.message.authorId, created.account.id);
+  const history = await call('/chat/history', null, secondGuest.cookie);
+  assert.equal(history.messages.find((m) => m.id === sent.message.id).mine, false);
+  await call(`/chat/${sent.message.id}/recall`, {}, secondGuest.cookie, 403);
+  await call(`/chat/${sent.message.id}/recall`, {}, firstGuest.cookie);
+  await call('/chat/guest', null, firstGuest.cookie, 200, 'DELETE');
+  assert.equal((await call('/chat/history', null, firstGuest.cookie)).auth.signedIn, false);
+  assert.equal((await call('/chat/history', null, secondGuest.cookie)).auth.signedIn, true);
 
   const other = await call('login', { identifier: email, password });
   const newPassword = 'changed-password';
@@ -129,7 +154,7 @@ try {
   await call('password', { new_password: newPassword }, legacy.cookie);
   await call('login', { identifier: 'oldfriend', password: newPassword });
   console.log(
-    'Passed registration, all login methods, password and email changes, session revocation and legacy migration.',
+    'Passed registration, all login methods, password and email changes, session revocation, legacy migration and isolated chat guest sessions.',
   );
 } finally {
   try {
