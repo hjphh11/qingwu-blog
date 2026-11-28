@@ -57,9 +57,12 @@ export default function AccountSecurity({
           <p>
             Matrix ·{' '}
             {account.matrix.userId ||
-              { pending: '排队中', failed: '开通失败', disabled: '已停用' }[account.matrix.status] ||
+              { pending: '待重试', failed: '开通失败', disabled: '已停用' }[account.matrix.status] ||
               '尚未开通'}
           </p>
+          {account.matrix.status === 'pending' && (
+            <p>下次用本站密码登录时会重试，也可以在这里立即开通。</p>
+          )}
           {account.matrix.passwordSyncPending && <p>下次用密码登录后同步 Matrix 密码。</p>}
           {account.hasPassword &&
             !account.usernameProvisional &&
@@ -69,7 +72,7 @@ export default function AccountSecurity({
                 <form
                   onSubmit={async (e) => {
                     const f = e.currentTarget;
-                    if (await action('matrix/activate', values(e), '已检查开通状态')) f.reset();
+                    if (await action('matrix/activate', values(e), 'Matrix 已开通')) f.reset();
                   }}
                 >
                   <label>

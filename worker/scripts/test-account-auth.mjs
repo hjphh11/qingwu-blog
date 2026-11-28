@@ -89,6 +89,8 @@ try {
   const { ticket } = await call('register/verify', { email, code: start.devCode });
   const created = await call('register/complete', { ticket, password });
   assert.equal(created.account.matrix.status, 'pending');
+  const activation = await call('matrix/activate', { password }, created.cookie, 503);
+  assert.equal(activation.reason, 'matrix_pending');
   assert.equal((await call('me', null, created.cookie)).account.username, username);
   await call('register/complete', { ticket, password }, '', 400);
 

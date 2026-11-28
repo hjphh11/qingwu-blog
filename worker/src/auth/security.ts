@@ -185,5 +185,9 @@ export async function security(env: Env, request: Request, path: string, body: R
   }
   const fresh = await findAccountById(env, account.id);
   const view = fresh && (await publicAccount(env, fresh));
+  if (path === '/auth/matrix/activate' && view?.matrix.status !== 'active') {
+    if (view?.matrix.status === 'failed') fail(409, 'matrix_failed', 'Matrix 开通失败，请联系站长检查账号。');
+    fail(503, 'matrix_pending', 'Matrix 暂未开通，请稍后重试。');
+  }
   return json({ ok: true, account: view, matrix: view?.matrix }, 200, headers);
 }

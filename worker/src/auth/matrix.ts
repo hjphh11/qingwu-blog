@@ -24,7 +24,8 @@ export async function syncMatrix(env: Env, account: AccountRow, password: string
     if (base && new URL(base).protocol === 'https:' && env.ACCOUNT_MATRIX_SECRET) {
       const userId = '@' + account.username + ':' + new URL(base).host;
       const signal = AbortSignal.timeout(5000);
-      const options = { signal, redirect: 'error' as const };
+      // Workers supports manual redirects; keep credentials on this homeserver.
+      const options = { signal, redirect: 'manual' as const };
       if (account.matrix_user_id) {
         if (
           row.matrix_hs !== base ||
@@ -98,11 +99,12 @@ export async function syncMatrix(env: Env, account: AccountRow, password: string
             status = proof.status === 403 ? 'failed' : 'pending';
             throw Error('ownership');
           }
-          await fetch(base + '/_matrix/client/v3/logout', {
+          const logout = await fetch(base + '/_matrix/client/v3/logout', {
             ...options,
             method: 'POST',
             headers: { authorization: 'Bearer ' + session.access_token },
           });
+          if (!logout.ok) throw Error('logout');
         } else if (!result.ok || reply.user_id !== userId) {
           if (result.status === 400) status = 'failed';
           throw Error('register');
@@ -139,7 +141,7 @@ export async function syncMatrixName(env: Env) {
   if (!row) return;
   const res = await fetch(base + '/_synapse/admin/v2/users/' + encodeURIComponent(row.matrix_user_id), {
     method: 'PUT',
-    redirect: 'error',
+    redirect: 'manual',
     signal: AbortSignal.timeout(5000),
     headers: {
       authorization: 'Bearer ' + env.ACCOUNT_MATRIX_ADMIN_TOKEN,
